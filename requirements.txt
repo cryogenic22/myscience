@@ -1,0 +1,35 @@
+# Market-Zero dependencies
+# Core
+psycopg2-binary>=2.9.9
+openai>=1.12.0
+
+# Data connectors
+requests>=2.31.0
+sec-edgar-downloader>=5.0.6
+lxml>=5.1.0             # PubMed XML parsing
+
+# User document processing
+pdfplumber>=0.10.3
+python-docx>=1.1.0
+beautifulsoup4>=4.12.0  # URL content extraction
+
+# Scheduler
+APScheduler>=3.10.4
+
+# Utilities
+python-dotenv>=1.0.1    # .env file loading
+
+# API layer
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+
+# MCP server
+mcp>=1.0.0
+
+# Agentic query layer
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.2.0

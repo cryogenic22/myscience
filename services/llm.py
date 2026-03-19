@@ -1,0 +1,500 @@
+"""
+LLM Synthesis Service for Market-Zero.
+
+Takes structured data (evidence, metrics, graph context) gathered by the
+deterministic service layer and synthesizes it into analyst-grade narratives
+using an LLM. Falls back to template narratives if no API key is configured
+or if the LLM call fails.
+
+Architecture rationale:
+  - Deterministic services handle data gathering (fast, reliable, complete)
+  - LLM handles ONLY synthesis (what it's good at: turning data into insight)
+  - Single LLM call per request (~2-3s latency), not multi-step agent chains
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+_BASE_RULES = """- Use **bold** for key entities, numbers, and findings.
+- STRICT DATA GROUNDING: ONLY use numbers, percentages, and facts that appear in the PROVIDED CONTEXT below. Do NOT supplement with knowledge from your training data. No clinical efficacy numbers, no MACE reductions, no survival rates unless explicitly in the context.
+- If the data is thin, say so honestly ("limited data available for X") rather than padding with external knowledge.
+- CITATIONS: When you reference a fact from the EVIDENCE section, include the evidence number in square brackets inline, e.g. [1], [2]. Only cite evidence numbers that actually exist in the EVIDENCE section. If there is NO EVIDENCE section or it is empty, do NOT use any citation markers."""
+
+SYSTEM_PROMPTS: dict[str, str] = {
+    "compare": f"""You are a senior pharmaceutical intelligence analyst. You are comparing entities head-to-head.
+
+Rules:
+- Lead with the key differentiator — which entity is stronger/weaker and why.
+- Use comparative language: "X has 2.3x more trials", "Y leads in Phase 3 with N trials".
+- Bold the winner on each dimension.
+- Compute and state differentials, don't just list numbers side-by-side.
+- End with a 1-sentence verdict.
+- 2-3 paragraphs maximum. A comparison table is displayed alongside — don't restate every number.
+- CRITICAL: ONLY use numbers and facts from the PROVIDED CONTEXT below. Do NOT inject clinical trial results, efficacy percentages, MACE reductions, or any other statistics from your training data. If the data doesn't cover a dimension, say "data not available" rather than filling in from memory.
+- If COMPUTED DIFFERENTIALS are provided, use those exact numbers.
+{_BASE_RULES}""",
+
+    "landscape": f"""You are a senior pharmaceutical intelligence analyst. You are analyzing a competitive market landscape.
+
+The data is segmented by THERAPEUTIC AREA (disease indication), NOT by company. Each row represents a therapeutic area where the queried mechanism/drug class is used.
+
+Rules:
+- Lead with the concentration insight — which therapeutic areas dominate activity for this mechanism.
+- Name the top segments by their therapeutic area and distinguishing metric (drug count, trial volume, pipeline score).
+- Do NOT say "dominated by companies" — the segments are therapeutic areas, not companies.
+- If therapeutic areas overlap (e.g. "Diabetes Mellitus" and "Diabetes Mellitus, Type 2"), note that broader categories include subcategories and avoid double-counting.
+- Note any gaps or underserved therapeutic areas worth investigating.
+- 2-3 sentences maximum. A data table is displayed alongside — reference it naturally.
+{_BASE_RULES}""",
+
+    "pipeline": f"""You are a senior pharmaceutical intelligence analyst. You are reporting on drug pipeline metrics.
+
+Rules:
+- Lead with the headline finding: who leads and with what score.
+- Note the phase distribution (early vs. late stage strength).
+- Compare to benchmarks when possible (typical Phase 2→3 success ~30%, Phase 3→approval ~60%).
+- 2-3 sentences maximum. A pipeline table is displayed alongside.
+{_BASE_RULES}""",
+
+    "portfolio": f"""You are a senior pharmaceutical intelligence analyst. You are briefing on a company portfolio.
+
+Rules:
+- Lead with the company's position: how many drugs, in what therapeutic areas.
+- Note pipeline maturity (early vs. late stage balance).
+- Highlight any standout drugs or competitive gaps.
+- 2-3 paragraphs maximum. A summary table is displayed alongside.
+{_BASE_RULES}""",
+
+    "dossier": f"""You are a senior pharmaceutical intelligence analyst briefing an executive.
+
+Rules:
+- Lead with what the entity is and its significance.
+- Key metrics in bold: pipeline score, trial count, phase distribution.
+- Note any recent developments or notable trial activity.
+- 2-4 paragraphs maximum.
+{_BASE_RULES}""",
+
+    "tabular": f"""You are a senior pharmaceutical intelligence analyst. The user asked for structured/tabular output.
+
+Rules:
+- Write 1-2 sentences ONLY as a brief summary header.
+- Do NOT restate numbers from the table — a full data table is displayed below.
+- Simply describe what the table shows and call out 1-2 notable patterns.
+{_BASE_RULES}""",
+
+    "default": f"""You are a senior pharmaceutical intelligence analyst at a top-tier strategy consulting firm.
+
+Rules:
+- Write 2-4 paragraphs maximum. Be concise but insightful.
+- Lead with the most important finding or insight.
+- Use specific numbers from the data provided.
+- Highlight competitive dynamics, risks, and opportunities when relevant.
+- You may use bullet points or short lists when they improve clarity.
+{_BASE_RULES}""",
+}
+
+# Backward-compatible alias
+SYSTEM_PROMPT = SYSTEM_PROMPTS["default"]
+
+
+def _get_system_prompt(intent: str, format_hint: str | None = None) -> str:
+    """Select the best system prompt based on intent and format hint."""
+    if format_hint == "table":
+        return SYSTEM_PROMPTS["tabular"]
+    return SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
+
+RESEARCH_SYSTEM_PROMPT = """You are preparing a decision-support research brief for a pharmaceutical leadership team.
+
+Rules:
+- Use clear section headers.
+- Be factual and conservative in claims.
+- Distinguish internal graph evidence from external web context.
+- Do not invent data or citations.
+- Keep recommendations actionable and specific to evidence.
+- Maximum length: 700 words.
+"""
+
+
+def _compress_evidence(
+    evidence_snippets: Optional[list[str]],
+    question: str = "",
+) -> tuple[Optional[list[str]], Optional[str]]:
+    """Try to compress evidence snippets via ctxpack entity resolution.
+
+    Returns (snippets, compressed_block):
+    - If compression succeeded: (None, compressed_text) — use compressed_block as extra_context
+    - If passthrough/unavailable: (original_snippets, None) — use snippets normally
+    """
+    if not evidence_snippets:
+        return evidence_snippets, None
+
+    try:
+        from services.ctx_evidence import pack_evidence
+        items = [{"content": s} for s in evidence_snippets]
+        compressed_text, metrics = pack_evidence(items, question=question)
+
+        if metrics.get("mode") == "ctx":
+            logger.info(
+                "Evidence compressed: %d → %d tokens (%.1fx, %d merged)",
+                metrics.get("raw_tokens", 0),
+                metrics.get("compressed_tokens", 0),
+                metrics.get("ratio", 1),
+                metrics.get("merged", 0),
+            )
+            return None, f"EVIDENCE (compressed):\n{compressed_text}"
+        else:
+            return evidence_snippets, None
+    except Exception as e:
+        logger.debug("Evidence compression unavailable: %s", e)
+        return evidence_snippets, None
+
+
+def _build_context_block(
+    question: str,
+    intent: str,
+    entity_info: Optional[dict] = None,
+    metrics: Optional[dict] = None,
+    graph_summary: Optional[dict] = None,
+    evidence_snippets: Optional[list[str]] = None,
+    extra_context: Optional[str] = None,
+    ctx_mode: str = "both",
+) -> str:
+    """Build a structured context block for the LLM.
+
+    Pipeline:
+    1. Compress evidence snippets via ctxpack entity resolution (if above threshold)
+    2. Assemble full context via CTXContextBuilder (with threshold gate)
+    3. Fall back to legacy flat format on failure
+
+    ctx_mode: "ctx" | "legacy" | "both" (default: "both" for benchmarking)
+    """
+    # Step 1: Try to compress evidence before context assembly
+    snippets_for_ctx, compressed_evidence = _compress_evidence(
+        evidence_snippets, question=question,
+    )
+
+    # If evidence was compressed, append it to extra_context
+    if compressed_evidence:
+        if extra_context:
+            extra_context = f"{extra_context}\n\n{compressed_evidence}"
+        else:
+            extra_context = compressed_evidence
+
+    try:
+        from services.ctx_context import CTXContextBuilder
+        builder = CTXContextBuilder(mode=ctx_mode)
+        ab_result = builder.build(
+            question=question,
+            intent=intent,
+            entity_info=entity_info,
+            metrics=metrics,
+            graph_summary=graph_summary,
+            evidence_snippets=snippets_for_ctx,
+            extra_context=extra_context,
+        )
+        if ab_result.comparison:
+            logger.info("Context A/B: %s", ab_result.summary)
+        return ab_result.active.text
+    except Exception as e:
+        logger.warning("CTX context builder failed, falling back to legacy: %s", e)
+        # Fallback to legacy inline
+        parts = [f"USER QUESTION: {question}", f"INTENT: {intent}"]
+        if entity_info:
+            parts.append(f"ENTITY: {json.dumps(entity_info, default=str)}")
+        if metrics:
+            parts.append(f"METRICS: {json.dumps(metrics, default=str)}")
+        if graph_summary:
+            parts.append(f"GRAPH CONTEXT: {json.dumps(graph_summary, default=str)}")
+        if snippets_for_ctx:
+            parts.append("EVIDENCE:")
+            for i, snippet in enumerate(snippets_for_ctx[:10], 1):
+                parts.append(f"  [{i}] {snippet}")
+        if extra_context:
+            parts.append(f"ADDITIONAL CONTEXT: {extra_context}")
+        return "\n\n".join(parts)
+
+
+class LLMSynthesizer:
+    """Synthesizes structured pharma data into analyst-grade narratives."""
+
+    def __init__(self, config):
+        self.config = config
+        self._client = None
+
+    @property
+    def enabled(self) -> bool:
+        return (
+            self.config.llm.enabled
+            and bool(self.config.llm.api_key)
+        )
+
+    def _get_client(self):
+        if self._client is None:
+            from openai import OpenAI
+            self._client = OpenAI(api_key=self.config.llm.api_key)
+        return self._client
+
+    def synthesize(
+        self,
+        question: str,
+        intent: str,
+        entity_info: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+        graph_summary: Optional[dict] = None,
+        evidence_snippets: Optional[list[str]] = None,
+        extra_context: Optional[str] = None,
+        fallback_narrative: str = "",
+        format_hint: Optional[str] = None,
+    ) -> str:
+        """Synthesize a narrative from structured data.
+
+        Args:
+            question: The user's original question.
+            intent: Detected intent (dossier, compare, landscape, etc.).
+            entity_info: Primary entity details (name, type, properties).
+            metrics: Relevant KPIs (pipeline, success rate, etc.).
+            graph_summary: Graph neighborhood summary.
+            evidence_snippets: Top evidence text snippets.
+            extra_context: Any additional context string.
+            fallback_narrative: Template narrative to return if LLM is unavailable.
+            format_hint: Optional "table" or "chart" to adjust prompt style.
+
+        Returns:
+            Synthesized narrative string.
+        """
+        if not self.enabled:
+            return fallback_narrative
+
+        ctx_mode = getattr(self.config.llm, "ctx_mode", "both")
+        context = _build_context_block(
+            question=question,
+            intent=intent,
+            entity_info=entity_info,
+            metrics=metrics,
+            graph_summary=graph_summary,
+            evidence_snippets=evidence_snippets,
+            extra_context=extra_context,
+            ctx_mode=ctx_mode,
+        )
+
+        system_prompt = _get_system_prompt(intent, format_hint)
+
+        try:
+            client = self._get_client()
+            response = client.chat.completions.create(
+                model=self.config.llm.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context},
+                ],
+                max_tokens=self.config.llm.max_tokens,
+                temperature=self.config.llm.temperature,
+            )
+            narrative = response.choices[0].message.content.strip()
+            if narrative:
+                return narrative
+            return fallback_narrative
+
+        except Exception as e:
+            logger.warning("LLM synthesis failed, using fallback: %s", e)
+            return fallback_narrative
+
+    def synthesize_stream(
+        self,
+        question: str,
+        intent: str,
+        entity_info: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+        graph_summary: Optional[dict] = None,
+        evidence_snippets: Optional[list[str]] = None,
+        extra_context: Optional[str] = None,
+        format_hint: Optional[str] = None,
+    ):
+        """Stream synthesis tokens. Yields str chunks. Falls back to empty if LLM unavailable."""
+        if not self.enabled:
+            return
+
+        ctx_mode = getattr(self.config.llm, "ctx_mode", "both")
+        context = _build_context_block(
+            question=question,
+            intent=intent,
+            entity_info=entity_info,
+            metrics=metrics,
+            graph_summary=graph_summary,
+            evidence_snippets=evidence_snippets,
+            extra_context=extra_context,
+            ctx_mode=ctx_mode,
+        )
+
+        system_prompt = _get_system_prompt(intent, format_hint)
+
+        try:
+            client = self._get_client()
+            stream = client.chat.completions.create(
+                model=self.config.llm.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context},
+                ],
+                max_tokens=self.config.llm.max_tokens,
+                temperature=self.config.llm.temperature,
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as e:
+            logger.warning("LLM stream failed: %s", e)
+
+    def synthesize_dossier(
+        self,
+        question: str,
+        entity_name: str,
+        entity_type: str,
+        entity_details: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+        graph_summary: Optional[dict] = None,
+        evidence_snippets: Optional[list[str]] = None,
+        fallback_narrative: str = "",
+        extra_context: Optional[str] = None,
+    ) -> str:
+        """Specialized dossier synthesis."""
+        entity_info = {
+            "name": entity_name,
+            "type": entity_type,
+            **(entity_details or {}),
+        }
+        return self.synthesize(
+            question=f"Tell me about {entity_name}",
+            intent="dossier",
+            entity_info=entity_info,
+            metrics=metrics,
+            graph_summary=graph_summary,
+            evidence_snippets=evidence_snippets,
+            fallback_narrative=fallback_narrative,
+            extra_context=extra_context,
+        )
+
+    def synthesize_comparison(
+        self,
+        entity_names: list[str],
+        metrics_by_entity: Optional[dict] = None,
+        shared_connections: Optional[list] = None,
+        unique_connections: Optional[dict] = None,
+        fallback_narrative: str = "",
+        computed_insights: str = "",
+    ) -> str:
+        """Specialized comparison synthesis."""
+        extra = ""
+        if shared_connections:
+            shared_labels = [c.get("label", c.get("entity_id", "?")) for c in shared_connections[:10]]
+            extra += f"Shared connections ({len(shared_connections)}): {', '.join(shared_labels)}. "
+        if unique_connections:
+            for eid, conns in unique_connections.items():
+                labels = [c.get("label", "?") for c in conns[:5]]
+                extra += f"Unique to {eid}: {', '.join(labels)}. "
+        if computed_insights:
+            extra += f"\n{computed_insights}"
+
+        return self.synthesize(
+            question=f"Compare {' vs '.join(entity_names)}",
+            intent="compare",
+            metrics=metrics_by_entity,
+            extra_context=extra if extra else None,
+            fallback_narrative=fallback_narrative,
+        )
+
+    def synthesize_landscape(
+        self,
+        question: str,
+        segments: Optional[list[dict]] = None,
+        fallback_narrative: str = "",
+    ) -> str:
+        """Specialized competitive landscape synthesis."""
+        return self.synthesize(
+            question=question,
+            intent="landscape",
+            metrics={"segments": segments or []},
+            fallback_narrative=fallback_narrative,
+        )
+
+    def synthesize_pipeline(
+        self,
+        question: str,
+        pipelines: Optional[list[dict]] = None,
+        therapeutic_area: str = "",
+        fallback_narrative: str = "",
+    ) -> str:
+        """Specialized pipeline synthesis."""
+        return self.synthesize(
+            question=question,
+            intent="pipeline",
+            metrics={"pipelines": pipelines or []},
+            extra_context=f"Therapeutic area focus: {therapeutic_area}" if therapeutic_area else None,
+            fallback_narrative=fallback_narrative,
+        )
+
+    def synthesize_research_report(
+        self,
+        question: str,
+        graph_summary: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+        evidence_snippets: Optional[list[str]] = None,
+        web_results: Optional[list[dict]] = None,
+        fallback_report: str = "",
+    ) -> str:
+        """Generate a deep-research brief with optional web augmentation."""
+        if not self.enabled:
+            return fallback_report
+
+        extra_context = None
+        if web_results:
+            extra_context = f"WEB RESULTS: {json.dumps(web_results[:8], default=str)}"
+
+        context = _build_context_block(
+            question=question,
+            intent="deep_research",
+            metrics=metrics,
+            graph_summary=graph_summary,
+            evidence_snippets=evidence_snippets,
+            extra_context=extra_context,
+        )
+
+        try:
+            client = self._get_client()
+            response = client.chat.completions.create(
+                model=self.config.llm.model,
+                messages=[
+                    {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"{context}\n\n"
+                            "Write sections titled:\n"
+                            "1) Executive Summary\n"
+                            "2) Internal Evidence (Knowledge Graph)\n"
+                            "3) Quantitative Signals\n"
+                            "4) External Context (Web)\n"
+                            "5) Risks and Data Gaps\n"
+                            "6) Recommended Next Questions\n"
+                            "Only include section 4 if web results are provided."
+                        ),
+                    },
+                ],
+                max_tokens=min(self.config.llm.max_tokens * 2, 2200),
+                temperature=min(max(self.config.llm.temperature, 0.2), 0.5),
+            )
+            narrative = response.choices[0].message.content.strip()
+            if narrative:
+                return narrative
+            return fallback_report
+        except Exception as e:
+            logger.warning("LLM research synthesis failed, using fallback: %s", e)
+            return fallback_report

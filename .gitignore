@@ -1,0 +1,43 @@
+# Environment
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.hypothesis/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.pid
+.backend.log
+.backend.pid
+.frontend.log
+.frontend.pid
+_test_*.json
+
+# Vite
+.vite/
+frontend/node_modules/
+frontend/dist/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Data
+*.tsv
+research_results.tsv
+
+# Windows special files
+nul
+NUL
