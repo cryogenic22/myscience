@@ -18,17 +18,24 @@ except ImportError:
 @dataclass
 class DatabaseConfig:
     host: str = os.getenv("MZ_DB_HOST", "localhost")
-    port: int = int(os.getenv("MZ_DB_PORT", "5488"))
+    port: int = int(os.getenv("MZ_DB_PORT", "5432"))
     name: str = os.getenv("MZ_DB_NAME", "market_zero")
     user: str = os.getenv("MZ_DB_USER", "postgres")
     password: str = os.getenv("MZ_DB_PASSWORD", "postgres")
 
     @property
     def dsn(self) -> str:
+        # Railway provides DATABASE_URL directly; prefer it over manual construction
+        url = os.getenv("DATABASE_URL", "")
+        if url:
+            return url
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
     @property
     def async_dsn(self) -> str:
+        url = os.getenv("DATABASE_URL", "")
+        if url:
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
 
