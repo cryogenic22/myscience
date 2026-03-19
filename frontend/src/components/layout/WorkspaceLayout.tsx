@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 interface WorkspaceLayoutProps {
   left: ReactNode;
   right: ReactNode;
-  defaultSplit?: number;   // 0-100, default 50
-  minLeft?: number;        // min % for left panel, default 30
-  minRight?: number;       // min % for right panel, default 25
+  defaultSplit?: number;
+  minLeft?: number;
+  minRight?: number;
 }
 
 const STORAGE_KEY = 'mz-panel-split';
@@ -15,18 +15,18 @@ function readStoredSplit(fallback: number): number {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw !== null) {
       const parsed = parseFloat(raw);
-      if (!Number.isNaN(parsed) && parsed >= 10 && parsed <= 90) return parsed;
+      if (!Number.isNaN(parsed) && parsed >= 20 && parsed <= 80) return parsed;
     }
-  } catch { /* ignore storage errors */ }
+  } catch { /* ignore */ }
   return fallback;
 }
 
 export default function WorkspaceLayout({
   left,
   right,
-  defaultSplit = 50,
-  minLeft = 30,
-  minRight = 25,
+  defaultSplit = 42,
+  minLeft = 28,
+  minRight = 30,
 }: WorkspaceLayoutProps) {
   const [split, setSplit] = useState(() => readStoredSplit(defaultSplit));
   const [isDragging, setIsDragging] = useState(false);
@@ -34,9 +34,7 @@ export default function WorkspaceLayout({
 
   const persistSplit = useCallback((value: number) => {
     setSplit(value);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(value));
-    } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, String(value)); } catch { /* */ }
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -49,27 +47,20 @@ export default function WorkspaceLayout({
     (e: React.PointerEvent) => {
       if (!isDragging || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const pct = (x / rect.width) * 100;
-      const clamped = Math.min(Math.max(pct, minLeft), 100 - minRight);
-      persistSplit(Math.round(clamped * 100) / 100);
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      persistSplit(Math.round(Math.min(Math.max(pct, minLeft), 100 - minRight) * 10) / 10);
     },
     [isDragging, minLeft, minRight, persistSplit],
   );
 
-  const handlePointerUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handlePointerUp = useCallback(() => setIsDragging(false), []);
 
-  // Prevent text selection during drag
   useEffect(() => {
     if (!isDragging) return;
-    const style = document.body.style;
-    const prev = style.userSelect;
-    style.userSelect = 'none';
-    return () => {
-      style.userSelect = prev;
-    };
+    const prev = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    return () => { document.body.style.userSelect = prev; document.body.style.cursor = ''; };
   }, [isDragging]);
 
   return (
@@ -81,42 +72,43 @@ export default function WorkspaceLayout({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {/* Left panel */}
-        <div
-          className="flex flex-col overflow-y-auto"
-          style={{ width: `${split}%` }}
-        >
+        {/* Left panel — chat */}
+        <div className="flex flex-col overflow-hidden" style={{ width: `${split}%` }}>
           {left}
         </div>
 
-        {/* Divider */}
+        {/* Divider — nearly invisible, widens on hover */}
         <div
-          className={`relative w-1 shrink-0 cursor-col-resize transition-colors ${
-            isDragging ? 'bg-brand/30' : 'bg-slate-200 hover:bg-brand/20'
-          }`}
+          className="group relative shrink-0 cursor-col-resize"
           onPointerDown={handlePointerDown}
         >
-          {/* Drag handle indicator */}
-          <div className="absolute inset-y-0 -left-1 -right-1" />
+          {/* Hit area (wider than visual) */}
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5 z-10" />
+          {/* Visual line */}
+          <div className={`h-full w-px transition-colors duration-150 ${
+            isDragging ? 'bg-brand/40' : 'bg-slate-200/80 group-hover:bg-brand/25 dark:bg-slate-700/60'
+          }`} />
+          {/* Grab handle dots — visible on hover */}
+          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 transition-opacity duration-150 ${
+            isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-1 w-1 rounded-full bg-slate-400/70" />
+            ))}
+          </div>
         </div>
 
-        {/* Right panel */}
-        <div
-          className="flex flex-col overflow-y-auto"
-          style={{ width: `${100 - split}%` }}
-        >
+        {/* Right panel — canvas */}
+        <div className="flex flex-col overflow-hidden bg-surface dark:bg-slate-900/50" style={{ width: `${100 - split}%` }}>
           {right}
         </div>
       </div>
 
-      {/* Mobile: stacked vertically */}
-      <div className="flex flex-1 flex-col md:hidden min-h-0 overflow-y-auto">
-        <div className="flex-1 overflow-y-auto border-b border-slate-200">
-          {left}
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {right}
-        </div>
+      {/* Mobile: stacked */}
+      <div className="flex flex-1 flex-col md:hidden min-h-0">
+        <div className="flex-1 overflow-y-auto">{left}</div>
+        <div className="h-px bg-slate-200 dark:bg-slate-700" />
+        <div className="flex-1 overflow-y-auto bg-surface dark:bg-slate-900/50">{right}</div>
       </div>
     </>
   );

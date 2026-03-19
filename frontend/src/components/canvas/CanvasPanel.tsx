@@ -28,6 +28,16 @@ interface CanvasPanelProps {
   confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
 }
 
+const INTENT_LABELS: Record<string, string> = {
+  landscape: 'Competitive Landscape',
+  compare: 'Head-to-Head Comparison',
+  dossier: 'Entity Profile',
+  pipeline: 'Pipeline Analysis',
+  portfolio: 'Company Portfolio',
+  structured_query: 'Data Query',
+  general: 'Analysis',
+};
+
 export default function CanvasPanel({
   intent,
   data,
@@ -49,46 +59,76 @@ export default function CanvasPanel({
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col p-5">
-        <SkeletonCards />
+      <div className="flex h-full flex-col p-6">
+        <div className="mb-4 h-5 w-40 animate-pulse rounded-md bg-slate-200/60 dark:bg-slate-700/40" />
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-xl border border-slate-200/50 bg-white p-5 dark:border-slate-700/30 dark:bg-slate-800/50">
+              <div className="mb-3 h-4 w-24 animate-pulse rounded bg-slate-200/60 dark:bg-slate-700/40" />
+              <div className="space-y-2">
+                <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
+                <div className="h-3 w-3/5 animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!hasContent) {
-    return <EmptyCanvas />;
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-8">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100/80 dark:bg-slate-800/60">
+          <Layers size={20} className="text-slate-400 dark:text-slate-500" />
+        </div>
+        <p className="mt-4 text-[13px] font-medium text-slate-400 dark:text-slate-500">Data Canvas</p>
+        <p className="mt-1 max-w-[240px] text-center text-[12px] leading-relaxed text-slate-400/80 dark:text-slate-500/80">
+          Tables, charts, and entity details will appear here as you explore.
+        </p>
+      </div>
+    );
   }
+
+  const confValue = confidenceAssessment?.overall ?? confidence;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      {/* Top status bar */}
-      <div className="shrink-0 border-b border-slate-200/70 px-5 py-3">
-        <div className="flex items-center gap-3">
-          {intent && (
-            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-              {intent}
+      {/* Header strip */}
+      <div className="shrink-0 px-6 pt-5 pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            {intent && (
+              <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                {INTENT_LABELS[intent] ?? intent}
+              </h3>
+            )}
+            {confValue != null && <ConfidenceBadge value={confValue} />}
+          </div>
+          {tableData && tableData.rows.length > 0 && (
+            <span className="text-[10px] text-slate-400">
+              {tableData.rows.length} {tableData.rows.length === 1 ? 'row' : 'rows'}
             </span>
           )}
-          {confidence != null && <ConfidenceBadge value={confidence} />}
-          {confidenceAssessment && <ConfidenceBadge value={confidenceAssessment.overall} />}
         </div>
 
         {guardStatus && guardStatus !== 'ok' && (
-          <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-            <AlertTriangle size={13} className="shrink-0" />
-            <span>Guard status: {guardStatus}</span>
+          <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-amber-200/60 bg-amber-50/50 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/20 dark:bg-amber-900/20 dark:text-amber-400">
+            <AlertTriangle size={12} className="shrink-0" />
+            <span>Response may contain unverified claims — review with caution</span>
           </div>
         )}
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 space-y-4 overflow-y-auto p-5">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
         <AnimatePresence mode="wait">
           <motion.div
             key={intent ?? 'default'}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="space-y-4"
           >
