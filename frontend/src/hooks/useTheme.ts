@@ -5,7 +5,9 @@ type Theme = 'light' | 'dark';
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('mz-theme') as Theme | null;
   if (stored === 'light' || stored === 'dark') return stored;
-  if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+  // Default to light — dark mode is not fully implemented yet.
+  // When dark: variants are added to all components, re-enable OS detection:
+  // if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
   return 'light';
 }
 
