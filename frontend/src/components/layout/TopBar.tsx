@@ -35,7 +35,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
 
           <div className="h-5 w-px bg-slate-200/80 dark:bg-slate-700" />
 
-          <nav className="flex items-center gap-0.5 rounded-full bg-slate-100/80 p-0.5 dark:bg-slate-800/80">
+          <nav className="flex items-center gap-0.5 rounded-full bg-slate-100 p-1 dark:bg-slate-800">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;

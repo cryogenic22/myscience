@@ -96,7 +96,7 @@ export default function CanvasPanel({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Header strip */}
-      <div className="shrink-0 px-6 pt-5 pb-3">
+      <div className="shrink-0 px-6 pt-6 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             {intent && (
@@ -352,13 +352,7 @@ function DataTable({ tableData }: { tableData: TableData }) {
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Table2 size={13} className="text-slate-400" />
-          {tableData.title && (
-            <span className="text-[12px] font-medium text-slate-700">{tableData.title}</span>
-          )}
-        </div>
+      <div className="mb-2 flex items-center justify-end">
         <button
           type="button"
           onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}

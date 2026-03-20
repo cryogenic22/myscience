@@ -94,11 +94,11 @@ export default function ChatPanel({
     <div className="flex h-full flex-col">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-5 py-6">
+        <div className="mx-auto max-w-2xl px-6 py-8">
           {isEmpty ? (
             <EmptyState onQuery={(q) => { setInput(''); onSend(q); }} />
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-8">
               <AnimatePresence initial={false}>
                 {messages.map((message) => (
                   <NarrativeMessage
@@ -117,8 +117,8 @@ export default function ChatPanel({
       </div>
 
       {/* Input */}
-      <div className="shrink-0 bg-white/80 backdrop-blur-lg px-5 py-4 dark:bg-slate-900/80">
-        <div className="mx-auto max-w-2xl">
+      <div className="shrink-0 bg-white/80 backdrop-blur-lg px-6 py-5 dark:bg-slate-900/80">
+        <div className="mx-auto max-w-2xl px-1">
           <div className="flex items-end gap-2 rounded-2xl bg-slate-50 px-4 py-3 transition-all focus-within:bg-white focus-within:shadow-lg focus-within:ring-1 focus-within:ring-slate-200/60 dark:bg-slate-800 dark:focus-within:bg-slate-800 dark:focus-within:ring-slate-700">
             <textarea
               ref={inputRef}
@@ -156,7 +156,7 @@ export default function ChatPanel({
 
 function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center">
+    <div className="flex min-h-[70vh] flex-col items-center justify-center pt-[10vh]">
       {/* Hero */}
       <div className="relative mb-6">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand/10 to-brand/5 ring-1 ring-brand/10">
@@ -187,7 +187,7 @@ function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
                   key={query}
                   type="button"
                   onClick={() => onQuery(query)}
-                  className="group block w-full rounded-xl bg-slate-50/80 px-3.5 py-2.5 text-left text-[12.5px] leading-relaxed text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="group block w-full rounded-xl bg-white px-4 py-3 text-left text-[13px] leading-relaxed text-slate-500 shadow-sm transition-all hover:shadow-md hover:text-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   <span className="flex items-center justify-between gap-2">
                     {query}
