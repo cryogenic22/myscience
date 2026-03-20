@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { Message } from '../ChatMessage';
 import type { EvidenceItem } from '../../api';
@@ -155,7 +155,7 @@ function RichText({
   return (
     <>
       {paragraphs.map((para, pi) => {
-        const parts = useMemo(() => parseRichText(para), [para]);
+        const parts = parseRichText(para);
 
         // Check for markdown heading
         const headingMatch = para.match(/^(#{1,3})\s+(.+)/);
