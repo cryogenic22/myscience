@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, Download, Layers } from 'lucide-react';
 import {
@@ -31,6 +31,15 @@ const INTENT_LABELS: Record<string, string> = {
 
 const CHART_COLORS = ['#1C6EF7', '#22C55E', '#0EA5E9', '#F59E0B', '#8B5CF6', '#EF4444'];
 
+const CANVAS_TABS = [
+  { key: 'summary', label: 'Summary' },
+  { key: 'data', label: 'Data' },
+  { key: 'entities', label: 'Entities' },
+  { key: 'context', label: 'Context' },
+] as const;
+
+type CanvasTabKey = typeof CANVAS_TABS[number]['key'];
+
 export default function CanvasPanel({
   intent,
   data,
@@ -46,7 +55,26 @@ export default function CanvasPanel({
   const hasEntities = Boolean(data?.entity_focus?.length);
   const hasEvidence = Boolean(data?.evidence?.length);
   const hasPersonas = Boolean(personaAnalyses?.length);
+  const hasConfDimensions = Boolean(confidenceAssessment?.by_dimension && Object.keys(confidenceAssessment.by_dimension).length > 0);
   const hasContent = hasTable || hasViz || hasEntities || hasEvidence || hasPersonas;
+
+  // Determine which tabs have content
+  const visibleTabs = useMemo(() => {
+    const tabHasContent: Record<CanvasTabKey, boolean> = {
+      summary: hasContent, // Summary always shows if anything is available
+      data: hasTable || hasViz,
+      entities: hasEntities || hasEvidence,
+      context: hasPersonas || hasConfDimensions || Boolean(confidenceAssessment),
+    };
+    return CANVAS_TABS.filter(t => tabHasContent[t.key]);
+  }, [hasContent, hasTable, hasViz, hasEntities, hasEvidence, hasPersonas, hasConfDimensions, confidenceAssessment]);
+
+  const [activeTab, setActiveTab] = useState<CanvasTabKey>('summary');
+
+  // If the active tab is not visible, fall back to the first visible tab
+  const currentTab = visibleTabs.some(t => t.key === activeTab)
+    ? activeTab
+    : visibleTabs[0]?.key ?? 'summary';
 
   if (loading) return <CanvasLoading />;
 
@@ -79,7 +107,7 @@ export default function CanvasPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-y-auto"
+      className="flex h-full flex-col"
       style={{ background: 'var(--color-surface-2)' }}
     >
       {/* Header */}
@@ -126,73 +154,258 @@ export default function CanvasPanel({
         )}
       </div>
 
-      {/* Content sections */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={intent ?? 'default'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
+      {/* Tab bar */}
+      {visibleTabs.length > 1 && (
+        <div
+          className="shrink-0 flex items-center gap-1 px-6 py-3"
+          style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
         >
-          {hasTable && tableData && (
-            <Section title="Data">
-              <DataTable tableData={tableData} />
-            </Section>
-          )}
+          {visibleTabs.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              className="nav-tab"
+              style={{
+                background: currentTab === t.key ? 'var(--color-surface-2)' : 'transparent',
+                color: currentTab === t.key ? 'var(--color-ink)' : 'var(--color-ink-3)',
+                fontWeight: currentTab === t.key ? 600 : 400,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-          {hasViz && (
-            <Section title="Visualisations">
-              <div className="space-y-6">
-                {visualizations!.filter(v => v.data.some(d => Number(d.value) > 0)).map(spec => (
-                  <VizCard key={spec.id} spec={spec} />
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${intent ?? 'default'}-${currentTab}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2 }}
+          >
+            {currentTab === 'summary' && (
+              <SummaryTab
+                intent={intent}
+                confValue={confValue}
+                tableData={hasTable ? tableData! : null}
+                visualizations={hasViz ? visualizations! : null}
+                entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
+              />
+            )}
+
+            {currentTab === 'data' && (
+              <DataTab
+                tableData={hasTable ? tableData! : null}
+                visualizations={hasViz ? visualizations! : null}
+              />
+            )}
+
+            {currentTab === 'entities' && (
+              <EntitiesTab
+                entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
+                evidence={hasEvidence ? data!.evidence : null}
+              />
+            )}
+
+            {currentTab === 'context' && (
+              <ContextTab
+                confidenceAssessment={confidenceAssessment}
+                personaAnalyses={hasPersonas ? personaAnalyses! : null}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ── Summary tab: intent + confidence + first 5 rows + first viz + first 3 entities ── */
+function SummaryTab({
+  intent,
+  confValue,
+  tableData,
+  visualizations,
+  entities,
+}: {
+  intent: string | null;
+  confValue: number | null | undefined;
+  tableData: TableData | null;
+  visualizations: VisualizationSpec[] | null;
+  entities: Record<string, unknown>[] | null;
+}) {
+  const summaryTable = tableData
+    ? { ...tableData, rows: tableData.rows.slice(0, 5) }
+    : null;
+  const firstViz = visualizations?.find(v => v.data.some(d => Number(d.value) > 0)) ?? null;
+  const topEntities = entities?.slice(0, 3) ?? null;
+
+  return (
+    <>
+      {summaryTable && summaryTable.rows.length > 0 && (
+        <Section title="Data">
+          <DataTable tableData={summaryTable} />
+        </Section>
+      )}
+      {firstViz && (
+        <Section title="Visualisations">
+          <VizCard spec={firstViz} />
+        </Section>
+      )}
+      {topEntities && topEntities.length > 0 && (
+        <Section title="Key Entities">
+          <EntityGrid entities={topEntities} />
+        </Section>
+      )}
+    </>
+  );
+}
+
+/* ── Data tab: full table + all visualizations + CSV export ── */
+function DataTab({
+  tableData,
+  visualizations,
+}: {
+  tableData: TableData | null;
+  visualizations: VisualizationSpec[] | null;
+}) {
+  return (
+    <>
+      {tableData && tableData.rows.length > 0 && (
+        <Section title="Data">
+          <DataTable tableData={tableData} />
+        </Section>
+      )}
+      {visualizations && visualizations.length > 0 && (
+        <Section title="Visualisations">
+          <div className="space-y-6">
+            {visualizations.filter(v => v.data.some(d => Number(d.value) > 0)).map(spec => (
+              <VizCard key={spec.id} spec={spec} />
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
+/* ── Entities tab: all entities with expanded properties + evidence list ── */
+function EntitiesTab({
+  entities,
+  evidence,
+}: {
+  entities: Record<string, unknown>[] | null;
+  evidence: EvidenceItem[] | null;
+}) {
+  return (
+    <>
+      {entities && entities.length > 0 && (
+        <Section title="Key Entities">
+          <EntityGrid entities={entities} />
+        </Section>
+      )}
+      {evidence && evidence.length > 0 && (
+        <EvidenceSection evidence={evidence} />
+      )}
+    </>
+  );
+}
+
+/* ── Context tab: provenance + confidence by dimension + personas ── */
+function ContextTab({
+  confidenceAssessment,
+  personaAnalyses,
+}: {
+  confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
+  personaAnalyses: PersonaAnalysis[] | null;
+}) {
+  const hasDimensions = Boolean(
+    confidenceAssessment?.by_dimension && Object.keys(confidenceAssessment.by_dimension).length > 0,
+  );
+
+  return (
+    <>
+      {confidenceAssessment && (
+        <Section title="Provenance">
+          <div
+            className="rounded-xl p-4"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                Overall Confidence
+              </span>
+              <span
+                className="badge"
+                style={{
+                  background: confidenceAssessment.overall >= 0.7
+                    ? 'var(--color-green-soft)'
+                    : confidenceAssessment.overall >= 0.4
+                      ? 'var(--color-amber-soft)'
+                      : 'var(--color-red-soft)',
+                  color: confidenceAssessment.overall >= 0.7
+                    ? 'var(--color-green)'
+                    : confidenceAssessment.overall >= 0.4
+                      ? 'var(--color-amber)'
+                      : 'var(--color-red)',
+                }}
+              >
+                {Math.round(confidenceAssessment.overall * 100)}%
+              </span>
+            </div>
+            {hasDimensions && (
+              <div className="space-y-2">
+                {Object.entries(confidenceAssessment.by_dimension).map(([dim, val]) => (
+                  <div key={dim} className="flex items-center gap-3">
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--color-ink-3)',
+                        width: '120px',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {dim.replace(/_/g, ' ')}
+                    </span>
+                    <div
+                      className="flex-1 h-1.5 rounded-full overflow-hidden"
+                      style={{ background: 'var(--color-surface-3)' }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round(val * 100)}%`,
+                          background: val >= 0.7
+                            ? 'var(--color-green)'
+                            : val >= 0.4
+                              ? 'var(--color-amber)'
+                              : 'var(--color-red)',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--color-ink-4)', width: '32px', textAlign: 'right' }}>
+                      {Math.round(val * 100)}%
+                    </span>
+                  </div>
                 ))}
               </div>
-            </Section>
-          )}
+            )}
+          </div>
+        </Section>
+      )}
 
-          {hasEntities && data && (
-            <Section title="Key Entities">
-              <EntityGrid entities={(data.entity_focus ?? []).slice(0, 6) as Record<string, unknown>[]} />
-            </Section>
-          )}
-
-          {hasEvidence && data && (
-            <EvidenceSection evidence={data.evidence} />
-          )}
-
-          {hasPersonas && personaAnalyses && (
-            <Section title="Team Evaluation">
-              {confidenceAssessment && (
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="flex-1 h-1 rounded-full overflow-hidden"
-                    style={{ background: 'var(--color-surface-3)' }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.round(confidenceAssessment.overall * 100)}%`,
-                        background: confidenceAssessment.overall >= 0.7
-                          ? 'var(--color-green)'
-                          : confidenceAssessment.overall >= 0.4
-                            ? 'var(--color-amber)'
-                            : 'var(--color-red)',
-                      }}
-                    />
-                  </div>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-ink-2)' }}>
-                    {Math.round(confidenceAssessment.overall * 100)}%
-                  </span>
-                </div>
-              )}
-              <div className="space-y-1">
-                {personaAnalyses.map(pa => <PersonaRow key={pa.persona} analysis={pa} />)}
-              </div>
-            </Section>
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
+      {personaAnalyses && personaAnalyses.length > 0 && (
+        <Section title="Team Evaluation">
+          <div className="space-y-1">
+            {personaAnalyses.map(pa => <PersonaRow key={pa.persona} analysis={pa} />)}
+          </div>
+        </Section>
+      )}
+    </>
   );
 }
 

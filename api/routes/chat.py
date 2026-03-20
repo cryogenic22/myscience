@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+import os
 import re
 from typing import Optional
 
@@ -27,6 +28,7 @@ from api.deps import (
     get_query_engine,
     get_query_graph,
     get_team_eval_graph,
+    get_unified_handler,
     get_web_research,
     get_workspace,
 )
@@ -386,6 +388,24 @@ def chat(
     if team_eval:
         intent, params = Intent.TEAM_EVAL, {}
     logger.info("Chat intent: %s, params: %s", intent, params)
+
+    # Unified handler (CTX pipeline) — opt-in via MZ_UNIFIED_HANDLER=true
+    if config.agent.use_unified_handler:
+        unified = get_unified_handler()
+        if unified:
+            try:
+                result = unified.handle(resolved_question, conversation_history=conversation_history)
+                if result is not None:
+                    payload = result
+                    payload["visualizations"] = payload.get("visualizations") or _build_visualizations(
+                        payload.get("data"),
+                    )
+                    payload["followup_suggestions"] = payload.get("followup_suggestions") or _generate_followups(
+                        question, payload.get("intent", "general"), payload.get("narrative", ""), params,
+                    )
+                    return payload
+            except Exception as e:
+                logger.warning("Unified handler error, falling back to legacy: %s", e)
 
     try:
         if intent == Intent.TEAM_EVAL:

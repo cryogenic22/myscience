@@ -164,6 +164,7 @@ class AgentConfig:
     ).lower() == "true"
     max_sql_rows: int = int(os.getenv("MZ_AGENT_MAX_SQL_ROWS", "100"))
     enabled: bool = os.getenv("MZ_AGENT_ENABLED", "true").lower() == "true"
+    use_unified_handler: bool = os.getenv("MZ_UNIFIED_HANDLER", "false").lower() == "true"
 
 
 @dataclass

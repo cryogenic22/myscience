@@ -24,6 +24,12 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from connectors.base import SourceType
+from domain.pharma.mention_normalizer import (
+    normalize_drug_mention,
+    normalize_company_mention,
+    DRUG_SKIP_TERMS,
+    COMPANY_SKIP_TERMS,
+)
 from integration.normalizer import NormalizedRecord
 
 logger = logging.getLogger(__name__)
@@ -555,7 +561,12 @@ class EntityResolver:
         self, generic_name: str, record: NormalizedRecord
     ) -> Optional[ResolvedLink]:
         """Create a provisional drug record from trial/article intervention data."""
-        clean_name = generic_name.strip()
+        raw_name = generic_name.strip()
+        if not raw_name or len(raw_name) < 3:
+            return None
+
+        # Normalize the mention to extract base compound name
+        clean_name = normalize_drug_mention(raw_name)
         if not clean_name or len(clean_name) < 3:
             return None
 
@@ -564,8 +575,7 @@ class EntityResolver:
             entity_schema = self.domain_pack.entities.get("drug")
             skip_terms = entity_schema.skip_terms if entity_schema else set()
         else:
-            skip_terms = {"placebo", "standard of care", "usual care", "sham", "no intervention",
-                          "behavioral", "dietary supplement", "device", "procedure", "other"}
+            skip_terms = DRUG_SKIP_TERMS
         if clean_name.lower() in skip_terms:
             return None
 
@@ -575,6 +585,19 @@ class EntityResolver:
             [clean_name],
         )
         if existing:
+            # Normalized name matched — create alias from the raw mention
+            if raw_name.lower() != clean_name.lower():
+                self._create_alias(
+                    entity_type="drug",
+                    entity_id=str(existing["id"]),
+                    alias_text=raw_name,
+                    source_type=record.raw.provenance.source_type,
+                    confidence=1.0,
+                )
+                logger.debug(
+                    "Normalized drug '%s' → '%s' matched existing '%s'; alias created",
+                    raw_name, clean_name, existing["generic_name"],
+                )
             return ResolvedLink(
                 entity_type="drug",
                 entity_id=str(existing["id"]),
@@ -621,6 +644,15 @@ class EntityResolver:
 
         if new_row:
             logger.info("Auto-created drug '%s' from %s", clean_name, prov.source_type.value)
+            # Store raw mention as alias if normalization changed it
+            if raw_name.lower() != clean_name.lower():
+                self._create_alias(
+                    entity_type="drug",
+                    entity_id=str(new_row["id"]),
+                    alias_text=raw_name,
+                    source_type=prov.source_type,
+                    confidence=1.0,
+                )
             return ResolvedLink(
                 entity_type="drug",
                 entity_id=str(new_row["id"]),
@@ -628,12 +660,13 @@ class EntityResolver:
                 confidence=1.0,
                 matched_value=clean_name,
                 trace=ResolutionTrace(
-                    raw_value=clean_name,
+                    raw_value=raw_name,
                     entity_type="drug",
                     method="auto_create",
                     confidence=1.0,
                     reasoning=(
-                        f"No existing drug matched '{clean_name}'. "
+                        f"Normalized '{raw_name}' → '{clean_name}'. "
+                        f"No existing drug matched. "
                         f"Auto-created from {prov.source_type.value} data."
                     ),
                     candidates=[],
@@ -645,16 +678,38 @@ class EntityResolver:
         self, name: str, record: NormalizedRecord
     ) -> Optional[ResolvedLink]:
         """Create a provisional company record from trial sponsor data."""
-        clean_name = name.strip()
+        raw_name = name.strip()
+        if not raw_name or len(raw_name) < 3:
+            return None
+
+        # Normalize the company name to strip suffixes and noise
+        clean_name = normalize_company_mention(raw_name)
         if not clean_name or len(clean_name) < 3:
             return None
 
-        # Case-insensitive check
+        # Skip non-company terms
+        if clean_name.lower() in COMPANY_SKIP_TERMS:
+            return None
+
+        # Case-insensitive check using normalized name
         existing = self.db.fetch_one(
             "SELECT id, name FROM companies WHERE LOWER(name) = LOWER(%s)",
             [clean_name],
         )
         if existing:
+            # Normalized name matched — create alias from the raw mention
+            if raw_name.lower() != clean_name.lower():
+                self._create_alias(
+                    entity_type="company",
+                    entity_id=str(existing["id"]),
+                    alias_text=raw_name,
+                    source_type=record.raw.provenance.source_type,
+                    confidence=1.0,
+                )
+                logger.debug(
+                    "Normalized company '%s' → '%s' matched existing '%s'; alias created",
+                    raw_name, clean_name, existing["name"],
+                )
             return ResolvedLink(
                 entity_type="company",
                 entity_id=str(existing["id"]),
@@ -662,7 +717,7 @@ class EntityResolver:
                 confidence=1.0,
                 matched_value=clean_name,
                 trace=ResolutionTrace(
-                    raw_value=clean_name,
+                    raw_value=raw_name,
                     entity_type="company",
                     method="exact_name_icase",
                     confidence=1.0,
@@ -699,6 +754,15 @@ class EntityResolver:
 
         if new_row:
             logger.info("Auto-created company '%s' from %s", clean_name, prov.source_type.value)
+            # Store raw mention as alias if normalization changed it
+            if raw_name.lower() != clean_name.lower():
+                self._create_alias(
+                    entity_type="company",
+                    entity_id=str(new_row["id"]),
+                    alias_text=raw_name,
+                    source_type=prov.source_type,
+                    confidence=1.0,
+                )
             return ResolvedLink(
                 entity_type="company",
                 entity_id=str(new_row["id"]),
@@ -706,11 +770,15 @@ class EntityResolver:
                 confidence=1.0,
                 matched_value=clean_name,
                 trace=ResolutionTrace(
-                    raw_value=clean_name,
+                    raw_value=raw_name,
                     entity_type="company",
                     method="auto_create",
                     confidence=1.0,
-                    reasoning=f"No existing company matched '{clean_name}'. Auto-created from {prov.source_type.value}.",
+                    reasoning=(
+                        f"Normalized '{raw_name}' → '{clean_name}'. "
+                        f"No existing company matched. "
+                        f"Auto-created from {prov.source_type.value}."
+                    ),
                     candidates=[],
                 ),
             )

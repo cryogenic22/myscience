@@ -68,6 +68,33 @@ def get_workspace() -> ChatWorkspaceService:
     return ChatWorkspaceService(get_db())
 
 
+@lru_cache()
+def get_unified_handler():
+    """Build unified handler with CTX pipeline. Returns None if unavailable."""
+    try:
+        from services.unified_handler import UnifiedChatHandler
+        from services.ctx_corpus import PharmaCorpusBuilder
+        import tempfile
+
+        db = get_db()
+        builder = PharmaCorpusBuilder(db)
+        result = builder.pack(tempfile.mkdtemp())
+
+        handler = UnifiedChatHandler(
+            corpus_doc=result.document,
+            l3_doc=result.l3_document,
+            llm=get_llm(),
+            metrics_svc=get_metrics(),
+            db=db,
+            engine=get_query_engine(),
+        )
+        logger.info("Unified handler initialized with %d entities", result.entity_count)
+        return handler
+    except Exception as e:
+        logger.warning("Unified handler unavailable: %s", e)
+        return None
+
+
 # ── Agent graph factories ──
 
 @lru_cache()

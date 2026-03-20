@@ -5,7 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
-from api.deps import get_metrics
+from api.deps import get_db, get_metrics
+from db import Database
 from services.metrics import PharmaMetrics
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -71,3 +72,24 @@ def company_portfolio(
 def refresh_views(svc: PharmaMetrics = Depends(get_metrics)):
     """Refresh all materialized views."""
     return svc.refresh()
+
+
+@router.get("/ctx-telemetry")
+def ctx_telemetry(db: Database = Depends(get_db)):
+    """CTX context-building telemetry: compression ratios, token savings, build times."""
+    rows = db.fetch_all(
+        """SELECT
+               COUNT(*) AS total_queries,
+               AVG(compression_ratio) AS avg_compression,
+               AVG(build_time_ms) AS avg_build_ms,
+               SUM(CASE WHEN legacy_tokens > 0
+                        THEN legacy_tokens - ctx_tokens
+                        ELSE 0 END) AS total_tokens_saved,
+               mode,
+               DATE(created_at) AS day
+           FROM ctx_telemetry
+           GROUP BY mode, DATE(created_at)
+           ORDER BY day DESC
+           LIMIT 30"""
+    )
+    return {"telemetry": rows}
