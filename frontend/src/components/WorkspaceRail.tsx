@@ -33,13 +33,20 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <aside className="w-16 md:w-[76px] shrink-0 border-r border-slate-200/75 dark:border-slate-700/50 bg-white/88 dark:bg-slate-900/90 backdrop-blur-md transition-all">
+    <aside
+      className="w-16 md:w-[76px] shrink-0 backdrop-blur-md transition-all"
+      style={{
+        background: 'var(--color-surface)',
+        borderRight: '1px solid var(--color-line)',
+      }}
+    >
       <div className="flex h-full flex-col items-center py-3">
         {/* Back button */}
         <button
           type="button"
           onClick={onBack}
-          className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          className="btn-icon mb-3"
+          style={{ width: 36, height: 36, borderRadius: 12, background: 'transparent', color: 'var(--color-ink-4)' }}
           title="Back to Home"
           aria-label="Back to Home"
         >
@@ -47,7 +54,10 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
         </button>
 
         {/* Logo */}
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-white shadow-sm">
+        <div
+          className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl text-white"
+          style={{ background: 'var(--color-accent)', boxShadow: 'var(--shadow-xs)' }}
+        >
           <Zap size={15} strokeWidth={2.4} />
         </div>
 
@@ -55,7 +65,10 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
         <nav className="flex flex-col items-center gap-3">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="flex flex-col items-center gap-1">
-              <span className="hidden md:block text-[8px] font-semibold uppercase tracking-widest text-slate-300 dark:text-slate-600 mb-0.5">
+              <span
+                className="hidden md:block text-[8px] font-semibold uppercase tracking-widest mb-0.5"
+                style={{ color: 'var(--color-ink-4)' }}
+              >
                 {group.label}
               </span>
               {group.items.map((item) => {
@@ -66,19 +79,37 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
                     key={item.key}
                     type="button"
                     onClick={() => onSelect(item.key)}
-                    className={`group relative flex flex-col items-center justify-center w-12 md:w-14 rounded-xl transition-all ${
-                      isActive
-                        ? 'bg-brand text-white shadow-sm border-l-[3px] border-brand-dark'
-                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-300'
-                    }`}
-                    style={{ minHeight: 44 }}
+                    className="group relative flex flex-col items-center justify-center w-12 md:w-14 rounded-xl transition-all"
+                    style={{
+                      minHeight: 44,
+                      background: isActive ? 'var(--color-accent)' : 'transparent',
+                      color: isActive ? '#fff' : 'var(--color-ink-3)',
+                      boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
+                      borderLeft: isActive ? '3px solid var(--color-accent-dark)' : '3px solid transparent',
+                    }}
                     title={item.label}
                     aria-label={item.label}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'var(--color-surface-2)';
+                        e.currentTarget.style.color = 'var(--color-ink)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'var(--color-ink-3)';
+                      }
+                    }}
                   >
                     <Icon size={16} />
-                    <span className={`hidden md:block text-[9px] mt-0.5 leading-tight ${
-                      isActive ? 'font-semibold text-white' : 'text-slate-400 group-hover:text-slate-600'
-                    }`}>
+                    <span
+                      className="hidden md:block text-[9px] mt-0.5 leading-tight"
+                      style={{
+                        fontWeight: isActive ? 600 : 400,
+                        color: isActive ? '#fff' : 'var(--color-ink-4)',
+                      }}
+                    >
                       {item.label}
                     </span>
                   </button>
@@ -93,13 +124,29 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 dark:text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300"
+            className="flex h-9 w-9 items-center justify-center rounded-xl transition-colors"
+            style={{ color: 'var(--color-ink-4)', background: 'transparent' }}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             aria-label="Toggle theme"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--color-surface-2)';
+              e.currentTarget.style.color = 'var(--color-ink-2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--color-ink-4)';
+            }}
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/70 dark:border-slate-700/50 bg-white/86 dark:bg-slate-800/80 shadow-sm">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-xl"
+            style={{
+              border: '1px solid var(--color-line)',
+              background: 'var(--color-surface)',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+          >
             <span className="h-2 w-2 rounded-full bg-emerald-500 pulse-live" />
           </div>
         </div>
