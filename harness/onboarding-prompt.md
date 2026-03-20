@@ -4,41 +4,41 @@ You are working on **Market Zero**, a pharma intelligence platform with GraphRAG
 
 ## Before you write ANY code:
 
-1. Read `CLAUDE.md` for architecture and conventions
-2. Read `.claude/codebase-map.md` for module structure
-3. Read `.claude/rules/anti-slop.md` — **DO NOT create functions that already exist**
-4. Read `.claude/rules/test-requirements.md` for testing patterns
+1. Read `CLAUDE.md` — architecture, conventions, what's active vs opt-in
+2. Read `.claude/rules/anti-slop.md` — **DO NOT create functions that already exist** (577 cataloged)
+3. Read `.claude/rules/test-requirements.md` — testing patterns
 
-## Search before coding:
-- Use Grep/Glob to find existing implementations before writing new ones
-- Read 2-3 sibling files to match patterns
+## Critical rules:
 
-## Testing:
-- Backend: pytest (`python -m pytest tests/ -v`), 176 tests currently passing
-- Write tests FIRST (TDD), then implement
-- Use MockDB from `tests/test_ctx_corpus.py` for DB-free tests
-- Use fixtures from `tests/conftest.py` (MockLLM, StubTool, make_*_result)
+### Backend
+- **TDD**: Write tests FIRST. 180 tests currently passing. Never decrease.
+- **CTX**: CTXContextBuilder is ACTIVE in production. UnifiedChatHandler is opt-in (MZ_UNIFIED_HANDLER=true).
+- **Entity resolution**: Uses 6-strategy cascade with MentionNormalizer. Don't bypass normalization.
+- **Telemetry**: CTX metrics persist to ctx_telemetry table (migration 014).
 
-## Commit format:
-```
-feat(scope): description
-fix(scope): description
-chore: description
-```
+### Frontend
+- **CSS variables ONLY** — use `var(--color-ink)`, NOT `text-slate-900`
+- **Inline styles** for layout — NOT Tailwind utility classes for colors/borders
+- **NO useMemo inside .map()** — caused production crash (React error #310)
+- **NO !important dark mode overrides** — use CSS custom properties
+- **Fonts**: Fraunces (display), DM Sans (body) — loaded in index.html
+- **Build**: `vite build` only (no tsc -b in production)
 
-## Key architecture:
-- **Backend**: FastAPI factory (`api/app.py:create_app`)
-- **Frontend**: React + Tailwind (`frontend/src/`)
-- **Services**: `services/` (search, graph, metrics, llm, query_engine)
-- **CTX pipeline**: `services/ctx_corpus.py`, `services/ctx_pipeline.py`, `services/unified_handler.py`
-- **Domain pack**: `domain/pharma/pack.py`
-- **Specs**: `specs/SPEC_001_*.md` (research engine), `specs/SPEC_002_*.md` (UX revamp)
+## Key architecture decisions:
+- Chat pipeline: 8 intent handlers in chat.py, optionally bypassed by UnifiedChatHandler
+- Canvas: 4 tabs (Summary/Data/Entities/Context) for progressive disclosure
+- Design system: CSS custom properties (--color-ink, --color-surface, --color-accent, --color-line)
+- DB: Railway PostgreSQL with DATABASE_URL env var
+
+## Not yet wired (built + tested, needs integration):
+- ConversationMemory (services/conversation_memory.py) — 28 tests
+- AutonomousResearchAgent (services/research_agent.py) — 27 tests
 
 ## Deploy:
-- Railway: push to `main` → auto-deploy
-- DB: Railway PostgreSQL (DATABASE_URL env var)
+Push to `main` → Railway auto-deploys. DB: Railway PostgreSQL.
 
 ## Health check:
 ```bash
 python harness/measure.py
+python -m pytest tests/ -q
 ```

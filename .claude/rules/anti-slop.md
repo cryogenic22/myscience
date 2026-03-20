@@ -1,14 +1,14 @@
 # Anti-Slop Rules — DO NOT DUPLICATE Existing Utilities
 
-*Auto-generated: 2026-03-19 21:03*
-*Scanned: 577 exports across 18 directories*
+*Auto-generated: 2026-03-20 23:14*
+*Scanned: 643 exports across 20 directories*
 
 **BEFORE creating any new function, class, or constant:**
 1. Search this list for an existing implementation
 2. If it exists, import it — do NOT create a new version
 3. If you need a variant, extend the existing one
 
-## Known Duplicates (37 — consolidate these)
+## Known Duplicates (38 — consolidate these)
 
 - **`EvidenceItem`** — defined in: `frontend/src/api.ts`, `services/query_engine.py`
 - **`GraphEdge`** — defined in: `frontend/src/api.ts`, `services/graph.py`
@@ -17,7 +17,8 @@
 - **`QueryResponse`** — defined in: `api/schemas.py`, `frontend/src/api.ts`
 - **`SearchResult`** — defined in: `frontend/src/api.ts`, `services/search.py`
 - **`SourceCoverageItem`** — defined in: `api/schemas.py`, `frontend/src/api.ts`
-- **`__init__`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`, `db.py`, `integration/cross_linker.py`, `integration/data_quality.py`, `integration/dataset_catalog.py`, `integration/embedder.py`, `integration/entity_consolidator.py`, `integration/entity_resolver.py`, `integration/knowledge_store.py`, `integration/normalizer.py`, `integration/pipeline.py`, `integration/pipeline.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `scheduler/runner.py`, `services/agent/schema_introspector.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `services/conversation_memory.py`, `services/ctx_context.py`, `services/ctx_corpus.py`, `services/ctx_pipeline.py`, `services/graph.py`, `services/llm.py`, `services/metrics.py`, `services/query_engine.py`, `services/research_agent.py`, `services/search.py`, `services/unified_handler.py`, `services/web_research.py`, `services/workspace.py`, `tests/conftest.py`, `tests/conftest.py`, `tests/conftest.py`
+- **`__init__`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`, `db.py`, `integration/cross_linker.py`, `integration/data_quality.py`, `integration/dataset_catalog.py`, `integration/embedder.py`, `integration/entity_consolidator.py`, `integration/entity_resolver.py`, `integration/knowledge_store.py`, `integration/normalizer.py`, `integration/pipeline.py`, `integration/pipeline.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `scheduler/runner.py`, `services/agent/schema_introspector.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `services/conversation_memory.py`, `services/ctx_context.py`, `services/ctx_corpus.py`, `services/ctx_pipeline.py`, `services/graph.py`, `services/llm.py`, `services/metrics.py`, `services/query_engine.py`, `services/research_agent.py`, `services/search.py`, `services/unified_handler.py`, `services/web_research.py`, `services/workspace.py`, `tests/conftest.py`, `tests/conftest.py`, `tests/conftest.py`
+- **`__post_init__`** — defined in: `connectors/base.py`, `domain/ta_definitions/schema.py`
 - **`call_count`** — defined in: `tests/conftest.py`, `tests/conftest.py`
 - **`company_portfolio`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
 - **`competitive_landscape`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
@@ -25,7 +26,7 @@
 - **`enabled`** — defined in: `services/llm.py`, `services/web_research.py`
 - **`entity_summary`** — defined in: `api/routes/graph.py`, `services/graph.py`
 - **`evidence_density`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
-- **`execute`** — defined in: `db.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `services/agent/tools/base.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `tests/conftest.py`, `tests/conftest.py`
+- **`execute`** — defined in: `db.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `services/agent/tools/base.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `tests/conftest.py`, `tests/conftest.py`
 - **`fetch`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
 - **`find_similar`** — defined in: `api/routes/search.py`, `services/search.py`
 - **`get_entity`** — defined in: `api/mcp_server.py`, `api/routes/entities.py`
@@ -33,7 +34,7 @@
 - **`get_research_job`** — defined in: `api/routes/chat.py`, `services/workspace.py`
 - **`health_check`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
 - **`list_research_jobs`** — defined in: `api/routes/chat.py`, `services/workspace.py`
-- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`
+- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
 - **`name`** — defined in: `services/agent/tools/base.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `tests/conftest.py`, `tests/conftest.py`
 - **`neighborhood`** — defined in: `api/routes/graph.py`, `services/graph.py`
 - **`path_between`** — defined in: `api/routes/graph.py`, `services/graph.py`
@@ -41,7 +42,7 @@
 - **`refresh_materialized_views`** — defined in: `api/routes/catalog.py`, `fix_data_quality.py`
 - **`register`** — defined in: `domain/registry.py`, `integration/pipeline_hooks.py`
 - **`resolve`** — defined in: `integration/entity_resolver.py`, `integration/pipeline_hooks.py`
-- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`
+- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
 - **`search`** — defined in: `api/routes/search.py`, `services/search.py`, `services/web_research.py`
 - **`should_fire`** — defined in: `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`
 - **`source_type`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
@@ -62,7 +63,7 @@
 | `PlatformStats` | type | `frontend/src/hooks/useHealthStats.ts:6` |
 | `useAnimatedNumber` | function | `frontend/src/hooks/useAnimatedNumber.ts:3` |
 | `useHealthStats` | function | `frontend/src/hooks/useHealthStats.ts:30` |
-| `useTheme` | function | `frontend/src/hooks/useTheme.ts:12` |
+| `useTheme` | function | `frontend/src/hooks/useTheme.ts:14` |
 
 ### `services/`
 | Name | Type | File:Line |
@@ -81,7 +82,7 @@
 | `GraphNode` | class | `services/graph.py:23` |
 | `GraphTraversal` | class | `services/graph.py:66` |
 | `HybridSearch` | class | `services/search.py:139` |
-| `LLMSynthesizer` | class | `services/llm.py:223` |
+| `LLMSynthesizer` | class | `services/llm.py:241` |
 | `LoopSummary` | class | `services/research_agent.py:70` |
 | `PharmaCorpusBuilder` | class | `services/ctx_corpus.py:101` |
 | `PharmaMetrics` | class | `services/metrics.py:30` |
@@ -101,7 +102,7 @@
 | `__init__` | function | `services/ctx_corpus.py:104` |
 | `__init__` | function | `services/ctx_pipeline.py:129` |
 | `__init__` | function | `services/graph.py:69` |
-| `__init__` | function | `services/llm.py:226` |
+| `__init__` | function | `services/llm.py:244` |
 | `__init__` | function | `services/metrics.py:33` |
 | `__init__` | function | `services/query_engine.py:62` |
 | `__init__` | function | `services/research_agent.py:130` |
@@ -123,7 +124,7 @@
 | `create_research_job` | function | `services/workspace.py:144` |
 | `delete_session` | function | `services/workspace.py:131` |
 | `drug_pipeline_strength` | function | `services/metrics.py:37` |
-| `enabled` | function | `services/llm.py:231` |
+| `enabled` | function | `services/llm.py:249` |
 | `enabled` | function | `services/web_research.py:30` |
 | `entity_dossier` | function | `services/query_engine.py:191` |
 | `entity_summary` | function | `services/graph.py:239` |
@@ -146,6 +147,7 @@
 | `identify_target` | function | `services/research_agent.py:164` |
 | `list_research_jobs` | function | `services/workspace.py:165` |
 | `list_sessions` | function | `services/workspace.py:84` |
+| `log_ctx_event` | function | `services/telemetry.py:16` |
 | `log_iteration` | function | `services/research_agent.py:382` |
 | `mark_research_job_running` | function | `services/workspace.py:212` |
 | `neighborhood` | function | `services/graph.py:73` |
@@ -169,13 +171,13 @@
 | `search_paginated` | function | `services/search.py:208` |
 | `snapshot` | function | `services/conversation_memory.py:262` |
 | `summary` | function | `services/ctx_context.py:79` |
-| `synthesize` | function | `services/llm.py:243` |
-| `synthesize_comparison` | function | `services/llm.py:385` |
-| `synthesize_dossier` | function | `services/llm.py:356` |
-| `synthesize_landscape` | function | `services/llm.py:414` |
-| `synthesize_pipeline` | function | `services/llm.py:428` |
-| `synthesize_research_report` | function | `services/llm.py:444` |
-| `synthesize_stream` | function | `services/llm.py:308` |
+| `synthesize` | function | `services/llm.py:261` |
+| `synthesize_comparison` | function | `services/llm.py:403` |
+| `synthesize_dossier` | function | `services/llm.py:374` |
+| `synthesize_landscape` | function | `services/llm.py:432` |
+| `synthesize_pipeline` | function | `services/llm.py:446` |
+| `synthesize_research_report` | function | `services/llm.py:462` |
+| `synthesize_stream` | function | `services/llm.py:326` |
 | `to_dict` | function | `services/conversation_memory.py:34` |
 | `traverse` | function | `services/graph.py:77` |
 | `trial_success_rate` | function | `services/metrics.py:103` |
@@ -239,7 +241,7 @@
 
 ### `./` (66 exports)
 - `AgentConfig` (class) — `config.py:157`
-- `AppConfig` (class) — `config.py:170`
+- `AppConfig` (class) — `config.py:171`
 - `ConnectorConfig` (class) — `config.py:52`
 - `Database` (class) — `db.py:24`
 - `DatabaseConfig` (class) — `config.py:19`
@@ -250,7 +252,7 @@
 - `ResearchConfig` (class) — `config.py:148`
 - *...and 56 more — search with Grep*
 
-### `api/` (36 exports)
+### `api/` (37 exports)
 - `CompareRequest` (class) — `api/schemas.py:32`
 - `DossierRequest` (class) — `api/schemas.py:27`
 - `EntityResponse` (class) — `api/schemas.py:75`
@@ -261,20 +263,20 @@
 - `HealthResponse` (class) — `api/schemas.py:120`
 - `QueryRequest` (class) — `api/schemas.py:20`
 - `QueryResponse` (class) — `api/schemas.py:66`
-- *...and 26 more — search with Grep*
+- *...and 27 more — search with Grep*
 
-### `api/routes/` (49 exports)
+### `api/routes/` (58 exports)
+- `BulkResolveRequest` (class) — `api/routes/catalog.py:805`
+- `BulkUpdateRequest` (class) — `api/routes/catalog.py:761`
 - `EnrichmentRequest` (class) — `api/routes/catalog.py:131`
 - `EntityTagRequest` (class) — `api/routes/catalog.py:137`
 - `EntityUpdateRequest` (class) — `api/routes/catalog.py:121`
 - `HITLResolveRequest` (class) — `api/routes/catalog.py:126`
-- `Intent` (class) — `api/routes/chat.py:51`
+- `Intent` (class) — `api/routes/chat.py:53`
+- `RunEnrichmentRequest` (class) — `api/routes/catalog.py:877`
 - `add_entity_tag` (function) — `api/routes/catalog.py:398`
 - `browse_entities` (function) — `api/routes/catalog.py:170`
-- `catalog_stats` (function) — `api/routes/catalog.py:727`
-- `chat` (function) — `api/routes/chat.py:352`
-- `chat_stream` (function) — `api/routes/chat.py:452`
-- *...and 39 more — search with Grep*
+- *...and 48 more — search with Grep*
 
 ### `connectors/` (60 exports)
 - `BaseConnector` (class) — `connectors/base.py:167`
@@ -307,7 +309,15 @@
 - `normalize_company_mention` (function) — `domain/pharma/mention_normalizer.py:121`
 - `normalize_drug_mention` (function) — `domain/pharma/mention_normalizer.py:67`
 
-### `frontend/src/` (44 exports)
+### `domain/ta_definitions/` (6 exports)
+- `CompanyTarget` (class) — `domain/ta_definitions/schema.py:24`
+- `TADefinition` (class) — `domain/ta_definitions/schema.py:33`
+- `__post_init__` (function) — `domain/ta_definitions/schema.py:65`
+- `load_ta_definition` (function) — `domain/ta_definitions/schema.py:108`
+- `target_ciks` (function) — `domain/ta_definitions/schema.py:72`
+- `to_connector_overrides` (function) — `domain/ta_definitions/schema.py:76`
+
+### `frontend/src/` (45 exports)
 - `CatalogBrowseResponse` (type) — `frontend/src/api.ts:272`
 - `CatalogDataset` (type) — `frontend/src/api.ts:252`
 - `CatalogEntity` (type) — `frontend/src/api.ts:267`
@@ -318,12 +328,12 @@
 - `ChatResponse` (type) — `frontend/src/api.ts:195`
 - `ChatSessionDetail` (type) — `frontend/src/api.ts:236`
 - `ChatSessionSummary` (type) — `frontend/src/api.ts:227`
-- *...and 34 more — search with Grep*
+- *...and 35 more — search with Grep*
 
 ### `frontend/src/components/` (1 exports)
 - `Message` (type) — `frontend/src/components/ChatMessage.tsx:24`
 
-### `integration/` (91 exports)
+### `integration/` (94 exports)
 - `ChangeDetectionHook` (class) — `integration/pipeline_hooks.py:129`
 - `CrossLinker` (class) — `integration/cross_linker.py:27`
 - `DataQualityEngine` (class) — `integration/data_quality.py:72`
@@ -331,20 +341,33 @@
 - `EmbeddedRecord` (class) — `integration/embedder.py:20`
 - `Embedder` (class) — `integration/embedder.py:27`
 - `EntityConsolidator` (class) — `integration/entity_consolidator.py:71`
-- `EntityResolver` (class) — `integration/entity_resolver.py:122`
+- `EntityResolver` (class) — `integration/entity_resolver.py:128`
 - `HITLEscalationHook` (class) — `integration/pipeline_hooks.py:533`
 - `HITLReviewManager` (class) — `integration/pipeline_hooks.py:651`
-- *...and 81 more — search with Grep*
+- *...and 84 more — search with Grep*
 
 ### `scheduler/` (8 exports)
 - `DataPipelineScheduler` (class) — `scheduler/runner.py:32`
 - `__init__` (function) — `scheduler/runner.py:35`
 - `main` (function) — `scheduler/__main__.py:29`
 - `run_now` (function) — `scheduler/runner.py:59`
-- `run_one` (function) — `scheduler/runner.py:106`
+- `run_one` (function) — `scheduler/runner.py:139`
 - `start` (function) — `scheduler/runner.py:41`
-- `status` (function) — `scheduler/runner.py:118`
+- `status` (function) — `scheduler/runner.py:151`
 - `stop` (function) — `scheduler/runner.py:55`
+
+### `scripts/` (45 exports)
+- `backfill_ta_links_from_mechanism` (function) — `scripts/backfill_ta_links.py:264`
+- `backfill_ta_links_from_trials` (function) — `scripts/backfill_ta_links.py:191`
+- `backfill_trial_ta_links` (function) — `scripts/backfill_ta_links.py:313`
+- `clean_drug_names` (function) — `scripts/clean_drug_names.py:93`
+- `compute_completeness` (function) — `scripts/quality_scorecard.py:52`
+- `compute_freshness` (function) — `scripts/quality_scorecard.py:169`
+- `compute_link_density` (function) — `scripts/quality_scorecard.py:94`
+- `compute_overall_score` (function) — `scripts/quality_scorecard.py:240`
+- `compute_quality_scores` (function) — `scripts/quality_scorecard.py:213`
+- `compute_source_diversity` (function) — `scripts/quality_scorecard.py:147`
+- *...and 35 more — search with Grep*
 
 ### `tests/` (25 exports)
 - `MockLLM` (class) — `tests/conftest.py:125`
