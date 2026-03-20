@@ -1,0 +1,153 @@
+name: oncology
+display_name: Oncology
+
+# MeSH descriptors for therapeutic areas
+mesh_ids:
+  - D009369   # Neoplasms
+  - D009370   # Neoplasms by Histologic Type
+  - D001943   # Breast Neoplasms
+  - D002289   # Carcinoma, Non-Small-Cell Lung
+  - D008175   # Lung Neoplasms
+  - D008545   # Melanoma
+  - D015179   # Colorectal Neoplasms
+  - D010190   # Pancreatic Neoplasms
+  - D006528   # Hepatocellular Carcinoma
+  - D010051   # Ovarian Neoplasms
+  - D011471   # Prostatic Neoplasms
+  - D001749   # Urinary Bladder Neoplasms
+  - D012878   # Skin Neoplasms
+
+# Mechanism MeSH descriptors
+mechanism_mesh_ids:
+  - D000074322  # Immune Checkpoint Inhibitors
+  - D000074384  # Programmed Cell Death 1 Receptor (PD-1)
+  - D060890     # B7-H1 Antigen (PD-L1)
+  - D061026     # CTLA-4 Antigen
+  - D047428     # Protein Kinase Inhibitors
+  - D000970     # Antineoplastic Agents
+  - D000074323  # Antibodies, Bispecific
+
+# Seed drug names for ClinicalTrials.gov and FAERS
+target_drugs:
+  # Checkpoint inhibitors
+  - pembrolizumab
+  - nivolumab
+  - atezolizumab
+  - durvalumab
+  - ipilimumab
+  - cemiplimab
+  - avelumab
+  - tremelimumab
+  # Kinase inhibitors
+  - osimertinib
+  - sotorasib
+  - adagrasib
+  - imatinib
+  - erlotinib
+  - gefitinib
+  - crizotinib
+  - alectinib
+  - lorlatinib
+  - larotrectinib
+  - entrectinib
+  - palbociclib
+  - ribociclib
+  - abemaciclib
+  - vemurafenib
+  - dabrafenib
+  - encorafenib
+  # ADCs and bispecifics
+  - trastuzumab deruxtecan
+  - sacituzumab govitecan
+  - enfortumab vedotin
+  # Other targeted
+  - olaparib
+  - niraparib
+  - talazoparib
+  - bevacizumab
+  - trastuzumab
+
+# Clinical trial condition terms
+target_conditions:
+  - breast cancer
+  - non-small cell lung cancer
+  - melanoma
+  - colorectal cancer
+  - pancreatic cancer
+  - hepatocellular carcinoma
+  - ovarian cancer
+  - prostate cancer
+  - bladder cancer
+  - renal cell carcinoma
+  - head and neck squamous cell carcinoma
+  - gastric cancer
+
+# Orange Book EPC classes
+target_epc_classes:
+  - "Kinase Inhibitor [EPC]"
+  - "Programmed Death Receptor-1 (PD-1)-Blocking Antibody [EPC]"
+  - "Programmed Death-Ligand 1 (PD-L1)-Blocking Antibody [EPC]"
+  - "CTLA-4-Blocking Antibody [EPC]"
+  - "Poly (ADP-Ribose) Polymerase Inhibitor [EPC]"
+  - "HER2/ErbB2 Receptor Inhibitor [EPC]"
+  - "VEGF/VEGFR Inhibitor [EPC]"
+  - "Epidermal Growth Factor Receptor Inhibitor [EPC]"
+  - "Cyclin-Dependent Kinase Inhibitor [EPC]"
+  - "BRAF Inhibitor [EPC]"
+
+# Target companies
+target_companies:
+  - {name: "Merck", cik: "0000310158", ticker: "MRK", country: "US"}
+  - {name: "Bristol-Myers Squibb", cik: "0000014272", ticker: "BMY", country: "US"}
+  - {name: "Roche", cik: "", ticker: "RHHBY", country: "Switzerland"}
+  - {name: "AstraZeneca", cik: "0000816284", ticker: "AZN", country: "UK"}
+  - {name: "Pfizer", cik: "0000078003", ticker: "PFE", country: "US"}
+  - {name: "Daiichi Sankyo", cik: "", ticker: "4568.T", country: "Japan"}
+  - {name: "Regeneron", cik: "0000872589", ticker: "REGN", country: "US"}
+  - {name: "Seagen", cik: "", ticker: "", country: "US"}
+
+# PubMed search queries
+pubmed_queries:
+  - '"pembrolizumab"[Title/Abstract]'
+  - '"nivolumab"[Title/Abstract]'
+  - '"atezolizumab"[Title/Abstract]'
+  - '"durvalumab"[Title/Abstract]'
+  - '"osimertinib"[Title/Abstract]'
+  - '"trastuzumab deruxtecan"[Title/Abstract]'
+  - '"immune checkpoint inhibitor"[Title/Abstract] AND "overall survival"[Title/Abstract]'
+  - '"PD-1"[Title/Abstract] AND "clinical trial"[Title/Abstract]'
+  - '"KRAS G12C"[Title/Abstract] AND "inhibitor"[Title/Abstract]'
+  - '"antibody-drug conjugate"[Title/Abstract] AND "cancer"[Title/Abstract]'
+  - '"PARP inhibitor"[Title/Abstract] AND ("breast cancer" OR "ovarian cancer")'
+  - '"CDK4/6 inhibitor"[Title/Abstract] AND "breast cancer"[Title/Abstract]'
+  - '"immunotherapy"[Title/Abstract] AND "non-small cell lung cancer"[Title/Abstract]'
+  - '"systematic review"[Title] AND "immune checkpoint"[Title/Abstract]'
+  - '"meta-analysis"[Publication Type] AND "pembrolizumab"[Title/Abstract]'
+
+# TA condition keywords for backfill_ta_links
+condition_keywords:
+  Breast Neoplasms:
+    - breast cancer
+    - breast neoplasm
+    - breast carcinoma
+    - triple negative breast
+    - her2 positive breast
+  Lung Neoplasms:
+    - lung cancer
+    - non-small cell lung
+    - nsclc
+    - small cell lung
+    - sclc
+  Melanoma:
+    - melanoma
+    - malignant melanoma
+    - advanced melanoma
+  Colorectal Neoplasms:
+    - colorectal cancer
+    - colon cancer
+    - rectal cancer
+    - crc
+  Pancreatic Neoplasms:
+    - pancreatic cancer
+    - pancreatic adenocarcinoma
+    - pancreatic ductal

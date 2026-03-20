@@ -711,6 +711,189 @@ def request_enrichment(
     }
 
 
+@router.get("/completeness")
+def field_completeness(
+    entity_type: Optional[str] = Query(None),
+    db: Database = Depends(get_db),
+):
+    """Per-field completeness rates by entity type."""
+    results = {}
+    required_fields = {
+        "drug": ["generic_name", "brand_name", "company_id", "therapeutic_area_id",
+                 "mechanism_id", "approval_date"],
+        "company": ["name", "ticker", "country", "region", "market_cap_tier"],
+        "trial": ["official_title", "sponsor_name", "status", "phase",
+                  "conditions", "start_date", "label"],
+        "therapeutic_area": ["name", "mesh_id", "scope_note"],
+        "mechanism": ["name", "mesh_id"],
+        "article": ["title", "pmid", "journal", "publication_date", "mesh_terms"],
+    }
+
+    types_to_check = [entity_type] if entity_type else list(required_fields.keys())
+
+    for etype in types_to_check:
+        if etype not in ENTITY_TABLES or etype not in required_fields:
+            continue
+        meta = ENTITY_TABLES[etype]
+        fields = required_fields[etype]
+        total_row = db.fetch_one(f"SELECT COUNT(*) AS cnt FROM {meta['table']}")
+        total = total_row["cnt"] if total_row else 0
+        if total == 0:
+            results[etype] = {"total": 0, "fields": {}, "overall": 0.0}
+            continue
+
+        field_scores = {}
+        for field in fields:
+            try:
+                row = db.fetch_one(
+                    f"SELECT COUNT(*) AS filled FROM {meta['table']} WHERE {field} IS NOT NULL AND {field}::text != ''"
+                )
+                field_scores[field] = round((row["filled"] if row else 0) / total, 3)
+            except Exception:
+                field_scores[field] = 0.0
+
+        overall = sum(field_scores.values()) / len(field_scores) if field_scores else 0.0
+        results[etype] = {"total": total, "fields": field_scores, "overall": round(overall, 3)}
+
+    return {"completeness": results}
+
+
+class BulkUpdateRequest(BaseModel):
+    entity_ids: list[str]
+    fields: dict[str, str | int | float | bool | None]
+    reason: str = ""
+
+
+@router.post("/bulk-update")
+def bulk_update_entities(
+    entity_type: str = Query(...),
+    body: BulkUpdateRequest = ...,
+    db: Database = Depends(get_db),
+):
+    """Batch update entities of the same type."""
+    if entity_type not in ENTITY_TABLES:
+        raise HTTPException(400, f"Unknown entity type: {entity_type}")
+
+    meta = ENTITY_TABLES[entity_type]
+    editable = set(meta["editable_cols"])
+    invalid = set(body.fields.keys()) - editable
+    if invalid:
+        raise HTTPException(400, f"Non-editable fields: {invalid}")
+
+    set_parts = [f"{col} = %s" for col in body.fields]
+    base_values = list(body.fields.values())
+    updated = 0
+
+    for eid in body.entity_ids:
+        db.execute(
+            f"UPDATE {meta['table']} SET {', '.join(set_parts)} WHERE {meta['id_col']} = %s",
+            base_values + [eid],
+        )
+        if _table_exists(db, "data_change_log"):
+            db.execute(
+                """
+                INSERT INTO data_change_log (entity_type, entity_id, change_type, changed_fields, changed_at)
+                VALUES (%s, %s, 'bulk_update', %s, %s)
+                """,
+                [entity_type, eid, list(body.fields.keys()), datetime.now(timezone.utc)],
+            )
+        updated += 1
+
+    return {"ok": True, "updated": updated, "entity_type": entity_type}
+
+
+class BulkResolveRequest(BaseModel):
+    review_ids: list[str]
+    action: str  # approved, rejected, deferred
+    resolution_notes: str = ""
+
+
+@router.post("/bulk-resolve")
+def bulk_resolve_hitl(
+    body: BulkResolveRequest,
+    db: Database = Depends(get_db),
+):
+    """Batch resolve HITL review items."""
+    if body.action not in ("approved", "rejected", "deferred"):
+        raise HTTPException(400, "action must be approved, rejected, or deferred")
+
+    if not _table_exists(db, "hitl_review_queue"):
+        raise HTTPException(501, "HITL queue not available")
+
+    resolved = 0
+    for rid in body.review_ids:
+        db.execute(
+            """
+            UPDATE hitl_review_queue
+            SET status = %s,
+                resolution = %s::jsonb,
+                resolved_at = NOW()
+            WHERE id = %s AND status = 'pending'
+            """,
+            [
+                body.action,
+                f'{{"notes": "{body.resolution_notes}", "resolved_by": "user", "resolved_at": "{datetime.now(timezone.utc).isoformat()}"}}',
+                rid,
+            ],
+        )
+        resolved += 1
+
+    return {"ok": True, "resolved": resolved, "action": body.action}
+
+
+@router.get("/freshness")
+def source_freshness(db: Database = Depends(get_db)):
+    """Per-source freshness report."""
+    freshness = {}
+    for etype, meta in ENTITY_TABLES.items():
+        try:
+            rows = db.fetch_all(
+                f"""
+                SELECT source_api,
+                       COUNT(*) AS records,
+                       MAX(retrieved_at) AS latest,
+                       EXTRACT(EPOCH FROM (NOW() - MAX(retrieved_at))) / 86400 AS days_since
+                FROM {meta['table']}
+                WHERE source_api IS NOT NULL
+                GROUP BY source_api
+                ORDER BY days_since DESC
+                """
+            )
+            for row in rows:
+                source = row["source_api"]
+                freshness[source] = {
+                    "entity_type": etype,
+                    "records": row["records"],
+                    "latest": row["latest"].isoformat() if row.get("latest") and hasattr(row["latest"], "isoformat") else None,
+                    "days_since": round(float(row["days_since"]), 1) if row.get("days_since") else None,
+                    "stale": float(row["days_since"]) > 30 if row.get("days_since") else True,
+                }
+        except Exception:
+            continue
+
+    return {"freshness": freshness}
+
+
+class RunEnrichmentRequest(BaseModel):
+    entity_type: str = "drug"
+    max_entities: int = 50
+
+
+@router.post("/run-enrichment")
+def run_enrichment(
+    body: RunEnrichmentRequest,
+    db: Database = Depends(get_db),
+):
+    """Trigger AI enrichment for an entity set."""
+    try:
+        from scripts.ai_enrich import run as run_ai_enrich
+        results = run_ai_enrich(entity_type=body.entity_type, max_entities=body.max_entities)
+        return {"ok": True, "results": results}
+    except Exception as e:
+        logger.error("AI enrichment failed: %s", e)
+        raise HTTPException(500, f"Enrichment failed: {e}")
+
+
 @router.post("/refresh-views")
 def refresh_materialized_views(
     metrics_svc: PharmaMetrics = Depends(get_metrics),

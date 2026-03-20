@@ -355,6 +355,20 @@ export interface CatalogStats {
   changes: { total_changes?: number; recent_changes?: number };
 }
 
+export interface FieldCompleteness {
+  total: number;
+  fields: Record<string, number>;
+  overall: number;
+}
+
+export interface SourceFreshness {
+  entity_type: string;
+  records: number;
+  latest: string | null;
+  days_since: number | null;
+  stale: boolean;
+}
+
 export interface ResearchJob {
   id: string;
   scope_key: string;
@@ -598,6 +612,24 @@ export const api = {
     get<{ summary: Array<Record<string, unknown>>; rules: Array<Record<string, unknown>> }>(
       `/catalog/quality?${qs({ entity_type: entityType })}`
     ),
+  catalogCompleteness: (entityType?: string) =>
+    get<{ completeness: Record<string, FieldCompleteness> }>(
+      `/catalog/completeness?${qs({ entity_type: entityType })}`
+    ),
+  catalogFreshness: () =>
+    get<{ freshness: Record<string, SourceFreshness> }>('/catalog/freshness'),
+  catalogBulkUpdate: (entityType: string, entityIds: string[], fields: Record<string, unknown>, reason?: string) =>
+    post<{ ok: boolean; updated: number }>(`/catalog/bulk-update?entity_type=${encodeURIComponent(entityType)}`, {
+      entity_ids: entityIds, fields, reason: reason ?? '',
+    }),
+  catalogBulkResolve: (reviewIds: string[], action: string, notes?: string) =>
+    post<{ ok: boolean; resolved: number }>('/catalog/bulk-resolve', {
+      review_ids: reviewIds, action, resolution_notes: notes ?? '',
+    }),
+  catalogRunEnrichment: (entityType?: string, maxEntities?: number) =>
+    post<{ ok: boolean; results: Record<string, unknown> }>('/catalog/run-enrichment', {
+      entity_type: entityType ?? 'drug', max_entities: maxEntities ?? 50,
+    }),
 
   exportReport: (report: string, title: string, format: 'md' | 'txt' | 'json' = 'md') =>
     fetch(`${BASE}/chat/export/report`, {

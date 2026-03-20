@@ -1,14 +1,14 @@
 # Codebase Map
 
-*Auto-generated: 2026-03-20 23:14*
+*Auto-generated: 2026-03-20 23:24*
 
 ## Stats
 
-- **Python**: 116 files
+- **Python**: 124 files
 - **TSX/React**: 27 files
 - **TypeScript**: 6 files
 - **JavaScript**: 1 files
-- **Total source files**: 150
+- **Total source files**: 158
 
 ## Directory Structure
 
@@ -182,7 +182,7 @@
 - `services/web_research.py/` — 1 files
 - `services/workspace.py/` — 1 files
 
-### `tests/` (14 files)
+### `tests/` (22 files)
 
 - `tests/__init__.py/` — 1 files
 - `tests/agent/__init__.py/` — 1 files
@@ -191,12 +191,20 @@
 - `tests/agent/test_team_eval_contracts.py/` — 1 files
 - `tests/agent/test_team_eval_integration.py/` — 1 files
 - `tests/conftest.py/` — 1 files
+- `tests/test_backfill_ta_links.py/` — 1 files
+- `tests/test_catalog_api.py/` — 1 files
+- `tests/test_clean_drug_names.py/` — 1 files
+- `tests/test_connector_overrides.py/` — 1 files
 - `tests/test_conversation_memory.py/` — 1 files
 - `tests/test_ctx_corpus.py/` — 1 files
 - `tests/test_ctx_evidence.py/` — 1 files
 - `tests/test_ctx_pipeline.py/` — 1 files
+- `tests/test_dedup_companies.py/` — 1 files
 - `tests/test_domain_coverage.py/` — 1 files
+- `tests/test_enrichment.py/` — 1 files
+- `tests/test_quality_monitor.py/` — 1 files
 - `tests/test_research_agent.py/` — 1 files
+- `tests/test_ta_definitions.py/` — 1 files
 - `tests/test_unified_handler.py/` — 1 files
 
 ## Key Entry Points

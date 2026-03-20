@@ -101,7 +101,7 @@ class PubMedConnector(BaseConnector):
     then fetch article metadata in batches via efetch XML.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.api_key = ""
         self.request_delay = 0.34  # ~3 req/sec without key
@@ -114,6 +114,10 @@ class PubMedConnector(BaseConnector):
                     0.34, config.connectors.default_request_delay_seconds
                 )
         self.session = requests.Session()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._queries = overrides.get("queries", TARGET_SEARCH_QUERIES)
 
     def source_type(self) -> SourceType:
         return SourceType.PUBMED
@@ -156,7 +160,7 @@ class PubMedConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_pmids: set[str] = set()
 
-        for query in TARGET_SEARCH_QUERIES:
+        for query in self._queries:
             logger.info("PubMed search: %s", query)
             try:
                 pmids = self._esearch(query)

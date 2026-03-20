@@ -200,6 +200,24 @@ def _build_context_block(
         )
         if ab_result.comparison:
             logger.info("Context A/B: %s", ab_result.summary)
+
+        # Fire-and-forget telemetry
+        try:
+            from services.telemetry import log_ctx_event
+            from api.deps import get_db
+            log_ctx_event(
+                db=get_db(),
+                question=question,
+                intent=intent,
+                ctx_tokens=ab_result.active.tokens,
+                legacy_tokens=ab_result.comparison.tokens if ab_result.comparison else None,
+                compression_ratio=ab_result.active.compression_ratio,
+                build_time_ms=ab_result.active.build_time_ms,
+                mode=ab_result.active.mode,
+            )
+        except Exception:
+            pass  # telemetry must never break the main flow
+
         return ab_result.active.text
     except Exception as e:
         logger.warning("CTX context builder failed, falling back to legacy: %s", e)

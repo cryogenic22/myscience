@@ -1,6 +1,6 @@
 # Commit Conventions
 
-*Auto-generated from last 19 commits: 2026-03-20 23:14*
+*Auto-generated from last 20 commits: 2026-03-20 23:24*
 
 ## Format: Conventional Commits
 
@@ -11,8 +11,10 @@
 ### Prefixes (by frequency)
 - `fix:` — 9 commits
 - `feat:` — 5 commits
+- `docs:` — 1 commits
 
 ### Examples from this repo
+- `docs: Update CLAUDE.md, memory, harness for team onboarding`
 - `feat: Wire CTX pipeline, telemetry, normalizer, canvas tabs (#51-56)`
 - `feat(frontend): Apply design system across all pages (Graph, Search, Data)`
 - `fix(frontend): Landing page spacing, card anchoring, button sizing`
@@ -22,4 +24,3 @@
 - `fix(frontend): IE-style chat bubbles + fix ArrowRight crash`
 - `feat(frontend): Redesign landing page â€” Market Zero branding`
 - `fix(frontend): Spacing, padding, dedup labels, card visibility`
-- `fix(frontend): Remove borders, improve spacing and information density`

@@ -101,6 +101,39 @@ class DataPipelineScheduler:
             logger.exception("Post-task fix_data_quality failed")
             results["fix_data_quality"] = f"ERROR: {e}"
 
+        # 3. TA linkage backfill
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.backfill_ta_links")
+            mod.run()
+            results["backfill_ta_links"] = f"OK ({time.time()-t0:.1f}s)"
+            logger.info("Post-task: backfill_ta_links completed")
+        except Exception as e:
+            logger.exception("Post-task backfill_ta_links failed")
+            results["backfill_ta_links"] = f"ERROR: {e}"
+
+        # 4. Company dedup
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.dedup_companies")
+            mod.run()
+            results["dedup_companies"] = f"OK ({time.time()-t0:.1f}s)"
+            logger.info("Post-task: dedup_companies completed")
+        except Exception as e:
+            logger.exception("Post-task dedup_companies failed")
+            results["dedup_companies"] = f"ERROR: {e}"
+
+        # 5. Quality scorecard
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.quality_scorecard")
+            mod.run(output_path="reports/quality_scorecard.md")
+            results["quality_scorecard"] = f"OK ({time.time()-t0:.1f}s)"
+            logger.info("Post-task: quality_scorecard completed")
+        except Exception as e:
+            logger.exception("Post-task quality_scorecard failed")
+            results["quality_scorecard"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
 
     def run_one(self, source_name: str) -> str:

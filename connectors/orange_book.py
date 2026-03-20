@@ -70,7 +70,7 @@ class OrangeBookConnector(BaseConnector):
     pharmacologic class. Deduplicate by application_number.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.api_key = ""
         self.request_delay = 0.5
@@ -78,6 +78,10 @@ class OrangeBookConnector(BaseConnector):
             self.api_key = config.connectors.openfda_api_key
             self.request_delay = config.connectors.default_request_delay_seconds
         self.session = requests.Session()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._epc_classes = overrides.get("epc_classes", TARGET_PHARM_CLASSES)
 
     def source_type(self) -> SourceType:
         return SourceType.FDA_ORANGE_BOOK
@@ -121,7 +125,7 @@ class OrangeBookConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_apps: set[str] = set()
 
-        for pharm_class in TARGET_PHARM_CLASSES:
+        for pharm_class in self._epc_classes:
             logger.info("Fetching FDA drugs for pharm_class: %s", pharm_class)
             try:
                 apps = self._search_by_pharm_class(pharm_class)

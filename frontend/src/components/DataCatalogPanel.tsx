@@ -20,8 +20,11 @@ import {
   type CatalogEntityDetail,
   type CatalogStats,
   type ChangeLogEntry,
+  type EntityLink,
+  type FieldCompleteness,
   type HealthData,
   type HITLItem,
+  type SourceFreshness,
 } from '../api';
 import { Drawer } from './ui/Drawer';
 
@@ -289,8 +292,31 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
   datasets: CatalogDataset[];
   onBrowse: (type: string) => void;
 }) {
+  const [completeness, setCompleteness] = useState<Record<string, FieldCompleteness> | null>(null);
+  const [freshData, setFreshData] = useState<Record<string, SourceFreshness> | null>(null);
+
+  useEffect(() => {
+    api.catalogCompleteness().then(r => setCompleteness(r.completeness)).catch(() => {});
+    api.catalogFreshness().then(r => setFreshData(r.freshness)).catch(() => {});
+  }, []);
+
+  const staleCount = freshData ? Object.values(freshData).filter(s => s.stale).length : 0;
+
   return (
     <div className="space-y-8">
+      {/* Stale data alert */}
+      {staleCount > 0 && (
+        <div
+          className="rounded-xl px-5 py-3 flex items-center gap-3"
+          style={{ background: 'var(--color-amber-soft)', border: '1px solid var(--color-amber)' }}
+        >
+          <Clock size={16} style={{ color: 'var(--color-amber)', flexShrink: 0 }} />
+          <span style={{ fontSize: '13px', color: 'var(--color-amber)' }}>
+            {staleCount} source{staleCount > 1 ? 's' : ''} have not been refreshed in &gt;30 days
+          </span>
+        </div>
+      )}
+
       {/* Stat row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
@@ -298,21 +324,104 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
           { label: 'Sources', value: fmt(health?.source_coverage?.length ?? 0) },
           { label: 'Avg Quality', value: stats?.quality?.avg_score != null ? `${(Number(stats.quality.avg_score) * 100).toFixed(0)}%` : '—' },
           { label: 'Issues', value: fmt(stats?.quality?.failures ?? 0) },
-          { label: 'Pending', value: fmt(stats?.hitl?.pending ?? 0) },
+          { label: 'Pending HITL', value: fmt(stats?.hitl?.pending ?? 0), urgent: (stats?.hitl?.pending ?? 0) > 100 },
           { label: 'Changes', value: fmt(stats?.changes?.recent_changes ?? 0) },
-        ].map(({ label, value }) => (
+        ].map(({ label, value, urgent }) => (
           <div
             key={label}
             className="rounded-2xl p-5"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+            style={{
+              background: 'var(--color-surface)',
+              border: `1px solid ${urgent ? 'var(--color-amber)' : 'var(--color-line)'}`,
+            }}
           >
-            <div style={{ fontSize: '24px', fontWeight: 300, color: 'var(--color-ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
+            <div style={{ fontSize: '24px', fontWeight: 300, color: urgent ? 'var(--color-amber)' : 'var(--color-ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
               {value}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '4px' }}>{label}</div>
           </div>
         ))}
       </div>
+
+      {/* Completeness bars */}
+      {completeness && (
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+        >
+          <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--color-line)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Field Completeness</h3>
+          </div>
+          <div className="px-6 py-4 space-y-4">
+            {Object.entries(completeness).map(([etype, data]) => (
+              <div key={etype}>
+                <div className="flex items-center justify-between mb-2">
+                  <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink)', textTransform: 'capitalize' }}>
+                    {etype.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>
+                    {(data.overall * 100).toFixed(0)}% ({data.total} records)
+                  </span>
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  {Object.entries(data.fields).map(([field, score]) => (
+                    <div
+                      key={field}
+                      title={`${field}: ${(score * 100).toFixed(0)}%`}
+                      className="rounded-md px-2 py-1"
+                      style={{
+                        fontSize: '10px',
+                        background: score >= 0.7 ? 'var(--color-green-soft)' : score >= 0.4 ? 'var(--color-amber-soft)' : 'var(--color-red-soft)',
+                        color: score >= 0.7 ? 'var(--color-green)' : score >= 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
+                      }}
+                    >
+                      {field.replace(/_/g, ' ')} {(score * 100).toFixed(0)}%
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Freshness per source */}
+      {freshData && Object.keys(freshData).length > 0 && (
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+        >
+          <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--color-line)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Source Freshness</h3>
+          </div>
+          {Object.entries(freshData).map(([source, info]) => {
+            const fresh = info.days_since != null
+              ? info.days_since <= 7 ? { label: 'Fresh', color: 'var(--color-green)' }
+                : info.days_since <= 30 ? { label: 'Recent', color: 'var(--color-amber)' }
+                : { label: 'Stale', color: 'var(--color-red)' }
+              : { label: 'Unknown', color: 'var(--color-ink-4)' };
+            return (
+              <div key={source} className="catalog-row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink)' }}>
+                    {source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+                    {info.entity_type} · {fmt(info.records)} records
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5" style={{ fontSize: '12px', color: fresh.color }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: fresh.color }} />
+                  {fresh.label}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', minWidth: '80px', textAlign: 'right' }}>
+                  {info.days_since != null ? `${Math.round(info.days_since)}d ago` : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Datasets */}
       <div
@@ -595,37 +704,154 @@ function CurationTab({ items, onResolve }: {
   items: HITLItem[];
   onResolve: (id: string, action: string) => Promise<void>;
 }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Sort: quality_failure first, then entity_resolution, then by priority desc
+  const sorted = useMemo(() => {
+    const typeOrder: Record<string, number> = { quality_failure: 0, entity_resolution: 1, duplicate_candidate: 2, enrichment_request: 3 };
+    return [...items].sort((a, b) => {
+      const ta = typeOrder[a.review_type] ?? 99;
+      const tb = typeOrder[b.review_type] ?? 99;
+      if (ta !== tb) return ta - tb;
+      return b.priority - a.priority;
+    });
+  }, [items]);
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === sorted.length) setSelected(new Set());
+    else setSelected(new Set(sorted.map(i => i.id)));
+  };
+
+  const bulkResolve = async (action: string) => {
+    if (selected.size === 0) return;
+    setBulkLoading(true);
+    try {
+      await api.catalogBulkResolve([...selected], action);
+      for (const id of selected) {
+        await onResolve(id, action);
+      }
+      setSelected(new Set());
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  // Stats
+  const queueStats = useMemo(() => {
+    const byType: Record<string, number> = {};
+    for (const item of items) {
+      byType[item.review_type] = (byType[item.review_type] || 0) + 1;
+    }
+    return byType;
+  }, [items]);
+
   return (
-    <div className="space-y-3">
-      {items.length === 0 && (
+    <div className="space-y-4">
+      {/* Queue metrics */}
+      <div className="flex flex-wrap gap-3">
+        {Object.entries(queueStats).map(([type, count]) => (
+          <div
+            key={type}
+            className="rounded-lg px-3 py-1.5"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)', fontSize: '12px' }}
+          >
+            <span style={{ color: 'var(--color-ink-3)', textTransform: 'capitalize' }}>
+              {type.replace(/_/g, ' ')}
+            </span>
+            <span style={{ color: 'var(--color-ink)', fontWeight: 600, marginLeft: '6px' }}>{count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Bulk actions */}
+      {sorted.length > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="btn btn-xs btn-secondary"
+            style={{ borderRadius: '6px' }}
+          >
+            {selected.size === sorted.length ? 'Deselect All' : 'Select All'}
+          </button>
+          {selected.size > 0 && (
+            <>
+              <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>{selected.size} selected</span>
+              <button
+                type="button"
+                onClick={() => void bulkResolve('approved')}
+                disabled={bulkLoading}
+                className="btn btn-xs flex items-center gap-1"
+                style={{ background: 'var(--color-green-soft)', color: 'var(--color-green)', borderRadius: '6px' }}
+              >
+                <CheckCircle size={11} />
+                Approve All
+              </button>
+              <button
+                type="button"
+                onClick={() => void bulkResolve('rejected')}
+                disabled={bulkLoading}
+                className="btn btn-xs flex items-center gap-1"
+                style={{ background: 'var(--color-red-soft)', color: 'var(--color-red)', borderRadius: '6px' }}
+              >
+                <XCircle size={11} />
+                Reject All
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {sorted.length === 0 && (
         <div className="py-12 text-center" style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>
           No pending reviews.
         </div>
       )}
-      {items.map(item => (
+      {sorted.map(item => (
         <div
           key={item.id}
           className="rounded-2xl p-5"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+          style={{
+            background: selected.has(item.id) ? 'var(--color-accent-soft)' : 'var(--color-surface)',
+            border: `1px solid ${selected.has(item.id) ? 'var(--color-accent)' : 'var(--color-line)'}`,
+          }}
         >
           <div className="flex items-start justify-between gap-4">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="badge badge-amber"
-                  style={{ fontSize: '10px', textTransform: 'capitalize' }}
-                >
-                  {item.review_type.replace(/_/g, ' ')}
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
-                  {item.entity_type}
-                </span>
-              </div>
-              <p style={{ fontSize: '13px', color: 'var(--color-ink-2)', lineHeight: 1.5 }}>
-                {String(item.payload?.description ?? item.payload?.raw_value ?? item.entity_id)}
-              </p>
-              <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '6px' }}>
-                Priority {item.priority} · {shortDate(item.created_at)}
+            <div className="flex items-start gap-3" style={{ flex: 1, minWidth: 0 }}>
+              <input
+                type="checkbox"
+                checked={selected.has(item.id)}
+                onChange={() => toggleSelect(item.id)}
+                style={{ marginTop: '4px', accentColor: 'var(--color-accent)' }}
+              />
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="badge badge-amber"
+                    style={{ fontSize: '10px', textTransform: 'capitalize' }}
+                  >
+                    {item.review_type.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+                    {item.entity_type}
+                  </span>
+                </div>
+                <p style={{ fontSize: '13px', color: 'var(--color-ink-2)', lineHeight: 1.5 }}>
+                  {String(item.payload?.description ?? item.payload?.raw_value ?? item.entity_id)}
+                </p>
+                <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '6px' }}>
+                  Priority {item.priority} · {shortDate(item.created_at)}
+                </div>
               </div>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0">
@@ -765,9 +991,92 @@ function EntityDetailDrawer({ detail, editing, onEditField, onSave, onAskInChat 
         </section>
       )}
 
-      {/* Ask */}
-      {onAskInChat && (
-        <div style={{ paddingTop: '16px', borderTop: '1px solid var(--color-line)' }}>
+      {/* Related entities */}
+      {detail.links.length > 0 && (
+        <section>
+          <div className="text-label mb-3">Related Entities ({detail.links.length})</div>
+          <div className="space-y-1">
+            {detail.links.slice(0, 20).map((link: EntityLink, i: number) => {
+              const isSrc = link.source_entity_id === String(entity.id ?? '');
+              const relatedId = isSrc ? link.target_entity_id : link.source_entity_id;
+              const relatedType = isSrc ? link.target_entity_type : link.source_entity_type;
+              return (
+                <div key={i} className="flex items-center gap-2 py-1.5" style={{ fontSize: '12px' }}>
+                  <span
+                    className="badge badge-neutral"
+                    style={{ fontSize: '9px', textTransform: 'uppercase', minWidth: '60px', justifyContent: 'center' }}
+                  >
+                    {link.link_type}
+                  </span>
+                  <span style={{ color: 'var(--color-ink-2)', flex: 1 }}>
+                    {relatedType}: {relatedId.slice(0, 12)}...
+                  </span>
+                  <span style={{ color: 'var(--color-ink-4)' }}>
+                    {(link.confidence * 100).toFixed(0)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Data provenance */}
+      {(entity.source_api || entity.retrieved_at) && (
+        <section>
+          <div className="text-label mb-3">Data Provenance</div>
+          <div className="space-y-1" style={{ fontSize: '12px' }}>
+            {entity.source_api && (
+              <div className="flex gap-2">
+                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Source</span>
+                <span style={{ color: 'var(--color-ink-2)' }}>{String(entity.source_api)}</span>
+              </div>
+            )}
+            {entity.retrieved_at && (
+              <div className="flex gap-2">
+                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Retrieved</span>
+                <span style={{ color: 'var(--color-ink-2)' }}>{shortDate(String(entity.retrieved_at))}</span>
+              </div>
+            )}
+            {entity.content_hash && (
+              <div className="flex gap-2">
+                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Hash</span>
+                <span style={{ color: 'var(--color-ink-4)', fontFamily: 'monospace', fontSize: '10px' }}>
+                  {String(entity.content_hash).slice(0, 16)}...
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Change history */}
+      {detail.change_log.length > 0 && (
+        <section>
+          <div className="text-label mb-3">Change History</div>
+          <div className="space-y-2">
+            {detail.change_log.slice(0, 10).map((ch, i) => (
+              <div key={i} className="flex items-start gap-2" style={{ fontSize: '11px' }}>
+                <div
+                  className="shrink-0 h-2 w-2 rounded-full mt-1.5"
+                  style={{ background: ch.change_type === 'manual_edit' ? 'var(--color-accent)' : 'var(--color-ink-4)' }}
+                />
+                <div>
+                  <span style={{ color: 'var(--color-ink-2)' }}>{ch.change_type}</span>
+                  {ch.changed_fields?.length > 0 && (
+                    <span style={{ color: 'var(--color-ink-4)' }}> · {ch.changed_fields.join(', ')}</span>
+                  )}
+                  <div style={{ color: 'var(--color-ink-4)' }}>{shortDate(ch.changed_at)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2" style={{ paddingTop: '16px', borderTop: '1px solid var(--color-line)' }}>
+        {onAskInChat && (
           <button
             type="button"
             onClick={() => {
@@ -779,8 +1088,20 @@ function EntityDetailDrawer({ detail, editing, onEditField, onSave, onAskInChat 
             <MessageSquare size={13} />
             Explore in Chat
           </button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            const etype = detail.entity_type;
+            const eid = String(entity.id ?? '');
+            api.catalogRunEnrichment(etype, 1).catch(() => {});
+          }}
+          className="btn btn-secondary btn-sm flex items-center gap-2"
+        >
+          <RefreshCw size={13} />
+          Request AI Enrichment
+        </button>
+      </div>
     </div>
   );
 }

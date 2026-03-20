@@ -60,7 +60,7 @@ class OpenFDAFAERSConnector(BaseConnector):
     sorted by receivedate descending. Deduplicate by safety_report_id.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.api_key = ""
         self.request_delay = 0.25  # ~4 req/sec (conservative under 240/min)
@@ -68,6 +68,10 @@ class OpenFDAFAERSConnector(BaseConnector):
             self.api_key = config.connectors.openfda_api_key
             self.request_delay = config.connectors.default_request_delay_seconds
         self.session = requests.Session()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._drugs = overrides.get("drugs", TARGET_DRUGS)
 
     def source_type(self) -> SourceType:
         return SourceType.OPENFDA_FAERS
@@ -114,7 +118,7 @@ class OpenFDAFAERSConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_report_ids: set[str] = set()
 
-        for drug_name in TARGET_DRUGS:
+        for drug_name in self._drugs:
             logger.info("FAERS search: %s", drug_name)
             try:
                 reports = self._search_reports(drug_name, since)

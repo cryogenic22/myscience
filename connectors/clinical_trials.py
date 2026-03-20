@@ -93,12 +93,17 @@ class ClinicalTrialsConnector(BaseConnector):
     interventional studies. Deduplicate by NCT ID.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.request_delay = 0.5
         if config:
             self.request_delay = config.connectors.default_request_delay_seconds
         self.session = requests.Session()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._drugs = overrides.get("drugs", TARGET_DRUG_NAMES)
+        self._conditions = overrides.get("conditions", TARGET_CONDITIONS)
 
     def source_type(self) -> SourceType:
         return SourceType.CLINICAL_TRIALS_GOV
@@ -137,8 +142,8 @@ class ClinicalTrialsConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_ncts: set[str] = set()
 
-        for drug in TARGET_DRUG_NAMES:
-            for condition in TARGET_CONDITIONS:
+        for drug in self._drugs:
+            for condition in self._conditions:
                 logger.info("Searching trials: %s + %s", drug, condition)
                 try:
                     studies = self._search_studies(drug, condition)

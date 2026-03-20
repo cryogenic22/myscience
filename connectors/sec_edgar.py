@@ -77,7 +77,7 @@ class SECEdgarConnector(BaseConnector):
     embedding.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.company_name = "MarketZero"
         self.contact_email = ""
@@ -89,6 +89,11 @@ class SECEdgarConnector(BaseConnector):
             self.contact_email = config.connectors.edgar_contact_email
             self.target_ciks = config.target_company_ciks
             self.request_delay = max(0.12, config.connectors.default_request_delay_seconds)
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        if overrides.get("ciks"):
+            self.target_ciks = overrides["ciks"]
 
         self.session = requests.Session()
         self.session.headers.update({

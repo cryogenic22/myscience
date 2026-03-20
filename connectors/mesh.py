@@ -55,14 +55,21 @@ class MeSHConnector(BaseConnector):
         - identifiers: mesh_id, parent_mesh_id
     """
 
-    def __init__(self):
+    def __init__(self, config=None, target_overrides=None):
         self._session = requests.Session()
         self._session.headers.update({
             "Accept": "application/json",
             "User-Agent": "MarketZero/1.0 (pharma-intelligence-research)",
         })
-        self._delay = config.connectors.default_request_delay_seconds
+        from config import config as default_config
+        self._config = config or default_config
+        self._delay = self._config.connectors.default_request_delay_seconds
         self._seen_ids: set[str] = set()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._mesh_ids = overrides.get("mesh_ids", self._config.target_mesh_ids)
+        self._mechanism_ids = overrides.get("mechanism_ids", self.MECHANISM_SEED_IDS)
 
     def source_type(self) -> SourceType:
         return SourceType.MESH_ONTOLOGY
@@ -134,7 +141,7 @@ class MeSHConnector(BaseConnector):
         """Fetch target TAs, their children, and siblings."""
         records: list[RawRecord] = []
 
-        for mesh_id in config.target_mesh_ids:
+        for mesh_id in self._mesh_ids:
             # Fetch the target descriptor itself
             rec = self._fetch_descriptor(mesh_id, ontology_type="therapeutic_area")
             if rec:
@@ -214,7 +221,7 @@ class MeSHConnector(BaseConnector):
         """Fetch mechanism-of-action descriptors."""
         records: list[RawRecord] = []
 
-        for mesh_id in self.MECHANISM_SEED_IDS:
+        for mesh_id in self._mechanism_ids:
             rec = self._fetch_descriptor(mesh_id, ontology_type="mechanism_of_action")
             if rec:
                 records.append(rec)

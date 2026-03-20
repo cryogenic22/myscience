@@ -738,3 +738,139 @@ class HITLReviewManager:
                 stats[status] = {}
             stats[status][r["review_type"]] = r["c"]
         return stats
+
+
+# ─── Quality Monitor Hook ─────────────────────────
+
+
+class QualityMonitorHook(PipelineHook):
+    """
+    Phase 5.3: Monitors quality delta after each pipeline run.
+
+    Fires ON_RUN_COMPLETE. Computes quality score delta vs previous run,
+    logs warning if quality drops, tracks metrics in pipeline_quality_history.
+    """
+
+    name = "quality_monitor"
+    hook_points = ["ON_RUN_COMPLETE"]
+
+    def __init__(self, db, quality_drop_threshold: float = 0.05,
+                 new_entity_threshold: int = 100):
+        self.db = db
+        self.quality_drop_threshold = quality_drop_threshold
+        self.new_entity_threshold = new_entity_threshold
+
+    def execute(self, ctx: HookContext) -> HookResult:
+        """Compute quality delta and log/alert."""
+        source = ctx.source_type or "unknown"
+        etl_run_id = ctx.etl_run_id
+
+        try:
+            # Get current quality scores
+            current = self._compute_quality_snapshot()
+
+            # Get previous snapshot
+            previous = self._get_previous_snapshot()
+
+            # Compute delta
+            delta = {}
+            alerts = []
+            for entity_type, score in current.items():
+                prev_score = previous.get(entity_type, score)
+                change = score - prev_score
+                delta[entity_type] = round(change, 4)
+                if change < -self.quality_drop_threshold:
+                    alerts.append(
+                        f"{entity_type} quality dropped {abs(change):.1%} "
+                        f"({prev_score:.1%} → {score:.1%})"
+                    )
+
+            # Check new entity count
+            new_entities = ctx.metadata.get("records_inserted", 0)
+            if new_entities > self.new_entity_threshold:
+                alerts.append(
+                    f"{new_entities} new entities created (threshold: {self.new_entity_threshold})"
+                )
+
+            # Store snapshot
+            self._store_snapshot(current, delta, source, etl_run_id, alerts)
+
+            if alerts:
+                for alert in alerts:
+                    logger.warning("Quality alert [%s]: %s", source, alert)
+                return HookResult(
+                    action="continue",
+                    message=f"Quality alerts: {len(alerts)}",
+                    data={"alerts": alerts, "delta": delta},
+                )
+
+            return HookResult(
+                action="continue",
+                message="Quality stable",
+                data={"delta": delta},
+            )
+
+        except Exception as e:
+            logger.error("Quality monitor failed: %s", e)
+            return HookResult(action="continue", message=f"Monitor error: {e}")
+
+    def _compute_quality_snapshot(self) -> dict[str, float]:
+        """Compute current average quality score per entity type."""
+        try:
+            rows = self.db.fetch_all(
+                """
+                SELECT entity_type, ROUND(AVG(score)::numeric, 4) AS avg_score
+                FROM data_quality_results
+                GROUP BY entity_type
+                """
+            )
+            return {r["entity_type"]: float(r["avg_score"]) for r in rows}
+        except Exception:
+            return {}
+
+    def _get_previous_snapshot(self) -> dict[str, float]:
+        """Get the most recent quality snapshot."""
+        try:
+            row = self.db.fetch_one(
+                """
+                SELECT quality_scores FROM pipeline_quality_history
+                ORDER BY created_at DESC LIMIT 1
+                """
+            )
+            if row and row.get("quality_scores"):
+                scores = row["quality_scores"]
+                if isinstance(scores, str):
+                    scores = json.loads(scores)
+                return {k: float(v) for k, v in scores.items()}
+        except Exception:
+            pass
+        return {}
+
+    def _store_snapshot(self, scores: dict, delta: dict, source: str,
+                        etl_run_id: str, alerts: list[str]) -> None:
+        """Store quality snapshot in history table."""
+        try:
+            # Create table if not exists (idempotent)
+            self.db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pipeline_quality_history (
+                    id SERIAL PRIMARY KEY,
+                    source_type TEXT,
+                    etl_run_id TEXT,
+                    quality_scores JSONB,
+                    quality_delta JSONB,
+                    alerts TEXT[],
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+            self.db.execute(
+                """
+                INSERT INTO pipeline_quality_history
+                    (source_type, etl_run_id, quality_scores, quality_delta, alerts)
+                VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)
+                """,
+                [source, etl_run_id, json.dumps(scores), json.dumps(delta), alerts],
+            )
+        except Exception as e:
+            logger.warning("Failed to store quality snapshot: %s", e)

@@ -79,7 +79,7 @@ class FDAShortagesConnector(BaseConnector):
     Each enforcement action becomes an EVENT record linked to the drug.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.api_key = ""
         self.request_delay = 0.5
@@ -87,6 +87,10 @@ class FDAShortagesConnector(BaseConnector):
             self.api_key = config.connectors.openfda_api_key
             self.request_delay = config.connectors.default_request_delay_seconds
         self.session = requests.Session()
+
+        # Allow dynamic target overrides for TA onboarding
+        overrides = target_overrides or {}
+        self._search_terms = overrides.get("search_terms", TARGET_SEARCH_TERMS)
 
     def source_type(self) -> SourceType:
         return SourceType.FDA_SHORTAGES
@@ -125,7 +129,7 @@ class FDAShortagesConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_ids: set[str] = set()
 
-        for term in TARGET_SEARCH_TERMS:
+        for term in self._search_terms:
             logger.info("Fetching enforcement actions for: %s", term)
             try:
                 actions = self._search_enforcement(term)
