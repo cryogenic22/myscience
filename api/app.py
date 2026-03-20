@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.deps import get_db
-from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog
+from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(therapeutic_areas.router)
     app.include_router(catalog.router)
+    app.include_router(enrichment.router)
 
     @app.get("/health")
     def health():

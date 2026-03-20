@@ -1,0 +1,74 @@
+"""Enrichment and autonomous research API routes.
+
+Provides endpoints to trigger deterministic enrichment, run the
+autonomous research agent, and check enrichment status.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, Depends
+
+from api.deps import get_db
+from db import Database
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/enrichment", tags=["enrichment"])
+
+
+@router.post("/run")
+def run_enrichment(db: Database = Depends(get_db)):
+    """Trigger deterministic enrichment pipeline."""
+    from connectors.enrichment_runner import EnrichmentRunner
+
+    runner = EnrichmentRunner(db)
+    results = runner.run_all()
+    return {
+        "results": [
+            {
+                "source": r.source,
+                "total": r.total,
+                "matched": r.matched,
+                "errors": r.errors,
+                "details": r.details,
+            }
+            for r in results
+        ],
+        "total_enriched": sum(r.matched for r in results),
+    }
+
+
+@router.post("/research")
+def run_research(max_iterations: int = 10, db: Database = Depends(get_db)):
+    """Run autonomous research agent loop."""
+    from services.research_agent import AutonomousResearchAgent
+
+    agent = AutonomousResearchAgent(db=db, max_api_calls_per_iteration=5)
+    summary = agent.run_loop(max_iterations=max_iterations)
+    return {
+        "iterations": summary.iterations,
+        "improvements": summary.improvements,
+        "rejections": summary.rejections,
+        "hitl_flagged": summary.hitl_flagged,
+        "total_api_calls": summary.total_api_calls,
+        "mean_fair_delta": round(summary.mean_fair_delta, 3),
+    }
+
+
+@router.get("/status")
+def enrichment_status(db: Database = Depends(get_db)):
+    """Current enrichment status: unresolved count, company gaps, etc."""
+    unresolved = db.fetch_one(
+        "SELECT COUNT(*) as cnt FROM unresolved_entities WHERE status = 'pending'"
+    )
+    companies_missing_cik = db.fetch_one(
+        "SELECT COUNT(*) as cnt FROM companies WHERE cik IS NULL OR cik = ''"
+    )
+    patents_count = db.fetch_one("SELECT COUNT(*) as cnt FROM patents")
+    return {
+        "unresolved_entities": unresolved["cnt"] if unresolved else 0,
+        "companies_missing_cik": companies_missing_cik["cnt"] if companies_missing_cik else 0,
+        "patents_populated": patents_count["cnt"] if patents_count else 0,
+    }
