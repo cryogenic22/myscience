@@ -209,7 +209,7 @@ export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
               >
                 <div
                   className="text-label mb-6"
-                  style={{ color: 'var(--color-ink-4)' }}
+                  style={{ color: 'var(--color-ink-4)', fontFamily: 'var(--font-body)' }}
                 >
                   {pillar.n}
                 </div>

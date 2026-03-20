@@ -152,16 +152,20 @@ export default function WorkspacePage({
               : m
           ));
 
-          setCanvas({
-            intent: response.intent ?? null,
-            data: response.data ?? null,
-            tableData: response.table_data ?? null,
-            visualizations: response.visualizations ?? null,
-            confidence: response.confidence_assessment?.overall,
-            guardStatus: undefined,
-            personaAnalyses: response.persona_analyses,
-            confidenceAssessment: response.confidence_assessment,
-          });
+          // Only update canvas if response has structured data — otherwise keep previous
+          const hasNewData = response.data || response.table_data || response.visualizations || response.persona_analyses;
+          if (hasNewData) {
+            setCanvas({
+              intent: response.intent ?? null,
+              data: response.data ?? null,
+              tableData: response.table_data ?? null,
+              visualizations: response.visualizations ?? null,
+              confidence: response.confidence_assessment?.overall,
+              guardStatus: undefined,
+              personaAnalyses: response.persona_analyses,
+              confidenceAssessment: response.confidence_assessment,
+            });
+          }
         }
       } catch (err) {
         setMessages(prev => prev.map(m =>
@@ -207,7 +211,7 @@ export default function WorkspacePage({
       />
 
       {activeTab === 'graph' ? (
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '0 16px' }}>
           <GraphExplorer />
         </div>
       ) : activeTab === 'catalog' ? (
