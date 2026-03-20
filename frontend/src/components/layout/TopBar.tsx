@@ -19,7 +19,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/50 bg-white/70 backdrop-blur-2xl dark:bg-slate-900/70 dark:border-slate-700/40">
+    <header className="sticky top-0 z-30 shrink-0 bg-white/70 backdrop-blur-2xl dark:bg-slate-900/70">
       <div className="flex h-14 items-center justify-between px-4">
         {/* Left: back + brand + tabs */}
         <div className="flex items-center gap-3">

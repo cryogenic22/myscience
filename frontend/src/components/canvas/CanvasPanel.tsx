@@ -63,7 +63,7 @@ export default function CanvasPanel({
         <div className="mb-4 h-5 w-40 animate-pulse rounded-md bg-slate-200/60 dark:bg-slate-700/40" />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl border border-slate-200/50 bg-white p-5 dark:border-slate-700/30 dark:bg-slate-800/50">
+            <div key={i} className="rounded-xl bg-white p-5 dark:bg-slate-800/50">
               <div className="mb-3 h-4 w-24 animate-pulse rounded bg-slate-200/60 dark:bg-slate-700/40" />
               <div className="space-y-2">
                 <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
@@ -243,7 +243,7 @@ function IntentRouter({
 function EmptyCanvas() {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100/60">
         <Layers size={20} className="text-slate-300" />
       </div>
       <p className="text-[13px] font-medium text-slate-400">
@@ -260,7 +260,7 @@ function SkeletonCards() {
   return (
     <div className="space-y-3">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="animate-pulse rounded-md border border-slate-200/60 bg-white p-4">
+        <div key={i} className="animate-pulse rounded-xl bg-white p-4">
           <div className="mb-3 h-3 w-1/3 rounded bg-slate-100" />
           <div className="space-y-2">
             <div className="h-2.5 w-full rounded bg-slate-100" />
@@ -362,17 +362,17 @@ function DataTable({ tableData }: { tableData: TableData }) {
         <button
           type="button"
           onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           title="Download CSV"
         >
           <Download size={10} />
           CSV
         </button>
       </div>
-      <div className="max-h-96 overflow-auto rounded-md border border-slate-200/60">
+      <div className="max-h-96 overflow-auto rounded-xl bg-white">
         <table className="min-w-full text-[12px]" style={{ tableLayout: 'auto' }}>
           <thead className="sticky top-0 z-10 bg-white">
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-slate-100/60">
               {tableData.columns.map((col) => (
                 <th
                   key={col.key}
@@ -391,7 +391,7 @@ function DataTable({ tableData }: { tableData: TableData }) {
           </thead>
           <tbody>
             {displayRows.map((row, i) => (
-              <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
+              <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors">
                 {tableData.columns.map((col, ci) => (
                   <td
                     key={col.key}
@@ -440,7 +440,7 @@ function VisualizationGrid({ specs }: { specs: VisualizationSpec[] }) {
 
 function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
   return (
-    <div className="rounded-md border border-slate-200/60 bg-white p-3">
+    <div className="rounded-xl bg-white p-4">
       <div className="mb-2 flex items-center gap-2">
         <BarChart3 size={13} className="text-slate-400" />
         <span className="text-[11px] font-medium text-slate-600">{spec.title}</span>
@@ -506,7 +506,7 @@ function EntitySection({ data }: { data: QueryResponse | null }) {
           const topProps = Object.entries(metadata).slice(0, 4);
 
           return (
-            <div key={i} className="rounded-md border border-slate-200/60 bg-white px-3 py-2.5">
+            <div key={i} className="rounded-xl bg-white px-4 py-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className={`h-2 w-2 rounded-full ${entityTypeColor(entityType)}`} />
                 <span className="text-[12px] font-semibold text-slate-800 truncate">{label}</span>
@@ -559,7 +559,7 @@ function MetricsSection({ data }: { data: QueryResponse | null }) {
       <div className="mb-2 text-[11px] font-medium text-slate-400">Metrics</div>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
         {tiles.slice(0, 6).map((tile) => (
-          <div key={tile.label} className="rounded-md border border-slate-200/60 bg-white px-3 py-2.5 text-center">
+          <div key={tile.label} className="rounded-xl bg-white px-4 py-3 text-center">
             <div className="text-[16px] font-bold text-slate-800 tabular-nums">{tile.value}</div>
             <div className="mt-0.5 text-[10px] text-slate-400 leading-tight">{tile.label}</div>
           </div>
@@ -656,7 +656,7 @@ function EvidenceSection({ data }: { data: QueryResponse | null }) {
 function EvidenceRow({ item, index }: { item: EvidenceItem; index: number }) {
   const preview = item.content.length > 160 ? item.content.slice(0, 157) + '...' : item.content;
   return (
-    <div className="rounded-md border border-slate-200/50 bg-white px-3 py-2">
+    <div className="rounded-xl bg-white px-4 py-3">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-[10px] font-semibold text-slate-400">[{index}]</span>
         <span className="text-[10px] font-medium text-slate-400 uppercase">{item.source}</span>
@@ -685,7 +685,7 @@ function PersonaSection({
       <div className="mb-2 text-[11px] font-medium text-slate-400">Team Evaluation</div>
 
       {confidenceAssessment && (
-        <div className="mb-3 flex items-center gap-3 rounded-md border border-slate-200/60 bg-white px-3 py-2">
+        <div className="mb-3 flex items-center gap-3 rounded-xl bg-white px-4 py-3">
           <span className="text-[11px] text-slate-500">Overall confidence</span>
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
             <div
@@ -720,7 +720,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
       : 'bg-red-500';
 
   return (
-    <div className="rounded-md border border-slate-200/60 bg-white px-3 py-2.5">
+    <div className="rounded-xl bg-white px-4 py-3">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -755,7 +755,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
       )}
 
       {expanded && (
-        <div className="mt-2 ml-5 rounded-md border border-slate-200/60 bg-slate-50/50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+        <div className="mt-2 ml-5 rounded-lg bg-slate-50/80 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
           {analysis.analysis}
         </div>
       )}

@@ -117,9 +117,9 @@ export default function ChatPanel({
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t border-slate-100 bg-white/90 backdrop-blur-lg px-5 py-3 dark:border-slate-800 dark:bg-slate-900/90">
+      <div className="shrink-0 bg-white/80 backdrop-blur-lg px-5 py-4 dark:bg-slate-900/80">
         <div className="mx-auto max-w-2xl">
-          <div className="flex items-end gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 shadow-sm transition-all focus-within:border-brand/30 focus-within:shadow-md dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-end gap-2 rounded-2xl bg-slate-50 px-4 py-3 transition-all focus-within:bg-white focus-within:shadow-lg focus-within:ring-1 focus-within:ring-slate-200/60 dark:bg-slate-800 dark:focus-within:bg-slate-800 dark:focus-within:ring-slate-700">
             <textarea
               ref={inputRef}
               value={input}
@@ -127,7 +127,7 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder={isEmpty ? 'Ask about drugs, trials, companies, mechanisms...' : 'Follow-up question...'}
               rows={1}
-              className="flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-slate-900 placeholder:text-slate-400 outline-none dark:text-slate-100"
+              className="flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-slate-800 placeholder:text-slate-400 outline-none dark:text-slate-100"
               style={{ maxHeight: '120px' }}
               disabled={isLoading}
             />
@@ -135,7 +135,7 @@ export default function ChatPanel({
               type="button"
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-white transition-all hover:bg-brand-dark disabled:opacity-20 disabled:hover:bg-brand"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-all hover:bg-brand-dark disabled:opacity-20 disabled:hover:bg-brand"
               aria-label="Send"
             >
               {isLoading ? (
@@ -145,8 +145,8 @@ export default function ChatPanel({
               )}
             </button>
           </div>
-          <p className="mt-1.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
-            Grounded in {'\u00B7'} ClinicalTrials.gov {'\u00B7'} PubMed {'\u00B7'} FDA Orange Book {'\u00B7'} SEC Edgar
+          <p className="mt-2 text-center text-[10px] tracking-wide text-slate-400/70 dark:text-slate-500">
+            Grounded in ClinicalTrials.gov {'\u00B7'} PubMed {'\u00B7'} FDA Orange Book {'\u00B7'} SEC Edgar
           </p>
         </div>
       </div>
@@ -187,11 +187,11 @@ function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
                   key={query}
                   type="button"
                   onClick={() => onQuery(query)}
-                  className="group block w-full rounded-xl border border-slate-200/60 bg-white px-3.5 py-2.5 text-left text-[12px] leading-relaxed text-slate-600 transition-all hover:border-slate-300 hover:shadow-md hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-white"
+                  className="group block w-full rounded-xl bg-slate-50/80 px-3.5 py-2.5 text-left text-[12.5px] leading-relaxed text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   <span className="flex items-center justify-between gap-2">
                     {query}
-                    <ArrowRight size={11} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-50" />
+                    <ArrowRight size={11} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-40" />
                   </span>
                 </button>
               ))}

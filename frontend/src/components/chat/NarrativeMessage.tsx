@@ -65,13 +65,13 @@ export default function NarrativeMessage({
 
             {/* Follow-up suggestions */}
             {onFollowUp && message.followupSuggestions && message.followupSuggestions.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
+              <div className="flex flex-wrap gap-2 pt-2">
                 {message.followupSuggestions.map((q) => (
                   <button
                     key={q}
                     type="button"
                     onClick={() => onFollowUp(q)}
-                    className="rounded-full border border-slate-200/80 bg-white px-3 py-1 text-[11px] text-slate-500 transition-all hover:border-brand/30 hover:bg-brand/5 hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-brand/30 dark:hover:text-brand"
+                    className="rounded-full bg-slate-50 px-3.5 py-1.5 text-[11.5px] text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {q}
                   </button>
