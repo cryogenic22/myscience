@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Send, Sparkles, BarChart3, Search, Target, ArrowRight } from 'lucide-react';
+import { ArrowRight, Loader2, Send, Sparkles, BarChart3, Search, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Message } from '../ChatMessage';
 import NarrativeMessage from './NarrativeMessage';
@@ -116,10 +116,10 @@ export default function ChatPanel({
         </div>
       </div>
 
-      {/* Input */}
-      <div className="shrink-0 bg-white/80 backdrop-blur-lg px-6 py-5 dark:bg-slate-900/80">
-        <div className="mx-auto max-w-2xl px-1">
-          <div className="flex items-end gap-2 rounded-2xl bg-slate-50 px-4 py-3 transition-all focus-within:bg-white focus-within:shadow-lg focus-within:ring-1 focus-within:ring-slate-200/60 dark:bg-slate-800 dark:focus-within:bg-slate-800 dark:focus-within:ring-slate-700">
+      {/* Input — matches IE pattern */}
+      <div className="shrink-0 px-5 py-4 border-t border-border">
+        <div className="mx-auto max-w-2xl">
+          <div className="flex items-end gap-2 rounded-xl bg-surface border border-border transition-colors focus-within:border-brand/30">
             <textarea
               ref={inputRef}
               value={input}
@@ -127,26 +127,26 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder={isEmpty ? 'Ask about drugs, trials, companies, mechanisms...' : 'Follow-up question...'}
               rows={1}
-              className="flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-slate-800 placeholder:text-slate-400 outline-none dark:text-slate-100"
-              style={{ maxHeight: '120px' }}
+              className="flex-1 resize-none bg-transparent px-4 py-3 text-[13px] leading-relaxed text-ink placeholder:text-ink-soft/50 outline-none"
+              style={{ minHeight: '44px', maxHeight: '96px' }}
               disabled={isLoading}
             />
             <button
               type="button"
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-all hover:bg-brand-dark disabled:opacity-20 disabled:hover:bg-brand"
+              className="mb-1 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-30"
               aria-label="Send"
             >
               {isLoading ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
-                <ArrowRight size={15} />
+                <Send size={14} />
               )}
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] tracking-wide text-slate-400/70 dark:text-slate-500">
-            Grounded in ClinicalTrials.gov {'\u00B7'} PubMed {'\u00B7'} FDA Orange Book {'\u00B7'} SEC Edgar
+          <p className="mt-2 text-center text-[9px] text-ink-soft/40">
+            Powered by Claude {'\u00B7'} Responses are AI-generated and grounded in connected data sources
           </p>
         </div>
       </div>

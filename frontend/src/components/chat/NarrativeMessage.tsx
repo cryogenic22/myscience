@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Bot, User, ShieldCheck, ShieldAlert, Send } from 'lucide-react';
 import type { Message } from '../ChatMessage';
 import type { EvidenceItem } from '../../api';
 
@@ -23,10 +23,13 @@ export default function NarrativeMessage({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className="flex justify-end"
+        className="flex gap-2.5 justify-end"
       >
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-[13.5px] leading-relaxed text-white shadow-sm dark:bg-slate-700">
-          {message.content}
+        <div className="max-w-[85%] rounded-xl rounded-tr-sm bg-brand px-4 py-2.5 text-[13px] leading-relaxed text-white">
+          <div className="whitespace-pre-wrap">{message.content}</div>
+        </div>
+        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-surface-hover">
+          <User size={12} className="text-ink-soft" />
         </div>
       </motion.div>
     );
@@ -37,41 +40,50 @@ export default function NarrativeMessage({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="flex gap-3"
+      className="flex gap-2.5"
     >
-      {/* Avatar */}
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand/15 to-brand/5 ring-1 ring-brand/10">
-        <Bot size={14} className="text-brand" />
+      {/* Bot avatar */}
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+        <Bot size={12} className="text-brand" />
       </div>
 
-      <div className="min-w-0 flex-1 space-y-2.5">
+      <div className="min-w-0 max-w-[85%]">
         {message.loading ? (
-          <LoadingPulse />
+          <div className="rounded-xl rounded-tl-sm bg-surface px-4 py-3">
+            <div className="flex gap-1">
+              <div className="h-1.5 w-1.5 rounded-full bg-ink-soft/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="h-1.5 w-1.5 rounded-full bg-ink-soft/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="h-1.5 w-1.5 rounded-full bg-ink-soft/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
         ) : (
           <>
-            {/* Narrative text */}
-            <div className="text-[14px] leading-[1.75] text-slate-700 dark:text-slate-300">
+            {/* Message bubble */}
+            <div className="rounded-xl rounded-tl-sm bg-surface px-4 py-2.5 text-[13px] leading-relaxed text-ink">
               <RichText
                 text={message.content}
                 evidence={message.data?.evidence as EvidenceItem[] | undefined}
                 onCitationClick={onCitationClick}
               />
+
+              {/* Guard warning inside bubble */}
+              {message.confidenceAssessment && message.confidenceAssessment.overall < 0.5 && (
+                <div className="mt-2 flex items-center gap-1.5 border-t border-amber-200/50 pt-2 text-[10px] text-amber-600">
+                  <ShieldAlert size={10} />
+                  <span>Some details may be approximate. Verify specifics in the data canvas.</span>
+                </div>
+              )}
             </div>
 
-            {/* Confidence indicator */}
-            {message.confidenceAssessment && (
-              <ConfidenceIndicator value={message.confidenceAssessment.overall} />
-            )}
-
-            {/* Follow-up suggestions */}
+            {/* Follow-up suggestions — outside bubble */}
             {onFollowUp && message.followupSuggestions && message.followupSuggestions.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {message.followupSuggestions.map((q) => (
                   <button
                     key={q}
                     type="button"
                     onClick={() => onFollowUp(q)}
-                    className="rounded-full bg-slate-50 px-3.5 py-1.5 text-[11.5px] text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="rounded-lg bg-surface px-3 py-1.5 text-[11px] text-ink-soft transition-all hover:bg-surface-hover hover:text-ink"
                   >
                     {q}
                   </button>
@@ -82,35 +94,6 @@ export default function NarrativeMessage({
         )}
       </div>
     </motion.div>
-  );
-}
-
-/* ── Sub-components ── */
-
-function LoadingPulse() {
-  return (
-    <div className="flex items-center gap-1.5 py-2">
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="h-2 w-2 rounded-full bg-brand/40 animate-pulse"
-          style={{ animationDelay: `${i * 150}ms` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ConfidenceIndicator({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color = value > 0.7 ? 'text-emerald-600' : value > 0.4 ? 'text-amber-600' : 'text-red-500';
-  const Icon = value > 0.7 ? ShieldCheck : ShieldAlert;
-
-  return (
-    <div className={`inline-flex items-center gap-1 text-[10px] font-medium ${color}`}>
-      <Icon size={11} />
-      <span>{pct}% confidence</span>
-    </div>
   );
 }
 
@@ -130,7 +113,7 @@ function RichText({
   return (
     <>
       {parts.map((part, i) => {
-        if (part.type === 'bold') return <strong key={i} className="font-semibold text-slate-900 dark:text-white">{part.text}</strong>;
+        if (part.type === 'bold') return <strong key={i} className="font-semibold text-ink">{part.text}</strong>;
         if (part.type === 'italic') return <em key={i}>{part.text}</em>;
         if (part.type === 'citation') {
           const idx = parseInt(part.text, 10);
@@ -150,51 +133,30 @@ function RichText({
   );
 }
 
-interface TextPart {
-  type: 'text' | 'bold' | 'italic' | 'citation';
-  text: string;
-}
+interface TextPart { type: 'text' | 'bold' | 'italic' | 'citation'; text: string; }
 
 function parseRichText(text: string): TextPart[] {
   const parts: TextPart[] = [];
   const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(\[(\d+)\])/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-
   while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', text: text.slice(lastIndex, match.index) });
-    }
+    if (match.index > lastIndex) parts.push({ type: 'text', text: text.slice(lastIndex, match.index) });
     if (match[1]) parts.push({ type: 'bold', text: match[2] });
     else if (match[3]) parts.push({ type: 'italic', text: match[4] });
     else if (match[5]) parts.push({ type: 'citation', text: match[6] });
     lastIndex = regex.lastIndex;
   }
-
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', text: text.slice(lastIndex) });
-  }
-
+  if (lastIndex < text.length) parts.push({ type: 'text', text: text.slice(lastIndex) });
   return parts;
 }
 
-function CitationRef({
-  index,
-  evidence,
-  onClick,
-}: {
-  index: number;
-  evidence?: EvidenceItem;
-  onClick?: () => void;
-}) {
+function CitationRef({ index, evidence, onClick }: { index: number; evidence?: EvidenceItem; onClick?: () => void }) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-
   return (
     <span className="relative inline-block">
       <span
-        ref={ref}
-        className="cursor-pointer rounded-sm bg-brand/10 px-1 py-0.5 text-[10px] font-semibold text-brand transition-colors hover:bg-brand/20"
+        className="cursor-pointer rounded bg-brand/10 px-1 py-0.5 text-[10px] font-semibold text-brand transition-colors hover:bg-brand/20"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onClick={onClick}
@@ -204,13 +166,9 @@ function CitationRef({
         [{index}]
       </span>
       {showTooltip && evidence && (
-        <div className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-lg dark:border-slate-700 dark:bg-slate-800">
-          <div className="font-medium text-slate-700 dark:text-slate-200 line-clamp-2">
-            {evidence.content}
-          </div>
-          {evidence.source && (
-            <div className="mt-1 text-[10px] text-slate-400">{evidence.source}</div>
-          )}
+        <div className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl bg-white p-3 text-[11px] shadow-lg ring-1 ring-black/5">
+          <div className="font-medium text-ink line-clamp-2">{evidence.content}</div>
+          {evidence.source && <div className="mt-1 text-[10px] text-ink-soft">{evidence.source}</div>}
         </div>
       )}
     </span>
