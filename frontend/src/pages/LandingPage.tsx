@@ -1,18 +1,6 @@
-import type { ComponentType } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  ArrowRight,
-  Bot,
-  Building2,
-  Database,
-  FlaskConical,
-  GitBranch,
-  Network,
-  Search,
-  Sparkles,
-  Zap,
-} from 'lucide-react';
-import { PRODUCT_NAME, PRODUCT_SUBTITLE } from '../brand';
+import { ArrowRight, Database, FlaskConical, Network, Search } from 'lucide-react';
+import { PRODUCT_NAME } from '../brand';
 import { useHealthStats } from '../hooks/useHealthStats';
 
 interface LandingPageProps {
@@ -20,18 +8,18 @@ interface LandingPageProps {
   onSearch: () => void;
 }
 
-function LiveNumber({ value }: { value: number }) {
+function Counter({ value }: { value: number }) {
   return (
     <AnimatePresence mode="wait">
       <motion.span
         key={value}
-        initial={{ opacity: 0, y: 6 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -6 }}
-        transition={{ duration: 0.2 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.25 }}
         className="tabular-nums"
       >
-        {value.toLocaleString()}
+        {value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toLocaleString()}
       </motion.span>
     </AnimatePresence>
   );
@@ -40,157 +28,216 @@ function LiveNumber({ value }: { value: number }) {
 export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
   const stats = useHealthStats();
 
-  const domainEntities = stats.drugs + stats.trials + stats.articles + stats.companies + stats.events;
-  const ontologyDensity = domainEntities > 0 ? (stats.entityLinks / domainEntities) : 0;
-
   return (
-    <div className="min-h-screen overflow-y-auto bg-surface">
-      <div className="mx-auto max-w-5xl px-6 pb-32 pt-16 sm:px-10 lg:pt-24">
+    <div
+      className="min-h-screen overflow-y-auto"
+      style={{ background: 'var(--color-bg)' }}
+    >
+      {/* ── Minimal topbar ── */}
+      <header className="sticky top-0 z-40 topbar">
+        <div className="flex h-full items-center justify-between px-8">
+          <span
+            className="font-display text-[17px] font-light tracking-tight"
+            style={{ color: 'var(--color-ink)' }}
+          >
+            {PRODUCT_NAME}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onSearch}
+              className="btn btn-ghost btn-sm flex items-center gap-1.5"
+            >
+              <Search size={13} />
+              Search
+            </button>
+            <button onClick={onEnter} className="btn btn-primary btn-sm">
+              Open
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        </div>
+      </header>
 
-        {/* ── Hero ── */}
-        <section className="text-center">
+      {/* ── Hero ── */}
+      <section className="relative flex flex-col items-center justify-center py-32 px-6 text-center overflow-hidden">
+        {/* Subtle background gradient */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(28,110,247,0.06) 0%, transparent 70%)',
+          }}
+        />
+
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="relative max-w-4xl"
+        >
+          <p
+            className="text-label mb-6"
+            style={{ color: 'var(--color-accent)' }}
+          >
+            Pharmaceutical Intelligence Platform
+          </p>
+
+          <h1
+            className="text-hero mb-8"
+            style={{ color: 'var(--color-ink)' }}
+          >
+            The intelligence layer
+            <br />
+            <em>pharma strategy needs</em>
+          </h1>
+
+          <p
+            className="mx-auto max-w-2xl text-[17px] leading-relaxed mb-12"
+            style={{ color: 'var(--color-ink-3)', fontWeight: 300 }}
+          >
+            A unified knowledge graph across drugs, trials, companies, and literature.
+            Evidence-grounded answers for executives and agentic AI workflows.
+          </p>
+
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={onEnter}
+              className="btn btn-accent"
+              style={{ fontSize: '15px', padding: '13px 28px' }}
+            >
+              Open Workspace
+              <ArrowRight size={16} />
+            </button>
+            <button
+              onClick={onSearch}
+              className="btn btn-secondary"
+              style={{ fontSize: '15px', padding: '13px 28px' }}
+            >
+              <Search size={15} />
+              Explore
+            </button>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ── Live metrics strip ── */}
+      {!stats.loading && (
+        <motion.section
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4, duration: 0.6 }}
+          className="border-y py-10"
+          style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}
+        >
+          <div className="mz-container">
+            <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+              {[
+                { icon: Database, label: 'Total Records', value: stats.totalRecords },
+                { icon: Network, label: 'Graph Links', value: stats.entityLinks },
+                { icon: FlaskConical, label: 'Clinical Trials', value: stats.trials },
+                { icon: Database, label: 'Companies', value: stats.companies },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="text-center">
+                  <div
+                    className="text-[38px] font-light tracking-tight mb-1"
+                    style={{ color: 'var(--color-ink)', fontFamily: 'var(--font-display)' }}
+                  >
+                    <Counter value={value} />
+                  </div>
+                  <div style={{ color: 'var(--color-ink-3)', fontSize: '13px' }}>
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.section>
+      )}
+
+      {/* ── Pillars ── */}
+      <section className="py-28 px-6">
+        <div className="mz-container">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="mb-16 text-center"
           >
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand/12 to-brand/4 ring-1 ring-brand/10">
-              <Zap size={28} className="text-brand" />
-            </div>
-
-            <h1 className="text-[42px] font-bold tracking-tight text-ink sm:text-[54px] lg:text-[64px]">
-              {PRODUCT_NAME}
-            </h1>
-            <p className="mt-2 text-[17px] text-ink-soft sm:text-[19px]">
-              {PRODUCT_SUBTITLE}
-            </p>
-
-            <p className="mx-auto mt-6 max-w-2xl text-[15px] leading-relaxed text-ink-soft/80">
-              A connected domain graph unifying therapeutic signals, trial evidence,
-              company strategy, and literature provenance. Built for executive trust
-              and agentic AI workflows.
-            </p>
-
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={onEnter}
-                className="btn-primary group inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-[14px] font-semibold shadow-lg shadow-brand/20 transition-all hover:shadow-xl hover:shadow-brand/30"
-              >
-                Open Workspace
-                <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-              </button>
-              <button
-                onClick={onSearch}
-                className="btn-secondary inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-[14px] font-semibold"
-              >
-                <Search size={15} />
-                Explore Search
-              </button>
-            </div>
+            <p className="text-label mb-4">Platform</p>
+            <h2
+              className="font-display text-[36px] font-light tracking-tight"
+              style={{ color: 'var(--color-ink)' }}
+            >
+              Built on connected evidence
+            </h2>
           </motion.div>
-        </section>
 
-        {/* ── Live Stats ── */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-          className="mt-20"
-        >
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Records" value={stats.totalRecords} icon={Database} />
-            <StatTile label="Graph Links" value={stats.entityLinks} icon={Network} />
-            <StatTile label="Clinical Trials" value={stats.trials} icon={FlaskConical} />
-            <StatTile label="Companies" value={stats.companies} icon={Building2} />
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            {stats.services.map((service) => (
-              <span key={service} className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-ink-soft shadow-sm">
-                {service}
-              </span>
+          <div className="grid grid-cols-1 gap-px sm:grid-cols-2"
+            style={{ background: 'var(--color-line)', borderRadius: '20px', overflow: 'hidden' }}
+          >
+            {[
+              {
+                n: '01',
+                title: 'Ontology Core',
+                body: 'Unified entities and typed links across molecules, trials, companies, literature, and market signals.',
+              },
+              {
+                n: '02',
+                title: 'GraphRAG Intelligence',
+                body: 'Pharma-specific semantics power evidence retrieval and context composition for strategic reasoning.',
+              },
+              {
+                n: '03',
+                title: 'Integrated Data Fabric',
+                body: 'Continuously ingested evidence from regulatory, clinical, literature, and financial systems.',
+              },
+              {
+                n: '04',
+                title: 'Agentic AI Ready',
+                body: 'Search, graph, metrics, and query orchestration aligned for autonomous investigative workflows.',
+              },
+            ].map((pillar, i) => (
+              <motion.div
+                key={pillar.n}
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08, duration: 0.5 }}
+                className="group p-10 transition-colors duration-200"
+                style={{ background: 'var(--color-surface)' }}
+              >
+                <div
+                  className="text-label mb-6"
+                  style={{ color: 'var(--color-ink-4)' }}
+                >
+                  {pillar.n}
+                </div>
+                <h3
+                  className="text-[20px] font-medium tracking-tight mb-3"
+                  style={{ color: 'var(--color-ink)' }}
+                >
+                  {pillar.title}
+                </h3>
+                <p
+                  className="text-[14px] leading-relaxed"
+                  style={{ color: 'var(--color-ink-3)', fontWeight: 300 }}
+                >
+                  {pillar.body}
+                </p>
+              </motion.div>
             ))}
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
-              {stats.services.length} services online
-            </span>
           </div>
-        </motion.section>
-
-        {/* ── Pillars ── */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="mt-20"
-        >
-          <h2 className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-            Platform Architecture
-          </h2>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <PillarCard
-              icon={Network}
-              title="Ontology Core"
-              detail="Unified entities and typed links across molecules, trials, companies, literature, and market signals."
-              stat={`${stats.entityLinks.toLocaleString()} connected links`}
-            />
-            <PillarCard
-              icon={GitBranch}
-              title="Domain Semantics"
-              detail="Pharma-specific semantics power retrieval and context composition for strategic and clinical reasoning."
-              stat={`${ontologyDensity.toFixed(1)} links per entity`}
-            />
-            <PillarCard
-              icon={Database}
-              title="Integrated Data Fabric"
-              detail="Continuously ingested evidence from regulatory, clinical, literature, and financial systems."
-              stat={`${stats.connectors.toLocaleString()} active source channels`}
-            />
-            <PillarCard
-              icon={Bot}
-              title="Agentic AI Ready"
-              detail="Search, graph, metrics, and query orchestration aligned for autonomous investigative workflows."
-              stat={`${stats.services.length} services online`}
-            />
-          </div>
-        </motion.section>
-
-        {/* ── Footer attribution ── */}
-        <div className="mt-24 text-center text-[11px] tracking-wide text-ink-soft/50">
-          Grounded in ClinicalTrials.gov · PubMed · FDA Orange Book · SEC Edgar
         </div>
-      </div>
-    </div>
-  );
-}
+      </section>
 
-/* ── Sub-components ── */
-
-function StatTile({ label, value, icon: Icon }: { label: string; value: number; icon: ComponentType<{ size?: number; className?: string }> }) {
-  return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm text-center">
-      <Icon size={16} className="mx-auto mb-2 text-ink-soft/50" />
-      <div className="text-[28px] font-bold tracking-tight text-ink">
-        <LiveNumber value={value} />
-      </div>
-      <div className="mt-0.5 text-[12px] text-ink-soft">{label}</div>
-    </div>
-  );
-}
-
-function PillarCard({ icon: Icon, title, detail, stat }: {
-  icon: ComponentType<{ size?: number; className?: string }>;
-  title: string;
-  detail: string;
-  stat: string;
-}) {
-  return (
-    <div className="group rounded-2xl bg-white p-6 shadow-sm transition-all hover:shadow-md">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-ink-soft transition-colors group-hover:bg-brand/8 group-hover:text-brand">
-        <Icon size={18} />
-      </div>
-      <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
-      <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">{detail}</p>
-      <p className="mt-3 text-[12px] font-medium text-brand">{stat}</p>
+      {/* ── Sources ── */}
+      <section
+        className="py-16 text-center"
+        style={{ color: 'var(--color-ink-4)', fontSize: '12px', letterSpacing: '0.05em' }}
+      >
+        ClinicalTrials.gov · PubMed · FDA Orange Book · SEC Edgar · ChEMBL · Open Targets
+      </section>
     </div>
   );
 }

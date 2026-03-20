@@ -1,5 +1,6 @@
-import { ArrowLeft, Database, MessageSquare, Moon, Network, Search, Sun, Sparkles } from 'lucide-react';
+import { ArrowLeft, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
+import { PRODUCT_NAME } from '../../brand';
 
 interface TopBarProps {
   onBack: () => void;
@@ -9,77 +10,99 @@ interface TopBarProps {
   breadcrumb?: string;
 }
 
-const TABS: Array<{ key: 'chat' | 'graph' | 'catalog'; label: string; icon: typeof MessageSquare }> = [
-  { key: 'chat', label: 'Intelligence', icon: Sparkles },
-  { key: 'graph', label: 'Graph', icon: Network },
-  { key: 'catalog', label: 'Data', icon: Database },
+const TABS = [
+  { key: 'chat' as const, label: 'Intelligence', icon: Sparkles },
+  { key: 'graph' as const, label: 'Graph', icon: Network },
+  { key: 'catalog' as const, label: 'Data', icon: Database },
 ];
 
 export default function TopBar({ onBack, onSearch, activeTab, onTabChange, breadcrumb }: TopBarProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 bg-white/70 backdrop-blur-2xl dark:bg-slate-900/70">
-      <div className="flex h-14 items-center justify-between px-4">
-        {/* Left: back + brand + tabs */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="group flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-            title="Back to Home"
-            aria-label="Back to Home"
-          >
-            <ArrowLeft size={15} className="transition-transform group-hover:-translate-x-0.5" />
-          </button>
+    <header
+      className="topbar sticky top-0 z-30 shrink-0"
+      style={{ height: '52px' }}
+    >
+      <div className="flex h-full items-center gap-4 px-5">
+        {/* Back */}
+        <button
+          type="button"
+          onClick={onBack}
+          className="btn-icon shrink-0"
+          title="Back"
+          aria-label="Back"
+        >
+          <ArrowLeft size={15} />
+        </button>
 
-          <div className="h-5 w-px bg-slate-200/80 dark:bg-slate-700" />
+        {/* Brand */}
+        <span
+          className="font-display text-[15px] font-light shrink-0"
+          style={{ color: 'var(--color-ink-3)', letterSpacing: '-0.01em' }}
+        >
+          {PRODUCT_NAME}
+        </span>
 
-          <nav className="flex items-center gap-0.5 rounded-full bg-slate-100 p-1 dark:bg-slate-800">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => onTabChange(tab.key)}
-                  className={`relative inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium transition-all duration-200 ${
-                    isActive
-                      ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                  aria-label={tab.label}
-                >
-                  <Icon size={13} />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+        <div
+          className="h-4 w-px shrink-0"
+          style={{ background: 'var(--color-line)' }}
+        />
 
-        {/* Center: breadcrumb */}
+        {/* Tabs — segmented control */}
+        <nav
+          className="flex items-center rounded-[10px] p-1 gap-0.5"
+          style={{ background: 'var(--color-surface-2)' }}
+        >
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onTabChange(key)}
+              className="nav-tab"
+              data-active={activeTab === key}
+              style={{
+                background: activeTab === key ? 'var(--color-surface)' : 'transparent',
+                color: activeTab === key ? 'var(--color-ink)' : 'var(--color-ink-3)',
+                boxShadow: activeTab === key ? 'var(--shadow-xs)' : 'none',
+              }}
+            >
+              <Icon size={13} />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* Breadcrumb */}
         {breadcrumb && (
-          <div className="absolute left-1/2 -translate-x-1/2 truncate text-[11px] text-slate-400 dark:text-slate-500 max-w-[30vw]">
+          <div
+            className="hidden lg:block truncate text-[12px] flex-1 text-center"
+            style={{ color: 'var(--color-ink-4)' }}
+          >
             {breadcrumb}
           </div>
         )}
 
-        {/* Right: search + theme */}
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {onSearch && (
             <button
               type="button"
               onClick={onSearch}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-[11px] text-slate-500 transition-all hover:border-slate-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-400"
-              title="Search (Cmd+K)"
-              aria-label="Search"
+              className="btn btn-ghost btn-sm hidden sm:flex items-center gap-2"
+              style={{ borderRadius: '8px' }}
             >
-              <Search size={12} />
-              <span className="hidden sm:inline">Search</span>
-              <kbd className="hidden rounded border border-slate-200/80 bg-slate-50 px-1 py-0.5 text-[9px] font-medium text-slate-400 sm:inline dark:border-slate-700 dark:bg-slate-800">
-                {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
+              <Search size={13} />
+              <span style={{ color: 'var(--color-ink-3)' }}>Search</span>
+              <kbd
+                className="rounded px-1.5 py-0.5"
+                style={{
+                  fontSize: '10px',
+                  background: 'var(--color-surface-2)',
+                  color: 'var(--color-ink-4)',
+                  border: '1px solid var(--color-line)',
+                }}
+              >
+                ⌘K
               </kbd>
             </button>
           )}
@@ -87,12 +110,23 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="btn-icon"
+            title="Toggle theme"
             aria-label="Toggle theme"
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
+
+          {/* Live dot */}
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-[8px]"
+            style={{ background: 'var(--color-surface-2)' }}
+          >
+            <span
+              className="h-2 w-2 rounded-full pulse-live"
+              style={{ background: '#22C55E' }}
+            />
+          </div>
         </div>
       </div>
     </header>

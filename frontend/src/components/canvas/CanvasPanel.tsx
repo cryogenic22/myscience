@@ -1,18 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, AlertTriangle, BarChart3, ChevronDown, ChevronRight, Layers, Table2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Layers } from 'lucide-react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { TableData, VisualizationSpec, QueryResponse, EvidenceItem, PersonaAnalysis } from '../../api';
 
@@ -30,13 +21,15 @@ interface CanvasPanelProps {
 
 const INTENT_LABELS: Record<string, string> = {
   landscape: 'Competitive Landscape',
-  compare: 'Head-to-Head Comparison',
+  compare: 'Comparison',
   dossier: 'Entity Profile',
-  pipeline: 'Pipeline Analysis',
-  portfolio: 'Company Portfolio',
+  pipeline: 'Pipeline',
+  portfolio: 'Portfolio',
   structured_query: 'Data Query',
   general: 'Analysis',
 };
+
+const CHART_COLORS = ['#1C6EF7', '#22C55E', '#0EA5E9', '#F59E0B', '#8B5CF6', '#EF4444'];
 
 export default function CanvasPanel({
   intent,
@@ -44,48 +37,39 @@ export default function CanvasPanel({
   tableData,
   visualizations,
   confidence,
-  guardStatus,
   loading,
   personaAnalyses,
   confidenceAssessment,
 }: CanvasPanelProps) {
   const hasTable = Boolean(tableData && tableData.rows.length > 0);
   const hasViz = Boolean(visualizations && visualizations.length > 0);
-  const hasEntities = Boolean(data?.entity_focus && data.entity_focus.length > 0);
-  const hasMetrics = Boolean(data?.metrics_context && Object.keys(data.metrics_context).length > 0);
-  const hasEvidence = Boolean(data?.evidence && data.evidence.length > 0);
-  const hasPersonaAnalyses = Boolean(personaAnalyses && personaAnalyses.length > 0);
-  const hasContent = hasTable || hasViz || hasEntities || hasMetrics || hasEvidence || hasPersonaAnalyses;
+  const hasEntities = Boolean(data?.entity_focus?.length);
+  const hasEvidence = Boolean(data?.evidence?.length);
+  const hasPersonas = Boolean(personaAnalyses?.length);
+  const hasContent = hasTable || hasViz || hasEntities || hasEvidence || hasPersonas;
 
-  if (loading) {
-    return (
-      <div className="flex h-full flex-col p-6">
-        <div className="mb-4 h-5 w-40 animate-pulse rounded-md bg-slate-200/60 dark:bg-slate-700/40" />
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl bg-white p-5 dark:bg-slate-800/50">
-              <div className="mb-3 h-4 w-24 animate-pulse rounded bg-slate-200/60 dark:bg-slate-700/40" />
-              <div className="space-y-2">
-                <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
-                <div className="h-3 w-4/5 animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
-                <div className="h-3 w-3/5 animate-pulse rounded bg-slate-100 dark:bg-slate-700/30" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <CanvasLoading />;
 
   if (!hasContent) {
     return (
-      <div className="flex h-full flex-col items-center justify-center px-8">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100/80 dark:bg-slate-800/60">
-          <Layers size={20} className="text-slate-400 dark:text-slate-500" />
+      <div
+        className="flex h-full flex-col items-center justify-center px-8 text-center"
+        style={{ background: 'var(--color-surface-2)' }}
+      >
+        <div
+          className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl"
+          style={{ background: 'var(--color-surface-3)', color: 'var(--color-ink-4)' }}
+        >
+          <Layers size={20} />
         </div>
-        <p className="mt-4 text-[13px] font-medium text-slate-400 dark:text-slate-500">Data Canvas</p>
-        <p className="mt-1 max-w-[240px] text-center text-[12px] leading-relaxed text-slate-400/80 dark:text-slate-500/80">
-          Tables, charts, and entity details will appear here as you explore.
+        <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-3)' }}>
+          Data Canvas
+        </p>
+        <p
+          className="mt-1"
+          style={{ fontSize: '12px', color: 'var(--color-ink-4)', maxWidth: '220px', lineHeight: 1.5 }}
+        >
+          Tables, charts, and entities will appear here as you explore.
         </p>
       </div>
     );
@@ -94,352 +78,267 @@ export default function CanvasPanel({
   const confValue = confidenceAssessment?.overall ?? confidence;
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      {/* Header strip */}
-      <div className="shrink-0 px-6 pt-6 pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            {intent && (
-              <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">
-                {INTENT_LABELS[intent] ?? intent}
-              </h3>
-            )}
-            {confValue != null && <ConfidenceBadge value={confValue} />}
-          </div>
-          {tableData && tableData.rows.length > 0 && (
-            <span className="text-[10px] text-slate-400">
-              {tableData.rows.length} {tableData.rows.length === 1 ? 'row' : 'rows'}
+    <div
+      className="flex h-full flex-col overflow-y-auto"
+      style={{ background: 'var(--color-surface-2)' }}
+    >
+      {/* Header */}
+      <div
+        className="shrink-0 flex items-center justify-between px-6 py-4"
+        style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+      >
+        <div className="flex items-center gap-3">
+          {intent && (
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: 600,
+                color: 'var(--color-ink)',
+              }}
+            >
+              {INTENT_LABELS[intent] ?? intent}
+            </span>
+          )}
+          {confValue != null && (
+            <span
+              className="badge"
+              style={{
+                background: confValue > 0.7
+                  ? 'var(--color-green-soft)'
+                  : confValue > 0.4
+                    ? 'var(--color-amber-soft)'
+                    : 'var(--color-red-soft)',
+                color: confValue > 0.7
+                  ? 'var(--color-green)'
+                  : confValue > 0.4
+                    ? 'var(--color-amber)'
+                    : 'var(--color-red)',
+              }}
+            >
+              {Math.round(confValue * 100)}% confidence
             </span>
           )}
         </div>
-
-        {guardStatus && guardStatus !== 'ok' && (
-          <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-amber-200/60 bg-amber-50/50 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-500/20 dark:bg-amber-900/20 dark:text-amber-400">
-            <AlertTriangle size={12} className="shrink-0" />
-            <span>Response may contain unverified claims — review with caution</span>
-          </div>
+        {tableData && tableData.rows.length > 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+            {tableData.rows.length} rows
+          </span>
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={intent ?? 'default'}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="space-y-4"
-          >
-            <IntentRouter
-              intent={intent}
-              data={data}
-              tableData={tableData}
-              visualizations={visualizations}
-              personaAnalyses={personaAnalyses}
-              confidenceAssessment={confidenceAssessment}
-            />
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-/* ── Intent router ── */
-
-function IntentRouter({
-  intent,
-  data,
-  tableData,
-  visualizations,
-  personaAnalyses,
-  confidenceAssessment,
-}: {
-  intent: string | null;
-  data: QueryResponse | null;
-  tableData: TableData | null;
-  visualizations: VisualizationSpec[] | null;
-  personaAnalyses?: PersonaAnalysis[];
-  confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
-}) {
-  const hasTable = Boolean(tableData && tableData.rows.length > 0);
-  const hasViz = Boolean(visualizations && visualizations.length > 0);
-
-  switch (intent) {
-    case 'landscape':
-      return (
-        <>
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          {hasViz && <VisualizationGrid specs={visualizations!} />}
-          <EvidenceSection data={data} />
-        </>
-      );
-
-    case 'compare':
-      return (
-        <>
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          <EntitySection data={data} />
-          <EvidenceSection data={data} />
-        </>
-      );
-
-    case 'dossier':
-      return (
-        <>
-          <EntitySection data={data} />
-          <MetricsSection data={data} />
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          {hasViz && <VisualizationGrid specs={visualizations!} />}
-          <EvidenceSection data={data} />
-        </>
-      );
-
-    case 'pipeline':
-      return (
-        <>
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          {hasViz && <VisualizationGrid specs={visualizations!} />}
-          <MetricsSection data={data} />
-          <EvidenceSection data={data} />
-        </>
-      );
-
-    case 'portfolio':
-      return (
-        <>
-          <MetricsSection data={data} />
-          <EntitySection data={data} />
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          {hasViz && <VisualizationGrid specs={visualizations!} />}
-          <EvidenceSection data={data} />
-        </>
-      );
-
-    default:
-      return (
-        <>
-          {hasTable && tableData && <DataTable tableData={tableData} />}
-          {hasViz && <VisualizationGrid specs={visualizations!} />}
-          {personaAnalyses && personaAnalyses.length > 0 && (
-            <PersonaSection
-              analyses={personaAnalyses}
-              evidence={data?.evidence}
-              confidenceAssessment={confidenceAssessment}
-            />
+      {/* Content sections */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={intent ?? 'default'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+        >
+          {hasTable && tableData && (
+            <Section title="Data">
+              <DataTable tableData={tableData} />
+            </Section>
           )}
-          <EntitySection data={data} />
-          <MetricsSection data={data} />
-          <EvidenceSection data={data} />
-        </>
-      );
-  }
-}
 
-/* ── Shared sub-components ── */
+          {hasViz && (
+            <Section title="Visualisations">
+              <div className="space-y-6">
+                {visualizations!.filter(v => v.data.some(d => Number(d.value) > 0)).map(spec => (
+                  <VizCard key={spec.id} spec={spec} />
+                ))}
+              </div>
+            </Section>
+          )}
 
-function EmptyCanvas() {
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100/60">
-        <Layers size={20} className="text-slate-300" />
-      </div>
-      <p className="text-[13px] font-medium text-slate-400">
-        Ask a question to see data here
-      </p>
-      <p className="mt-1 text-[11px] text-slate-300">
-        Tables, charts, and entities will appear in this panel
-      </p>
+          {hasEntities && data && (
+            <Section title="Key Entities">
+              <EntityGrid entities={(data.entity_focus ?? []).slice(0, 6) as Record<string, unknown>[]} />
+            </Section>
+          )}
+
+          {hasEvidence && data && (
+            <EvidenceSection evidence={data.evidence} />
+          )}
+
+          {hasPersonas && personaAnalyses && (
+            <Section title="Team Evaluation">
+              {confidenceAssessment && (
+                <div className="flex items-center gap-3 mb-4">
+                  <div
+                    className="flex-1 h-1 rounded-full overflow-hidden"
+                    style={{ background: 'var(--color-surface-3)' }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.round(confidenceAssessment.overall * 100)}%`,
+                        background: confidenceAssessment.overall >= 0.7
+                          ? 'var(--color-green)'
+                          : confidenceAssessment.overall >= 0.4
+                            ? 'var(--color-amber)'
+                            : 'var(--color-red)',
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-ink-2)' }}>
+                    {Math.round(confidenceAssessment.overall * 100)}%
+                  </span>
+                </div>
+              )}
+              <div className="space-y-1">
+                {personaAnalyses.map(pa => <PersonaRow key={pa.persona} analysis={pa} />)}
+              </div>
+            </Section>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
 
-function SkeletonCards() {
+/* ── Shared section wrapper ── */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="animate-pulse rounded-xl bg-white p-4">
-          <div className="mb-3 h-3 w-1/3 rounded bg-slate-100" />
-          <div className="space-y-2">
-            <div className="h-2.5 w-full rounded bg-slate-100" />
-            <div className="h-2.5 w-5/6 rounded bg-slate-100" />
-            <div className="h-2.5 w-2/3 rounded bg-slate-100" />
-          </div>
-        </div>
+    <div
+      className="canvas-section"
+      style={{ padding: '24px' }}
+    >
+      <div
+        className="text-label mb-4"
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Loading skeleton ── */
+function CanvasLoading() {
+  return (
+    <div
+      className="flex h-full flex-col"
+      style={{ background: 'var(--color-surface-2)', padding: '24px', gap: '16px' }}
+    >
+      {[80, 60, 100, 45].map((w, i) => (
+        <div
+          key={i}
+          className="rounded-xl"
+          style={{
+            height: '12px',
+            width: `${w}%`,
+            background: 'var(--color-surface-3)',
+            animation: 'pulse-dot 1.5s ease-in-out infinite',
+            animationDelay: `${i * 0.1}s`,
+          }}
+        />
       ))}
     </div>
   );
 }
 
-function ConfidenceBadge({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color = value > 0.7
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    : value > 0.4
-      ? 'bg-amber-50 text-amber-700 border-amber-200'
-      : 'bg-rose-50 text-rose-700 border-rose-200';
-
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${color}`}>
-      {pct}% confidence
-    </span>
-  );
-}
-
-/* ── DataTable (extracted from ChatMessage.tsx pattern) ── */
-
+/* ── DataTable ── */
 function exportCsv(columns: TableData['columns'], rows: TableData['rows'], title: string) {
-  const header = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(',');
-  const body = rows
-    .map((row) =>
-      columns
-        .map((c) => {
-          const val = row[c.key];
-          if (val == null) return '';
-          return `"${String(val).replace(/"/g, '""')}"`;
-        })
-        .join(','),
-    )
-    .join('\n');
-  const csv = `${header}\n${body}`;
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const date = new Date().toISOString().slice(0, 10);
-  const filename = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}-${date}.csv`;
+  const header = columns.map(c => `"${c.label.replace(/"/g, '""')}"`).join(',');
+  const body = rows.map(row =>
+    columns.map(c => {
+      const val = row[c.key];
+      return val == null ? '' : `"${String(val).replace(/"/g, '""')}"`;
+    }).join(',')
+  ).join('\n');
+  const blob = new Blob([`${header}\n${body}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
 function DataTable({ tableData }: { tableData: TableData }) {
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortAsc, setSortAsc] = useState(true);
   const [showAll, setShowAll] = useState(false);
-
-  const handleSort = (key: string) => {
-    if (sortCol === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortCol(key);
-      setSortAsc(true);
-    }
-  };
-
-  const sortedRows = useMemo(() => {
-    if (!sortCol) return tableData.rows;
-    return [...tableData.rows].sort((a, b) => {
-      const va = a[sortCol];
-      const vb = b[sortCol];
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      if (typeof va === 'number' && typeof vb === 'number') {
-        return sortAsc ? va - vb : vb - va;
-      }
-      return sortAsc
-        ? String(va).localeCompare(String(vb))
-        : String(vb).localeCompare(String(va));
-    });
-  }, [tableData.rows, sortCol, sortAsc]);
-
-  const displayRows = showAll ? sortedRows : sortedRows.slice(0, 15);
+  const display = showAll ? tableData.rows : tableData.rows.slice(0, 12);
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-end">
+      <div className="flex items-center justify-between mb-3">
+        {tableData.title && (
+          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-2)' }}>
+            {tableData.title}
+          </span>
+        )}
         <button
           type="button"
-          onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}
-          className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-          title="Download CSV"
+          onClick={() => exportCsv(tableData.columns, tableData.rows, tableData.title || 'data')}
+          className="btn btn-ghost btn-xs flex items-center gap-1"
         >
-          <Download size={10} />
+          <Download size={11} />
           CSV
         </button>
       </div>
-      <div className="max-h-96 overflow-auto rounded-xl bg-white">
-        <table className="min-w-full text-[12px]" style={{ tableLayout: 'auto' }}>
-          <thead className="sticky top-0 z-10 bg-white">
-            <tr className="border-b border-slate-100/60">
-              {tableData.columns.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => handleSort(col.key)}
-                  className={`cursor-pointer whitespace-nowrap px-3 py-1.5 text-left font-medium text-slate-500 hover:text-slate-700 select-none ${
-                    col.type === 'number' ? 'text-right' : ''
-                  }`}
-                >
-                  {col.label}
-                  {sortCol === col.key && (
-                    <span className="ml-0.5">{sortAsc ? '\u25B2' : '\u25BC'}</span>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map((row, i) => (
-              <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors">
-                {tableData.columns.map((col, ci) => (
-                  <td
-                    key={col.key}
-                    title={row[col.key] != null ? String(row[col.key]) : undefined}
-                    className={`px-3 py-1.5 whitespace-nowrap text-slate-600 ${
-                      col.type === 'number' ? 'text-right tabular-nums' : ''
-                    } ${ci === 0 ? 'font-medium text-slate-700' : ''}`}
-                  >
-                    {row[col.key] != null ? String(row[col.key]) : '-'}
-                  </td>
+
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ border: '1px solid var(--color-line)' }}
+      >
+        <div className="overflow-x-auto max-h-80">
+          <table className="data-table">
+            <thead>
+              <tr>
+                {tableData.columns.map(col => (
+                  <th key={col.key} style={{ textAlign: col.type === 'number' ? 'right' : 'left' }}>
+                    {col.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {display.map((row, i) => (
+                <tr key={i}>
+                  {tableData.columns.map((col, ci) => (
+                    <td
+                      key={col.key}
+                      style={{
+                        textAlign: col.type === 'number' ? 'right' : 'left',
+                        fontWeight: ci === 0 ? 500 : 400,
+                        color: ci === 0 ? 'var(--color-ink)' : 'var(--color-ink-3)',
+                      }}
+                    >
+                      {row[col.key] != null ? String(row[col.key]) : '—'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      {sortedRows.length > 15 && !showAll && (
+
+      {tableData.rows.length > 12 && !showAll && (
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="mt-1.5 text-[10px] text-brand-dark hover:underline"
+          className="mt-2"
+          style={{ fontSize: '12px', color: 'var(--color-accent)', background: 'none', border: 'none', cursor: 'pointer' }}
         >
-          Show all {sortedRows.length} rows
+          Show all {tableData.rows.length} rows
         </button>
       )}
     </div>
   );
 }
 
-/* ── Visualizations ── */
-
-const CHART_COLORS = ['#1f6cf2', '#22c55e', '#0ea5e9', '#f59e0b', '#8b5cf6', '#ef4444'];
-
-function VisualizationGrid({ specs }: { specs: VisualizationSpec[] }) {
-  const filtered = specs.filter((s) => s.data.some((d) => Number(d.value) > 0));
-  if (filtered.length === 0) return null;
-
+/* ── Visualisation card ── */
+function VizCard({ spec }: { spec: VisualizationSpec }) {
   return (
-    <div className="grid grid-cols-1 gap-3">
-      {filtered.map((viz) => (
-        <VisualizationCard key={viz.id} spec={viz} />
-      ))}
-    </div>
-  );
-}
-
-function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
-  return (
-    <div className="rounded-xl bg-white p-4">
-      <div className="mb-2 flex items-center gap-2">
-        <BarChart3 size={13} className="text-slate-400" />
-        <span className="text-[11px] font-medium text-slate-600">{spec.title}</span>
-      </div>
-      <div className="w-full" style={{ minHeight: 200, height: 'clamp(200px, 22vw, 280px)' }}>
+    <div>
+      <p
+        className="mb-3"
+        style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-2)' }}
+      >
+        {spec.title}
+      </p>
+      <div style={{ height: '220px' }}>
         <ResponsiveContainer width="100%" height="100%">
           {spec.type === 'donut' ? (
             <PieChart>
@@ -447,31 +346,36 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
                 data={spec.data}
                 dataKey="value"
                 nameKey="label"
-                innerRadius={45}
-                outerRadius={72}
+                innerRadius={50}
+                outerRadius={80}
                 paddingAngle={2}
                 stroke="none"
               >
-                {spec.data.map((entry, index) => (
-                  <Cell key={`${entry.label}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                {spec.data.map((_, index) => (
+                  <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip
-                formatter={(value: number) => [`${value.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
-              />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', color: '#64748b' }} />
+              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
             </PieChart>
           ) : (
-            <BarChart data={spec.data} margin={{ top: 6, right: 10, left: 0, bottom: 20 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} angle={-20} textAnchor="end" />
-              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                formatter={(value: number) => [`${value.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
-                labelFormatter={(label: string) => `${label}`}
+            <BarChart data={spec.data} margin={{ top: 4, right: 8, left: 0, bottom: 16 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-line)" />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: 'var(--color-ink-4)', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                angle={-20}
+                textAnchor="end"
               />
-              <Legend iconType="rect" iconSize={8} wrapperStyle={{ fontSize: '11px', color: '#64748b' }} formatter={() => spec.value_unit || 'Value'} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#1f6cf2" name={spec.value_unit || 'Value'} />
+              <YAxis
+                tick={{ fill: 'var(--color-ink-4)', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="var(--color-accent)" />
             </BarChart>
           )}
         </ResponsiveContainer>
@@ -480,292 +384,199 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
   );
 }
 
-/* ── Entity section ── */
+/* ── Entity grid ── */
+const ENTITY_DOTS: Record<string, string> = {
+  drug: 'var(--color-drug)',
+  company: 'var(--color-company)',
+  trial: 'var(--color-trial)',
+  therapeutic_area: 'var(--color-ta)',
+  mechanism: 'var(--color-mechanism)',
+  literature: 'var(--color-literature)',
+};
 
-function EntitySection({ data }: { data: QueryResponse | null }) {
-  const entities = data?.entity_focus;
-  if (!entities || entities.length === 0) return null;
-
-  const deduped = dedupeByLabel(entities).slice(0, 6);
-
+function EntityGrid({ entities }: { entities: Record<string, unknown>[] }) {
   return (
-    <div>
-      <div className="mb-2 text-[11px] font-medium text-slate-400">Key Entities</div>
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {deduped.map((entity, i) => {
-          const label = String(entity.title ?? entity.label ?? entity.entity_id ?? 'Unknown');
-          const entityType = String(entity.entity_type ?? 'drug');
-          const connections = entity.total_connections as number | undefined;
-          const metadata = (entity.metadata ?? {}) as Record<string, unknown>;
-          const topProps = Object.entries(metadata).slice(0, 4);
-
-          return (
-            <div key={i} className="rounded-xl bg-white px-4 py-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`h-2 w-2 rounded-full ${entityTypeColor(entityType)}`} />
-                <span className="text-[12px] font-semibold text-slate-800 truncate">{label}</span>
-                <span className="ml-auto text-[10px] text-slate-400 capitalize">{entityType.replace('_', ' ')}</span>
-              </div>
-              {topProps.length > 0 && (
-                <div className="space-y-0.5">
-                  {topProps.map(([k, v]) => (
-                    <div key={k} className="flex items-baseline gap-2 text-[11px]">
-                      <span className="text-slate-400 capitalize">{k.replace(/_/g, ' ')}:</span>
-                      <span className="text-slate-600 truncate">{String(v ?? '-')}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {connections != null && connections > 0 && (
-                <div className="mt-1.5 text-[10px] text-slate-400">{connections} connections</div>
-              )}
+    <div className="grid grid-cols-1 gap-2">
+      {entities.map((e, i) => {
+        const label = String(e.title ?? e.label ?? e.entity_id ?? 'Unknown');
+        const type = String(e.entity_type ?? 'drug');
+        const conns = e.total_connections as number | undefined;
+        return (
+          <div
+            key={i}
+            className="rounded-xl p-4"
+            style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-line)',
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ background: ENTITY_DOTS[type] ?? 'var(--color-ink-4)' }}
+              />
+              <span
+                className="truncate"
+                style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}
+              >
+                {label}
+              </span>
+              <span
+                className="ml-auto shrink-0"
+                style={{ fontSize: '11px', color: 'var(--color-ink-4)', textTransform: 'capitalize' }}
+              >
+                {type.replace('_', ' ')}
+              </span>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function entityTypeColor(type: string): string {
-  const map: Record<string, string> = {
-    drug: 'bg-blue-500',
-    company: 'bg-amber-500',
-    trial: 'bg-teal-500',
-    therapeutic_area: 'bg-rose-500',
-    mechanism: 'bg-violet-500',
-    literature: 'bg-green-500',
-  };
-  return map[type] ?? 'bg-slate-400';
-}
-
-/* ── Metrics section ── */
-
-function MetricsSection({ data }: { data: QueryResponse | null }) {
-  const metrics = data?.metrics_context;
-  if (!metrics || Object.keys(metrics).length === 0) return null;
-
-  const tiles = extractMetricTiles(metrics);
-  if (tiles.length === 0) return null;
-
-  return (
-    <div>
-      <div className="mb-2 text-[11px] font-medium text-slate-400">Metrics</div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-        {tiles.slice(0, 6).map((tile) => (
-          <div key={tile.label} className="rounded-xl bg-white px-4 py-3 text-center">
-            <div className="text-[16px] font-bold text-slate-800 tabular-nums">{tile.value}</div>
-            <div className="mt-0.5 text-[10px] text-slate-400 leading-tight">{tile.label}</div>
+            {conns != null && (
+              <div
+                className="mt-1 pl-4"
+                style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}
+              >
+                {conns} connections
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
-}
-
-interface MetricTile {
-  label: string;
-  value: string;
-}
-
-function extractMetricTiles(metricsContext: Record<string, unknown>): MetricTile[] {
-  const tiles: MetricTile[] = [];
-  const seen = new Set<string>();
-
-  for (const [entityKey, metricsObj] of Object.entries(metricsContext)) {
-    if (!metricsObj || typeof metricsObj !== 'object') continue;
-    const group = metricsObj as Record<string, Record<string, unknown>>;
-
-    for (const [metricType, metricData] of Object.entries(group)) {
-      if (!metricData || typeof metricData !== 'object') continue;
-      const entityName =
-        String(metricData.drug_name ?? metricData.company_name ?? metricData.mechanism_name ?? entityKey).trim();
-
-      const scorePairs: Array<[string, string]> = [];
-      if (metricType === 'pipeline' && metricData.pipeline_score != null) {
-        scorePairs.push([`${entityName} Pipeline`, String(metricData.pipeline_score)]);
-      }
-      if (metricType === 'success_rate' && metricData.success_rate != null) {
-        scorePairs.push([`${entityName} Success`, `${Math.round(Number(metricData.success_rate) * 100)}%`]);
-      }
-      if (metricType === 'evidence' && metricData.total_articles != null) {
-        scorePairs.push([`${entityName} Articles`, String(metricData.total_articles)]);
-      }
-      if (metricType === 'competitive' && metricData.trial_count != null) {
-        scorePairs.push([`${entityName} Trials`, String(metricData.trial_count)]);
-      }
-      if (metricType === 'portfolio' && metricData.drug_count != null) {
-        scorePairs.push([`${entityName} Drugs`, String(metricData.drug_count)]);
-      }
-
-      for (const [label, value] of scorePairs) {
-        const key = label.toLowerCase();
-        if (!seen.has(key)) {
-          seen.add(key);
-          tiles.push({ label, value });
-        }
-      }
-    }
-  }
-  return tiles;
 }
 
 /* ── Evidence section ── */
-
-function EvidenceSection({ data }: { data: QueryResponse | null }) {
-  const [expanded, setExpanded] = useState(false);
-  const evidence = data?.evidence;
-  if (!evidence || evidence.length === 0) return null;
-
-  const shown = expanded ? evidence.slice(0, 10) : evidence.slice(0, 3);
+function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? evidence.slice(0, 8) : evidence.slice(0, 2);
 
   return (
-    <div>
+    <div
+      className="canvas-section"
+      style={{ padding: '24px' }}
+    >
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 mb-3"
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--color-ink-3)',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}
       >
-        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        {evidence.length} evidence sources
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        {evidence.length} Evidence Sources
       </button>
-      <div className="space-y-1.5">
-        {shown.map((ev, i) => (
-          <EvidenceRow key={i} item={ev} index={i + 1} />
-        ))}
-        {!expanded && evidence.length > 3 && (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="text-[10px] text-brand-dark hover:underline"
-          >
-            Show {evidence.length - 3} more
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EvidenceRow({ item, index }: { item: EvidenceItem; index: number }) {
-  const preview = item.content.length > 160 ? item.content.slice(0, 157) + '...' : item.content;
-  return (
-    <div className="rounded-xl bg-white px-4 py-3">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-[10px] font-semibold text-slate-400">[{index}]</span>
-        <span className="text-[10px] font-medium text-slate-400 uppercase">{item.source}</span>
-        <span className="text-[10px] text-slate-300">|</span>
-        <span className="text-[10px] text-slate-400 capitalize">{item.entity_type.replace('_', ' ')}</span>
-        <span className="ml-auto text-[10px] tabular-nums text-slate-400">{(item.relevance * 100).toFixed(0)}%</span>
-      </div>
-      <p className="text-[11px] leading-relaxed text-slate-600">{preview}</p>
-    </div>
-  );
-}
-
-/* ── Persona section ── */
-
-function PersonaSection({
-  analyses,
-  evidence,
-  confidenceAssessment,
-}: {
-  analyses: PersonaAnalysis[];
-  evidence?: EvidenceItem[];
-  confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
-}) {
-  return (
-    <div>
-      <div className="mb-2 text-[11px] font-medium text-slate-400">Team Evaluation</div>
-
-      {confidenceAssessment && (
-        <div className="mb-3 flex items-center gap-3 rounded-xl bg-white px-4 py-3">
-          <span className="text-[11px] text-slate-500">Overall confidence</span>
-          <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${Math.round(confidenceAssessment.overall * 100)}%`,
-                backgroundColor: confidenceAssessment.overall >= 0.7 ? '#22c55e' : confidenceAssessment.overall >= 0.4 ? '#f59e0b' : '#ef4444',
-              }}
-            />
-          </div>
-          <span className="text-[11px] font-semibold text-slate-700 tabular-nums">
-            {Math.round(confidenceAssessment.overall * 100)}%
-          </span>
-        </div>
-      )}
-
       <div className="space-y-2">
-        {analyses.map((pa) => (
-          <PersonaCard key={pa.persona} analysis={pa} evidence={evidence} />
+        {shown.map((ev, i) => (
+          <div
+            key={i}
+            className="rounded-xl p-3"
+            style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-line)',
+              fontSize: '12px',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className="badge badge-neutral"
+                style={{ fontSize: '10px' }}
+              >
+                {ev.source}
+              </span>
+              <span style={{ color: 'var(--color-ink-4)', fontSize: '10px', textTransform: 'capitalize' }}>
+                {ev.entity_type.replace('_', ' ')}
+              </span>
+              <span
+                className="ml-auto"
+                style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}
+              >
+                {(ev.relevance * 100).toFixed(0)}%
+              </span>
+            </div>
+            <p
+              className="line-clamp-2"
+              style={{ color: 'var(--color-ink-3)', lineHeight: 1.5 }}
+            >
+              {ev.content}
+            </p>
+          </div>
         ))}
       </div>
+      {evidence.length > 2 && (
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="mt-2"
+          style={{ fontSize: '12px', color: 'var(--color-accent)', background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          {open ? 'Show less' : `Show ${evidence.length - 2} more`}
+        </button>
+      )}
     </div>
   );
 }
 
-function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; evidence?: EvidenceItem[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const confidenceColor = analysis.confidence >= 0.7
-    ? 'bg-green-500'
-    : analysis.confidence >= 0.4
-      ? 'bg-amber-500'
-      : 'bg-red-500';
+/* ── Persona row ── */
+function PersonaRow({ analysis }: { analysis: PersonaAnalysis }) {
+  const [open, setOpen] = useState(false);
+  const conf = Math.round(analysis.confidence * 100);
+  const confColor = conf >= 70 ? 'var(--color-green)' : conf >= 40 ? 'var(--color-amber)' : 'var(--color-red)';
 
   return (
-    <div className="rounded-xl bg-white px-4 py-3">
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: '1px solid var(--color-line)' }}
+    >
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 text-left"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center gap-3 px-4 py-3"
+        style={{
+          background: 'var(--color-surface)',
+          cursor: 'pointer',
+          border: 'none',
+        }}
       >
-        {expanded ? <ChevronDown size={13} className="text-slate-400" /> : <ChevronRight size={13} className="text-slate-400" />}
-        <span className="text-[12px] font-semibold text-slate-700">{analysis.display_name}</span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="h-1.5 w-8 rounded-full bg-slate-100 overflow-hidden">
-            <div className={`h-full rounded-full ${confidenceColor}`} style={{ width: `${Math.round(analysis.confidence * 100)}%` }} />
+        {open ? <ChevronDown size={13} style={{ color: 'var(--color-ink-4)' }} /> : <ChevronRight size={13} style={{ color: 'var(--color-ink-4)' }} />}
+        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)', flex: 1, textAlign: 'left' }}>
+          {analysis.display_name}
+        </span>
+        <div className="flex items-center gap-2">
+          <div
+            className="rounded-full overflow-hidden"
+            style={{ width: '48px', height: '4px', background: 'var(--color-surface-3)' }}
+          >
+            <div style={{ width: `${conf}%`, height: '100%', background: confColor, borderRadius: '999px' }} />
           </div>
-          <span className="text-[10px] tabular-nums text-slate-400">{Math.round(analysis.confidence * 100)}%</span>
+          <span style={{ fontSize: '11px', color: 'var(--color-ink-3)', fontWeight: 500 }}>{conf}%</span>
         </div>
       </button>
 
-      {analysis.key_findings.length > 0 && (
-        <ul className="mt-1.5 ml-5 space-y-0.5">
-          {analysis.key_findings.slice(0, 3).map((finding, i) => (
-            <li key={i} className="text-[11px] text-slate-600 list-disc">{finding}</li>
-          ))}
-        </ul>
-      )}
-
-      {analysis.data_gaps.length > 0 && (
-        <div className="mt-1.5 ml-5 flex flex-wrap gap-1">
-          {analysis.data_gaps.map((gap, i) => (
-            <span key={i} className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 border border-amber-200/50">
-              {gap}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {expanded && (
-        <div className="mt-2 ml-5 rounded-lg bg-slate-50/80 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
-          {analysis.analysis}
+      {open && (
+        <div
+          className="px-4 pb-4"
+          style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-line)' }}
+        >
+          <ul className="mt-3 space-y-1">
+            {analysis.key_findings.slice(0, 3).map((f, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-2"
+                style={{ fontSize: '12px', color: 'var(--color-ink-3)', lineHeight: 1.5 }}
+              >
+                <span style={{ marginTop: '2px', color: 'var(--color-accent)' }}>·</span>
+                {f}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
   );
-}
-
-/* ── Helpers ── */
-
-function dedupeByLabel(entities: Record<string, unknown>[]): Record<string, unknown>[] {
-  const seen = new Map<string, Record<string, unknown>>();
-  for (const entity of entities) {
-    const label = String(entity.title ?? entity.label ?? entity.entity_id ?? '').toLowerCase().trim();
-    if (!seen.has(label)) {
-      seen.set(label, entity);
-    }
-  }
-  return [...seen.values()];
 }
