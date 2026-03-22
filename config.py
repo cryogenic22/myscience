@@ -136,6 +136,7 @@ class LLMConfig:
     """Configuration for LLM-powered narrative synthesis."""
     provider: str = os.getenv("MZ_LLM_PROVIDER", "openai")
     model: str = os.getenv("MZ_LLM_MODEL", "gpt-4o-mini")
+    fallback_model: str = os.getenv("MZ_LLM_FALLBACK_MODEL", "gpt-4o-mini")
     api_key: str = os.getenv("OPENAI_API_KEY", "")
     max_tokens: int = int(os.getenv("MZ_LLM_MAX_TOKENS", "1024"))
     temperature: float = float(os.getenv("MZ_LLM_TEMPERATURE", "0.3"))

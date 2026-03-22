@@ -32,6 +32,7 @@ from api.deps import (
     get_unified_handler,
     get_web_research,
     get_workspace,
+    save_conversation_memory,
 )
 from api.utils import normalize_provenance
 from config import config
@@ -409,6 +410,7 @@ def chat(
                         question, payload.get("intent", "general"), payload.get("narrative", ""), params,
                     )
                     memory.add_exchange(question, payload.get("narrative", ""))
+                    save_conversation_memory(session_id, memory, db)
                     return payload
             except Exception as e:
                 logger.warning("Unified handler error, falling back to legacy: %s", e)
@@ -464,12 +466,14 @@ def chat(
             question, intent, payload.get("narrative", ""), params,
         )
         memory.add_exchange(question, payload.get("narrative", ""))
+        save_conversation_memory(session_id, memory, db)
         return payload
 
     except Exception as e:
         logger.exception("Chat error for question: %s", question)
         error_msg = f"I encountered an error processing your question: {str(e)}"
         memory.add_exchange(question, error_msg)
+        save_conversation_memory(session_id, memory, db)
         return {
             "narrative": error_msg,
             "intent": intent,

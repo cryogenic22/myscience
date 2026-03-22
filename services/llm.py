@@ -302,26 +302,36 @@ class LLMSynthesizer:
         )
 
         system_prompt = _get_system_prompt(intent, format_hint)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context},
+        ]
 
-        try:
-            client = self._get_client()
-            response = client.chat.completions.create(
-                model=self.config.llm.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context},
-                ],
-                max_tokens=self.config.llm.max_tokens,
-                temperature=self.config.llm.temperature,
-            )
-            narrative = response.choices[0].message.content.strip()
-            if narrative:
-                return narrative
-            return fallback_narrative
+        primary_model = self.config.llm.model
+        fallback_model = getattr(self.config.llm, "fallback_model", primary_model)
+        models = [primary_model]
+        if fallback_model and fallback_model != primary_model:
+            models.append(fallback_model)
 
-        except Exception as e:
-            logger.warning("LLM synthesis failed, using fallback: %s", e)
-            return fallback_narrative
+        client = self._get_client()
+        for model in models:
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=self.config.llm.max_tokens,
+                    temperature=self.config.llm.temperature,
+                )
+                narrative = response.choices[0].message.content.strip()
+                if narrative:
+                    if model != primary_model:
+                        logger.info("Used fallback model %s (primary unavailable)", model)
+                    return narrative
+            except Exception as e:
+                logger.warning("Model %s failed: %s", model, e)
+                continue
+
+        return fallback_narrative
 
     def synthesize_stream(
         self,

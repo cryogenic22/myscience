@@ -10,11 +10,16 @@ them identically regardless of origin.
 from __future__ import annotations
 
 import hashlib
+import logging
+import random
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -207,6 +212,51 @@ class BaseConnector(ABC):
             HealthCheckResult with status and diagnostic info.
         """
         ...
+
+    def _fetch_with_retry(self, url: str, params: dict = None, max_retries: int = 3):
+        """HTTP GET with exponential backoff for transient failures (429, 500, 502, 503, 504).
+
+        Args:
+            url: The URL to fetch.
+            params: Optional query parameters.
+            max_retries: Maximum number of attempts.
+
+        Returns:
+            requests.Response object.
+
+        Raises:
+            requests.exceptions.RequestException: If all retries are exhausted.
+        """
+        import requests
+
+        retryable_codes = {429, 500, 502, 503, 504}
+        timeout = getattr(self, "timeout", 30)
+        headers = getattr(self, "headers", None)
+        resp = None
+
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, params=params, timeout=timeout, headers=headers)
+                if resp.status_code not in retryable_codes:
+                    return resp
+                if attempt < max_retries - 1:
+                    delay = (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        "Retryable %d from %s, retry %d/%d in %.1fs",
+                        resp.status_code, url, attempt + 1, max_retries, delay,
+                    )
+                    time.sleep(delay)
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    raise
+                delay = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(
+                    "Request failed to %s, retry %d/%d: %s",
+                    url, attempt + 1, max_retries, e,
+                )
+                time.sleep(delay)
+
+        return resp  # Return last response even if retryable
 
 
 # ============================================================

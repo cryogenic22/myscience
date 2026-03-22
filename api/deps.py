@@ -25,16 +25,58 @@ from services.workspace import ChatWorkspaceService
 logger = logging.getLogger(__name__)
 
 
-# ── Per-session conversation memory (in-memory, no DB persistence yet) ──
+# ── Per-session conversation memory (cached in-memory, persisted to DB) ──
 
 _memory_store: dict[str, ConversationMemory] = {}
 
 
 def get_conversation_memory(session_id: str = "default") -> ConversationMemory:
-    """Get or create a ConversationMemory for the given session."""
+    """Get or create a ConversationMemory for the given session.
+
+    On first access, attempts to restore from the conversation_snapshots
+    table. Falls back to a fresh memory if the table doesn't exist or the
+    session has no saved state.
+    """
     if session_id not in _memory_store:
-        _memory_store[session_id] = ConversationMemory(token_budget=4000)
+        mem = ConversationMemory(token_budget=4000)
+        # Try to restore from DB
+        try:
+            import json as _json
+            db = get_db()
+            row = db.fetch_one(
+                "SELECT snapshot FROM conversation_snapshots WHERE session_id = %s",
+                [session_id],
+            )
+            if row and row.get("snapshot"):
+                data = row["snapshot"]
+                # JSONB columns come back as dict; snapshot() returns a JSON string
+                snapshot_str = _json.dumps(data) if isinstance(data, dict) else data
+                mem.restore(snapshot_str)
+                logger.debug("Restored conversation memory for session %s", session_id)
+        except Exception:
+            pass  # Fresh memory is fine (table may not exist yet)
+        _memory_store[session_id] = mem
     return _memory_store[session_id]
+
+
+def save_conversation_memory(session_id: str, memory: ConversationMemory, db: Database) -> None:
+    """Persist memory snapshot to PostgreSQL.
+
+    Uses INSERT ... ON CONFLICT to upsert the snapshot. Failures are
+    logged but never propagated so they cannot break the chat response.
+    """
+    try:
+        import json as _json
+        snapshot = _json.dumps(memory.snapshot())
+        db.execute(
+            """INSERT INTO conversation_snapshots (session_id, snapshot, updated_at)
+               VALUES (%s, %s, NOW())
+               ON CONFLICT (session_id)
+               DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = NOW()""",
+            [session_id, snapshot],
+        )
+    except Exception as e:
+        logger.warning("Failed to persist conversation memory: %s", e)
 
 
 @lru_cache()

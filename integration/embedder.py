@@ -8,12 +8,30 @@ pass through with embedding=None.
 from __future__ import annotations
 
 import logging
+import random
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 from integration.entity_resolver import ResolvedRecord
 
 logger = logging.getLogger(__name__)
+
+# Minimum text length worth embedding (shorter strings produce low-quality vectors)
+_MIN_TEXT_LENGTH = 10
+
+
+def _retry_with_backoff(fn, max_attempts=3, base_delay=1.0):
+    """Retry a function with exponential backoff + jitter."""
+    for attempt in range(max_attempts):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                raise
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+            logger.warning("Retry %d/%d after %.1fs: %s", attempt + 1, max_attempts, delay, e)
+            time.sleep(delay)
 
 
 @dataclass
@@ -58,13 +76,24 @@ class Embedder:
         if not text or not text.strip():
             return EmbeddedRecord(resolved=record, embedding=None)
 
+        # Skip very short text — produces low-quality vectors
+        if len(text.strip()) < _MIN_TEXT_LENGTH:
+            logger.debug(
+                "Skipping embedding for record %s: text too short (%d chars)",
+                record.normalized.raw.external_id,
+                len(text.strip()),
+            )
+            return EmbeddedRecord(resolved=record, embedding=None)
+
         # Truncate to ~8000 tokens (~32000 chars) to stay within model limits
         truncated = text[:32000]
 
         try:
-            response = self.client.embeddings.create(
-                input=truncated,
-                model=self.model,
+            response = _retry_with_backoff(
+                lambda: self.client.embeddings.create(
+                    input=truncated,
+                    model=self.model,
+                )
             )
             embedding = response.data[0].embedding
             return EmbeddedRecord(resolved=record, embedding=embedding)
