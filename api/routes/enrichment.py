@@ -57,6 +57,14 @@ def run_research(max_iterations: int = 10, db: Database = Depends(get_db)):
     }
 
 
+@router.post("/derive-competition")
+def derive_competition(dry_run: bool = False, db: Database = Depends(get_db)):
+    """Derive COMPETES_WITH links from shared mechanism + TA pairs."""
+    from scripts.derive_competition import derive_competition as run_derivation
+    result = run_derivation(db, dry_run=dry_run)
+    return result
+
+
 @router.get("/status")
 def enrichment_status(db: Database = Depends(get_db)):
     """Current enrichment status: unresolved count, company gaps, etc."""
