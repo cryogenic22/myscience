@@ -446,146 +446,112 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Search header */}
+        {/* Search area */}
         <div
-          className={`shrink-0 ${hasSearched ? 'pb-6 pt-6' : 'flex min-h-[68vh] items-center py-14'}`}
+          className={`shrink-0 ${hasSearched ? '' : 'flex flex-1 items-center justify-center'}`}
+          style={{ minHeight: hasSearched ? undefined : 0 }}
         >
-          <div className="mx-auto w-full max-w-[1360px] px-6">
-            <div className="mb-6 text-center">
-              <h1
-                className="text-[clamp(1.1rem,2vw,1.5rem)] font-semibold tracking-tight"
-                style={{ color: 'var(--color-ink)' }}
-              >
-                Knowledge Graph Search
-              </h1>
-              <p
-                className="mx-auto mt-1.5 max-w-2xl text-[13px] leading-relaxed"
-                style={{ color: 'var(--color-ink-4)' }}
-              >
-                Search drugs, trials, companies, and literature across connected sources.
-              </p>
-            </div>
-
-            <div
-              className="surface-panel rounded-lg px-6 py-6 sm:px-8 sm:py-8"
-              style={{ background: 'var(--color-surface)' }}
-            >
-              {/* Stats strip */}
-              <div
-                className="mb-5 flex flex-wrap items-center justify-between gap-2.5 text-[12px]"
-                style={{ color: 'var(--color-ink-2)' }}
-              >
-                <span className="chip-plain inline-flex items-center gap-1">
-                  <Network size={11} />
-                  Connected sources: {Math.max(uniqueSources, 0)}
-                </span>
-                {hasSearched && (
-                  <span className="chip-plain inline-flex items-center gap-1">
-                    Results:{' '}
-                    {selectedTherapeuticAreas.length > 0
-                      ? `${visibleResults.length}/${totalResults}`
-                      : totalResults}
-                  </span>
-                )}
-              </div>
-
-              {/* Search input */}
-              <div className="relative">
-                <div
-                  className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em]"
-                  style={{ color: 'var(--color-ink-3)' }}
+          <div
+            className="mx-auto w-full px-6"
+            style={{ maxWidth: hasSearched ? '1360px' : '720px', paddingTop: hasSearched ? '24px' : 0 }}
+          >
+            {/* Title — small, stays out of the way */}
+            {!hasSearched && (
+              <div className="mb-8 text-center">
+                <p
+                  className="text-[13px]"
+                  style={{ color: 'var(--color-ink-4)' }}
                 >
-                  Search query
-                </div>
-                <input
-                  ref={inputRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="e.g. semaglutide, heart failure SGLT2, empagliflozin trials, Novo Nordisk portfolio"
-                  className="input-surface h-[74px] w-full rounded-lg pl-6 pr-[12.5rem] text-[18px] font-medium focus:outline-none sm:pr-52"
-                  style={{
-                    color: 'var(--color-ink)',
-                    background: 'var(--color-surface-2)',
-                  }}
-                  autoFocus
-                />
-                <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-4">
-                  {query && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        inputRef.current?.focus();
-                      }}
-                      className="rounded-md p-2.5 transition-colors"
-                      style={{ color: 'var(--color-ink-4)' }}
-                      aria-label="Clear search"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
+                  Search drugs, trials, companies, and literature
+                </p>
+              </div>
+            )}
+
+            {/* Search input — the hero */}
+            <div className="relative">
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search across drugs, trials, companies, mechanisms..."
+                className="w-full rounded-2xl pl-6 pr-32 focus:outline-none"
+                style={{
+                  height: hasSearched ? '52px' : '64px',
+                  fontSize: hasSearched ? '15px' : '18px',
+                  fontWeight: 400,
+                  color: 'var(--color-ink)',
+                  background: 'var(--color-surface-2)',
+                  boxShadow: 'var(--shadow-sm)',
+                  transition: 'box-shadow 200ms, height 200ms',
+                }}
+                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(28,110,247,0.10)'; }}
+                onBlur={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+                autoFocus
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-3">
+                {query && (
                   <button
                     type="button"
-                    onClick={() => void doSearch()}
-                    disabled={!query.trim() || isLoading}
-                    className="btn-search-gradient flex h-10 shrink-0 items-center gap-2 rounded-md px-5 text-sm font-semibold transition-colors disabled:opacity-30"
-                    style={{ color: '#fff' }}
-                  >
-                    {isLoading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Search size={16} />
-                    )}
-                    Search
-                  </button>
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className="mt-6">
-                <SearchFilters
-                  activeTypes={activeFilters}
-                  onTypeToggle={toggleFilter}
-                  sortMode={sortMode}
-                  onSortChange={setSortMode}
-                  viewMode={viewMode}
-                  onViewChange={setViewMode}
-                  therapeuticAreaOptions={therapeuticAreaOptions}
-                  selectedTherapeuticAreas={selectedTherapeuticAreas}
-                  onTherapeuticAreaToggle={toggleTherapeuticArea}
-                  onClearTherapeuticAreas={() => setSelectedTherapeuticAreas([])}
-                />
-              </div>
-
-              {/* Hint */}
-              <div
-                className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs"
-                style={{ color: 'var(--color-ink-3)' }}
-              >
-                <div>
-                  Press{' '}
-                  <kbd
-                    className="rounded-md px-2.5 py-1 text-[10px] font-mono"
-                    style={{
-                      border: '1px solid var(--color-line)',
-                      background: 'var(--color-surface)',
-                      color: 'var(--color-ink-3)',
+                    onClick={() => {
+                      setQuery('');
+                      inputRef.current?.focus();
                     }}
+                    className="rounded-full p-2 transition-colors"
+                    style={{ color: 'var(--color-ink-4)' }}
+                    aria-label="Clear search"
                   >
-                    Enter
-                  </kbd>{' '}
-                  to search
-                </div>
-                {hasSearched && totalResults > 0 && (
-                  <div className="font-medium" style={{ color: 'var(--color-ink-2)' }}>
-                    {selectedTherapeuticAreas.length > 0
-                      ? `${visibleResults.length} shown`
-                      : `${totalResults} results`}
-                  </div>
+                    <X size={16} />
+                  </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => void doSearch()}
+                  disabled={!query.trim() || isLoading}
+                  className="flex shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-medium transition-all disabled:opacity-30"
+                  style={{
+                    height: '36px',
+                    color: '#fff',
+                    background: 'var(--color-accent)',
+                  }}
+                >
+                  {isLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Search size={14} />
+                  )}
+                  Search
+                </button>
               </div>
             </div>
+
+            {/* Filters — compact, below input */}
+            <div className={hasSearched ? 'mt-4' : 'mt-6'}>
+              <SearchFilters
+                activeTypes={activeFilters}
+                onTypeToggle={toggleFilter}
+                sortMode={sortMode}
+                onSortChange={setSortMode}
+                viewMode={viewMode}
+                onViewChange={setViewMode}
+                therapeuticAreaOptions={therapeuticAreaOptions}
+                selectedTherapeuticAreas={selectedTherapeuticAreas}
+                onTherapeuticAreaToggle={toggleTherapeuticArea}
+                onClearTherapeuticAreas={() => setSelectedTherapeuticAreas([])}
+              />
+            </div>
+
+            {/* Result count — only when searched */}
+            {hasSearched && totalResults > 0 && (
+              <div
+                className="mt-3 text-[12px]"
+                style={{ color: 'var(--color-ink-3)' }}
+              >
+                {selectedTherapeuticAreas.length > 0
+                  ? `${visibleResults.length} of ${totalResults} results`
+                  : `${totalResults} results`}
+              </div>
+            )}
           </div>
         </div>
 
