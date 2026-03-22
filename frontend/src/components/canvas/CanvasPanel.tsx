@@ -18,6 +18,7 @@ interface CanvasPanelProps {
   personaAnalyses?: PersonaAnalysis[];
   confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
   onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
+  onOpenLiterature?: (articleId: string) => void;
 }
 
 const INTENT_LABELS: Record<string, string> = {

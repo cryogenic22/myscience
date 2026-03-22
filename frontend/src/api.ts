@@ -85,6 +85,40 @@ export interface TherapeuticAreaItem {
   trial_count: number;
 }
 
+// ── Literature Explorer types ──
+
+export interface LiteratureSection {
+  id: string;
+  title: string;
+  level: number;
+  content: string;
+  children: LiteratureSection[];
+}
+
+export interface LiteratureCrossLinks {
+  drugs: Array<{ id: string; name: string; link_type: string }>;
+  trials: Array<{ id: string; title: string; link_type: string }>;
+  mechanisms: Array<{ id: string; name: string }>;
+}
+
+export interface LiteratureDocument {
+  article_id: string;
+  pmid: string;
+  pmc_id: string | null;
+  title: string;
+  journal: string | null;
+  publication_date: string | null;
+  authors: string[];
+  mesh_terms: string[];
+  article_type: string | null;
+  is_protocol: boolean;
+  is_systematic_review: boolean;
+  has_full_text: boolean;
+  sections: LiteratureSection[];
+  cross_links: LiteratureCrossLinks;
+  external_urls: { pubmed: string | null; pmc: string | null };
+}
+
 export interface SearchResult {
   entity_id: string;
   entity_type: string;
@@ -630,6 +664,10 @@ export const api = {
     post<{ ok: boolean; results: Record<string, unknown> }>('/catalog/run-enrichment', {
       entity_type: entityType ?? 'drug', max_entities: maxEntities ?? 50,
     }),
+
+  // Literature Explorer
+  literatureDocument: (articleId: string) =>
+    get<LiteratureDocument>(`/literature/${encodeURIComponent(articleId)}/document`),
 
   exportReport: (report: string, title: string, format: 'md' | 'txt' | 'json' = 'md') =>
     fetch(`${BASE}/chat/export/report`, {

@@ -91,6 +91,18 @@ def derive_competition(db, dry_run: bool = False) -> dict:
     return result
 
 
+def run(dry_run: bool = False) -> dict:
+    """Run competition derivation (creates own DB connection)."""
+    from config import config
+    from db import Database
+    db = Database(config.db.dsn)
+    db.connect()
+    try:
+        return derive_competition(db, dry_run)
+    finally:
+        db.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Derive COMPETES_WITH links")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
@@ -98,15 +110,8 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    from config import config
-    from db import Database
-    db = Database(config.db.dsn)
-    db.connect()
-
-    result = derive_competition(db, dry_run=args.dry_run)
+    result = run(dry_run=args.dry_run)
     print(f"\nResult: {result}")
-
-    db.close()
 
 
 if __name__ == "__main__":

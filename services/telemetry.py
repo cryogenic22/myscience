@@ -24,6 +24,10 @@ def log_ctx_event(
     mode: Optional[str] = None,
     evidence_raw_tokens: Optional[int] = None,
     evidence_compressed_tokens: Optional[int] = None,
+    answer_quality_proxy: Optional[float] = None,
+    query_complexity: Optional[int] = None,
+    entity_count: Optional[int] = None,
+    hop_depth: Optional[int] = None,
 ) -> None:
     """Persist a single CTX telemetry row. Never raises."""
     try:
@@ -32,12 +36,14 @@ def log_ctx_event(
             """INSERT INTO ctx_telemetry
                (question_hash, intent, ctx_tokens, legacy_tokens,
                 compression_ratio, build_time_ms, mode,
-                evidence_raw_tokens, evidence_compressed_tokens)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                evidence_raw_tokens, evidence_compressed_tokens,
+                answer_quality_proxy, query_complexity, entity_count, hop_depth)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             [
                 q_hash, intent, ctx_tokens, legacy_tokens,
                 compression_ratio, build_time_ms, mode,
                 evidence_raw_tokens, evidence_compressed_tokens,
+                answer_quality_proxy, query_complexity, entity_count, hop_depth,
             ],
         )
     except Exception:

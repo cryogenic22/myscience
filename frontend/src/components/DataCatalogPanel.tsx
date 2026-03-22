@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LiteratureExplorer } from './LiteratureExplorer';
 import { displayName, isUUID, QUALITY_CHECK_LABELS, SOURCE_LABELS } from '../brand';
 import {
   CheckCircle,
@@ -81,6 +82,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
   const [entityDetail, setEntityDetail] = useState<CatalogEntityDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [litExplorerArticleId, setLitExplorerArticleId] = useState<string | null>(null);
 
   const [changes, setChanges] = useState<ChangeLogEntry[]>([]);
   const [hitlItems, setHitlItems] = useState<HITLItem[]>([]);
@@ -130,6 +132,11 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   }, [tab]);
 
   const openEntity = useCallback((type: string, id: string) => {
+    // Literature entities open in the dedicated Literature Explorer
+    if (type === 'article' || type === 'literature') {
+      setLitExplorerArticleId(id);
+      return;
+    }
     setSelectedEntity({ type, id });
     setDrawerOpen(true);
     setDetailLoading(true);
@@ -306,6 +313,14 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
           <div style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Not found.</div>
         )}
       </Drawer>
+
+      {/* Literature Explorer overlay */}
+      {litExplorerArticleId && (
+        <LiteratureExplorer
+          articleId={litExplorerArticleId}
+          onClose={() => setLitExplorerArticleId(null)}
+        />
+      )}
     </div>
   );
 }

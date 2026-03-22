@@ -9,6 +9,7 @@ import ChatPanel from '../components/chat/ChatPanel';
 import CanvasPanel from '../components/canvas/CanvasPanel';
 import GraphExplorer from '../components/GraphExplorer';
 import DataCatalogPanel from '../components/DataCatalogPanel';
+import { LiteratureExplorer } from '../components/LiteratureExplorer';
 
 type Tab = 'chat' | 'graph' | 'catalog';
 
@@ -48,6 +49,7 @@ export default function WorkspacePage({
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvas, setCanvas] = useState<CanvasState>(EMPTY_CANVAS);
   const [graphEntity, setGraphEntity] = useState<{ id: string; type: string; label: string } | null>(null);
+  const [litExplorerArticleId, setLitExplorerArticleId] = useState<string | null>(null);
   const seededQuestionRef = useRef<string | null>(null);
 
   useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
@@ -252,11 +254,19 @@ export default function WorkspacePage({
                 setGraphEntity(entity);
                 setActiveTab('graph');
               }}
+              onOpenLiterature={(articleId) => setLitExplorerArticleId(articleId)}
             />
           }
           defaultSplit={50}
           minLeft={32}
           minRight={28}
+        />
+      )}
+      {/* Literature Explorer overlay */}
+      {litExplorerArticleId && (
+        <LiteratureExplorer
+          articleId={litExplorerArticleId}
+          onClose={() => setLitExplorerArticleId(null)}
         />
       )}
     </motion.div>

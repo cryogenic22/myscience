@@ -1,8 +1,8 @@
 """Automated data curation pipeline.
 
 Phase 5.2: Scheduled weekly (or post-pipeline-run) to maintain data quality.
-Runs company dedup, drug name cleanup, TA linkage, AI enrichment,
-and generates quality scorecard.
+Runs company dedup, drug name cleanup, mechanism backfill, TA linkage,
+drug enrichment, AI enrichment, competition derivation, and quality scorecard.
 
 Usage:
     python -m scripts.auto_curate [--dry-run] [--skip-ai]
@@ -26,7 +26,7 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
     total_start = time.time()
 
     # 1. Company deduplication
-    logger.info("Step 1/6: Company deduplication")
+    logger.info("Step 1/8: Company deduplication")
     try:
         from scripts.dedup_companies import run as run_dedup
         t0 = time.time()
@@ -37,7 +37,7 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         results["dedup_companies"] = {"error": str(e)}
 
     # 2. Drug name cleanup
-    logger.info("Step 2/6: Drug name cleanup")
+    logger.info("Step 2/8: Drug name cleanup")
     try:
         from scripts.clean_drug_names import run as run_clean
         t0 = time.time()
@@ -47,8 +47,19 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("Drug cleanup failed: %s", e)
         results["clean_drug_names"] = {"error": str(e)}
 
-    # 3. TA linkage backfill
-    logger.info("Step 3/6: TA linkage backfill")
+    # 3. Mechanism backfill (before TA linkage — mechanisms feed TA links)
+    logger.info("Step 3/8: Mechanism backfill")
+    try:
+        from scripts.backfill_mechanisms import run as run_mech_backfill
+        t0 = time.time()
+        results["backfill_mechanisms"] = run_mech_backfill(dry_run=dry_run)
+        results["backfill_mechanisms"]["elapsed_s"] = round(time.time() - t0, 1)
+    except Exception as e:
+        logger.error("Mechanism backfill failed: %s", e)
+        results["backfill_mechanisms"] = {"error": str(e)}
+
+    # 4. TA linkage backfill
+    logger.info("Step 4/8: TA linkage backfill")
     try:
         from scripts.backfill_ta_links import run as run_backfill
         t0 = time.time()
@@ -58,8 +69,8 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("TA backfill failed: %s", e)
         results["backfill_ta_links"] = {"error": str(e)}
 
-    # 4. Drug enrichment
-    logger.info("Step 4/6: Drug enrichment")
+    # 5. Drug enrichment
+    logger.info("Step 5/8: Drug enrichment")
     try:
         from scripts.enrich_drugs import run as run_enrich_drugs
         t0 = time.time()
@@ -69,9 +80,9 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("Drug enrichment failed: %s", e)
         results["enrich_drugs"] = {"error": str(e)}
 
-    # 5. AI enrichment (optional)
+    # 6. AI enrichment (optional)
     if not skip_ai:
-        logger.info("Step 5/6: AI enrichment")
+        logger.info("Step 6/8: AI enrichment")
         try:
             from scripts.ai_enrich import run as run_ai
             t0 = time.time()
@@ -83,8 +94,19 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
     else:
         results["ai_enrich"] = {"status": "skipped"}
 
-    # 6. Quality scorecard
-    logger.info("Step 6/6: Quality scorecard")
+    # 7. Competition derivation (uses mechanism+TA data from steps 3-4)
+    logger.info("Step 7/8: Competition derivation")
+    try:
+        from scripts.derive_competition import run as run_competition
+        t0 = time.time()
+        results["derive_competition"] = run_competition(dry_run=dry_run)
+        results["derive_competition"]["elapsed_s"] = round(time.time() - t0, 1)
+    except Exception as e:
+        logger.error("Competition derivation failed: %s", e)
+        results["derive_competition"] = {"error": str(e)}
+
+    # 8. Quality scorecard
+    logger.info("Step 8/8: Quality scorecard")
     try:
         from scripts.quality_scorecard import run as run_scorecard
         t0 = time.time()
@@ -103,7 +125,6 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
             db = Database(config.db.dsn)
             db.connect()
             from datetime import datetime, timezone
-            import json
             db.execute(
                 """
                 INSERT INTO data_change_log

@@ -40,8 +40,8 @@ def _table_exists(db: Database, table_name: str) -> bool:
 
 
 def enrich_from_milestones(db: Database, dry_run: bool = False) -> dict[str, int]:
-    """Backfill brand_name and approval_date from regulatory_milestones."""
-    stats = {"brand_name": 0, "approval_date": 0}
+    """Backfill approval_date from regulatory_milestones."""
+    stats = {"approval_date": 0}
 
     if not _table_exists(db, "regulatory_milestones"):
         logger.info("regulatory_milestones table not found, skipping milestone enrichment")
@@ -75,8 +75,7 @@ def enrich_from_milestones(db: Database, dry_run: bool = False) -> dict[str, int
                         ["approval_date"])
         stats["approval_date"] += 1
 
-    logger.info("Milestone enrichment: brand_name=%d, approval_date=%d",
-                stats["brand_name"], stats["approval_date"])
+    logger.info("Milestone enrichment: approval_date=%d", stats["approval_date"])
     return stats
 
 
@@ -186,7 +185,10 @@ def enrich_company_from_trials(db: Database, dry_run: bool = False) -> int:
 
 
 def enrich_from_labels(db: Database, dry_run: bool = False) -> dict[str, int]:
-    """Enrich drug brand_name and company from OpenFDA label data."""
+    """Enrich drug brand_name from OpenFDA label data.
+
+    Company enrichment from manufacturer field not yet implemented.
+    """
     stats = {"brand_name": 0, "company": 0}
 
     if not _table_exists(db, "drug_labels"):
@@ -234,7 +236,6 @@ def run(dry_run: bool = False) -> dict:
         sponsor_count = enrich_company_from_trials(db, dry_run)
         label_stats = enrich_from_labels(db, dry_run)
         return {
-            "brand_from_milestones": milestone_stats["brand_name"],
             "approval_from_milestones": milestone_stats["approval_date"],
             "company_from_sponsors": sponsor_count,
             "brand_from_labels": label_stats["brand_name"],

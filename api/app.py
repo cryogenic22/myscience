@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.deps import get_db
-from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment
+from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment, feedback, steward, literature
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ def create_app() -> FastAPI:
     all_routers = [
         search.router, metrics.router, graph.router, query.router,
         entities.router, chat.router, therapeutic_areas.router,
-        catalog.router, enrichment.router,
+        catalog.router, enrichment.router, feedback.router, steward.router,
+        literature.router,
     ]
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
@@ -132,6 +133,49 @@ def create_app() -> FastAPI:
             "source_coverage": source_coverage,
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
+
+    # ── Background Data Steward (runs every 6 hours) ──
+
+    _steward_thread = None
+
+    @app.on_event("startup")
+    def start_steward_loop():
+        import threading
+
+        def _steward_worker():
+            import time as _time
+            interval = 6 * 3600  # 6 hours
+            _time.sleep(60)  # wait for app to stabilize
+            while True:
+                try:
+                    logger.info("Data Steward background loop starting")
+                    from services.steward_signals import StewardSignalCollector
+                    from services.data_steward import DataSteward, StewardConfig
+                    from config import config as _cfg
+
+                    sdb = Database(_cfg.db.dsn)
+                    sdb.connect()
+                    try:
+                        collector = StewardSignalCollector(sdb)
+                        steward = DataSteward(
+                            sdb, collector,
+                            StewardConfig(max_iterations=10, skip_ai=True),
+                        )
+                        summary = steward.run_loop()
+                        logger.info(
+                            "Data Steward complete: %d completed, %d feedback resolved",
+                            summary.completed, summary.feedback_resolved,
+                        )
+                    finally:
+                        sdb.close()
+                except Exception:
+                    logger.exception("Data Steward background loop error")
+                _time.sleep(interval)
+
+        nonlocal _steward_thread
+        _steward_thread = threading.Thread(target=_steward_worker, daemon=True, name="data-steward")
+        _steward_thread.start()
+        logger.info("Data Steward background thread started (6h interval)")
 
     @app.on_event("shutdown")
     def shutdown():

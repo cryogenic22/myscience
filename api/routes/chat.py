@@ -15,6 +15,7 @@ Handler logic lives in services/chat_handlers/. This file is a thin router.
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
@@ -126,6 +127,7 @@ def chat(
     web_research: WebResearchService = Depends(get_web_research),
 ):
     """Orchestration endpoint: detect intent, route to services, return structured response."""
+    t0 = time.monotonic()
     question = body.get("question", "").strip()
     if not question:
         return {"error": "No question provided"}
@@ -231,6 +233,31 @@ def chat(
         )
         memory.add_exchange(question, payload.get("narrative", ""))
         save_conversation_memory(session_id, memory, db)
+
+        # Fire-and-forget query telemetry for Data Steward signal collection
+        try:
+            from services.query_telemetry import log_query_event, detect_query_gap
+            latency_ms = (time.monotonic() - t0) * 1000
+            data = payload.get("data") or {}
+            entity_focus = data.get("entity_focus") or []
+            ents_requested = [e.get("label", "") for e in entity_focus if e.get("label")]
+            ents_found = [e.get("label", "") for e in entity_focus if e.get("id")]
+            ev_count = len(data.get("evidence") or [])
+            sources = list((data.get("provenance_summary") or {}).get("by_source", {}).keys())
+            conf = payload.get("confidence")
+            gap_type, gap_details = detect_query_gap(ents_requested, ents_found, ev_count, conf)
+            log_query_event(
+                db=db, session_id=session_id, question=question, intent=intent,
+                entities_requested=ents_requested or None,
+                entities_found=ents_found or None,
+                confidence=conf, evidence_count=ev_count,
+                sources_used=sources or None,
+                response_latency_ms=round(latency_ms, 1),
+                gap_type=gap_type, gap_details=gap_details,
+            )
+        except Exception:
+            pass  # telemetry must never break chat
+
         return payload
 
     except Exception as e:

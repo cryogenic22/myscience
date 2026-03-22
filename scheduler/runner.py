@@ -134,6 +134,44 @@ class DataPipelineScheduler:
             logger.exception("Post-task quality_scorecard failed")
             results["quality_scorecard"] = f"ERROR: {e}"
 
+        # 6. Auto-curate pipeline (mechanism backfill, competition derivation, etc.)
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.auto_curate")
+            curate_result = mod.run(dry_run=False, skip_ai=True)
+            results["auto_curate"] = f"OK ({time.time()-t0:.1f}s)"
+            logger.info("Post-task: auto_curate completed")
+        except Exception as e:
+            logger.exception("Post-task auto_curate failed")
+            results["auto_curate"] = f"ERROR: {e}"
+
+        # 7. Data Steward loop (signal-driven autonomous curation)
+        try:
+            t0 = time.time()
+            from services.steward_signals import StewardSignalCollector
+            from services.data_steward import DataSteward, StewardConfig
+
+            steward_db = Database(app_config.db.dsn)
+            steward_db.connect()
+            try:
+                collector = StewardSignalCollector(steward_db)
+                steward = DataSteward(
+                    steward_db, collector,
+                    StewardConfig(max_iterations=10, skip_ai=True),
+                )
+                summary = steward.run_loop()
+                results["data_steward"] = (
+                    f"OK: {summary.completed} completed, "
+                    f"{summary.feedback_resolved} feedback resolved "
+                    f"({time.time()-t0:.1f}s)"
+                )
+                logger.info("Post-task: data_steward completed — %s", results["data_steward"])
+            finally:
+                steward_db.close()
+        except Exception as e:
+            logger.exception("Post-task data_steward failed")
+            results["data_steward"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
 
     def run_one(self, source_name: str) -> str:

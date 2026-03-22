@@ -34,6 +34,9 @@ class MockDB:
         # Handle EXISTS queries and table existence checks
         sql_lower = sql.lower()
         if "information_schema" in sql_lower:
+            if "information_schema" in self._results:
+                r = self._results["information_schema"]
+                return r[0] if r else {"exists_": False}
             return {"exists_": False}
         results = self.fetch_all(sql, params)
         return results[0] if results else None
@@ -146,8 +149,67 @@ class TestEnrichFromMilestones:
 
         from scripts.enrich_drugs import enrich_from_milestones
         stats = enrich_from_milestones(db, dry_run=False)
-        assert stats["brand_name"] == 0
         assert stats["approval_date"] == 0
+
+    def test_positive_path_sets_approval_date(self):
+        db = MockDB()
+        db.set_results("information_schema", [{"exists_": True}])
+        db.set_results("drugs", [
+            {"drug_id": "d001", "earliest_approval": "2022-01-15"},
+        ])
+
+        from scripts.enrich_drugs import enrich_from_milestones
+        stats = enrich_from_milestones(db, dry_run=False)
+        assert stats["approval_date"] == 1
+        updates = [s for s, _ in db.executed if "UPDATE drugs" in s]
+        assert len(updates) >= 1
+
+    def test_milestone_dry_run_no_writes(self):
+        db = MockDB()
+        db.set_results("information_schema", [{"exists_": True}])
+        db.set_results("drugs", [
+            {"drug_id": "d001", "earliest_approval": "2022-01-15"},
+        ])
+
+        from scripts.enrich_drugs import enrich_from_milestones
+        stats = enrich_from_milestones(db, dry_run=True)
+        assert stats["approval_date"] == 1
+        assert len(db.executed) == 0
+
+
+class TestEnrichFromLabels:
+    def test_extracts_brand_from_label(self):
+        db = MockDB()
+        db.set_results("information_schema", [{"exists_": True}])
+        db.set_results("drugs", [
+            {"drug_id": "d001", "drug_name": "OZEMPIC", "manufacturer": "Novo Nordisk"},
+        ])
+
+        from scripts.enrich_drugs import enrich_from_labels
+        stats = enrich_from_labels(db, dry_run=False)
+        assert stats["brand_name"] == 1
+        update_params = [p for s, p in db.executed if "UPDATE drugs" in s]
+        assert update_params[0][0] == "Ozempic"  # title-cased
+
+    def test_skips_when_no_labels_table(self):
+        db = MockDB()
+        # default: information_schema returns False
+
+        from scripts.enrich_drugs import enrich_from_labels
+        stats = enrich_from_labels(db, dry_run=False)
+        assert stats["brand_name"] == 0
+
+    def test_label_company_always_zero(self):
+        """Documents that company enrichment from labels is not yet implemented."""
+        db = MockDB()
+        db.set_results("information_schema", [{"exists_": True}])
+        db.set_results("drugs", [
+            {"drug_id": "d001", "drug_name": "OZEMPIC", "manufacturer": "Novo Nordisk"},
+        ])
+
+        from scripts.enrich_drugs import enrich_from_labels
+        stats = enrich_from_labels(db, dry_run=False)
+        assert stats["company"] == 0
 
 
 class TestEnrichCompanyFromTrials:
@@ -162,3 +224,16 @@ class TestEnrichCompanyFromTrials:
         from scripts.enrich_drugs import enrich_company_from_trials
         count = enrich_company_from_trials(db, dry_run=False)
         assert count == 0
+
+    def test_exact_match_creates_owns_link(self):
+        db = MockDB()
+        db.set_results("drugs", [
+            {"drug_id": "d001", "sponsor_name": "Pfizer"},
+        ])
+        db.set_results("companies", [{"id": "c001"}])
+
+        from scripts.enrich_drugs import enrich_company_from_trials
+        count = enrich_company_from_trials(db, dry_run=False)
+        assert count == 1
+        inserts = [s for s, _ in db.executed if "INSERT INTO entity_links" in s]
+        assert len(inserts) >= 1

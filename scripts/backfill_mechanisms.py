@@ -109,88 +109,107 @@ INN_SUFFIX_PATTERNS = [
 ]
 
 
+def match_mechanism(drug_name: str) -> str | None:
+    """Return mechanism name for a drug, or None if unrecognized.
+
+    Matching cascade:
+    1. Exact name lookup in DRUG_MECHANISM_MAP
+    2. INN suffix pattern (-gliptin, -gliflozin, etc.)
+    3. Insulin prefix
+    4. Metformin anywhere in name (combo drugs)
+    """
+    name = drug_name.strip().lower()
+
+    # 1. Exact name match
+    mech_name = DRUG_MECHANISM_MAP.get(name)
+    if mech_name:
+        return mech_name
+
+    # 2. INN suffix pattern
+    for suffix, mn in INN_SUFFIX_PATTERNS:
+        if suffix in name:
+            return mn
+
+    # 3. Insulin prefix
+    if name.startswith("insulin"):
+        return "Insulin"
+
+    # 4. Metformin anywhere in name (combo drugs)
+    if "metformin" in name:
+        return "Metformin"
+
+    return None
+
+
+def backfill_mechanisms(db, dry_run: bool = False) -> dict:
+    """Run mechanism backfill against a given DB connection."""
+    # Load mechanism IDs
+    mechs = db.fetch_all("SELECT id, name FROM mechanisms_of_action")
+    mech_map = {r["name"]: str(r["id"]) for r in mechs}
+
+    # Get all drugs without mechanism
+    drugs = db.fetch_all("""
+        SELECT id, generic_name FROM drugs
+        WHERE mechanism_id IS NULL
+          AND (record_status IS NULL OR record_status = 'active')
+          AND generic_name IS NOT NULL
+    """)
+    logger.info("Drugs without mechanism: %d", len(drugs))
+
+    direct_count = 0
+    suffix_count = 0
+
+    for drug in drugs:
+        name = drug["generic_name"].strip().lower()
+        drug_id = str(drug["id"])
+
+        mech_name = match_mechanism(drug["generic_name"])
+        if not mech_name:
+            continue
+
+        mech_id = mech_map.get(mech_name)
+        if not mech_id:
+            logger.warning("Mechanism '%s' not in DB", mech_name)
+            continue
+
+        if dry_run:
+            logger.info("[DRY RUN] %s -> %s", drug["generic_name"], mech_name)
+        else:
+            db.execute(
+                "UPDATE drugs SET mechanism_id = %s WHERE id = %s",
+                [mech_id, drug["id"]],
+            )
+
+        if name in DRUG_MECHANISM_MAP:
+            direct_count += 1
+        else:
+            suffix_count += 1
+
+    # Final stats
+    final = db.fetch_one(
+        "SELECT COUNT(*) AS cnt FROM drugs WHERE mechanism_id IS NOT NULL "
+        "AND (record_status IS NULL OR record_status = 'active')"
+    )
+    total = db.fetch_one(
+        "SELECT COUNT(*) AS cnt FROM drugs WHERE record_status IS NULL OR record_status = 'active'"
+    )
+
+    result = {
+        "direct_matches": direct_count,
+        "suffix_matches": suffix_count,
+        "total_updated": direct_count + suffix_count,
+        "mechanism_coverage": f"{final['cnt']}/{total['cnt']} ({final['cnt']/total['cnt']*100:.1f}%)",
+    }
+    logger.info("Mechanism backfill: %s", result)
+    return result
+
+
 def run(dry_run: bool = False) -> dict:
+    """Run mechanism backfill (creates own DB connection)."""
     db = Database(config.db.dsn)
     db.connect()
-
     try:
-        # Load mechanism IDs
-        mechs = db.fetch_all("SELECT id, name FROM mechanisms_of_action")
-        mech_map = {r["name"]: str(r["id"]) for r in mechs}
-
-        # Get all drugs without mechanism
-        drugs = db.fetch_all("""
-            SELECT id, generic_name FROM drugs
-            WHERE mechanism_id IS NULL
-              AND (record_status IS NULL OR record_status = 'active')
-              AND generic_name IS NOT NULL
-        """)
-        logger.info("Drugs without mechanism: %d", len(drugs))
-
-        direct_count = 0
-        suffix_count = 0
-
-        for drug in drugs:
-            name = drug["generic_name"].strip().lower()
-            drug_id = str(drug["id"])
-
-            # 1. Try exact name match
-            mech_name = DRUG_MECHANISM_MAP.get(name)
-
-            # 2. Try INN suffix pattern
-            if not mech_name:
-                for suffix, mn in INN_SUFFIX_PATTERNS:
-                    if suffix in name:
-                        mech_name = mn
-                        break
-
-            # 3. Try insulin prefix
-            if not mech_name and name.startswith("insulin"):
-                mech_name = "Insulin"
-
-            # 4. Try metformin anywhere in name (combo drugs)
-            if not mech_name and "metformin" in name:
-                mech_name = "Metformin"
-
-            if not mech_name:
-                continue
-
-            mech_id = mech_map.get(mech_name)
-            if not mech_id:
-                logger.warning("Mechanism '%s' not in DB", mech_name)
-                continue
-
-            if dry_run:
-                logger.info("[DRY RUN] %s -> %s", drug["generic_name"], mech_name)
-            else:
-                db.execute(
-                    "UPDATE drugs SET mechanism_id = %s WHERE id = %s",
-                    [mech_id, drug["id"]],
-                )
-
-            if name in DRUG_MECHANISM_MAP:
-                direct_count += 1
-            else:
-                suffix_count += 1
-
-        # Final stats
-        final = db.fetch_one(
-            "SELECT COUNT(*) AS cnt FROM drugs WHERE mechanism_id IS NOT NULL "
-            "AND (record_status IS NULL OR record_status = 'active')"
-        )
-        total = db.fetch_one(
-            "SELECT COUNT(*) AS cnt FROM drugs WHERE record_status IS NULL OR record_status = 'active'"
-        )
-
-        result = {
-            "direct_matches": direct_count,
-            "suffix_matches": suffix_count,
-            "total_updated": direct_count + suffix_count,
-            "mechanism_coverage": f"{final['cnt']}/{total['cnt']} ({final['cnt']/total['cnt']*100:.1f}%)",
-        }
-        logger.info("Mechanism backfill: %s", result)
-        return result
-
+        return backfill_mechanisms(db, dry_run)
     finally:
         db.close()
 
