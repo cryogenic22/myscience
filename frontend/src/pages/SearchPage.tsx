@@ -453,7 +453,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
         >
           <div
             className="mx-auto w-full px-6"
-            style={{ maxWidth: hasSearched ? '1360px' : '680px', paddingTop: hasSearched ? '24px' : 0 }}
+            style={{ maxWidth: hasSearched ? '1360px' : '820px', paddingTop: hasSearched ? '24px' : 0 }}
           >
             {/* Logo / title — Google-style, above the search bar */}
             {!hasSearched && (

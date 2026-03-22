@@ -57,55 +57,43 @@ export default function SearchFilters({
 }: SearchFiltersProps) {
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]"
-          style={{ color: 'var(--color-ink-3)' }}
-        >
-          <Filter size={14} />
-          Filters
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {ENTITY_TYPES.map((entityType) => {
-            const active = activeTypes.includes(entityType.key);
-            const cfg = FILTER_COLORS[entityType.key];
-            return (
-              <button
-                key={entityType.key}
-                type="button"
-                onClick={() => onTypeToggle(entityType.key)}
-                className="flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-medium transition-all"
-                style={{
-                  border: active
-                    ? `1px solid ${cfg.color}`
-                    : '1px solid var(--color-line)',
-                  background: active ? cfg.bg : 'transparent',
-                  color: active ? cfg.color : 'var(--color-ink-3)',
-                }}
-              >
-                {ENTITY_ICONS[entityType.key]}
-                {entityType.label}
-              </button>
-            );
-          })}
-          {activeTypes.length > 0 && (
+      <div className="flex flex-wrap items-center justify-center gap-2.5">
+        {ENTITY_TYPES.map((entityType) => {
+          const active = activeTypes.includes(entityType.key);
+          const cfg = FILTER_COLORS[entityType.key];
+          return (
             <button
+              key={entityType.key}
               type="button"
-              onClick={() => {
-                for (const type of [...activeTypes]) {
-                  onTypeToggle(type);
-                }
-              }}
-              className="rounded-md px-4 py-2 text-xs font-medium transition-colors"
+              onClick={() => onTypeToggle(entityType.key)}
+              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-all"
               style={{
-                border: '1px solid var(--color-line)',
-                color: 'var(--color-ink-3)',
+                background: active ? cfg.bg : 'var(--color-surface-2)',
+                color: active ? cfg.color : 'var(--color-ink-3)',
               }}
             >
-              Clear all
+              {ENTITY_ICONS[entityType.key]}
+              {entityType.label}
             </button>
-          )}
-        </div>
+          );
+        })}
+        {activeTypes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              for (const type of [...activeTypes]) {
+                onTypeToggle(type);
+              }
+            }}
+            className="rounded-full px-4 py-2 text-[12px] font-medium transition-colors"
+            style={{
+              background: 'var(--color-surface-2)',
+              color: 'var(--color-ink-4)',
+            }}
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {activeTypes.includes('therapeutic_area') && (
