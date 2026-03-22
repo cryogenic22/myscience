@@ -1138,7 +1138,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
         onClose={() => setDrawerOpen(false)}
         title={selectedEntity?.label || 'Entity details'}
         subtitle={selectedEntity?.type ? prettyType(selectedEntity.type) : undefined}
-        width="420px"
+        width="clamp(380px, 35vw, 560px)"
       >
         <div className="space-y-5">
           <section>

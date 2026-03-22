@@ -381,28 +381,32 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
             {Object.entries(completeness).map(([etype, data]) => (
               <div key={etype}>
                 <div className="flex items-center justify-between mb-2">
-                  <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink)', textTransform: 'capitalize' }}>
-                    {etype.replace(/_/g, ' ')}
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                    {displayName(etype)}
                   </span>
                   <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>
                     {(data.overall * 100).toFixed(0)}% ({data.total} records)
                   </span>
                 </div>
-                <div className="flex gap-1 flex-wrap">
-                  {Object.entries(data.fields).map(([field, score]) => (
-                    <div
-                      key={field}
-                      title={`${field}: ${(score * 100).toFixed(0)}%`}
-                      className="rounded-md px-2 py-1"
-                      style={{
-                        fontSize: '10px',
-                        background: score >= 0.7 ? 'var(--color-green-soft)' : score >= 0.4 ? 'var(--color-amber-soft)' : 'var(--color-red-soft)',
-                        color: score >= 0.7 ? 'var(--color-green)' : score >= 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
-                      }}
-                    >
-                      {field.replace(/_/g, ' ')} {(score * 100).toFixed(0)}%
-                    </div>
-                  ))}
+                <div className="flex gap-1.5 flex-wrap">
+                  {Object.entries(data.fields).map(([field, score]) => {
+                    const label = displayName(field);
+                    return (
+                      <div
+                        key={field}
+                        title={`${label}: ${(score * 100).toFixed(0)}%`}
+                        className="rounded-lg px-2.5 py-1"
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          background: score >= 0.7 ? 'var(--color-green-soft)' : score >= 0.4 ? 'var(--color-amber-soft)' : 'var(--color-red-soft)',
+                          color: score >= 0.7 ? 'var(--color-green)' : score >= 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
+                        }}
+                      >
+                        {label} {(score * 100).toFixed(0)}%
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

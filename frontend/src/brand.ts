@@ -86,9 +86,61 @@ export const CONNECTIVITY_LABELS: Record<string, string> = {
   hub: 'Highly connected hub',
 };
 
+/** Database column names → user-facing field labels */
+export const FIELD_LABELS: Record<string, string> = {
+  generic_name: 'Generic Name',
+  brand_name: 'Brand Name',
+  company_id: 'Company',
+  mechanism_id: 'Mechanism',
+  therapeutic_area_id: 'Therapeutic Area',
+  approval_date: 'Approval Date',
+  patent_expiry_date: 'Patent Expiry',
+  supply_status: 'Supply Status',
+  record_status: 'Record Status',
+  source_api: 'Source',
+  source_authority: 'Authority',
+  source_url: 'Source URL',
+  retrieved_at: 'Retrieved',
+  created_at: 'Created',
+  updated_at: 'Updated',
+  last_verified_at: 'Last Verified',
+  content_hash: 'Content Hash',
+  quality_score: 'Quality Score',
+  nda_number: 'NDA Number',
+  nct_id: 'NCT ID',
+  pmid: 'PMID',
+  mesh_id: 'MeSH ID',
+  scope_note: 'Scope Note',
+  official_title: 'Title',
+  sponsor_name: 'Sponsor',
+  enrollment_target: 'Enrollment',
+  start_date: 'Start Date',
+  primary_completion_date: 'Primary Completion',
+  completion_date: 'Completion Date',
+  study_type: 'Study Type',
+  conditions: 'Conditions',
+  phase: 'Phase',
+  status: 'Status',
+  ticker: 'Ticker',
+  cik: 'CIK',
+  region: 'Region',
+  country: 'Country',
+  market_cap_tier: 'Market Cap',
+  dosage_form: 'Dosage Form',
+  route: 'Route',
+  marketing_status: 'Marketing Status',
+  mesh_terms: 'MeSH Terms',
+  journal: 'Journal',
+  publication_date: 'Publication Date',
+  title: 'Title',
+  name: 'Name',
+  label: 'Label',
+};
+
 /** Generic display name resolver — tries all maps, falls back to title-casing */
 export function displayName(key: string): string {
   return (
+    FIELD_LABELS[key] ??
     LINK_TYPE_LABELS[key] ??
     QUALITY_CHECK_LABELS[key] ??
     SOURCE_LABELS[key] ??

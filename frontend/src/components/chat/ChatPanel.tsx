@@ -90,8 +90,8 @@ export default function ChatPanel({
         style={{ minHeight: 0 }}
       >
         <div
-          className="mx-auto px-8 py-10"
-          style={{ maxWidth: '680px' }}
+          className="mx-auto px-6 py-8 sm:px-8 lg:px-10"
+          style={{ maxWidth: 'min(92%, 960px)' }}
         >
           {isEmpty ? (
             <EmptyState onQuery={(q) => onSend(q)} />
@@ -121,7 +121,7 @@ export default function ChatPanel({
       >
         <div
           className="mx-auto chat-input-bar"
-          style={{ maxWidth: '680px' }}
+          style={{ maxWidth: 'min(92%, 960px)' }}
         >
           <textarea
             ref={inputRef}
@@ -212,7 +212,7 @@ function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
         </h2>
         <p
           className="text-[14px] leading-relaxed"
-          style={{ color: 'var(--color-ink-3)', maxWidth: '380px' }}
+          style={{ color: 'var(--color-ink-3)', maxWidth: '480px' }}
         >
           Evidence-grounded answers across drugs, clinical trials,
           companies, and therapeutic areas.
@@ -224,7 +224,7 @@ function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, duration: 0.5 }}
         className="w-full"
-        style={{ maxWidth: '560px' }}
+        style={{ maxWidth: '720px' }}
       >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {STARTER_GROUPS.map((group, gi) =>
