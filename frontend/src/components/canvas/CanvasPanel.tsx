@@ -117,7 +117,7 @@ export default function CanvasPanel({
         className="shrink-0 flex items-center justify-between px-6 py-4"
         style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" style={{ flex: 1 }}>
           {intent && (
             <span
               style={{
@@ -149,11 +149,35 @@ export default function CanvasPanel({
             </span>
           )}
         </div>
-        {tableData && tableData.rows.length > 0 && (
-          <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
-            {tableData.rows.length} rows
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {tableData && tableData.rows.length > 0 && (
+            <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+              {tableData.rows.length} rows
+            </span>
+          )}
+          {onViewInGraph && hasEntities && (data?.entity_focus as Record<string, unknown>[])?.length > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                const first = (data!.entity_focus as Record<string, unknown>[])[0];
+                if (first?.entity_id) {
+                  onViewInGraph({
+                    id: String(first.entity_id),
+                    type: String(first.entity_type ?? 'drug'),
+                    label: String(first.title ?? first.label ?? ''),
+                  });
+                }
+              }}
+              style={{
+                fontSize: '11px', fontWeight: 500, color: 'var(--color-accent)',
+                background: 'var(--color-accent-soft)', border: 'none', cursor: 'pointer',
+                padding: '4px 10px', borderRadius: '6px',
+              }}
+            >
+              Visualise →
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab bar */}
