@@ -86,6 +86,23 @@ export const CONNECTIVITY_LABELS: Record<string, string> = {
   hub: 'Highly connected hub',
 };
 
+/** Change types → user-facing descriptions */
+export const CHANGE_TYPE_LABELS: Record<string, string> = {
+  manual_edit: 'Manual edit',
+  enrich_company_from_sponsor: 'Company linked from trial sponsor',
+  enrich_brand_from_label: 'Brand name from FDA label',
+  enrich_brand_from_milestone: 'Brand name from regulatory milestone',
+  enrich_approval_from_milestone: 'Approval date from milestone',
+  backfill_ta_link: 'Therapeutic area linked',
+  backfill_label: 'Label backfilled',
+  auto_curate_run: 'Automated curation',
+  created: 'Created',
+  drug_name_cleaned: 'Drug name cleaned',
+  company_merged: 'Company merged',
+  company_excluded: 'Non-company excluded',
+  biomarker_extraction: 'Biomarker extracted',
+};
+
 /** Database column names → user-facing field labels */
 export const FIELD_LABELS: Record<string, string> = {
   generic_name: 'Generic Name',
@@ -146,6 +163,7 @@ export function displayName(key: string): string {
     SOURCE_LABELS[key] ??
     ENTITY_TYPE_LABELS[key] ??
     CONNECTIVITY_LABELS[key] ??
+    CHANGE_TYPE_LABELS[key] ??
     key
       .replace(/_/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase())

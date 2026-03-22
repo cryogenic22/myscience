@@ -41,7 +41,7 @@ function drugSummary(e: Record<string, unknown>): string {
 
   const parts: string[] = [];
   parts.push(name || 'This drug');
-  if (authority) parts.push(`is listed under ${authority}`);
+  if (authority) parts.push(`is listed under ${SOURCE_LABELS[authority] ?? authority}`);
   if (supply) {
     const supplyLower = supply.toLowerCase();
     parts.push(parts.length > 1 ? `(${supplyLower})` : `has supply status: ${supplyLower}`);
@@ -312,7 +312,16 @@ function StructuredSection({ title, fields, entity, editable, editing, onEditFie
                   fontSize: '12px', color: 'var(--color-ink-2)',
                   flex: 1, wordBreak: 'break-word',
                 }}>
-                  {display(val)}
+                  {(() => {
+                    const raw = display(val);
+                    if (raw === '—') return f.key.endsWith('_id') ? 'Not linked' : '—';
+                    // Translate source/authority values
+                    if (f.key === 'source_authority' || f.key === 'source_api') return SOURCE_LABELS[raw] ?? raw;
+                    // Title-case status values
+                    if (f.key === 'supply_status' || f.key === 'record_status' || f.key === 'marketing_status')
+                      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+                    return raw;
+                  })()}
                 </span>
               )}
               {editable.has(f.key) && !isEditing && (
@@ -543,9 +552,9 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
                   background: ch.change_type === 'manual_edit' ? 'var(--color-accent)' : 'var(--color-ink-4)',
                 }} />
                 <div>
-                  <span style={{ color: 'var(--color-ink-2)' }}>{ch.change_type}</span>
+                  <span style={{ color: 'var(--color-ink-2)' }}>{displayName(ch.change_type)}</span>
                   {ch.changed_fields?.length > 0 && (
-                    <span style={{ color: 'var(--color-ink-4)' }}> · {ch.changed_fields.join(', ')}</span>
+                    <span style={{ color: 'var(--color-ink-4)' }}> · {ch.changed_fields.map((f: string) => displayName(f)).join(', ')}</span>
                   )}
                   <div style={{ color: 'var(--color-ink-4)' }}>{shortDate(ch.changed_at)}</div>
                 </div>
