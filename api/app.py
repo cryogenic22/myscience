@@ -13,9 +13,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.deps import get_db
-from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment, feedback, steward, literature
+from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment
 
 logger = logging.getLogger(__name__)
+
+# New routers — import with fallback to avoid blocking startup
+try:
+    from api.routes import feedback, steward, literature
+    _NEW_ROUTERS_OK = True
+except Exception as _e:
+    logger.error("Failed to import new routers (feedback/steward/literature): %s", _e)
+    _NEW_ROUTERS_OK = False
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -51,12 +59,29 @@ def create_app() -> FastAPI:
     all_routers = [
         search.router, metrics.router, graph.router, query.router,
         entities.router, chat.router, therapeutic_areas.router,
-        catalog.router, enrichment.router, feedback.router, steward.router,
-        literature.router,
+        catalog.router, enrichment.router,
     ]
+    if _NEW_ROUTERS_OK:
+        all_routers.extend([feedback.router, steward.router, literature.router])
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
+
+    @app.get("/debug/routes")
+    def debug_routes():
+        """Debug: show registered route count and new router status."""
+        import os
+        route_count = len([r for r in app.routes if hasattr(r, 'path')])
+        steward_routes = [r.path for r in app.routes if hasattr(r, 'path') and 'steward' in r.path]
+        return {
+            "total_routes": route_count,
+            "new_routers_ok": _NEW_ROUTERS_OK,
+            "steward_routes": steward_routes,
+            "python_version": os.popen("python --version").read().strip(),
+            "feedback_file_exists": os.path.exists("api/routes/feedback.py"),
+            "steward_file_exists": os.path.exists("api/routes/steward.py"),
+            "literature_file_exists": os.path.exists("api/routes/literature.py"),
+        }
 
     @app.get("/health")
     def health():
