@@ -22,6 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 
 from api.deps import (
+    get_conversation_memory,
     get_db,
     get_llm,
     get_metrics,
@@ -374,11 +375,15 @@ def chat(
     if not isinstance(conversation_history, list):
         conversation_history = []
 
-    # Build conversation context for all intents
-    conv_context = _build_conversation_context(conversation_history)
+    # Server-side conversation memory (per session)
+    session_id = str(body.get("session_id", "")).strip() or "default"
+    memory = get_conversation_memory(session_id)
 
-    # Resolve follow-up references ("this space", "that drug", etc.)
-    resolved_question = _resolve_followup_question(question, conversation_history)
+    # Use ConversationMemory for context and coreference resolution
+    conv_context = memory.get_context() or _build_conversation_context(conversation_history)
+
+    # Resolve follow-up references using memory (falls back to ad-hoc if memory is empty)
+    resolved_question = memory.resolve_reference(question) if memory.get_context() else _resolve_followup_question(question, conversation_history)
     if resolved_question != question:
         logger.info("Follow-up resolved: %r → %r", question, resolved_question)
 
@@ -394,7 +399,7 @@ def chat(
         unified = get_unified_handler()
         if unified:
             try:
-                result = unified.handle(resolved_question, conversation_history=conversation_history)
+                result = unified.handle(resolved_question, conversation_history=conversation_history, memory_context=conv_context)
                 if result is not None:
                     payload = result
                     payload["visualizations"] = payload.get("visualizations") or _build_visualizations(
@@ -403,6 +408,7 @@ def chat(
                     payload["followup_suggestions"] = payload.get("followup_suggestions") or _generate_followups(
                         question, payload.get("intent", "general"), payload.get("narrative", ""), params,
                     )
+                    memory.add_exchange(question, payload.get("narrative", ""))
                     return payload
             except Exception as e:
                 logger.warning("Unified handler error, falling back to legacy: %s", e)
@@ -457,12 +463,15 @@ def chat(
         payload["followup_suggestions"] = _generate_followups(
             question, intent, payload.get("narrative", ""), params,
         )
+        memory.add_exchange(question, payload.get("narrative", ""))
         return payload
 
     except Exception as e:
         logger.exception("Chat error for question: %s", question)
+        error_msg = f"I encountered an error processing your question: {str(e)}"
+        memory.add_exchange(question, error_msg)
         return {
-            "narrative": f"I encountered an error processing your question: {str(e)}",
+            "narrative": error_msg,
             "intent": intent,
             "data": None,
         }

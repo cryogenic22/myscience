@@ -49,6 +49,7 @@ class UnifiedChatHandler:
         self,
         question: str,
         conversation_history: Optional[list[dict]] = None,
+        memory_context: Optional[str] = None,
         **kwargs,
     ) -> dict | None:
         """Process a question through the staged pipeline.
@@ -88,6 +89,8 @@ class UnifiedChatHandler:
 
         # Build grounded system prompt
         system_prompt = self.pipeline.build_system_prompt(intent=plan.intent)
+        if memory_context:
+            system_prompt = f"CONVERSATION MEMORY:\n{memory_context}\n\n{system_prompt}"
 
         # Build fallback narrative from retrieved data
         fallback = self._build_fallback(plan, retrieval, reasoning, metrics_data)

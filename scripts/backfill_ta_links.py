@@ -109,10 +109,25 @@ def _log_change(db: Database, entity_type: str, entity_id: str,
 
 
 def fill_trial_labels(db: Database, dry_run: bool = False) -> int:
-    """Fill empty trial labels from title fields."""
+    """Fill empty trial labels from title fields.
+
+    Note: clinical_trials table uses 'official_title' (no brief_title or label column).
+    If a 'label' column doesn't exist, this is a no-op.
+    """
+    # Check if label column exists
+    col_check = db.fetch_one(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'clinical_trials' AND column_name = 'label'
+        """
+    )
+    if not col_check:
+        logger.info("No 'label' column in clinical_trials — skipping trial label fill")
+        return 0
+
     rows = db.fetch_all(
         """
-        SELECT id, brief_title, official_title
+        SELECT id, official_title
         FROM clinical_trials
         WHERE label IS NULL OR label = ''
         """
@@ -120,8 +135,7 @@ def fill_trial_labels(db: Database, dry_run: bool = False) -> int:
     count = 0
     for row in rows:
         label = (
-            row.get("brief_title")
-            or row.get("official_title")
+            row.get("official_title")
             or row["id"]
         )
         if not label:
@@ -171,7 +185,8 @@ def _link_exists(db: Database, source_id: str, source_type: str,
 
 def _create_link(db: Database, source_id: str, source_type: str,
                  target_id: str, target_type: str, link_type: str,
-                 confidence: float = 0.8, provenance: str = "backfill_ta_links") -> None:
+                 confidence: float = 0.8, provenance: str = "backfill_ta_links",
+                 link_via: str = "condition_keyword_match") -> None:
     if _link_exists(db, source_id, source_type, target_id, target_type, link_type):
         return
     db.execute(
@@ -179,12 +194,12 @@ def _create_link(db: Database, source_id: str, source_type: str,
         INSERT INTO entity_links
             (source_entity_id, source_entity_type,
              target_entity_id, target_entity_type,
-             link_type, confidence, provenance_source)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+             link_type, link_via, confidence, provenance_source)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT DO NOTHING
         """,
         [source_id, source_type, target_id, target_type,
-         link_type, confidence, provenance],
+         link_type, link_via, confidence, provenance],
     )
 
 

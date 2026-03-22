@@ -18,9 +18,22 @@ from services.metrics import PharmaMetrics
 from services.query_engine import QueryEngine
 from services.llm import LLMSynthesizer
 from services.web_research import WebResearchService
+from services.conversation_memory import ConversationMemory
 from services.workspace import ChatWorkspaceService
 
 logger = logging.getLogger(__name__)
+
+
+# ── Per-session conversation memory (in-memory, no DB persistence yet) ──
+
+_memory_store: dict[str, ConversationMemory] = {}
+
+
+def get_conversation_memory(session_id: str = "default") -> ConversationMemory:
+    """Get or create a ConversationMemory for the given session."""
+    if session_id not in _memory_store:
+        _memory_store[session_id] = ConversationMemory(token_budget=4000)
+    return _memory_store[session_id]
 
 
 @lru_cache()

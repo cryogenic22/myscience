@@ -74,6 +74,51 @@ def refresh_views(svc: PharmaMetrics = Depends(get_metrics)):
     return svc.refresh()
 
 
+@router.get("/safety-signals")
+def safety_signals(
+    drug: Optional[str] = None,
+    significant_only: bool = Query(True),
+    limit: int = Query(50, ge=1, le=500),
+    db: Database = Depends(get_db),
+):
+    """Safety signal scoring: PRR and ROR from FAERS disproportionality analysis.
+
+    Signals with ROR lower CI > 1 are statistically significant.
+    """
+    conditions = []
+    params = []
+
+    if drug:
+        conditions.append("LOWER(drug_name) = LOWER(%s)")
+        params.append(drug)
+    if significant_only:
+        conditions.append("ror_lower_ci > 1")
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+
+    rows = db.fetch_all(
+        f"""
+        SELECT drug_name, drug_id, reaction, a AS case_count,
+               ROUND(prr::numeric, 2) AS prr,
+               ROUND(ror::numeric, 2) AS ror,
+               ROUND(ror_lower_ci::numeric, 2) AS ror_lower_ci,
+               drug_total, reaction_total, total_reports
+        FROM mv_safety_signals
+        {where}
+        ORDER BY ror DESC NULLS LAST
+        LIMIT %s
+        """,
+        params,
+    )
+    return {
+        "signals": rows,
+        "count": len(rows),
+        "methodology": "Disproportionality analysis (PRR/ROR) from FAERS adverse event reports. "
+                        "Signals with ROR lower 95% CI > 1.0 are statistically significant.",
+    }
+
+
 @router.get("/ctx-telemetry")
 def ctx_telemetry(db: Database = Depends(get_db)):
     """CTX context-building telemetry: compression ratios, token savings, build times."""

@@ -296,6 +296,52 @@ class GraphTraversal:
             "total_connections": total,
         }
 
+    def drugs_by_mechanism_class(self, mechanism_class: str) -> list[dict]:
+        """Find all drugs linked to mechanisms in a given class.
+
+        Uses the mechanism_class column and parent hierarchy to find
+        drugs across related mechanisms (e.g., 'incretin_based' returns
+        drugs linked to GLP-1 RA, GIP, Incretins, etc.).
+        """
+        return self.db.fetch_all(
+            """
+            SELECT d.id, d.generic_name, d.brand_name, m.name AS mechanism_name,
+                   m.mechanism_class
+            FROM drugs d
+            JOIN mechanisms_of_action m ON m.id = d.mechanism_id
+            WHERE m.mechanism_class = %s
+              AND (d.record_status IS NULL OR d.record_status = 'active')
+            ORDER BY d.generic_name
+            """,
+            [mechanism_class],
+        )
+
+    def mechanism_hierarchy(self, mechanism_id: str = None) -> list[dict]:
+        """Return the full mechanism hierarchy or subtree from a given root."""
+        if mechanism_id:
+            return self.db.fetch_all(
+                """
+                WITH RECURSIVE tree AS (
+                    SELECT id, name, mechanism_class, parent_mechanism_id, 0 AS depth
+                    FROM mechanisms_of_action WHERE id = %s
+                    UNION ALL
+                    SELECT m.id, m.name, m.mechanism_class, m.parent_mechanism_id, t.depth + 1
+                    FROM mechanisms_of_action m
+                    JOIN tree t ON m.parent_mechanism_id = t.id
+                )
+                SELECT * FROM tree ORDER BY depth, name
+                """,
+                [mechanism_id],
+            )
+        return self.db.fetch_all(
+            """
+            SELECT id, name, mechanism_class, parent_mechanism_id,
+                   (SELECT COUNT(*) FROM drugs d WHERE d.mechanism_id = m.id) AS drug_count
+            FROM mechanisms_of_action m
+            ORDER BY mechanism_class, name
+            """,
+        )
+
     # ---- Internal helpers ----
 
     # Maps entity_type -> (table, name_column) for name-based ID resolution

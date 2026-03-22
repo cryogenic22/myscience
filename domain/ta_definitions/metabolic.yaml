@@ -1,0 +1,369 @@
+name: metabolic
+display_name: Metabolic, Cardiovascular & Renal
+
+# MeSH descriptors for therapeutic areas
+mesh_ids:
+  # Metabolic / Diabetes / Obesity
+  - D003920   # Diabetes Mellitus
+  - D003924   # Diabetes Mellitus, Type 2
+  - D003922   # Diabetes Mellitus, Type 1
+  - D009765   # Obesity
+  - D024821   # Metabolic Syndrome
+  - D006943   # Hyperglycemia
+  # Cardiovascular / Heart Failure
+  - D006333   # Heart Failure
+  - D054143   # Heart Failure, Diastolic (HFpEF)
+  - D054144   # Heart Failure, Systolic (HFrEF)
+  - D002318   # Cardiovascular Diseases
+  - D006331   # Heart Diseases
+  - D006973   # Hypertension
+  - D003324   # Coronary Artery Disease
+  - D001281   # Atrial Fibrillation
+  - D009202   # Cardiomyopathies
+  # Renal (cardiorenal-metabolic overlap)
+  - D051436   # Renal Insufficiency, Chronic (CKD)
+  - D003928   # Diabetic Nephropathies
+
+# Mechanism MeSH descriptors (27 mechanisms)
+mechanism_mesh_ids:
+  # Diabetes / Obesity
+  - D000097789  # GLP-1 Receptor Agonists
+  - D054795     # Incretins
+  - D007004     # Hypoglycemic Agents
+  - D000067757  # GLP-1 Receptor
+  - D052216     # GLP-1 (peptide)
+  - D054873     # DPP-4 Inhibitors
+  - D000077203  # SGLT2 Inhibitors
+  - D007328     # Insulin
+  - D045162     # Thiazolidinediones
+  - D008687     # Metformin
+  - D001067     # Appetite Depressants
+  # Dual/multi-agonists
+  - D005749     # GIP (dual GIP/GLP-1 target)
+  - D000077582  # GLP-2 Receptor Agonists
+  - D000068900  # Amylin Receptor Agonists
+  # Cardiovascular / Heart Failure
+  - D000806     # ACE Inhibitors
+  - D047228     # ARBs (Angiotensin II Type 1 Receptor Blockers)
+  - D000319     # Beta-blockers
+  - D000451     # Mineralocorticoid Receptor Antagonists
+  - D004232     # Diuretics
+  - D010726     # Phosphodiesterase Inhibitors
+  - D000077440  # Neprilysin Inhibitors (ARNI)
+  - D000069059  # PCSK9 Inhibitors
+  - D014665     # Vasodilator Agents
+  - D002121     # Calcium Channel Blockers
+  - D000068718  # Soluble Guanylyl Cyclase Stimulators (vericiguat)
+  - D019389     # CYP3A Inhibitors
+
+# Seed drug names — established + next-generation pipeline
+target_drugs:
+  # ── GLP-1 Receptor Agonists ──
+  - semaglutide
+  - liraglutide
+  - dulaglutide
+  - exenatide
+  - lixisenatide
+  # ── Dual/Triple Agonists (next-gen pipeline) ──
+  - tirzepatide           # Eli Lilly — dual GIP/GLP-1
+  - orforglipron           # Eli Lilly — oral GLP-1 (Phase 3)
+  - survodutide            # Boehringer Ingelheim — dual glucagon/GLP-1
+  - retatrutide            # Eli Lilly — triple GIP/GLP-1/glucagon (Phase 3)
+  - pemvidutide            # Altimmune — dual glucagon/GLP-1
+  - efinopegdutide         # Merck/Hanmi — dual glucagon/GLP-1
+  - cotadutide             # AstraZeneca — dual glucagon/GLP-1
+  - mazdutide              # Innovent — dual glucagon/GLP-1
+  # ── Amylin-based ──
+  - CagriSema              # Novo Nordisk — cagrilintide + semaglutide (amylin/GLP-1)
+  - cagrilintide            # Novo Nordisk — amylin analog
+  # ── SGLT2 Inhibitors ──
+  - empagliflozin
+  - dapagliflozin
+  - canagliflozin
+  - ertugliflozin
+  # ── DPP-4 Inhibitors ──
+  - sitagliptin
+  - linagliptin
+  - saxagliptin
+  - alogliptin
+  # ── Biguanides / TZDs ──
+  - metformin
+  - pioglitazone
+  - rosiglitazone
+  # ── Insulins ──
+  - insulin glargine
+  - insulin lispro
+  - insulin aspart
+  - insulin degludec
+  # ── Heart Failure / CV ──
+  - sacubitril              # ARNI (Entresto component)
+  - valsartan               # ARB (Entresto component)
+  - finerenone              # Non-steroidal MRA (Kerendia)
+  - vericiguat              # sGC stimulator (Verquvo)
+  - ivabradine              # If channel blocker (Corlanor)
+  - carvedilol              # Beta-blocker
+  - metoprolol              # Beta-blocker
+  - enalapril               # ACE inhibitor
+  - losartan                # ARB
+  - spironolactone          # MRA
+  - eplerenone              # MRA
+
+# Clinical trial condition terms
+target_conditions:
+  # Core metabolic
+  - diabetes mellitus type 2
+  - obesity
+  - type 2 diabetes
+  - weight management
+  # Expanded metabolic
+  - metabolic dysfunction-associated steatohepatitis   # MASH (formerly NASH)
+  - non-alcoholic steatohepatitis                      # NASH (legacy term)
+  - nonalcoholic fatty liver disease                   # NAFLD
+  - obstructive sleep apnea                            # GLP-1 new indication
+  - diabetic retinopathy
+  # Cardiovascular
+  - heart failure
+  - cardiovascular disease
+  - heart failure with reduced ejection fraction
+  - heart failure with preserved ejection fraction
+  - atherosclerotic cardiovascular disease
+  - peripheral artery disease
+  # Renal
+  - chronic kidney disease
+  - diabetic kidney disease
+  - diabetic nephropathy
+
+# Orange Book EPC classes
+target_epc_classes:
+  # Diabetes / Obesity
+  - "Glucagon-Like Peptide-1 (GLP-1) Receptor Agonist [EPC]"
+  - "Dipeptidyl Peptidase 4 Inhibitor [EPC]"
+  - "Sodium-Glucose Transporter 2 Inhibitor [EPC]"
+  - "Insulin [EPC]"
+  - "Biguanide [EPC]"
+  - "Thiazolidinedione [EPC]"
+  - "Meglitinide Analog [EPC]"
+  - "Alpha-glucosidase Inhibitor [EPC]"
+  - "Amylin Analog [EPC]"
+  # Cardiovascular / Heart Failure
+  - "Angiotensin-Converting Enzyme Inhibitor [EPC]"
+  - "Angiotensin 2 Receptor Blocker [EPC]"
+  - "Beta-Adrenergic Blocker [EPC]"
+  - "Neprilysin Inhibitor [EPC]"
+  - "Aldosterone Antagonist [EPC]"
+  - "Loop Diuretic [EPC]"
+  - "HCN Channel Blocker [EPC]"
+  - "Soluble Guanylate Cyclase Stimulator [EPC]"
+  - "Non-steroidal Mineralocorticoid Receptor Antagonist [EPC]"
+
+# Target companies — established + emerging pipeline players
+target_companies:
+  # Big pharma with metabolic/CV franchises
+  - {name: "Novo Nordisk", cik: "0001000694", ticker: "NVO", country: "Denmark"}
+  - {name: "Eli Lilly", cik: "0000059478", ticker: "LLY", country: "US"}
+  - {name: "Sanofi", cik: "0001121404", ticker: "SNY", country: "France"}
+  - {name: "AstraZeneca", cik: "0000816284", ticker: "AZN", country: "UK"}
+  - {name: "Pfizer", cik: "0000078003", ticker: "PFE", country: "US"}
+  - {name: "Novartis", cik: "0001114448", ticker: "NVS", country: "Switzerland"}
+  - {name: "Boehringer Ingelheim", cik: "", ticker: "", country: "Germany"}
+  - {name: "Merck", cik: "0000310158", ticker: "MRK", country: "US"}
+  - {name: "Johnson & Johnson", cik: "0000200406", ticker: "JNJ", country: "US"}
+  - {name: "Bayer", cik: "", ticker: "BAYN.DE", country: "Germany"}
+  # Emerging pipeline players
+  - {name: "Viking Therapeutics", cik: "0001636050", ticker: "VKTX", country: "US"}
+  - {name: "Amgen", cik: "0000318154", ticker: "AMGN", country: "US"}
+  - {name: "Zealand Pharma", cik: "", ticker: "ZEAL.CO", country: "Denmark"}
+  - {name: "Altimmune", cik: "0001326583", ticker: "ALT", country: "US"}
+  - {name: "Structure Therapeutics", cik: "0001880613", ticker: "GPCR", country: "US"}
+  - {name: "Innovent Biologics", cik: "", ticker: "1801.HK", country: "China"}
+
+# FDA shortage search terms
+shortage_search_terms:
+  - semaglutide
+  - liraglutide
+  - tirzepatide
+  - dulaglutide
+  - exenatide
+  - empagliflozin
+  - dapagliflozin
+  - canagliflozin
+  - sitagliptin
+  - linagliptin
+  - saxagliptin
+  - metformin
+  - pioglitazone
+  - insulin
+  - glargine
+  - lispro
+  - aspart
+  - degludec
+  - sacubitril
+  - valsartan
+  - finerenone
+  - vericiguat
+  - ivabradine
+  - carvedilol
+  - metoprolol
+  - enalapril
+  - losartan
+  - spironolactone
+  - eplerenone
+  - orforglipron
+  - survodutide
+  - retatrutide
+
+# PubMed search queries
+pubmed_queries:
+  # Drug-specific (diabetes/obesity)
+  - '"semaglutide"[Title/Abstract]'
+  - '"tirzepatide"[Title/Abstract]'
+  - '"liraglutide"[Title/Abstract]'
+  - '"dulaglutide"[Title/Abstract]'
+  - '"exenatide"[Title/Abstract]'
+  - '"lixisenatide"[Title/Abstract]'
+  - '"empagliflozin"[Title/Abstract]'
+  - '"dapagliflozin"[Title/Abstract]'
+  - '"canagliflozin"[Title/Abstract]'
+  - '"ertugliflozin"[Title/Abstract]'
+  - '"sitagliptin"[Title/Abstract]'
+  - '"linagliptin"[Title/Abstract]'
+  - '"saxagliptin"[Title/Abstract]'
+  - '"alogliptin"[Title/Abstract]'
+  - '"pioglitazone"[Title/Abstract]'
+  # Next-gen pipeline drugs
+  - '"orforglipron"[Title/Abstract]'
+  - '"survodutide"[Title/Abstract]'
+  - '"retatrutide"[Title/Abstract]'
+  - '"cagrilintide"[Title/Abstract] OR "CagriSema"[Title/Abstract]'
+  - '"pemvidutide"[Title/Abstract]'
+  - '"mazdutide"[Title/Abstract]'
+  # Class-based (diabetes)
+  - '"GLP-1 receptor agonist"[Title/Abstract] AND "type 2 diabetes"[Title/Abstract]'
+  - '"SGLT2 inhibitor"[Title/Abstract] AND "type 2 diabetes"[Title/Abstract]'
+  - '"DPP-4 inhibitor"[Title/Abstract] AND "type 2 diabetes"[Title/Abstract]'
+  - '"dual GIP GLP-1"[Title/Abstract] OR "twincretin"[Title/Abstract]'
+  - '"triple agonist"[Title/Abstract] AND ("GLP-1" OR "glucagon" OR "GIP")'
+  # MASH/NASH (new indication frontier)
+  - '"GLP-1"[Title/Abstract] AND ("MASH" OR "NASH" OR "steatohepatitis")[Title/Abstract]'
+  - '"SGLT2"[Title/Abstract] AND ("MASH" OR "NASH" OR "fatty liver")[Title/Abstract]'
+  - '"semaglutide"[Title/Abstract] AND ("MASH" OR "NASH")[Title/Abstract]'
+  # Cardiovascular drug-specific
+  - '"sacubitril valsartan"[Title/Abstract]'
+  - '"finerenone"[Title/Abstract]'
+  - '"vericiguat"[Title/Abstract]'
+  - '"ivabradine"[Title/Abstract]'
+  - '"carvedilol"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"metoprolol"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"spironolactone"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"eplerenone"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"enalapril"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"losartan"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  # Cardiovascular class-based
+  - '"SGLT2 inhibitor"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"GLP-1 receptor agonist"[Title/Abstract] AND "cardiovascular"[Title/Abstract]'
+  - '"ARNI"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  - '"mineralocorticoid receptor antagonist"[Title/Abstract] AND "heart failure"[Title/Abstract]'
+  # Cardiorenal-metabolic nexus
+  - '"SGLT2 inhibitor"[Title/Abstract] AND "chronic kidney disease"[Title/Abstract]'
+  - '"finerenone"[Title/Abstract] AND "chronic kidney disease"[Title/Abstract]'
+  - '"GLP-1"[Title/Abstract] AND ("CKD" OR "chronic kidney disease")[Title/Abstract]'
+  - '"cardiorenal"[Title/Abstract] AND ("GLP-1" OR "SGLT2" OR "finerenone")'
+  # Phenotype-specific
+  - '"heart failure"[Title/Abstract] AND "reduced ejection fraction"[Title/Abstract]'
+  - '"heart failure"[Title/Abstract] AND "preserved ejection fraction"[Title/Abstract]'
+  - '"obesity"[Title/Abstract] AND "GLP-1"[Title/Abstract] AND "cardiovascular"[Title/Abstract]'
+  # Reviews and meta-analyses
+  - '"systematic review"[Title] AND "GLP-1"[Title/Abstract]'
+  - '"systematic review"[Title] AND "SGLT2"[Title/Abstract]'
+  - '"meta-analysis"[Publication Type] AND "semaglutide"[Title/Abstract]'
+  - '"meta-analysis"[Publication Type] AND "SGLT2 inhibitor"[Title/Abstract]'
+  - '"meta-analysis"[Publication Type] AND "heart failure"[Title/Abstract] AND "mortality"[Title/Abstract]'
+
+# TA condition keywords for backfill_ta_links.py
+# Maps TA name → list of keywords to match in trial condition text
+condition_keywords:
+  Diabetes Mellitus, Type 1:
+    - type 1 diabetes
+    - t1dm
+    - t1d
+    - insulin dependent diabetes
+    - juvenile diabetes
+  Diabetes Mellitus, Type 2:
+    - type 2 diabetes
+    - t2dm
+    - t2d
+    - non-insulin dependent
+    - niddm
+  Obesity:
+    - obesity
+    - overweight
+    - weight management
+    - weight loss
+    - weight reduction
+    - bariatric
+    - bmi
+  Metabolic Syndrome:
+    - metabolic syndrome
+    - insulin resistance syndrome
+  Heart Failure:
+    - heart failure
+    - cardiac failure
+    - hf
+    - chf
+    - congestive heart failure
+  Heart Failure, Diastolic:
+    - hfpef
+    - preserved ejection fraction
+    - diastolic heart failure
+    - diastolic dysfunction
+  Heart Failure, Systolic:
+    - hfref
+    - reduced ejection fraction
+    - systolic heart failure
+    - systolic dysfunction
+  Cardiovascular Diseases:
+    - cardiovascular
+    - cv disease
+    - cvd
+    - atherosclerotic
+    - ascvd
+    - mace
+    - major adverse cardiovascular
+  Hypertension:
+    - hypertension
+    - high blood pressure
+    - elevated blood pressure
+    - resistant hypertension
+  Coronary Artery Disease:
+    - coronary artery disease
+    - cad
+    - ischemic heart
+    - coronary heart disease
+    - acute coronary syndrome
+    - myocardial infarction
+  Atrial Fibrillation:
+    - atrial fibrillation
+    - afib
+    - af
+    - atrial flutter
+  Cardiomyopathies:
+    - cardiomyopathy
+    - cardiomyopathies
+    - hypertrophic cardiomyopathy
+    - dilated cardiomyopathy
+    - hcm
+    - dcm
+  Renal Insufficiency, Chronic:
+    - chronic kidney disease
+    - ckd
+    - renal insufficiency
+    - renal failure
+    - end stage renal
+    - esrd
+    - kidney failure
+    - egfr
+  Diabetic Nephropathies:
+    - diabetic nephropathy
+    - diabetic kidney disease
+    - dkd
+    - diabetic renal

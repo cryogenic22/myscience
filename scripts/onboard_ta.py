@@ -95,29 +95,16 @@ def run_connectors(ta: TADefinition, dry_run: bool = False) -> dict[str, dict]:
                 logger.info("Running connector: %s", name)
                 start = time.time()
                 connector = _instantiate_connector(name, overrides)
-                records = connector.fetch()
+
+                # Run connector through the full pipeline (fetch → normalize → resolve → embed → store → link)
+                result = pipeline.run(connector)
                 elapsed = time.time() - start
 
-                logger.info(
-                    "Connector %s fetched %d records in %.1fs",
-                    name, len(records), elapsed,
-                )
-
-                # Process through pipeline
-                if records:
-                    result = pipeline.run_records(records, name)
-                    results[name] = {
-                        "status": "ok",
-                        "records_fetched": len(records),
-                        "elapsed_seconds": round(elapsed, 1),
-                        "pipeline_result": result.summary() if hasattr(result, "summary") else str(result),
-                    }
-                else:
-                    results[name] = {
-                        "status": "ok",
-                        "records_fetched": 0,
-                        "elapsed_seconds": round(elapsed, 1),
-                    }
+                results[name] = {
+                    "status": "ok",
+                    "elapsed_seconds": round(elapsed, 1),
+                    "pipeline_result": result.summary() if hasattr(result, "summary") else str(result),
+                }
 
             except Exception as e:
                 logger.error("Connector %s failed: %s", name, e)

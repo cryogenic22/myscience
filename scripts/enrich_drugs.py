@@ -47,43 +47,18 @@ def enrich_from_milestones(db: Database, dry_run: bool = False) -> dict[str, int
         logger.info("regulatory_milestones table not found, skipping milestone enrichment")
         return stats
 
-    # Brand name from milestones
+    # Approval date from milestones (submission_status = 'AP' means approved)
     rows = db.fetch_all(
         """
-        SELECT d.id AS drug_id, rm.brand_name, rm.approval_date
-        FROM drugs d
-        JOIN entity_links el ON el.target_entity_id = d.id::text
-          AND el.target_entity_type = 'drug'
-          AND el.link_type = 'HAS_MILESTONE'
-        JOIN regulatory_milestones rm ON rm.id::text = el.source_entity_id
-        WHERE (d.brand_name IS NULL OR d.brand_name = '')
-          AND rm.brand_name IS NOT NULL AND rm.brand_name != ''
-        """
-    )
-    for row in rows:
-        drug_id = str(row["drug_id"])
-        if dry_run:
-            logger.info("[DRY RUN] Enrich drug %s brand_name=%s", drug_id, row["brand_name"])
-        else:
-            db.execute(
-                "UPDATE drugs SET brand_name = %s WHERE id = %s AND (brand_name IS NULL OR brand_name = '')",
-                [row["brand_name"], row["drug_id"]],
-            )
-            _log_change(db, "drug", drug_id, "enrich_brand_from_milestone",
-                        ["brand_name"])
-        stats["brand_name"] += 1
-
-    # Approval date from milestones
-    rows = db.fetch_all(
-        """
-        SELECT d.id AS drug_id, MIN(rm.approval_date) AS earliest_approval
+        SELECT d.id AS drug_id, MIN(rm.submission_status_date) AS earliest_approval
         FROM drugs d
         JOIN entity_links el ON el.target_entity_id = d.id::text
           AND el.target_entity_type = 'drug'
           AND el.link_type = 'HAS_MILESTONE'
         JOIN regulatory_milestones rm ON rm.id::text = el.source_entity_id
         WHERE d.approval_date IS NULL
-          AND rm.approval_date IS NOT NULL
+          AND rm.submission_status = 'AP'
+          AND rm.submission_status_date IS NOT NULL
         GROUP BY d.id
         """
     )
@@ -196,8 +171,8 @@ def enrich_company_from_trials(db: Database, dry_run: bool = False) -> int:
                         INSERT INTO entity_links
                             (source_entity_id, source_entity_type,
                              target_entity_id, target_entity_type,
-                             link_type, confidence, provenance_source)
-                        VALUES (%s, 'company', %s, 'drug', 'OWNS', 0.7, 'enrich_from_sponsor')
+                             link_type, link_via, confidence, provenance_source)
+                        VALUES (%s, 'company', %s, 'drug', 'OWNS', 'sponsor_name_match', 0.7, 'enrich_from_sponsor')
                         ON CONFLICT DO NOTHING
                         """,
                         [str(company["id"]), drug_id],
@@ -218,22 +193,23 @@ def enrich_from_labels(db: Database, dry_run: bool = False) -> dict[str, int]:
         logger.info("drug_labels table not found, skipping label enrichment")
         return stats
 
-    # Brand name from labels
+    # Brand name from labels: drug_labels has drug_name (generic) and
+    # indications text often contains brand name. Use drug_name directly
+    # since it's the FDA-registered name (often uppercase brand).
+    # Also link manufacturer to company.
     rows = db.fetch_all(
         """
-        SELECT d.id AS drug_id, dl.brand_name, dl.manufacturer_name
+        SELECT DISTINCT d.id AS drug_id, dl.drug_name, dl.manufacturer
         FROM drugs d
-        JOIN entity_links el ON el.target_entity_id = d.id::text
-          AND el.target_entity_type = 'drug'
-          AND el.link_type = 'HAS_LABEL'
-        JOIN drug_labels dl ON dl.id::text = el.source_entity_id
+        JOIN drug_labels dl ON dl.drug_id = d.id
         WHERE (d.brand_name IS NULL OR d.brand_name = '')
-          AND dl.brand_name IS NOT NULL AND dl.brand_name != ''
+          AND dl.drug_name IS NOT NULL AND dl.drug_name != ''
         """
     )
     for row in rows:
         drug_id = str(row["drug_id"])
-        brand = row["brand_name"]
+        # drug_name from labels is often the brand name in uppercase
+        brand = row["drug_name"].strip().title()
         if dry_run:
             logger.info("[DRY RUN] Enrich drug %s brand_name=%s from label", drug_id, brand)
         else:

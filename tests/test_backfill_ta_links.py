@@ -45,15 +45,18 @@ class MockDB:
 
 @pytest.fixture
 def db():
-    return MockDB()
+    mock = MockDB()
+    # Simulate 'label' column existing in clinical_trials
+    mock.set_results("information_schema", [{"column_name": "label"}])
+    return mock
 
 
 # ── Tests for fill_trial_labels ──
 
 class TestFillTrialLabels:
-    def test_fills_label_from_brief_title(self, db):
+    def test_fills_label_from_official_title(self, db):
         db.set_results("clinical_trials", [
-            {"id": "NCT001", "brief_title": "A study of X", "official_title": None},
+            {"id": "NCT001", "official_title": "A study of X"},
         ])
 
         from scripts.backfill_ta_links import fill_trial_labels
@@ -64,9 +67,9 @@ class TestFillTrialLabels:
         updates = [s for s, _ in db.executed if "UPDATE clinical_trials" in s]
         assert len(updates) == 1
 
-    def test_fills_label_from_official_title_when_brief_missing(self, db):
+    def test_fills_label_from_official_title_when_present(self, db):
         db.set_results("clinical_trials", [
-            {"id": "NCT002", "brief_title": None, "official_title": "Official title here"},
+            {"id": "NCT002", "official_title": "Official title here"},
         ])
 
         from scripts.backfill_ta_links import fill_trial_labels
@@ -76,7 +79,7 @@ class TestFillTrialLabels:
 
     def test_falls_back_to_nct_id(self, db):
         db.set_results("clinical_trials", [
-            {"id": "NCT003", "brief_title": None, "official_title": None},
+            {"id": "NCT003", "official_title": None},
         ])
 
         from scripts.backfill_ta_links import fill_trial_labels
@@ -89,7 +92,7 @@ class TestFillTrialLabels:
 
     def test_dry_run_does_not_write(self, db):
         db.set_results("clinical_trials", [
-            {"id": "NCT004", "brief_title": "Test", "official_title": None},
+            {"id": "NCT004", "official_title": "Test"},
         ])
 
         from scripts.backfill_ta_links import fill_trial_labels
@@ -101,7 +104,7 @@ class TestFillTrialLabels:
     def test_truncates_long_titles(self, db):
         long_title = "A" * 400
         db.set_results("clinical_trials", [
-            {"id": "NCT005", "brief_title": long_title, "official_title": None},
+            {"id": "NCT005", "official_title": long_title},
         ])
 
         from scripts.backfill_ta_links import fill_trial_labels
