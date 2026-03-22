@@ -233,7 +233,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-8 py-6" style={{ minHeight: 0 }}>
+      <div className="flex-1 overflow-y-auto px-8 py-6" style={{ minHeight: 0, maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%' }}>
         {loading ? (
           <div style={{ color: 'var(--color-ink-4)', fontSize: '13px', padding: '24px 0' }}>
             Loading catalog…

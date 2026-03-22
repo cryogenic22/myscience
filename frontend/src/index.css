@@ -27,9 +27,15 @@
   --color-accent-dark:  #1558D6;
   --color-accent-soft:  rgba(28, 110, 247, 0.08);
 
-  /* Borders */
-  --color-line:         #EBEBEA;
-  --color-line-2:       rgba(0,0,0,0.05);
+  /* Borders — set to transparent for Apple-style borderless design.
+     Components use var(--color-line) in inline styles; making it
+     transparent kills all decorative borders without editing TSX. */
+  --color-line:         transparent;
+  --color-line-2:       transparent;
+
+  /* When a visible divider is truly needed, use --color-divider explicitly */
+  --color-divider:      #EBEBEA;
+  --color-divider-2:    rgba(0,0,0,0.05);
 
   /* Status */
   --color-green:        #1A7F4B;
@@ -72,8 +78,10 @@ html.dark {
   --color-ink-2:        #AEAEB2;
   --color-ink-3:        #636366;
   --color-ink-4:        #48484A;
-  --color-line:         #2C2C2E;
-  --color-line-2:       rgba(255,255,255,0.06);
+  --color-line:         transparent;
+  --color-line-2:       transparent;
+  --color-divider:      #2C2C2E;
+  --color-divider-2:    rgba(255,255,255,0.06);
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 8px 24px rgba(0,0,0,0.4);
   --shadow-lg:  0 20px 60px rgba(0,0,0,0.5);
@@ -251,8 +259,8 @@ body { height: 100%; overflow: hidden; background: var(--color-bg); }
    ══════════════════════════════════════════════════════ */
 .input-base {
   width: 100%;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  border: none;
   border-radius: 12px;
   padding: 12px 16px;
   font-family: var(--font-body);
@@ -263,7 +271,6 @@ body { height: 100%; overflow: hidden; background: var(--color-bg); }
 }
 .input-base::placeholder { color: var(--color-ink-4); }
 .input-base:focus {
-  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(28,110,247,0.12);
 }
 
@@ -332,7 +339,7 @@ body { height: 100%; overflow: hidden; background: var(--color-bg); }
   text-transform: uppercase;
   color: var(--color-ink-3);
   padding: 8px 12px;
-  border-bottom: 1px solid var(--color-line-2);
+  border-bottom: 1px solid var(--color-divider-2);
 }
 .data-table td {
   padding: 10px 12px;
@@ -466,7 +473,7 @@ html.dark .topbar {
 .surface-panel { background: var(--color-surface); border-radius: 16px; box-shadow: var(--shadow-xs); }
 .card { background: var(--color-surface); border-radius: 12px; box-shadow: var(--shadow-xs); }
 .input-surface { background: var(--color-surface-2); border: none; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: var(--color-ink); }
-.input-surface:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(28,110,247,0.12); }
+.input-surface:focus { outline: none; box-shadow: 0 0 0 3px rgba(28,110,247,0.12); }
 .btn-primary { background: var(--color-ink); color: var(--color-surface); border-radius: 980px; font-weight: 500; font-size: 14px; padding: 10px 22px; border: none; cursor: pointer; transition: all 160ms; }
 .btn-primary:hover { background: var(--color-ink-2); }
 .btn-secondary { background: var(--color-surface-3); color: var(--color-ink); border: none; border-radius: 980px; font-weight: 500; font-size: 13px; padding: 8px 18px; cursor: pointer; transition: all 160ms; }
