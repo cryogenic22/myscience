@@ -233,13 +233,15 @@ function EmptyState({ onQuery }: { onQuery: (q: string) => void }) {
                 key={`${gi}-${qi}`}
                 type="button"
                 onClick={() => onQuery(query)}
-                className="group text-left rounded-xl p-4 transition-all duration-200"
+                className="group rounded-xl transition-all duration-200"
                 style={{
                   background: 'var(--color-surface-2)',
                   fontSize: '13px',
                   color: 'var(--color-ink-3)',
                   lineHeight: 1.5,
                   border: '1px solid transparent',
+                  padding: '14px 20px',
+                  textAlign: 'center',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-surface)';
