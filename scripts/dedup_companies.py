@@ -238,10 +238,16 @@ def dedup_companies(db: Database, dry_run: bool = False) -> dict[str, int]:
                         [dup["ticker"], canonical["id"]],
                     )
                 if not canonical.get("cik") and dup.get("cik"):
-                    db.execute(
-                        "UPDATE companies SET cik = %s WHERE id = %s",
+                    # Check no other active company already has this CIK
+                    existing = db.fetch_one(
+                        "SELECT id FROM companies WHERE cik = %s AND id != %s AND record_status = 'active'",
                         [dup["cik"], canonical["id"]],
                     )
+                    if not existing:
+                        db.execute(
+                            "UPDATE companies SET cik = %s WHERE id = %s",
+                            [dup["cik"], canonical["id"]],
+                        )
 
                 # Mark duplicate
                 db.execute(

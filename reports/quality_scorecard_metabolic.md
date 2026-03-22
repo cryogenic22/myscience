@@ -1,8 +1,8 @@
 # Market Zero Quality Scorecard
 
-*Generated: 2026-03-22 04:07 UTC*
+*Generated: 2026-03-22 06:43 UTC*
 
-## Overall Score: 79.6%
+## Overall Score: 79.7%
 
 Target: ≥75%
 
@@ -10,25 +10,25 @@ Target: ≥75%
 
 | Entity Type | Total | Overall | Key Missing Fields |
 |---|---|---|---|
-| drug | 1672 | 54% | brand_name, mechanism_id, approval_date |
-| company | 1422 | 32% | ticker, country, region |
-| trial | 5197 | 84% | label |
+| drug | 1758 | 54% | brand_name, mechanism_id, approval_date |
+| company | 1517 | 33% | ticker, country, region |
+| trial | 5642 | 84% | label |
 | therapeutic_area | 18 | 100% | none |
 | mechanism | 25 | 100% | none |
-| article | 1757 | 90% | mesh_terms |
+| article | 2709 | 89% | mesh_terms |
 
 ### Field-Level Completeness
 
-**drug** (1672 records)
+**drug** (1758 records)
 
 - `approval_date`: ░░░░░░░░░░░░░░░░░░░░ 4%
-- `brand_name`: ░░░░░░░░░░░░░░░░░░░░ 5%
-- `mechanism_id`: ███████░░░░░░░░░░░░░ 37%
-- `therapeutic_area_id`: ████████████████░░░░ 82%
-- `company_id`: ███████████████████░ 98%
+- `brand_name`: █░░░░░░░░░░░░░░░░░░░ 5%
+- `mechanism_id`: ███████░░░░░░░░░░░░░ 35%
+- `therapeutic_area_id`: ███████████████░░░░░ 78%
+- `company_id`: ███████████████████░ 99%
 - `generic_name`: ████████████████████ 100%
 
-**company** (1422 records)
+**company** (1517 records)
 
 - `ticker`: ░░░░░░░░░░░░░░░░░░░░ 2%
 - `country`: ░░░░░░░░░░░░░░░░░░░░ 2%
@@ -36,7 +36,7 @@ Target: ≥75%
 - `market_cap_tier`: ███████████░░░░░░░░░ 56%
 - `name`: ████████████████████ 100%
 
-**trial** (5197 records)
+**trial** (5642 records)
 
 - `label`: ░░░░░░░░░░░░░░░░░░░░ 0%
 - `phase`: █████████████████░░░ 89%
@@ -57,9 +57,9 @@ Target: ≥75%
 - `name`: ████████████████████ 100%
 - `mesh_id`: ████████████████████ 100%
 
-**article** (1757 records)
+**article** (2709 records)
 
-- `mesh_terms`: █████████░░░░░░░░░░░ 48%
+- `mesh_terms`: █████████░░░░░░░░░░░ 46%
 - `title`: ████████████████████ 100%
 - `pmid`: ████████████████████ 100%
 - `journal`: ████████████████████ 100%
@@ -69,62 +69,62 @@ Target: ≥75%
 
 | Entity Type | Total | Linked | Density | Avg Links |
 |---|---|---|---|---|
-| drug | 1672 | 1672 | 100% | 87.0 |
-| company | 1422 | 1327 | 93% | 5.6 |
-| trial | 5197 | 5192 | 100% | 88.0 |
-| therapeutic_area | 18 | 15 | 83% | 431.0 |
+| drug | 1758 | 1755 | 100% | 134.6 |
+| company | 1517 | 1425 | 94% | 5.7 |
+| trial | 5642 | 5641 | 100% | 144.7 |
+| therapeutic_area | 18 | 15 | 83% | 452.1 |
 | mechanism | 25 | 12 | 48% | 51.7 |
-| article | 1757 | 0 | 0% | 0.0 |
+| article | 2709 | 0 | 0% | 0.0 |
 
 ## Therapeutic Area Coverage
 
 | Therapeutic Area | Linked Entities |
 |---|---|
-| ✓ Diabetes Mellitus, Type 2 | 2123 |
+| ✓ Diabetes Mellitus, Type 2 | 2211 |
 | ✓ Diabetes Mellitus | 1048 |
-| ✓ Hypertension | 932 |
-| ✓ Heart Failure | 796 |
-| ✓ Coronary Artery Disease | 263 |
+| ✓ Hypertension | 949 |
+| ✓ Heart Failure | 810 |
+| ✓ Renal Insufficiency, Chronic | 288 |
+| ✓ Coronary Artery Disease | 268 |
 | ✓ Obesity | 249 |
-| ✓ Diabetes Mellitus, Type 1 | 200 |
-| ✓ Renal Insufficiency, Chronic | 164 |
+| ✓ Diabetes Mellitus, Type 1 | 208 |
 | ✓ Cardiovascular Diseases | 150 |
-| ✓ Heart Failure, Systolic | 105 |
-| ✓ Atrial Fibrillation | 103 |
-| ✓ Heart Failure, Diastolic | 91 |
-| ✓ Cardiomyopathies | 81 |
-| ✓ Metabolic Syndrome | 80 |
-| ✓ Diabetic Nephropathies | 80 |
-| ✗ Glucose Metabolism Disorders | 0 |
-| ✗ Heart Diseases | 0 |
+| ✓ Heart Failure, Systolic | 114 |
+| ✓ Diabetic Nephropathies | 113 |
+| ✓ Atrial Fibrillation | 111 |
+| ✓ Heart Failure, Diastolic | 96 |
+| ✓ Cardiomyopathies | 84 |
+| ✓ Metabolic Syndrome | 82 |
 | ✗ Hyperglycemia | 0 |
+| ✗ Heart Diseases | 0 |
+| ✗ Glucose Metabolism Disorders | 0 |
 
 ## Source Diversity
 
-**drug**: backfill(1060), clinical_trials_gov(546), fda_orange_book(66)
-**company**: clinical_trials_gov(1216), fda_orange_book(109), fda_shortages(82), backfill_linkage(10), sec_edgar(5)
-**trial**: clinical_trials_gov(5197)
+**drug**: backfill(1060), clinical_trials_gov(628), fda_orange_book(70)
+**company**: clinical_trials_gov(1299), fda_orange_book(111), fda_shortages(85), sec_edgar(12), backfill_linkage(10)
+**trial**: clinical_trials_gov(5642)
 **therapeutic_area**: mesh_ontology(18)
 **mechanism**: mesh_ontology(25)
-**article**: pubmed(1757)
+**article**: pubmed(2709)
 
 ## Data Freshness
 
 | Entity Type | Latest Update | Days Stale |
 |---|---|---|
-| drug | 2026-02-21 | 29 |
-| company | 2026-02-21 | 29 |
-| trial | 2026-02-19 | 31 |
-| therapeutic_area | 2026-02-21 | 29 |
-| mechanism | 2026-02-21 | 29 |
-| article | 2026-02-19 | 30 |
+| drug | 2026-03-22 | 0 |
+| company | 2026-03-22 | 0 |
+| trial | 2026-03-22 | 0 |
+| therapeutic_area | 2026-03-22 | 0 |
+| mechanism | 2026-03-22 | 0 |
+| article | 2026-03-22 | 0 |
 
 ## Quality Rule Scores
 
 | Entity Type | Assessed | Avg Score | Passed | Failed |
 |---|---|---|---|---|
-| company | 5 | 98% | 13 | 0 |
-| drug | 1126 | 64% | 2616 | 3212 |
-| event | 533 | 100% | 1599 | 0 |
+| company | 12 | 99% | 60 | 0 |
+| drug | 1130 | 64% | 2646 | 3214 |
+| event | 1621 | 100% | 4863 | 0 |
 | literature | 40 | 91% | 76 | 4 |
-| trial | 5094 | 98% | 24840 | 630 |
+| trial | 5575 | 98% | 28435 | 656 |
