@@ -637,26 +637,56 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
           </div>
         )}
 
+        {/* Node insight card moved to bottom-right — now more visible */}
         {quickNodeInsight && (
-          <div className="pointer-events-none absolute bottom-4 right-4 z-20 w-[min(92vw,340px)]">
-            <div className="pointer-events-auto rounded-md border border-slate-200 bg-white/95 p-3.5 shadow-lg">
+          <div className="absolute bottom-4 right-4 z-20" style={{ width: 'min(92vw, 340px)' }}>
+            <div
+              className="rounded-xl p-4"
+              style={{
+                background: 'rgba(255,255,255,0.96)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid var(--color-line)',
+                boxShadow: 'var(--shadow-md)',
+              }}
+            >
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="truncate text-[12px] font-semibold text-slate-900">{quickNodeInsight.label}</div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                  <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>{quickNodeInsight.label}</div>
+                  <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)' }}>
                     {prettyType(quickNodeInsight.type)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setQuickNodeInsight(null)}
-                  className="rounded-sm border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-slate-50"
-                >
-                  Close
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (quickNodeInsight) {
+                        void loadGraph(quickNodeInsight.id, quickNodeInsight.type, quickNodeInsight.label, hops, { openDetails: true });
+                      }
+                    }}
+                    style={{
+                      fontSize: '10px', fontWeight: 600, color: 'var(--color-accent)',
+                      background: 'var(--color-accent-soft)', border: 'none', cursor: 'pointer',
+                      padding: '3px 8px', borderRadius: '6px',
+                    }}
+                  >
+                    Dossier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickNodeInsight(null)}
+                    style={{
+                      fontSize: '10px', color: 'var(--color-ink-4)',
+                      background: 'var(--color-surface-2)', border: 'none', cursor: 'pointer',
+                      padding: '3px 8px', borderRadius: '6px',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <p className="mb-2 text-[11px] leading-relaxed text-slate-600">{quickNodeInsight.summary}</p>
-              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+              <p style={{ fontSize: '11px', lineHeight: 1.5, color: 'var(--color-ink-3)', marginBottom: '8px' }}>{quickNodeInsight.summary}</p>
+              <div className="grid grid-cols-2 gap-1.5" style={{ fontSize: '11px' }}>
                 <MiniStat label="Connections" value={String(quickNodeInsight.degree)} />
                 <MiniStat label="Relevance" value={`${quickNodeInsight.relevance}%`} />
                 <MiniStat label="Avg confidence" value={`${quickNodeInsight.avgConfidence}%`} />

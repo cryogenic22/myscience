@@ -18,6 +18,18 @@ const TYPE_COLORS: Record<string, string> = {
     literature: '#16a34a', // Green 600
 };
 
+const EDGE_COLORS: Record<string, string> = {
+    OWNS: '#d97706',            // Amber — ownership
+    MANUFACTURES: '#d97706',
+    SPONSORS: '#0d9488',        // Teal — sponsorship
+    INVESTIGATES: '#2563eb',    // Blue — clinical investigation
+    EVIDENCE_FOR: '#16a34a',    // Green — literature evidence
+    TARGETS: '#7c3aed',         // Violet — mechanism targeting
+    TREATS: '#e11d48',          // Rose — therapeutic
+    HAS_SIGNAL: '#dc2626',      // Red — safety signal
+    ASSOCIATED_WITH: '#94a3b8', // Grey — generic association
+};
+
 export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick, className = '' }: ModernGraphProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -129,11 +141,16 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
                 const t = nodeMap.get(tId);
 
                 if (s && t) {
+                    const linkType = (edge as any).link_type || '';
+                    const edgeColor = EDGE_COLORS[linkType] || '#d4d4d8';
+                    const conf = (edge as any).confidence ?? 0.5;
                     ctx.beginPath();
                     ctx.moveTo(s.x, s.y);
                     ctx.lineTo(t.x, t.y);
-                    ctx.strokeStyle = '#e2e8f0'; // Slate 200
+                    ctx.strokeStyle = edgeColor;
+                    ctx.globalAlpha = 0.3 + conf * 0.5; // Higher confidence = more visible
                     ctx.stroke();
+                    ctx.globalAlpha = 1;
                 }
             }
 
