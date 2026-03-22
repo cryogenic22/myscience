@@ -7,6 +7,7 @@ All services share a single database connection and config.
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from typing import Optional
 
@@ -38,7 +39,8 @@ def get_conversation_memory(session_id: str = "default") -> ConversationMemory:
 
 @lru_cache()
 def get_db() -> Database:
-    db = Database(config.db.dsn)
+    pool_size = int(os.environ.get("MZ_DB_POOL_SIZE", "5"))
+    db = Database(config.db.dsn, pool_size=pool_size)
     db.connect()
     return db
 

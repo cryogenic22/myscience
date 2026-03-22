@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,9 +28,20 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    allowed_origins = [
+        "http://localhost:5090",
+        "http://localhost:5091",
+        "http://localhost:5173",
+        os.getenv("MZ_FRONTEND_URL", ""),
+    ]
+    # Railway injects RAILWAY_PUBLIC_DOMAIN
+    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+    if railway_domain:
+        allowed_origins.append(f"https://{railway_domain}")
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[o for o in allowed_origins if o],
         allow_methods=["*"],
         allow_headers=["*"],
     )
