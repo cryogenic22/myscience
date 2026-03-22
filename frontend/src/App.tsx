@@ -1,40 +1,61 @@
-import { useState } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import LandingPage from './pages/LandingPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SearchPage from './pages/SearchPage';
 
-export type Page = 'landing' | 'workspace' | 'search';
-
-export default function App() {
-  const [page, setPage] = useState<Page>('landing');
-  const [chatSeedQuestion, setChatSeedQuestion] = useState<string | null>(null);
-
-  const openWorkspace = (seedQuestion?: string) => {
-    setChatSeedQuestion(seedQuestion ?? null);
-    setPage('workspace');
-  };
+function AppRoutes() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const seedQuestion = searchParams.get('q');
 
   return (
     <AnimatePresence mode="wait">
-      {page === 'landing' ? (
-        <LandingPage key="landing" onEnter={() => openWorkspace()} onSearch={() => setPage('search')} />
-      ) : page === 'search' ? (
-        <SearchPage
-          key="search"
-          onBack={() => setPage('landing')}
-          onChat={(prefill) => openWorkspace(prefill)}
-          onGraph={() => openWorkspace()}
-          onCatalog={() => openWorkspace()}
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <LandingPage
+              key="landing"
+              onEnter={() => navigate('/workspace')}
+              onSearch={() => navigate('/search')}
+            />
+          }
         />
-      ) : (
-        <WorkspacePage
-          key="workspace"
-          onBack={() => setPage('landing')}
-          onSearch={() => setPage('search')}
-          initialQuestion={chatSeedQuestion}
+        <Route
+          path="/workspace"
+          element={
+            <WorkspacePage
+              key="workspace"
+              onBack={() => navigate('/')}
+              onSearch={() => navigate('/search')}
+              initialQuestion={seedQuestion}
+            />
+          }
         />
-      )}
+        <Route
+          path="/search"
+          element={
+            <SearchPage
+              key="search"
+              onBack={() => navigate('/')}
+              onChat={(prefill) => navigate(prefill ? `/workspace?q=${encodeURIComponent(prefill)}` : '/workspace')}
+              onGraph={() => navigate('/workspace')}
+              onCatalog={() => navigate('/workspace')}
+            />
+          }
+        />
+        {/* Catch-all → landing */}
+        <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} />} />
+      </Routes>
     </AnimatePresence>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

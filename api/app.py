@@ -47,16 +47,15 @@ def create_app() -> FastAPI:
         allow_credentials=True,
     )
 
-    # Register API routers
-    app.include_router(search.router)
-    app.include_router(metrics.router)
-    app.include_router(graph.router)
-    app.include_router(query.router)
-    app.include_router(entities.router)
-    app.include_router(chat.router)
-    app.include_router(therapeutic_areas.router)
-    app.include_router(catalog.router)
-    app.include_router(enrichment.router)
+    # Register API routers — mount at both root (backwards compat) and /api/v1
+    all_routers = [
+        search.router, metrics.router, graph.router, query.router,
+        entities.router, chat.router, therapeutic_areas.router,
+        catalog.router, enrichment.router,
+    ]
+    for r in all_routers:
+        app.include_router(r)                      # /chat, /search, etc. (legacy)
+        app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
 
     @app.get("/health")
     def health():
