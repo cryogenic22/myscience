@@ -276,7 +276,11 @@ function StructuredSection({ title, fields, entity, editable, editing, onEditFie
       }}>
         {title}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(100px, 35%) 1fr',
+        gap: '2px 12px',
+      }}>
         {deduped.map(f => {
           const val = entity[f.key];
           const isEditing = f.key in editing;
@@ -286,13 +290,11 @@ function StructuredSection({ title, fields, entity, editable, editing, onEditFie
             <div
               key={f.key}
               style={{
-                display: 'flex', alignItems: 'flex-start', gap: '12px',
-                borderRadius: '10px', padding: '6px 10px',
-                background: isEditing ? 'var(--color-accent-soft)' : 'transparent',
+                display: 'contents',
               }}
             >
               <span style={{
-                flexShrink: 0, width: '120px', paddingTop: '1px',
+                paddingTop: '7px',
                 fontSize: '12px', color: 'var(--color-ink-4)',
               }}>
                 {f.label}
@@ -306,38 +308,40 @@ function StructuredSection({ title, fields, entity, editable, editing, onEditFie
                   autoFocus
                 />
               ) : isPhase ? (
-                <PhaseBadge phase={String(val)} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0' }}>
+                  <PhaseBadge phase={String(val)} />
+                </div>
               ) : (
-                <span style={{
-                  fontSize: '12px', color: 'var(--color-ink-2)',
-                  flex: 1, wordBreak: 'break-word',
-                }}>
-                  {(() => {
-                    const raw = display(val);
-                    if (raw === '—') return f.key.endsWith('_id') ? 'Not linked' : '—';
-                    // Translate source/authority values
-                    if (f.key === 'source_authority' || f.key === 'source_api') return SOURCE_LABELS[raw] ?? raw;
-                    // Title-case status values
-                    if (f.key === 'supply_status' || f.key === 'record_status' || f.key === 'marketing_status')
-                      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-                    return raw;
-                  })()}
-                </span>
-              )}
-              {editable.has(f.key) && !isEditing && (
-                <button
-                  type="button"
-                  onClick={() => onEditField(f.key, String(val ?? ''))}
-                  style={{
-                    flexShrink: 0, color: 'var(--color-ink-4)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '2px', opacity: 0, transition: 'opacity 150ms',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
-                >
-                  <Edit3 size={11} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', padding: '5px 0' }}>
+                  <span style={{
+                    fontSize: '12px', color: 'var(--color-ink-2)',
+                    flex: 1, wordBreak: 'break-word',
+                  }}>
+                    {(() => {
+                      const raw = display(val);
+                      if (raw === '—') return f.key.endsWith('_id') ? 'Not linked' : '—';
+                      if (f.key === 'source_authority' || f.key === 'source_api') return SOURCE_LABELS[raw] ?? raw;
+                      if (f.key === 'supply_status' || f.key === 'record_status' || f.key === 'marketing_status')
+                        return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+                      return raw;
+                    })()}
+                  </span>
+                  {editable.has(f.key) && !isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => onEditField(f.key, String(val ?? ''))}
+                      style={{
+                        flexShrink: 0, color: 'var(--color-ink-4)',
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        padding: '2px', opacity: 0, transition: 'opacity 150ms',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
+                    >
+                      <Edit3 size={11} />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -517,18 +521,23 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
           }}>
             Data Provenance
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(80px, 35%) 1fr',
+            gap: '4px 12px',
+            fontSize: '12px',
+          }}>
             {entity.source_api && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Source</span>
+              <>
+                <span style={{ color: 'var(--color-ink-4)' }}>Source</span>
                 <span style={{ color: 'var(--color-ink-2)' }}>{SOURCE_LABELS[String(entity.source_api)] ?? String(entity.source_api)}</span>
-              </div>
+              </>
             )}
             {entity.retrieved_at && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Retrieved</span>
+              <>
+                <span style={{ color: 'var(--color-ink-4)' }}>Retrieved</span>
                 <span style={{ color: 'var(--color-ink-2)' }}>{shortDate(String(entity.retrieved_at))}</span>
-              </div>
+              </>
             )}
           </div>
         </section>
@@ -581,7 +590,11 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
           Technical Details
         </button>
         {techOpen && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(100px, 35%) 1fr',
+            gap: '2px 12px',
+          }}>
             {Object.entries(entity)
               .filter(([k]) => !SKIP.has(k))
               .map(([key, val]) => {
@@ -589,18 +602,13 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
                 return (
                   <div
                     key={key}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: '12px',
-                      borderRadius: '10px', padding: '6px 10px',
-                      background: isEditing ? 'var(--color-accent-soft)' : 'transparent',
-                    }}
+                    style={{ display: 'contents' }}
                   >
                     <span style={{
-                      flexShrink: 0, paddingTop: '1px', width: '140px',
+                      paddingTop: '7px',
                       fontSize: '12px', color: 'var(--color-ink-4)',
-                      textTransform: 'capitalize',
                     }}>
-                      {key.replace(/_/g, ' ')}
+                      {displayName(key)}
                     </span>
                     {isEditing ? (
                       <input

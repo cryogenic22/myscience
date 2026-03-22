@@ -397,7 +397,8 @@ function ContextTab({
                       style={{
                         fontSize: '12px',
                         color: 'var(--color-ink-3)',
-                        width: '120px',
+                        minWidth: '90px',
+                        maxWidth: '35%',
                         textTransform: 'capitalize',
                       }}
                     >
