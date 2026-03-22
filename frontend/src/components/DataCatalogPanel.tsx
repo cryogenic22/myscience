@@ -139,12 +139,19 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
       .finally(() => setDetailLoading(false));
   }, []);
 
-  const TABS: Array<{ key: CatalogTab; label: string }> = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'browse', label: 'Browse' },
-    { key: 'changes', label: 'Audit Trail' },
-    { key: 'curation', label: 'Curation' },
-  ];
+  const [adminMode, setAdminMode] = useState(false);
+
+  const TABS: Array<{ key: CatalogTab; label: string }> = adminMode
+    ? [
+        { key: 'overview', label: 'Overview' },
+        { key: 'browse', label: 'Browse' },
+        { key: 'changes', label: 'Audit Trail' },
+        { key: 'curation', label: 'Curation' },
+      ]
+    : [
+        { key: 'browse', label: 'Library' },
+        { key: 'overview', label: 'Data Quality' },
+      ];
 
   return (
     <div
@@ -160,14 +167,31 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
           <h2
             style={{ fontSize: '17px', fontWeight: 600, color: 'var(--color-ink)', letterSpacing: '-0.02em' }}
           >
-            Data Catalog
+            {adminMode ? 'Data Catalog — Admin' : 'Entity Library'}
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--color-ink-4)', marginTop: '2px' }}>
-            Browse, inspect, and curate the knowledge base
+            {adminMode ? 'Monitor health, audit changes, and curate the knowledge base' : 'Browse and explore pharma entities'}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setAdminMode(!adminMode);
+              if (!adminMode) setTab('overview');
+              else setTab('browse');
+            }}
+            className="btn btn-xs"
+            style={{
+              borderRadius: '6px',
+              background: adminMode ? 'var(--color-ink)' : 'var(--color-surface-2)',
+              color: adminMode ? 'var(--color-surface)' : 'var(--color-ink-4)',
+              border: 'none',
+            }}
+          >
+            {adminMode ? 'Exit Admin' : 'Admin'}
+          </button>
           <span
             className="badge badge-green"
           >
@@ -591,8 +615,26 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
             {data.results.map(entity => {
               const id = String(entity.id ?? entity.nct_id ?? entity._label ?? '');
               const label = String(entity._label ?? entity.generic_name ?? entity.name ?? entity.title ?? id);
-              const status = String(entity.record_status ?? '');
               const q = entity.quality_score != null ? Number(entity.quality_score) : null;
+
+              // Type-specific fields
+              const brandName = entity.brand_name ? String(entity.brand_name) : null;
+              const supplyStatus = entity.supply_status ? String(entity.supply_status) : null;
+              const phase = entity.phase ? String(entity.phase) : null;
+              const trialStatus = entity.status ? String(entity.status) : null;
+              const ticker = entity.ticker ? String(entity.ticker) : null;
+              const approvalDate = entity.approval_date ? String(entity.approval_date).slice(0, 10) : null;
+
+              // Phase badge colours
+              const phaseColor = phase?.includes('4') || phase?.toLowerCase().includes('approved')
+                ? 'var(--color-green)' : phase?.includes('3') ? 'var(--color-accent)'
+                : phase?.includes('2') ? 'var(--color-amber)' : 'var(--color-ink-4)';
+
+              // Trial status colours
+              const statusColor = trialStatus === 'COMPLETED' ? 'var(--color-green)'
+                : trialStatus === 'RECRUITING' || trialStatus === 'ACTIVE_NOT_RECRUITING' ? 'var(--color-accent)'
+                : trialStatus === 'TERMINATED' || trialStatus === 'WITHDRAWN' ? 'var(--color-red)'
+                : 'var(--color-ink-4)';
 
               return (
                 <div
@@ -600,25 +642,79 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                   className="catalog-row group"
                   onClick={() => id && onOpen(browseType, id)}
                 >
+                  {/* Entity dot */}
+                  <span
+                    style={{
+                      width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
+                      background: browseType === 'drug' ? 'var(--color-drug)' : browseType === 'company' ? 'var(--color-company)'
+                        : browseType === 'trial' ? 'var(--color-trial)' : 'var(--color-ink-4)',
+                    }}
+                  />
+
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      className="truncate"
-                      style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink)' }}
-                    >
-                      {label}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {status && (
-                        <span
-                          className="badge badge-neutral"
-                          style={{ fontSize: '10px', textTransform: 'capitalize' }}
-                        >
-                          {status}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="truncate"
+                        style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink)' }}
+                      >
+                        {label}
+                      </span>
+                      {brandName && (
+                        <span style={{ fontSize: '11px', color: 'var(--color-ink-4)', flexShrink: 0 }}>
+                          ({brandName})
                         </span>
                       )}
+                      {ticker && (
+                        <span className="badge badge-neutral" style={{ fontSize: '10px', flexShrink: 0 }}>
+                          {ticker}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {/* Phase badge for drugs/trials */}
+                      {phase && (
+                        <span
+                          className="badge"
+                          style={{ fontSize: '10px', background: `color-mix(in srgb, ${phaseColor} 12%, transparent)`, color: phaseColor }}
+                        >
+                          {phase}
+                        </span>
+                      )}
+                      {/* Trial status */}
+                      {browseType === 'trial' && trialStatus && (
+                        <span
+                          className="badge"
+                          style={{ fontSize: '10px', background: `color-mix(in srgb, ${statusColor} 12%, transparent)`, color: statusColor, textTransform: 'capitalize' }}
+                        >
+                          {trialStatus.toLowerCase().replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {/* Supply status for drugs */}
+                      {browseType === 'drug' && supplyStatus && supplyStatus !== 'NORMAL' && (
+                        <span className="badge badge-amber" style={{ fontSize: '10px' }}>
+                          {supplyStatus.toLowerCase()}
+                        </span>
+                      )}
+                      {/* Approval date */}
+                      {approvalDate && (
+                        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>
+                          Approved {approvalDate}
+                        </span>
+                      )}
+                      {/* Quality bar */}
                       {q != null && (
-                        <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
-                          Quality {(q * 100).toFixed(0)}%
+                        <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginLeft: 'auto', flexShrink: 0 }}>
+                          <span style={{
+                            display: 'inline-block', width: '32px', height: '3px', borderRadius: '2px',
+                            background: 'var(--color-surface-3)', overflow: 'hidden',
+                          }}>
+                            <span style={{
+                              display: 'block', height: '100%', borderRadius: '2px',
+                              width: `${q * 100}%`,
+                              background: q > 0.7 ? 'var(--color-green)' : q > 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
+                            }} />
+                          </span>
+                          {(q * 100).toFixed(0)}%
                         </span>
                       )}
                     </div>
