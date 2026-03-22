@@ -65,7 +65,7 @@ function shortDate(v: string | null | undefined) {
 /* ══════════════════════════════════════════════════════ */
 
 export default function DataCatalogPanel({ onAskInChat }: Props) {
-  const [tab, setTab] = useState<CatalogTab>('overview');
+  const [tab, setTab] = useState<CatalogTab>('browse');
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [stats, setStats] = useState<CatalogStats | null>(null);
