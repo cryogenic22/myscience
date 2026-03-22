@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   Target,
   Dna,
+  Route,
+  X,
 } from 'lucide-react';
 import {
   api,
@@ -23,7 +25,9 @@ import {
   type EntitySummary,
   type GraphEdge,
   type GraphNode,
+  type GraphPathResponse,
 } from '../api';
+import { displayName, LINK_TYPE_LABELS, SOURCE_LABELS, isUUID } from '../brand';
 import ModernGraph from './ModernGraph';
 import { Drawer } from './ui/Drawer';
 
@@ -89,6 +93,22 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
   const [quickNodeInsight, setQuickNodeInsight] = useState<NodeInsight | null>(null);
   const [showDemoBanner, setShowDemoBanner] = useState(!initialEntity);
   const suggestTimeoutRef = useRef<number>(0);
+
+  // Path-finding mode state
+  const [pathMode, setPathMode] = useState(false);
+  const [pathFromQuery, setPathFromQuery] = useState('');
+  const [pathToQuery, setPathToQuery] = useState('');
+  const [pathFromEntity, setPathFromEntity] = useState<{ id: string; type: string; label: string } | null>(null);
+  const [pathToEntity, setPathToEntity] = useState<{ id: string; type: string; label: string } | null>(null);
+  const [pathFromSuggestions, setPathFromSuggestions] = useState<(EntityListItem & { _type: string })[]>([]);
+  const [pathToSuggestions, setPathToSuggestions] = useState<(EntityListItem & { _type: string })[]>([]);
+  const [showPathFromSuggestions, setShowPathFromSuggestions] = useState(false);
+  const [showPathToSuggestions, setShowPathToSuggestions] = useState(false);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const [pathResult, setPathResult] = useState<GraphPathResponse | null>(null);
+  const pathFromTimeoutRef = useRef<number>(0);
+  const pathToTimeoutRef = useRef<number>(0);
 
   const autoLoadedRef = useRef(false);
 
@@ -199,6 +219,144 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
     }
     void loadGraph(node.entity_id, node.entity_type, node.label, hops);
   }, [graphData, hops, loadGraph]);
+
+  // -- Path-finding helpers --
+
+  const searchEntitiesForPath = useCallback((
+    value: string,
+    setSuggestions: (s: (EntityListItem & { _type: string })[]) => void,
+    setShowSuggestions: (s: boolean) => void,
+    timeoutRef: React.MutableRefObject<number>,
+  ) => {
+    clearTimeout(timeoutRef.current);
+    if (value.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    timeoutRef.current = window.setTimeout(async () => {
+      try {
+        const [drugs, companies, trials, mechanisms, therapeuticAreas] = await Promise.all([
+          api.listEntities('drug', value, 4),
+          api.listEntities('company', value, 4),
+          api.listEntities('trial', value, 4),
+          api.listEntities('mechanism', value, 3),
+          api.listEntities('therapeutic_area', value, 3),
+        ]);
+        const all = [
+          ...drugs.results.map((r) => ({ ...r, _type: 'drug' })),
+          ...companies.results.map((r) => ({ ...r, _type: 'company' })),
+          ...trials.results.map((r) => ({ ...r, _type: 'trial' })),
+          ...mechanisms.results.map((r) => ({ ...r, _type: 'mechanism' })),
+          ...therapeuticAreas.results.map((r) => ({ ...r, _type: 'therapeutic_area' })),
+        ];
+        setSuggestions(all.slice(0, 10));
+        setShowSuggestions(all.length > 0);
+      } catch {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 220);
+  }, []);
+
+  const handlePathFromChange = useCallback((value: string) => {
+    setPathFromQuery(value);
+    setPathFromEntity(null);
+    setPathResult(null);
+    setPathError(null);
+    searchEntitiesForPath(value, setPathFromSuggestions, setShowPathFromSuggestions, pathFromTimeoutRef);
+  }, [searchEntitiesForPath]);
+
+  const handlePathToChange = useCallback((value: string) => {
+    setPathToQuery(value);
+    setPathToEntity(null);
+    setPathResult(null);
+    setPathError(null);
+    searchEntitiesForPath(value, setPathToSuggestions, setShowPathToSuggestions, pathToTimeoutRef);
+  }, [searchEntitiesForPath]);
+
+  const selectPathFrom = useCallback((entity: EntityListItem & { _type: string }) => {
+    setPathFromEntity({ id: entity.entity_id, type: entity._type, label: entity.label });
+    setPathFromQuery(entity.label);
+    setShowPathFromSuggestions(false);
+    setPathFromSuggestions([]);
+  }, []);
+
+  const selectPathTo = useCallback((entity: EntityListItem & { _type: string }) => {
+    setPathToEntity({ id: entity.entity_id, type: entity._type, label: entity.label });
+    setPathToQuery(entity.label);
+    setShowPathToSuggestions(false);
+    setPathToSuggestions([]);
+  }, []);
+
+  const executePath = useCallback(async () => {
+    if (!pathFromEntity || !pathToEntity) return;
+    setPathLoading(true);
+    setPathError(null);
+    setPathResult(null);
+    setGraphData(null);
+    setSelectedEntity(null);
+    setEntitySummary(null);
+    setShowDemoBanner(false);
+    try {
+      const result = await api.graphPath(
+        pathFromEntity.id,
+        pathFromEntity.type,
+        pathToEntity.id,
+        pathToEntity.type,
+        4,
+      );
+      setPathResult(result);
+      if (result.path && result.path.length > 0) {
+        // Convert path edges into graph nodes + edges for rendering
+        const nodeIds = new Set<string>();
+        const graphEdges: GraphEdge[] = [];
+        for (const pe of result.path) {
+          nodeIds.add(pe.source);
+          nodeIds.add(pe.target);
+          graphEdges.push({
+            source_id: pe.source,
+            target_id: pe.target,
+            link_type: pe.type,
+            confidence: pe.confidence,
+            via: '',
+          });
+        }
+        // Build minimal nodes — we don't have full metadata so use IDs as labels
+        // Try to look up known entities from path from/to
+        const graphNodes: GraphNode[] = [...nodeIds].map((nid) => {
+          if (nid === pathFromEntity.id) {
+            return { entity_id: nid, entity_type: pathFromEntity.type, label: pathFromEntity.label, properties: {} };
+          }
+          if (nid === pathToEntity.id) {
+            return { entity_id: nid, entity_type: pathToEntity.type, label: pathToEntity.label, properties: {} };
+          }
+          return { entity_id: nid, entity_type: 'unknown', label: nid.slice(0, 8), properties: {} };
+        });
+        setGraphData({ nodes: graphNodes, edges: graphEdges });
+        setSelectedEntity({ id: pathFromEntity.id, type: pathFromEntity.type, label: pathFromEntity.label });
+      }
+    } catch (err) {
+      setPathError(err instanceof Error ? err.message : 'Path query failed');
+    } finally {
+      setPathLoading(false);
+    }
+  }, [pathFromEntity, pathToEntity]);
+
+  const clearPathMode = useCallback(() => {
+    setPathMode(false);
+    setPathFromQuery('');
+    setPathToQuery('');
+    setPathFromEntity(null);
+    setPathToEntity(null);
+    setPathFromSuggestions([]);
+    setPathToSuggestions([]);
+    setShowPathFromSuggestions(false);
+    setShowPathToSuggestions(false);
+    setPathLoading(false);
+    setPathError(null);
+    setPathResult(null);
+  }, []);
 
   const nodeMap = useMemo(
     () => new Map((graphData?.nodes ?? []).map((node) => [node.entity_id, node])),
@@ -464,6 +622,264 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
               </div>
             )}
           </div>
+
+          {/* Path-finding toggle */}
+          <div className="mt-3">
+            {!pathMode ? (
+              <button
+                type="button"
+                onClick={() => setPathMode(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-line, #e2e8f0)',
+                  background: 'var(--color-surface, #ffffff)',
+                  color: 'var(--color-ink-2, #374151)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'border-color 0.15s ease',
+                }}
+              >
+                <Route size={13} />
+                Find Path
+              </button>
+            ) : (
+              <div
+                style={{
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--color-line, #e2e8f0)',
+                  background: 'var(--color-surface, #ffffff)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.14em', color: 'var(--color-ink-3, #6b7280)' }}>
+                    <Route size={12} />
+                    Path Finder
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearPathMode}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-line, #e2e8f0)',
+                      background: 'var(--color-surface, #ffffff)',
+                      color: 'var(--color-ink-4, #a1a1aa)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontSize: '12px',
+                    }}
+                    title="Close path finder"
+                    aria-label="Close path finder"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {/* From entity */}
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-ink-3, #6b7280)', marginBottom: '4px' }}>From</div>
+                  <div className="relative">
+                    <input
+                      value={pathFromQuery}
+                      onChange={(e) => handlePathFromChange(e.target.value)}
+                      placeholder="Search starting entity..."
+                      style={{
+                        width: '100%',
+                        height: '36px',
+                        padding: '0 10px',
+                        borderRadius: '6px',
+                        border: pathFromEntity
+                          ? '1.5px solid var(--color-accent, #2563eb)'
+                          : '1px solid var(--color-line, #e2e8f0)',
+                        background: 'var(--color-surface, #ffffff)',
+                        color: 'var(--color-ink, #111827)',
+                        fontSize: '12px',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    {showPathFromSuggestions && (
+                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
+                        {pathFromSuggestions.map((s) => (
+                          <button
+                            key={s.entity_id}
+                            type="button"
+                            onClick={() => selectPathFrom(s)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                          >
+                            <span className="rounded-sm bg-slate-100 p-1 text-slate-600">
+                              {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
+                            </span>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink, #111827)' }}>{s.label}</div>
+                              <div style={{ fontSize: '10px', color: 'var(--color-ink-4, #a1a1aa)', textTransform: 'capitalize' as const }}>{prettyType(s._type)}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* To entity */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-ink-3, #6b7280)', marginBottom: '4px' }}>To</div>
+                  <div className="relative">
+                    <input
+                      value={pathToQuery}
+                      onChange={(e) => handlePathToChange(e.target.value)}
+                      placeholder="Search target entity..."
+                      style={{
+                        width: '100%',
+                        height: '36px',
+                        padding: '0 10px',
+                        borderRadius: '6px',
+                        border: pathToEntity
+                          ? '1.5px solid var(--color-accent, #2563eb)'
+                          : '1px solid var(--color-line, #e2e8f0)',
+                        background: 'var(--color-surface, #ffffff)',
+                        color: 'var(--color-ink, #111827)',
+                        fontSize: '12px',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    {showPathToSuggestions && (
+                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
+                        {pathToSuggestions.map((s) => (
+                          <button
+                            key={s.entity_id}
+                            type="button"
+                            onClick={() => selectPathTo(s)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                          >
+                            <span className="rounded-sm bg-slate-100 p-1 text-slate-600">
+                              {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
+                            </span>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink, #111827)' }}>{s.label}</div>
+                              <div style={{ fontSize: '10px', color: 'var(--color-ink-4, #a1a1aa)', textTransform: 'capitalize' as const }}>{prettyType(s._type)}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => void executePath()}
+                    disabled={!pathFromEntity || !pathToEntity || pathLoading}
+                    style={{
+                      flex: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      height: '32px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: (!pathFromEntity || !pathToEntity)
+                        ? 'var(--color-ink-4, #a1a1aa)'
+                        : 'var(--color-ink, #111827)',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: (!pathFromEntity || !pathToEntity) ? 'not-allowed' : 'pointer',
+                      opacity: (!pathFromEntity || !pathToEntity) ? 0.5 : 1,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {pathLoading ? <Loader2 size={13} className="animate-spin" /> : <Route size={13} />}
+                    Show Path
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearPathMode}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      height: '32px',
+                      padding: '0 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-line, #e2e8f0)',
+                      background: 'var(--color-surface, #ffffff)',
+                      color: 'var(--color-ink-3, #6b7280)',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {/* Path result info */}
+                {pathResult && pathResult.path && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: 'var(--color-accent-soft, #eff6ff)',
+                      border: '1px solid var(--color-accent, #2563eb)',
+                      fontSize: '11px',
+                      color: 'var(--color-ink-2, #374151)',
+                    }}
+                  >
+                    Path found: {pathResult.hops ?? pathResult.path.length} hop{(pathResult.hops ?? pathResult.path.length) !== 1 ? 's' : ''}
+                  </div>
+                )}
+                {pathResult && !pathResult.path && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      fontSize: '11px',
+                      color: '#b91c1c',
+                    }}
+                  >
+                    {pathResult.message || 'No path found between these entities.'}
+                  </div>
+                )}
+                {pathError && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      fontSize: '11px',
+                      color: '#b91c1c',
+                    }}
+                  >
+                    {pathError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {graphData && (
@@ -472,8 +888,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <ControlStat label="Entities found" value={String(filteredGraphData?.nodes.length ?? graphData.nodes.length)} />
               <ControlStat label="Relationships" value={String(filteredGraphData?.edges.length ?? graphData.edges.length)} />
-              <ControlStat label="Connectivity" value={Number(edgeDensity) > 2 ? 'Dense' : Number(edgeDensity) > 1 ? 'Moderate' : 'Sparse'} />
-              <ControlStat label="Data sources" value={String(sourceDomains.size)} />
+              <ControlStat label="Avg links/node" value={edgeDensity.toFixed(1)} />
+              <ControlStat label="Data sources" value={sourceDomains.size > 0 ? Array.from(sourceDomains).slice(0, 3).map(d => displayName(d)).join(', ') : 'Exploring...'} />
             </div>
 
             {highConfidenceRows.length > 0 && (
@@ -726,31 +1142,38 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
       >
         <div className="space-y-5">
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Entity summary</h4>
+            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Overview</h4>
             <div className="space-y-2 rounded-md border border-slate-200 bg-white p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Type</span>
-                <span className="font-medium text-slate-900 capitalize">{selectedEntity?.type ? prettyType(selectedEntity.type) : 'n/a'}</span>
+                <span className="font-medium text-slate-900">{selectedEntity?.type ? displayName(selectedEntity.type) : 'n/a'}</span>
               </div>
               {entitySummary && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Total links</span>
+                  <span className="text-slate-500">Connections</span>
                   <span className="font-medium text-slate-900">{entitySummary.total_connections}</span>
                 </div>
               )}
-              <div className="flex justify-between gap-2 text-sm">
-                <span className="text-slate-500">ID</span>
-                <span className="max-w-[70%] truncate text-right font-mono text-xs text-slate-400">{selectedEntity?.id}</span>
-              </div>
+              {entitySummary && Object.keys(entitySummary.connections_by_entity_type || {}).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {Object.entries(entitySummary.connections_by_entity_type)
+                    .sort(([, a], [, b]) => Number(b) - Number(a))
+                    .map(([eType, count]) => (
+                      <span key={eType} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                        {displayName(eType)} <span className="text-slate-400">{Number(count)}</span>
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           </section>
 
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Source trail</h4>
+            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Relationships</h4>
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {edgeRows.length === 0 && (
                 <div className="rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
-                  No edge provenance found for this node.
+                  Source data pending — this entity has no linked provenance yet.
                 </div>
               )}
               {edgeRows.slice(0, 14).map((row) => (
@@ -758,46 +1181,57 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-slate-800">
-                        {prettyType(row.linkType)} {row.direction} {row.otherLabel}
+                        {displayName(row.linkType)} {row.direction} {isUUID(row.otherLabel) ? displayName(row.otherType) : row.otherLabel}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-slate-500">{prettyType(row.otherType)}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-500">{displayName(row.otherType)}</div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
                       <ShieldCheck size={12} />
                       {(row.confidence * 100).toFixed(0)}%
                     </div>
                   </div>
-                  <div className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-500">
-                    <Link2 size={12} className="mt-0.5 shrink-0" />
-                    <span className="break-all">{row.via}</span>
-                  </div>
+                  {row.via && !isUUID(row.via) && (
+                    <div className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-500">
+                      <Link2 size={12} className="mt-0.5 shrink-0" />
+                      <span className="break-all">{/https?:\/\//.test(row.via) ? row.via : displayName(row.via)}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </section>
 
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Connection mix</h4>
+            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Connection breakdown</h4>
             {summaryLoading ? (
               <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
                 <Loader2 size={12} className="animate-spin" />
-                Loading connection summary...
+                Loading...
               </div>
             ) : entitySummary && Object.keys(entitySummary.connections_by_type).length > 0 ? (
               <div className="space-y-1.5">
                 {Object.entries(entitySummary.connections_by_type)
                   .sort(([, a], [, b]) => Number(b) - Number(a))
                   .slice(0, 10)
-                  .map(([linkType, count]) => (
-                    <div key={linkType} className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs">
-                      <span className="text-slate-600">{prettyType(linkType)}</span>
-                      <span className="font-semibold text-slate-900">{Number(count)}</span>
-                    </div>
-                  ))}
+                  .map(([linkType, count]) => {
+                    const total = entitySummary.total_connections || 1;
+                    const pct = Math.round((Number(count) / total) * 100);
+                    return (
+                      <div key={linkType} className="rounded-md border border-slate-200 bg-white px-3.5 py-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600">{displayName(linkType)}</span>
+                          <span className="font-semibold text-slate-900">{Number(count)}</span>
+                        </div>
+                        <div className="mt-1 h-1 w-full rounded-full bg-slate-100">
+                          <div className="h-1 rounded-full" style={{ width: `${pct}%`, background: 'var(--color-accent)' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             ) : (
               <div className="rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
-                No summary data available for this entity.
+                No connections found for this entity.
               </div>
             )}
           </section>
@@ -848,7 +1282,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 function prettyType(raw: string): string {
-  return raw.replace(/_/g, ' ');
+  return displayName(raw);
 }
 
 function extractUrl(text: string): string | null {

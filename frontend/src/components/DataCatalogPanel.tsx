@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { displayName, isUUID, QUALITY_CHECK_LABELS, SOURCE_LABELS } from '../brand';
 import {
   CheckCircle,
   ChevronLeft,
@@ -285,7 +286,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
           ?? entityDetail?.entity?.name as string
           ?? 'Entity'
         }
-        subtitle={selectedEntity ? `${selectedEntity.type} · ${selectedEntity.id.slice(0, 12)}…` : undefined}
+        subtitle={selectedEntity ? displayName(selectedEntity.type) : undefined}
       >
         {detailLoading ? (
           <div style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading…</div>

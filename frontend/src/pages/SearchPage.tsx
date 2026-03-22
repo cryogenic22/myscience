@@ -486,12 +486,12 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
         <div className={`workspace-canvas shrink-0 ${hasSearched ? 'pb-6 pt-6' : 'flex min-h-[68vh] items-center py-14'}`}>
           <div className="workspace-shell px-6">
             <div className="mx-auto w-full max-w-[1360px]">
-              <div className="mb-8 text-center">
-                <h1 className="text-[clamp(2.1rem,3.9vw,3.05rem)] font-semibold tracking-tight text-slate-900">
-                  Search the Knowledge Graph
+              <div className="mb-6 text-center">
+                <h1 className="text-[clamp(1.1rem,2vw,1.5rem)] font-semibold tracking-tight text-slate-700">
+                  Knowledge Graph Search
                 </h1>
-                <p className="mx-auto mt-3 max-w-3xl text-[16px] leading-relaxed text-slate-500">
-                  Search with natural language, verify source trails, and follow connected nodes before opening deeper analysis.
+                <p className="mx-auto mt-1.5 max-w-2xl text-[13px] leading-relaxed text-slate-400">
+                  Search drugs, trials, companies, and literature across connected sources.
                 </p>
               </div>
 

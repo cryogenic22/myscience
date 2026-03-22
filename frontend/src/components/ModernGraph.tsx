@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type GraphNode, type GraphEdge } from '../api';
 
 interface ModernGraphProps {
@@ -34,10 +34,35 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+    const [hiddenEdgeTypes, setHiddenEdgeTypes] = useState<Set<string>>(new Set());
 
-    // Layout state
-    // Layout state
-    // const simulationRef = useRef<any>(null); // We'll implement a simple force sim here
+    // Derive unique edge types present in current graph
+    const presentEdgeTypes = useMemo(() => {
+        const types = new Set<string>();
+        for (const edge of edges) {
+            const linkType = (edge as any).link_type || '';
+            if (linkType) types.add(linkType);
+        }
+        return [...types].sort((a, b) => a.localeCompare(b));
+    }, [edges]);
+
+    // Filter edges by hidden types
+    const visibleEdges = useMemo(
+        () => edges.filter((edge) => !hiddenEdgeTypes.has((edge as any).link_type || '')),
+        [edges, hiddenEdgeTypes],
+    );
+
+    const toggleEdgeType = useCallback((linkType: string) => {
+        setHiddenEdgeTypes((prev) => {
+            const next = new Set(prev);
+            if (next.has(linkType)) {
+                next.delete(linkType);
+            } else {
+                next.add(linkType);
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -132,9 +157,9 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
             const h = canvas.height / (window.devicePixelRatio || 1);
             ctx.clearRect(0, 0, w, h);
 
-            // Edges
+            // Edges — only draw visible (non-hidden) edges
             ctx.lineWidth = 1;
-            for (const edge of edges) {
+            for (const edge of visibleEdges) {
                 const sId = (edge as any).source_id || (edge as any).source;
                 const tId = (edge as any).target_id || (edge as any).target;
                 const s = nodeMap.get(sId);
@@ -240,11 +265,73 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
             canvas.removeEventListener('click', handleClick);
             cancelAnimationFrame(animationFrameId);
         };
-    }, [nodes, edges, centerEntityId, onNodeClick]);
+    }, [nodes, edges, visibleEdges, centerEntityId, onNodeClick]);
 
     return (
         <div ref={containerRef} className={`relative w-full h-full bg-slate-50 overflow-hidden ${className}`}>
             <canvas ref={canvasRef} className="block" />
+            {presentEdgeTypes.length > 0 && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        bottom: '12px',
+                        left: '12px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '4px 12px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.92)',
+                        backdropFilter: 'blur(8px)',
+                        border: '1px solid var(--color-line, #e2e8f0)',
+                        fontSize: '11px',
+                        maxWidth: 'min(90%, 420px)',
+                        zIndex: 10,
+                    }}
+                >
+                    {presentEdgeTypes.map((linkType) => {
+                        const isHidden = hiddenEdgeTypes.has(linkType);
+                        const dotColor = EDGE_COLORS[linkType] || '#94a3b8';
+                        return (
+                            <button
+                                key={linkType}
+                                type="button"
+                                onClick={() => toggleEdgeType(linkType)}
+                                title={isHidden ? `Show ${linkType} edges` : `Hide ${linkType} edges`}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    color: isHidden ? 'var(--color-ink-4, #a1a1aa)' : 'var(--color-ink-2, #374151)',
+                                    opacity: isHidden ? 0.5 : 1,
+                                    fontFamily: 'inherit',
+                                    fontSize: '11px',
+                                    lineHeight: 1,
+                                    textDecoration: isHidden ? 'line-through' : 'none',
+                                    transition: 'opacity 0.15s ease',
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        display: 'inline-block',
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        background: isHidden ? 'var(--color-ink-4, #a1a1aa)' : dotColor,
+                                        flexShrink: 0,
+                                    }}
+                                />
+                                {linkType.replace(/_/g, ' ')}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

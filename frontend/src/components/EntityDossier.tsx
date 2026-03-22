@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle, X, Edit3, MessageSquare, RefreshCw } from 'lucide-react';
 import { api, type CatalogEntityDetail, type EntityLink } from '../api';
+import { displayName, isUUID, QUALITY_CHECK_LABELS, SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../brand';
 
 /* ── Helpers ── */
 
@@ -19,7 +20,10 @@ function display(v: unknown): string {
   if (v == null) return '—';
   if (Array.isArray(v)) return v.length > 0 ? v.join(', ') : '—';
   const s = String(v);
-  return s || '—';
+  if (!s) return '—';
+  // Never show raw UUIDs to users
+  if (isUUID(s)) return '—';
+  return s;
 }
 
 const SKIP = new Set([
@@ -427,7 +431,7 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
                 }}
               >
                 <span style={{ fontWeight: 600, color: 'var(--color-ink)' }}>{c.count}</span>
-                <span style={{ textTransform: 'capitalize' }}>{c.type.replace(/_/g, ' ')}{c.count !== 1 ? 's' : ''}</span>
+                <span>{ENTITY_TYPE_LABELS[c.type] ?? c.type.replace(/_/g, ' ')}{c.count !== 1 ? 's' : ''}</span>
               </span>
             ))}
           </div>
@@ -448,37 +452,51 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
         </div>
       )}
 
-      {/* Quality checks */}
-      {detail.quality_results.length > 0 && (
-        <section>
-          <div style={{
-            fontSize: '11px', fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.06em', color: 'var(--color-ink-4)',
-            marginBottom: '10px',
-          }}>
-            Quality Checks
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {detail.quality_results.map((qr, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', fontSize: '12px' }}>
-                {qr.passed
-                  ? <CheckCircle size={13} style={{ color: 'var(--color-green)', flexShrink: 0 }} />
-                  : <X size={13} style={{ color: 'var(--color-red)', flexShrink: 0 }} />
-                }
-                <span style={{ flex: 1, color: 'var(--color-ink-2)' }}>{qr.rule_name}</span>
-                <span style={{
-                  fontSize: '10px', textTransform: 'capitalize',
-                  color: 'var(--color-ink-4)',
-                  background: 'var(--color-surface-2)',
-                  padding: '1px 8px', borderRadius: '8px',
-                }}>
-                  {qr.severity}
-                </span>
+      {/* Quality — collapsed into a single confidence badge with expandable details */}
+      {detail.quality_results.length > 0 && (() => {
+        const passed = detail.quality_results.filter(q => q.passed).length;
+        const total = detail.quality_results.length;
+        const pct = Math.round((passed / total) * 100);
+        const color = pct >= 80 ? 'var(--color-green)' : pct >= 50 ? 'var(--color-amber)' : 'var(--color-red)';
+        const failed = detail.quality_results.filter(q => !q.passed);
+
+        return (
+          <section>
+            <div style={{
+              fontSize: '11px', fontWeight: 600, textTransform: 'uppercase',
+              letterSpacing: '0.06em', color: 'var(--color-ink-4)',
+              marginBottom: '10px',
+            }}>
+              Data Quality
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '10px 14px', borderRadius: '10px',
+              background: 'var(--color-surface-2)',
+              border: '1px solid var(--color-line)',
+            }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '13px', fontWeight: 700, color: 'white',
+                background: color,
+              }}>
+                {pct}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                  {passed}/{total} checks passed
+                </div>
+                {failed.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-3)', marginTop: '2px' }}>
+                    Missing: {failed.map(q => QUALITY_CHECK_LABELS[q.rule_name] ?? displayName(q.rule_name)).join(', ')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Data provenance */}
       {(entity.source_api || entity.retrieved_at) && (
@@ -494,7 +512,7 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
             {entity.source_api && (
               <div style={{ display: 'flex', gap: '8px' }}>
                 <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Source</span>
-                <span style={{ color: 'var(--color-ink-2)' }}>{String(entity.source_api)}</span>
+                <span style={{ color: 'var(--color-ink-2)' }}>{SOURCE_LABELS[String(entity.source_api)] ?? String(entity.source_api)}</span>
               </div>
             )}
             {entity.retrieved_at && (
