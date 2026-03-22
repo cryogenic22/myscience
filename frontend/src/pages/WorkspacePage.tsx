@@ -47,6 +47,7 @@ export default function WorkspacePage({
   const [isLoading, setIsLoading] = useState(false);
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvas, setCanvas] = useState<CanvasState>(EMPTY_CANVAS);
+  const [graphEntity, setGraphEntity] = useState<{ id: string; type: string; label: string } | null>(null);
   const seededQuestionRef = useRef<string | null>(null);
 
   useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
@@ -212,7 +213,7 @@ export default function WorkspacePage({
 
       {activeTab === 'graph' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '0 16px' }}>
-          <GraphExplorer />
+          <GraphExplorer initialEntity={graphEntity} />
         </div>
       ) : activeTab === 'catalog' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -244,6 +245,10 @@ export default function WorkspacePage({
               loading={canvasLoading}
               personaAnalyses={canvas.personaAnalyses}
               confidenceAssessment={canvas.confidenceAssessment}
+              onViewInGraph={(entity) => {
+                setGraphEntity(entity);
+                setActiveTab('graph');
+              }}
             />
           }
           defaultSplit={50}

@@ -17,6 +17,7 @@ interface CanvasPanelProps {
   loading?: boolean;
   personaAnalyses?: PersonaAnalysis[];
   confidenceAssessment?: { overall: number; by_dimension: Record<string, number> };
+  onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }
 
 const INTENT_LABELS: Record<string, string> = {
@@ -49,6 +50,7 @@ export default function CanvasPanel({
   loading,
   personaAnalyses,
   confidenceAssessment,
+  onViewInGraph,
 }: CanvasPanelProps) {
   const hasTable = Boolean(tableData && tableData.rows.length > 0);
   const hasViz = Boolean(visualizations && visualizations.length > 0);
@@ -194,6 +196,7 @@ export default function CanvasPanel({
                 tableData={hasTable ? tableData! : null}
                 visualizations={hasViz ? visualizations! : null}
                 entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
+                onViewInGraph={onViewInGraph}
               />
             )}
 
@@ -208,6 +211,7 @@ export default function CanvasPanel({
               <EntitiesTab
                 entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
                 evidence={hasEvidence ? data!.evidence : null}
+                onViewInGraph={onViewInGraph}
               />
             )}
 
@@ -231,12 +235,14 @@ function SummaryTab({
   tableData,
   visualizations,
   entities,
+  onViewInGraph,
 }: {
   intent: string | null;
   confValue: number | null | undefined;
   tableData: TableData | null;
   visualizations: VisualizationSpec[] | null;
   entities: Record<string, unknown>[] | null;
+  onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }) {
   const summaryTable = tableData
     ? { ...tableData, rows: tableData.rows.slice(0, 5) }
@@ -258,7 +264,7 @@ function SummaryTab({
       )}
       {topEntities && topEntities.length > 0 && (
         <Section title="Key Entities">
-          <EntityGrid entities={topEntities} />
+          <EntityGrid entities={topEntities} onViewInGraph={onViewInGraph} />
         </Section>
       )}
     </>
@@ -297,15 +303,17 @@ function DataTab({
 function EntitiesTab({
   entities,
   evidence,
+  onViewInGraph,
 }: {
   entities: Record<string, unknown>[] | null;
   evidence: EvidenceItem[] | null;
+  onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }) {
   return (
     <>
       {entities && entities.length > 0 && (
         <Section title="Key Entities">
-          <EntityGrid entities={entities} />
+          <EntityGrid entities={entities} onViewInGraph={onViewInGraph} />
         </Section>
       )}
       {evidence && evidence.length > 0 && (
@@ -607,7 +615,7 @@ const ENTITY_DOTS: Record<string, string> = {
   literature: 'var(--color-literature)',
 };
 
-function EntityGrid({ entities }: { entities: Record<string, unknown>[] }) {
+function EntityGrid({ entities, onViewInGraph }: { entities: Record<string, unknown>[]; onViewInGraph?: (entity: { id: string; type: string; label: string }) => void }) {
   return (
     <div className="grid grid-cols-1 gap-2">
       {entities.map((e, i) => {
@@ -640,6 +648,20 @@ function EntityGrid({ entities }: { entities: Record<string, unknown>[] }) {
               >
                 {type.replace('_', ' ')}
               </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2 pl-4">
+              {onViewInGraph && e.entity_id && (
+                <button
+                  type="button"
+                  onClick={() => onViewInGraph({ id: String(e.entity_id), type, label })}
+                  style={{
+                    fontSize: '11px', color: 'var(--color-accent)', background: 'none',
+                    border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500,
+                  }}
+                >
+                  View in Graph →
+                </button>
+              )}
             </div>
             {conns != null && (
               <div

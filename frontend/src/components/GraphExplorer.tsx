@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Building2,
@@ -65,7 +65,12 @@ const OBJECTIVES = [
 
 type ObjectiveId = typeof OBJECTIVES[number]['id'];
 
-export default function GraphExplorer() {
+interface GraphExplorerProps {
+  /** Pre-load this entity on mount (from cross-module navigation) */
+  initialEntity?: { id: string; type: string; label: string } | null;
+}
+
+export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}) {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [objective, setObjective] = useState<ObjectiveId>('adjacency');
   const [entityLookupQuery, setEntityLookupQuery] = useState('');
@@ -82,7 +87,36 @@ export default function GraphExplorer() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
   const [quickNodeInsight, setQuickNodeInsight] = useState<NodeInsight | null>(null);
+  const [showDemoBanner, setShowDemoBanner] = useState(!initialEntity);
   const suggestTimeoutRef = useRef<number>(0);
+
+  const autoLoadedRef = useRef(false);
+
+  // Auto-load: initialEntity prop (cross-module nav) or semaglutide demo on first visit
+  useEffect(() => {
+    if (autoLoadedRef.current) return;
+    autoLoadedRef.current = true;
+
+    if (initialEntity) {
+      // Cross-module navigation — load the requested entity
+      void loadGraph(initialEntity.id, initialEntity.type, initialEntity.label, 2);
+      return;
+    }
+
+    // Demo mode — pre-render semaglutide neighbourhood
+    void (async () => {
+      try {
+        const res = await api.listEntities('drug', 'semaglutide', 5);
+        // Pick the best match — prefer exact "semaglutide" over combo drugs
+        const best = res.results.find(r => r.label.toLowerCase() === 'semaglutide')
+          ?? res.results.find(r => r.label.toLowerCase().startsWith('semaglutide'))
+          ?? res.results[0];
+        if (best) {
+          void loadGraph(best.entity_id, 'drug', best.label, 1);
+        }
+      } catch { /* silently fail — empty state is still fine */ }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeObjective = useMemo(
     () => OBJECTIVES.find((item) => item.id === objective) ?? OBJECTIVES[0],
@@ -132,6 +166,7 @@ export default function GraphExplorer() {
     setSelectedEntity({ id: entityId, type: entityType, label });
     setEntityLookupQuery(label);
     setShowSuggestions(false);
+    setShowDemoBanner(false);
     setIsLoading(true);
     setSummaryLoading(true);
     if (options?.openDetails) setDrawerOpen(true);
@@ -519,12 +554,39 @@ export default function GraphExplorer() {
             <Loader2 className="animate-spin text-blue-600" size={32} />
           </div>
         ) : filteredGraphData && filteredGraphData.nodes.length > 0 ? (
-          <ModernGraph
-            nodes={filteredGraphData.nodes}
-            edges={filteredGraphData.edges}
-            centerEntityId={selectedEntity?.id}
-            onNodeClick={handleNodeClick}
-          />
+          <>
+            <ModernGraph
+              nodes={filteredGraphData.nodes}
+              edges={filteredGraphData.edges}
+              centerEntityId={selectedEntity?.id}
+              onNodeClick={handleNodeClick}
+            />
+            {showDemoBanner && !initialEntity && (
+              <div
+                className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl px-5 py-2.5"
+                style={{
+                  background: 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid var(--color-line)',
+                  boxShadow: 'var(--shadow-sm)',
+                  fontSize: '13px',
+                  color: 'var(--color-ink-2)',
+                }}
+              >
+                <span>Showing <strong style={{ color: 'var(--color-ink)' }}>semaglutide</strong> connections — search any entity to explore</span>
+                <button
+                  type="button"
+                  onClick={() => setShowDemoBanner(false)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--color-ink-4)', fontSize: '16px', lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white/88 shadow-sm">
