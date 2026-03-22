@@ -1,14 +1,14 @@
 # Codebase Map
 
-*Auto-generated: 2026-03-20 23:24*
+*Auto-generated: 2026-03-22 05:30*
 
 ## Stats
 
-- **Python**: 124 files
+- **Python**: 128 files
 - **TSX/React**: 27 files
 - **TypeScript**: 6 files
 - **JavaScript**: 1 files
-- **Total source files**: 158
+- **Total source files**: 162
 
 ## Directory Structure
 
@@ -16,7 +16,7 @@
 
 - `__init__.py/` — 1 files
 
-### `api/` (15 files)
+### `api/` (16 files)
 
 - `api/__init__.py/` — 1 files
 - `api/app.py/` — 1 files
@@ -25,6 +25,7 @@
 - `api/routes/__init__.py/` — 1 files
 - `api/routes/catalog.py/` — 1 files
 - `api/routes/chat.py/` — 1 files
+- `api/routes/enrichment.py/` — 1 files
 - `api/routes/entities.py/` — 1 files
 - `api/routes/graph.py/` — 1 files
 - `api/routes/metrics.py/` — 1 files
@@ -50,11 +51,12 @@
 
 - `config.py/` — 1 files
 
-### `connectors/` (11 files)
+### `connectors/` (12 files)
 
 - `connectors/__init__.py/` — 1 files
 - `connectors/base.py/` — 1 files
 - `connectors/clinical_trials.py/` — 1 files
+- `connectors/enrichment_runner.py/` — 1 files
 - `connectors/fda_shortages.py/` — 1 files
 - `connectors/mesh.py/` — 1 files
 - `connectors/openfda_faers.py/` — 1 files
@@ -93,10 +95,10 @@
 - `frontend/src/App.tsx/` — 1 files
 - `frontend/src/api.ts/` — 1 files
 - `frontend/src/brand.ts/` — 1 files
-- `frontend/src/components/` — 21 files
+- `frontend/src/components/` — 22 files
 - `frontend/src/hooks/` — 3 files
 - `frontend/src/main.tsx/` — 1 files
-- `frontend/src/pages/` — 4 files
+- `frontend/src/pages/` — 3 files
 - `frontend/vite.config.ts/` — 1 files
 
 ### `integration/` (11 files)
@@ -136,7 +138,7 @@
 - `scheduler/config.py/` — 1 files
 - `scheduler/runner.py/` — 1 files
 
-### `scripts/` (10 files)
+### `scripts/` (11 files)
 
 - `scripts/__init__.py/` — 1 files
 - `scripts/ai_enrich.py/` — 1 files
@@ -146,6 +148,7 @@
 - `scripts/dedup_companies.py/` — 1 files
 - `scripts/enrich_companies.py/` — 1 files
 - `scripts/enrich_drugs.py/` — 1 files
+- `scripts/extract_biomarkers.py/` — 1 files
 - `scripts/onboard_ta.py/` — 1 files
 - `scripts/quality_scorecard.py/` — 1 files
 
@@ -182,7 +185,7 @@
 - `services/web_research.py/` — 1 files
 - `services/workspace.py/` — 1 files
 
-### `tests/` (22 files)
+### `tests/` (23 files)
 
 - `tests/__init__.py/` — 1 files
 - `tests/agent/__init__.py/` — 1 files
@@ -202,6 +205,7 @@
 - `tests/test_dedup_companies.py/` — 1 files
 - `tests/test_domain_coverage.py/` — 1 files
 - `tests/test_enrichment.py/` — 1 files
+- `tests/test_entity_dossier.py/` — 1 files
 - `tests/test_quality_monitor.py/` — 1 files
 - `tests/test_research_agent.py/` — 1 files
 - `tests/test_ta_definitions.py/` — 1 files

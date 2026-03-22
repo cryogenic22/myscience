@@ -1,14 +1,14 @@
 # Anti-Slop Rules — DO NOT DUPLICATE Existing Utilities
 
-*Auto-generated: 2026-03-20 23:24*
-*Scanned: 643 exports across 20 directories*
+*Auto-generated: 2026-03-22 05:30*
+*Scanned: 659 exports across 20 directories*
 
 **BEFORE creating any new function, class, or constant:**
 1. Search this list for an existing implementation
 2. If it exists, import it — do NOT create a new version
 3. If you need a variant, extend the existing one
 
-## Known Duplicates (38 — consolidate these)
+## Known Duplicates (39 — consolidate these)
 
 - **`EvidenceItem`** — defined in: `frontend/src/api.ts`, `services/query_engine.py`
 - **`GraphEdge`** — defined in: `frontend/src/api.ts`, `services/graph.py`
@@ -17,7 +17,7 @@
 - **`QueryResponse`** — defined in: `api/schemas.py`, `frontend/src/api.ts`
 - **`SearchResult`** — defined in: `frontend/src/api.ts`, `services/search.py`
 - **`SourceCoverageItem`** — defined in: `api/schemas.py`, `frontend/src/api.ts`
-- **`__init__`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`, `db.py`, `integration/cross_linker.py`, `integration/data_quality.py`, `integration/dataset_catalog.py`, `integration/embedder.py`, `integration/entity_consolidator.py`, `integration/entity_resolver.py`, `integration/knowledge_store.py`, `integration/normalizer.py`, `integration/pipeline.py`, `integration/pipeline.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `scheduler/runner.py`, `services/agent/schema_introspector.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `services/conversation_memory.py`, `services/ctx_context.py`, `services/ctx_corpus.py`, `services/ctx_pipeline.py`, `services/graph.py`, `services/llm.py`, `services/metrics.py`, `services/query_engine.py`, `services/research_agent.py`, `services/search.py`, `services/unified_handler.py`, `services/web_research.py`, `services/workspace.py`, `tests/conftest.py`, `tests/conftest.py`, `tests/conftest.py`
+- **`__init__`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/enrichment_runner.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`, `db.py`, `integration/cross_linker.py`, `integration/data_quality.py`, `integration/dataset_catalog.py`, `integration/embedder.py`, `integration/entity_consolidator.py`, `integration/entity_resolver.py`, `integration/knowledge_store.py`, `integration/normalizer.py`, `integration/pipeline.py`, `integration/pipeline.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `scheduler/runner.py`, `services/agent/schema_introspector.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `services/conversation_memory.py`, `services/ctx_context.py`, `services/ctx_corpus.py`, `services/ctx_pipeline.py`, `services/graph.py`, `services/llm.py`, `services/metrics.py`, `services/query_engine.py`, `services/research_agent.py`, `services/search.py`, `services/unified_handler.py`, `services/web_research.py`, `services/workspace.py`, `tests/conftest.py`, `tests/conftest.py`, `tests/conftest.py`
 - **`__post_init__`** — defined in: `connectors/base.py`, `domain/ta_definitions/schema.py`
 - **`call_count`** — defined in: `tests/conftest.py`, `tests/conftest.py`
 - **`company_portfolio`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
@@ -34,7 +34,7 @@
 - **`get_research_job`** — defined in: `api/routes/chat.py`, `services/workspace.py`
 - **`health_check`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
 - **`list_research_jobs`** — defined in: `api/routes/chat.py`, `services/workspace.py`
-- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
+- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
 - **`name`** — defined in: `services/agent/tools/base.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `tests/conftest.py`, `tests/conftest.py`
 - **`neighborhood`** — defined in: `api/routes/graph.py`, `services/graph.py`
 - **`path_between`** — defined in: `api/routes/graph.py`, `services/graph.py`
@@ -42,7 +42,8 @@
 - **`refresh_materialized_views`** — defined in: `api/routes/catalog.py`, `fix_data_quality.py`
 - **`register`** — defined in: `domain/registry.py`, `integration/pipeline_hooks.py`
 - **`resolve`** — defined in: `integration/entity_resolver.py`, `integration/pipeline_hooks.py`
-- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
+- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
+- **`run_enrichment`** — defined in: `api/routes/catalog.py`, `api/routes/enrichment.py`
 - **`search`** — defined in: `api/routes/search.py`, `services/search.py`, `services/web_research.py`
 - **`should_fire`** — defined in: `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`
 - **`source_type`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
@@ -124,6 +125,7 @@
 | `create_research_job` | function | `services/workspace.py:144` |
 | `delete_session` | function | `services/workspace.py:131` |
 | `drug_pipeline_strength` | function | `services/metrics.py:37` |
+| `drugs_by_mechanism_class` | function | `services/graph.py:299` |
 | `enabled` | function | `services/llm.py:249` |
 | `enabled` | function | `services/web_research.py:30` |
 | `entity_dossier` | function | `services/query_engine.py:191` |
@@ -150,6 +152,7 @@
 | `log_ctx_event` | function | `services/telemetry.py:16` |
 | `log_iteration` | function | `services/research_agent.py:382` |
 | `mark_research_job_running` | function | `services/workspace.py:212` |
+| `mechanism_hierarchy` | function | `services/graph.py:319` |
 | `neighborhood` | function | `services/graph.py:73` |
 | `pack` | function | `services/ctx_corpus.py:258` |
 | `pack_evidence` | function | `services/ctx_evidence.py:86` |
@@ -252,7 +255,7 @@
 - `ResearchConfig` (class) — `config.py:148`
 - *...and 56 more — search with Grep*
 
-### `api/` (37 exports)
+### `api/` (38 exports)
 - `CompareRequest` (class) — `api/schemas.py:32`
 - `DossierRequest` (class) — `api/schemas.py:27`
 - `EntityResponse` (class) — `api/schemas.py:75`
@@ -263,33 +266,33 @@
 - `HealthResponse` (class) — `api/schemas.py:120`
 - `QueryRequest` (class) — `api/schemas.py:20`
 - `QueryResponse` (class) — `api/schemas.py:66`
-- *...and 27 more — search with Grep*
+- *...and 28 more — search with Grep*
 
-### `api/routes/` (58 exports)
+### `api/routes/` (62 exports)
 - `BulkResolveRequest` (class) — `api/routes/catalog.py:805`
 - `BulkUpdateRequest` (class) — `api/routes/catalog.py:761`
 - `EnrichmentRequest` (class) — `api/routes/catalog.py:131`
 - `EntityTagRequest` (class) — `api/routes/catalog.py:137`
 - `EntityUpdateRequest` (class) — `api/routes/catalog.py:121`
 - `HITLResolveRequest` (class) — `api/routes/catalog.py:126`
-- `Intent` (class) — `api/routes/chat.py:53`
+- `Intent` (class) — `api/routes/chat.py:54`
 - `RunEnrichmentRequest` (class) — `api/routes/catalog.py:877`
 - `add_entity_tag` (function) — `api/routes/catalog.py:398`
 - `browse_entities` (function) — `api/routes/catalog.py:170`
-- *...and 48 more — search with Grep*
+- *...and 52 more — search with Grep*
 
-### `connectors/` (60 exports)
+### `connectors/` (66 exports)
 - `BaseConnector` (class) — `connectors/base.py:167`
 - `ClinicalTrialsConnector` (class) — `connectors/clinical_trials.py:88`
 - `ConnectorError` (class) — `connectors/base.py:228`
+- `EnrichmentResult` (class) — `connectors/enrichment_runner.py:21`
+- `EnrichmentRunner` (class) — `connectors/enrichment_runner.py:29`
 - `FDAShortagesConnector` (class) — `connectors/fda_shortages.py:74`
 - `HealthCheckResult` (class) — `connectors/base.py:218`
 - `LinkType` (class) — `connectors/base.py:61`
 - `MeSHConnector` (class) — `connectors/mesh.py:42`
 - `OpenFDAFAERSConnector` (class) — `connectors/openfda_faers.py:55`
-- `OpenFDALabelsConnector` (class) — `connectors/openfda_labels.py:55`
-- `OrangeBookConnector` (class) — `connectors/orange_book.py:65`
-- *...and 50 more — search with Grep*
+- *...and 56 more — search with Grep*
 
 ### `domain/` (26 exports)
 - `AgentPersona` (class) — `domain/schema.py:186`
@@ -356,10 +359,10 @@
 - `status` (function) — `scheduler/runner.py:151`
 - `stop` (function) — `scheduler/runner.py:55`
 
-### `scripts/` (45 exports)
-- `backfill_ta_links_from_mechanism` (function) — `scripts/backfill_ta_links.py:264`
-- `backfill_ta_links_from_trials` (function) — `scripts/backfill_ta_links.py:191`
-- `backfill_trial_ta_links` (function) — `scripts/backfill_ta_links.py:313`
+### `scripts/` (48 exports)
+- `backfill_ta_links_from_mechanism` (function) — `scripts/backfill_ta_links.py:279`
+- `backfill_ta_links_from_trials` (function) — `scripts/backfill_ta_links.py:206`
+- `backfill_trial_ta_links` (function) — `scripts/backfill_ta_links.py:328`
 - `clean_drug_names` (function) — `scripts/clean_drug_names.py:93`
 - `compute_completeness` (function) — `scripts/quality_scorecard.py:52`
 - `compute_freshness` (function) — `scripts/quality_scorecard.py:169`
@@ -367,7 +370,7 @@
 - `compute_overall_score` (function) — `scripts/quality_scorecard.py:240`
 - `compute_quality_scores` (function) — `scripts/quality_scorecard.py:213`
 - `compute_source_diversity` (function) — `scripts/quality_scorecard.py:147`
-- *...and 35 more — search with Grep*
+- *...and 38 more — search with Grep*
 
 ### `tests/` (25 exports)
 - `MockLLM` (class) — `tests/conftest.py:125`
