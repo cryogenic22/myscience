@@ -20,13 +20,13 @@ import {
   type CatalogEntityDetail,
   type CatalogStats,
   type ChangeLogEntry,
-  type EntityLink,
   type FieldCompleteness,
   type HealthData,
   type HITLItem,
   type SourceFreshness,
 } from '../api';
 import { Drawer } from './ui/Drawer';
+import EntityDossier from './EntityDossier';
 
 interface Props {
   onAskInChat?: (question: string) => void;
@@ -266,7 +266,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
         {detailLoading ? (
           <div style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading…</div>
         ) : entityDetail ? (
-          <EntityDetailDrawer
+          <EntityDossier
             detail={entityDetail}
             editing={editing}
             onEditField={(f, v) => setEditing(prev => ({ ...prev, [f]: v }))}
@@ -881,227 +881,4 @@ function CurationTab({ items, onResolve }: {
   );
 }
 
-/* ══ Entity Detail ══ */
-const SKIP = new Set(['_label', 'content_hash', 'molecule_embedding', 'strategy_embedding', 'protocol_embedding', 'abstract_embedding', 'scope_note_embedding', 'label_embedding', 'full_text_embedding']);
-
-function EntityDetailDrawer({ detail, editing, onEditField, onSave, onAskInChat }: {
-  detail: CatalogEntityDetail;
-  editing: Record<string, string>;
-  onEditField: (f: string, v: string) => void;
-  onSave: () => Promise<void>;
-  onAskInChat?: (q: string) => void;
-}) {
-  const entity = detail.entity;
-  const editable = new Set(detail.editable_fields);
-  const hasEdits = Object.keys(editing).length > 0;
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    try { await onSave(); } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Properties */}
-      <section>
-        <div className="text-label mb-4">Properties</div>
-        <div className="space-y-1">
-          {Object.entries(entity)
-            .filter(([k]) => !SKIP.has(k))
-            .map(([key, val]) => {
-              const isEditing = key in editing;
-              const display = Array.isArray(val) ? val.join(', ') : String(val ?? '—');
-              return (
-                <div
-                  key={key}
-                  className="flex items-start gap-3 rounded-xl px-3 py-2.5"
-                  style={{ background: isEditing ? 'var(--color-accent-soft)' : 'transparent' }}
-                >
-                  <span
-                    className="shrink-0 pt-0.5"
-                    style={{ fontSize: '12px', color: 'var(--color-ink-4)', width: '140px', textTransform: 'capitalize' }}
-                  >
-                    {key.replace(/_/g, ' ')}
-                  </span>
-                  {isEditing ? (
-                    <input
-                      value={editing[key]}
-                      onChange={e => onEditField(key, e.target.value)}
-                      className="input-base flex-1"
-                      style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px' }}
-                      autoFocus
-                    />
-                  ) : (
-                    <span
-                      style={{ fontSize: '12px', color: 'var(--color-ink-2)', flex: 1, wordBreak: 'break-word' }}
-                    >
-                      {display}
-                    </span>
-                  )}
-                  {editable.has(key) && !isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => onEditField(key, String(val ?? ''))}
-                      className="shrink-0 opacity-0 hover:opacity-100 transition-opacity"
-                      style={{ color: 'var(--color-ink-4)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <Edit3 size={11} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-        </div>
-        {hasEdits && (
-          <div className="flex items-center gap-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--color-line)' }}>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              className="btn btn-accent btn-sm"
-            >
-              {saving ? 'Saving…' : 'Save Changes'}
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Quality */}
-      {detail.quality_results.length > 0 && (
-        <section>
-          <div className="text-label mb-3">Quality Checks</div>
-          <div className="space-y-1">
-            {detail.quality_results.map((qr, i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5" style={{ fontSize: '12px' }}>
-                {qr.passed
-                  ? <CheckCircle size={13} style={{ color: 'var(--color-green)', flexShrink: 0 }} />
-                  : <X size={13} style={{ color: 'var(--color-red)', flexShrink: 0 }} />
-                }
-                <span style={{ flex: 1, color: 'var(--color-ink-2)' }}>{qr.rule_name}</span>
-                <span
-                  className="badge badge-neutral"
-                  style={{ fontSize: '10px', textTransform: 'capitalize' }}
-                >
-                  {qr.severity}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Related entities */}
-      {detail.links.length > 0 && (
-        <section>
-          <div className="text-label mb-3">Related Entities ({detail.links.length})</div>
-          <div className="space-y-1">
-            {detail.links.slice(0, 20).map((link: EntityLink, i: number) => {
-              const isSrc = link.source_entity_id === String(entity.id ?? '');
-              const relatedId = isSrc ? link.target_entity_id : link.source_entity_id;
-              const relatedType = isSrc ? link.target_entity_type : link.source_entity_type;
-              return (
-                <div key={i} className="flex items-center gap-2 py-1.5" style={{ fontSize: '12px' }}>
-                  <span
-                    className="badge badge-neutral"
-                    style={{ fontSize: '9px', textTransform: 'uppercase', minWidth: '60px', justifyContent: 'center' }}
-                  >
-                    {link.link_type}
-                  </span>
-                  <span style={{ color: 'var(--color-ink-2)', flex: 1 }}>
-                    {relatedType}: {relatedId.slice(0, 12)}...
-                  </span>
-                  <span style={{ color: 'var(--color-ink-4)' }}>
-                    {(link.confidence * 100).toFixed(0)}%
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Data provenance */}
-      {(entity.source_api || entity.retrieved_at) && (
-        <section>
-          <div className="text-label mb-3">Data Provenance</div>
-          <div className="space-y-1" style={{ fontSize: '12px' }}>
-            {entity.source_api && (
-              <div className="flex gap-2">
-                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Source</span>
-                <span style={{ color: 'var(--color-ink-2)' }}>{String(entity.source_api)}</span>
-              </div>
-            )}
-            {entity.retrieved_at && (
-              <div className="flex gap-2">
-                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Retrieved</span>
-                <span style={{ color: 'var(--color-ink-2)' }}>{shortDate(String(entity.retrieved_at))}</span>
-              </div>
-            )}
-            {entity.content_hash && (
-              <div className="flex gap-2">
-                <span style={{ color: 'var(--color-ink-4)', width: '80px' }}>Hash</span>
-                <span style={{ color: 'var(--color-ink-4)', fontFamily: 'monospace', fontSize: '10px' }}>
-                  {String(entity.content_hash).slice(0, 16)}...
-                </span>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Change history */}
-      {detail.change_log.length > 0 && (
-        <section>
-          <div className="text-label mb-3">Change History</div>
-          <div className="space-y-2">
-            {detail.change_log.slice(0, 10).map((ch, i) => (
-              <div key={i} className="flex items-start gap-2" style={{ fontSize: '11px' }}>
-                <div
-                  className="shrink-0 h-2 w-2 rounded-full mt-1.5"
-                  style={{ background: ch.change_type === 'manual_edit' ? 'var(--color-accent)' : 'var(--color-ink-4)' }}
-                />
-                <div>
-                  <span style={{ color: 'var(--color-ink-2)' }}>{ch.change_type}</span>
-                  {ch.changed_fields?.length > 0 && (
-                    <span style={{ color: 'var(--color-ink-4)' }}> · {ch.changed_fields.join(', ')}</span>
-                  )}
-                  <div style={{ color: 'var(--color-ink-4)' }}>{shortDate(ch.changed_at)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2" style={{ paddingTop: '16px', borderTop: '1px solid var(--color-line)' }}>
-        {onAskInChat && (
-          <button
-            type="button"
-            onClick={() => {
-              const label = String(entity._label ?? entity.generic_name ?? entity.name ?? '');
-              onAskInChat(`Tell me about ${label}`);
-            }}
-            className="btn btn-secondary btn-sm flex items-center gap-2"
-          >
-            <MessageSquare size={13} />
-            Explore in Chat
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            const etype = detail.entity_type;
-            const eid = String(entity.id ?? '');
-            api.catalogRunEnrichment(etype, 1).catch(() => {});
-          }}
-          className="btn btn-secondary btn-sm flex items-center gap-2"
-        >
-          <RefreshCw size={13} />
-          Request AI Enrichment
-        </button>
-      </div>
-    </div>
-  );
-}
+/* EntityDetailDrawer replaced by EntityDossier component (Sprint 5) */
