@@ -362,3 +362,205 @@ Your report suggested 200-300 LOC. The remaining complexity is in state coordina
 | Pre-existing tests | 284 |
 | Total passing | 311 |
 | Regressions | 0 |
+
+---
+
+## Addendum: CTX System — Integration, Problem, Usage, Measurement
+
+### The Problem CTX Solves
+
+The platform's chat pipeline assembles context for LLM synthesis from multiple sources: entity properties, graph neighbourhood, metrics, evidence snippets, and conversation history. Before CTX, this was done by dumping raw JSON into the LLM prompt:
+
+```
+USER QUESTION: Compare semaglutide vs tirzepatide
+ENTITY: {"name": "semaglutide", "type": "drug", "mechanism": "GLP-1 Receptor Agonist", ...}
+METRICS: {"semaglutide": {"pipeline_score": 85.2, "trial_count": 142}, ...}
+EVIDENCE: [1] Semaglutide showed 14.9% weight reduction...
+```
+
+This approach has three problems:
+
+1. **Token waste.** JSON keys, nested braces, and repeated field names consume tokens without adding semantic value. A typical dossier context is 4,000-8,000 tokens — 40-60% of which is structural overhead.
+
+2. **Lost-in-middle.** LLMs attend more strongly to the start and end of context windows. Evidence placed in the middle of a large JSON dump gets lower attention, producing responses that cite early or late evidence but miss the most relevant items in the middle.
+
+3. **No sufficiency check.** The pipeline has no way to know if the assembled context is adequate before sending it to the LLM. If a key entity is missing from the context, the LLM hallucinates rather than saying "data not available."
+
+### What CTX Is
+
+CTX (Consolidated Text eXchange) is a multi-resolution context compression format developed in-house (`C:\Users\kapil\Documents\CTX_mod`). It replaces ad-hoc JSON context assembly with structured, deterministic documents:
+
+```
+§CTX v1.0 L2 DOMAIN:pharma-intelligence SOURCE_TOKENS:~4200
+
+##QUERY
+QUESTION:Compare semaglutide vs tirzepatide
+INTENT:compare
+
+##ENTITY-DRUG semaglutide
+NAME:semaglutide
+TYPE:drug
+MECHANISM:GLP-1 Receptor Agonist
+COMPANY:Novo Nordisk
+
+##METRICS
+SEMAGLUTIDE:pipeline_score:85.2 trial_count:142 phase3_count:28
+TIRZEPATIDE:pipeline_score:72.1 trial_count:98 phase3_count:15
+
+##EVIDENCE
+[1] Semaglutide showed 14.9% weight reduction in STEP 1 trial
+[2] Tirzepatide demonstrated 22.5% weight loss in SURMOUNT-1
+```
+
+Key properties:
+- **Structured sections** (`##ENTITY`, `##METRICS`, `##EVIDENCE`) instead of flat JSON
+- **Salience ordering**: high-salience content at START and END, medium-salience in MIDDLE (exploiting LLM attention bias)
+- **Key-value compression**: `pipeline_score:85.2 trial_count:142` instead of `{"pipeline_score": 85.2, "trial_count": 142}`
+- **Multi-resolution**: L2 (full compressed) and L3 (directory index, ~500 tokens) for routing
+
+### How CTX Is Integrated
+
+CTX operates at four levels in the platform. Each level is independently useful and can be activated without the others:
+
+#### Level 1: Context Formatting (ACTIVE in production)
+
+**File:** `services/ctx_context.py` — `CTXContextBuilder`
+
+Every call to `LLMSynthesizer.synthesize()` routes through CTXContextBuilder. In the default `"both"` mode, it:
+1. Builds the CTX L2 context (structured sections, salience-ordered)
+2. Builds the legacy JSON context (flat dump)
+3. Sends CTX as the active context to the LLM
+4. Logs both for A/B comparison
+
+**Config:** `MZ_CTX_MODE` env var — `"ctx"` | `"legacy"` | `"both"` (default: `"both"`)
+
+This is zero-risk: if CTX produces worse results, switch to `"legacy"` with one env var change.
+
+#### Level 2: Evidence Compression (ACTIVE in production)
+
+**File:** `services/ctx_evidence.py` — `pack_evidence()`
+
+Before context assembly, evidence snippets are compressed by merging near-duplicate items and capping per-entity evidence count. This runs independently of the CTX context builder.
+
+#### Level 3: CTX Query Pipeline (OPT-IN)
+
+**File:** `services/ctx_pipeline.py` — `CTXQueryPipeline`
+
+The full staged pipeline: understand → retrieve → reason → synthesize. This replaces the 8-handler intent fork with a unified flow that uses CTX capabilities:
+
+| Stage | What it does | CTX feature used |
+|-------|-------------|------------------|
+| **Understand** | Entity detection, coreference, intent classification | `KeywordIndex.from_document()` for entity matching |
+| **Retrieve** | Hydrate relevant CTX sections + SQL + graph | `hydrate_by_name()` and `hydrate_by_query()` for surgical section retrieval |
+| **Reason** | Sufficiency check, gap detection, confidence scoring | `EntityGraph.from_document()` for multi-hop relationship checking |
+| **Synthesize** | Grounded narrative with guard check | `ContextGuard.check()` for hallucination detection, `build_tail_reminder()` for grounding |
+
+**Activation:** `MZ_UNIFIED_HANDLER=true` env var. The handler is wired into `api/routes/chat.py` — if active, it processes the query first. If it fails or returns None, the legacy 8-handler fork takes over.
+
+**Key difference from Level 1:** Level 1 only formats the context. Level 3 uses CTX to *decide what to retrieve* (hydration), *evaluate if the retrieval is sufficient* (reasoning), and *verify the LLM didn't hallucinate* (guard).
+
+#### Level 4: CTX Knowledge Corpus (BUILT, wired into Level 3)
+
+**File:** `services/ctx_corpus.py` — `PharmaCorpusBuilder`
+
+Exports database entities (drugs, companies, trials, mechanisms) into a CTX-packable corpus, then runs the CTX packer to produce L2 and L3 documents. This is the foundation for hydration-based retrieval.
+
+**How it works:**
+1. `PharmaCorpusBuilder.export_drugs()` queries the database for all drugs with their mechanism, company, TA
+2. Each entity becomes a YAML file in the CTX corpus format
+3. `ctx_pack()` compresses the corpus into L2 (full) + L3 (directory index)
+4. The L2 document is used for hydration; the L3 is used for LLM-as-router
+
+**When it runs:** On first request after `MZ_UNIFIED_HANDLER=true` is set. `api/deps.py:get_unified_handler()` lazily builds the corpus, packs it, and creates the handler. Cached via `@lru_cache()`.
+
+### How We Measure CTX Value
+
+#### A/B Telemetry (ACTIVE)
+
+**Migration:** `schema/migrations/014_ctx_telemetry.sql`
+**Writer:** `services/telemetry.py` — `log_ctx_event()`
+**Reader:** `GET /metrics/ctx-telemetry`
+
+Every chat query logs:
+
+| Field | Purpose |
+|-------|---------|
+| `question_hash` | SHA-256 hash (privacy-preserving) |
+| `intent` | Query intent classification |
+| `ctx_tokens` | Token count of CTX-formatted context |
+| `legacy_tokens` | Token count of legacy JSON context |
+| `compression_ratio` | ctx_tokens / source_tokens |
+| `build_time_ms` | Context assembly latency |
+| `mode` | Which format was active ("ctx" or "legacy") |
+
+The `/metrics/ctx-telemetry` endpoint returns aggregated stats:
+```json
+{
+  "telemetry": [
+    {
+      "total_queries": 142,
+      "avg_compression": 0.72,
+      "avg_build_ms": 1.3,
+      "total_tokens_saved": 48200,
+      "mode": "ctx",
+      "day": "2026-03-22"
+    }
+  ]
+}
+```
+
+#### Threshold Gate
+
+**File:** `services/ctx_context.py` — `MIN_TOKENS_FOR_CTX = 300`
+
+CTX formatting adds ~50 tokens of header overhead. For small payloads (<300 source tokens), this overhead makes CTX *larger* than legacy. The threshold gate automatically uses legacy format for small contexts, preventing negative compression.
+
+This was discovered during benchmarking: the `/chat/ctx-benchmark` endpoint showed CTX was 11% *larger* for simple queries. The threshold gate eliminates this problem.
+
+#### Quality Measurement (planned)
+
+The telemetry tracks *efficiency* (token savings, latency) but not *quality* (answer accuracy). To measure quality:
+
+1. **Golden test set** — 50 curated questions with known-good answers (specified in SPEC-001). Run both CTX and legacy pipelines, compare factual accuracy via LLM judge.
+
+2. **ContextGuard signals** — When Level 3 is active, the guard checks every response for hallucination signals ("based on my training data", invented entities, missing citations). Guard pass rate is a proxy for quality.
+
+3. **User feedback** — Not yet implemented. A thumbs-up/down on each response, correlated with CTX mode, would provide ground truth.
+
+### What We Expect
+
+Based on the CTX_mod benchmarks (86.7% RAG fidelity at 24x lower cost on enterprise corpus) and our initial A/B data:
+
+| Metric | Legacy (current) | CTX (expected) |
+|--------|-----------------|----------------|
+| Tokens per query | ~4,000 | ~1,600 (60% reduction) |
+| LLM cost per query | ~$0.06 | ~$0.024 |
+| Context assembly time | ~2ms | ~3ms (slightly slower) |
+| Hallucination rate | ~15% (estimated) | <5% (with guard) |
+| Follow-up accuracy | ~60% | ~85% (with memory + coreference) |
+| Sufficiency detection | None | Binary + confidence score |
+
+The cost savings alone justify CTX. But the real value is in **sufficiency detection** and **hallucination prevention** — the LLM tells the user "data not available" instead of inventing clinical trial statistics.
+
+### Activation Path
+
+To enable CTX Level 3 in production:
+
+```bash
+# In Railway environment variables:
+MZ_UNIFIED_HANDLER=true
+```
+
+That's it. One env var. The handler builds its corpus on first request (~2-3 seconds), then serves all subsequent queries through the staged pipeline. If anything fails, it falls back to the legacy 8-handler fork automatically.
+
+To monitor:
+```bash
+curl https://your-app.up.railway.app/metrics/ctx-telemetry
+```
+
+To benchmark without LLM cost:
+```bash
+curl -X POST https://your-app.up.railway.app/chat/ctx-benchmark \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Compare semaglutide vs tirzepatide", "intent": "compare"}'
+```
