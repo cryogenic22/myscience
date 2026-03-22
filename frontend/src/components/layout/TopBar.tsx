@@ -2,16 +2,19 @@ import { ArrowLeft, Database, Moon, Network, Search, Sparkles, Sun } from 'lucid
 import { useTheme } from '../../hooks/useTheme';
 import { PRODUCT_NAME } from '../../brand';
 
+export type TopBarTab = 'chat' | 'graph' | 'catalog' | 'search';
+
 interface TopBarProps {
   onBack: () => void;
   onSearch?: () => void;
-  activeTab: 'chat' | 'graph' | 'catalog';
-  onTabChange: (tab: 'chat' | 'graph' | 'catalog') => void;
+  activeTab: TopBarTab;
+  onTabChange: (tab: TopBarTab) => void;
   breadcrumb?: string;
 }
 
 const TABS = [
   { key: 'chat' as const, label: 'Intelligence', icon: Sparkles },
+  { key: 'search' as const, label: 'Search', icon: Search },
   { key: 'graph' as const, label: 'Graph', icon: Network },
   { key: 'catalog' as const, label: 'Data', icon: Database },
 ];

@@ -207,7 +207,10 @@ export default function WorkspacePage({
         onBack={onBack}
         onSearch={onSearch}
         activeTab={activeTab}
-        onTabChange={tab => setActiveTab(tab)}
+        onTabChange={tab => {
+          if (tab === 'search') { onSearch?.(); return; }
+          setActiveTab(tab as Tab);
+        }}
         breadcrumb={breadcrumb}
       />
 
