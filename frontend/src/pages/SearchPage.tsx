@@ -453,43 +453,64 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
         >
           <div
             className="mx-auto w-full px-6"
-            style={{ maxWidth: hasSearched ? '1360px' : '720px', paddingTop: hasSearched ? '24px' : 0 }}
+            style={{ maxWidth: hasSearched ? '1360px' : '680px', paddingTop: hasSearched ? '24px' : 0 }}
           >
-            {/* Title — small, stays out of the way */}
+            {/* Logo / title — Google-style, above the search bar */}
             {!hasSearched && (
-              <div className="mb-8 text-center">
+              <div className="mb-10 text-center">
+                <h1
+                  className="font-display"
+                  style={{
+                    fontSize: '56px',
+                    fontWeight: 300,
+                    letterSpacing: '-0.03em',
+                    color: 'var(--color-ink)',
+                    lineHeight: 1.1,
+                  }}
+                >
+                  Market Zero
+                </h1>
                 <p
-                  className="text-[13px]"
+                  className="mt-3 text-[14px]"
                   style={{ color: 'var(--color-ink-4)' }}
                 >
-                  Search drugs, trials, companies, and literature
+                  Pharmaceutical intelligence search
                 </p>
               </div>
             )}
 
-            {/* Search input — the hero */}
+            {/* Search input — Google-style, big rounded pill */}
             <div className="relative">
-              <input
-                ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search across drugs, trials, companies, mechanisms..."
-                className="w-full rounded-2xl pl-6 pr-32 focus:outline-none"
+              <div
+                className="flex items-center rounded-full"
                 style={{
-                  height: hasSearched ? '52px' : '64px',
-                  fontSize: hasSearched ? '15px' : '18px',
-                  fontWeight: 400,
-                  color: 'var(--color-ink)',
-                  background: 'var(--color-surface-2)',
-                  boxShadow: 'var(--shadow-sm)',
+                  height: hasSearched ? '48px' : '56px',
+                  background: 'var(--color-surface)',
+                  boxShadow: hasSearched ? 'var(--shadow-xs)' : 'var(--shadow-sm)',
                   transition: 'box-shadow 200ms, height 200ms',
+                  paddingLeft: '20px',
+                  paddingRight: '8px',
                 }}
-                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(28,110,247,0.10)'; }}
-                onBlur={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
-                autoFocus
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-3">
+                onMouseEnter={(e) => { if (!hasSearched) e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+                onMouseLeave={(e) => { if (!hasSearched) e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+              >
+                <Search size={18} style={{ color: 'var(--color-ink-4)', flexShrink: 0 }} />
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search drugs, trials, companies, mechanisms..."
+                  className="flex-1 bg-transparent focus:outline-none"
+                  style={{
+                    fontSize: hasSearched ? '14px' : '16px',
+                    color: 'var(--color-ink)',
+                    padding: '0 16px',
+                    height: '100%',
+                    border: 'none',
+                  }}
+                  autoFocus
+                />
                 {query && (
                   <button
                     type="button"
@@ -498,35 +519,68 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                       inputRef.current?.focus();
                     }}
                     className="rounded-full p-2 transition-colors"
-                    style={{ color: 'var(--color-ink-4)' }}
+                    style={{ color: 'var(--color-ink-4)', flexShrink: 0 }}
                     aria-label="Clear search"
                   >
                     <X size={16} />
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Action buttons — Google-style, centered below with spacing */}
+            {!hasSearched && (
+              <div className="mt-8 flex items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => void doSearch()}
                   disabled={!query.trim() || isLoading}
-                  className="flex shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-medium transition-all disabled:opacity-30"
+                  className="rounded-lg px-5 text-[13px] font-medium transition-all disabled:opacity-30"
                   style={{
-                    height: '36px',
-                    color: '#fff',
-                    background: 'var(--color-accent)',
+                    height: '38px',
+                    color: 'var(--color-ink-2)',
+                    background: 'var(--color-surface-2)',
                   }}
                 >
-                  {isLoading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Search size={14} />
-                  )}
-                  Search
+                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : 'Search'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lucky = 'semaglutide competitive landscape';
+                    setQuery(lucky);
+                    void doSearch(lucky);
+                  }}
+                  className="rounded-lg px-5 text-[13px] font-medium transition-all"
+                  style={{
+                    height: '38px',
+                    color: 'var(--color-ink-2)',
+                    background: 'var(--color-surface-2)',
+                  }}
+                >
+                  I'm Feeling Lucky
                 </button>
               </div>
-            </div>
+            )}
 
-            {/* Filters — compact, below input */}
-            <div className={hasSearched ? 'mt-4' : 'mt-6'}>
+            {/* Searched state: inline search button */}
+            {hasSearched && (
+              <div className="mt-3 flex items-center justify-between">
+                <div
+                  className="text-[12px]"
+                  style={{ color: 'var(--color-ink-3)' }}
+                >
+                  {totalResults > 0
+                    ? selectedTherapeuticAreas.length > 0
+                      ? `${visibleResults.length} of ${totalResults} results`
+                      : `${totalResults} results`
+                    : ''}
+                </div>
+              </div>
+            )}
+
+            {/* Filters — below buttons in empty state, below input when searched */}
+            <div className={hasSearched ? 'mt-3' : 'mt-10'}>
               <SearchFilters
                 activeTypes={activeFilters}
                 onTypeToggle={toggleFilter}
