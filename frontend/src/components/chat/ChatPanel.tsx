@@ -90,8 +90,8 @@ export default function ChatPanel({
         style={{ minHeight: 0 }}
       >
         <div
-          className="mx-auto px-6 py-8 sm:px-8 lg:px-10"
-          style={{ maxWidth: 'min(92%, 960px)' }}
+          className="mx-auto"
+          style={{ maxWidth: '680px', padding: '32px 28px' }}
         >
           {isEmpty ? (
             <EmptyState onQuery={(q) => onSend(q)} />
@@ -116,12 +116,11 @@ export default function ChatPanel({
 
       {/* Input bar */}
       <div
-        className="shrink-0 px-6 py-5"
-        style={{ borderTop: '1px solid var(--color-line)' }}
+        style={{ borderTop: '1px solid var(--color-line)', padding: '20px 28px', flexShrink: 0 }}
       >
         <div
           className="mx-auto chat-input-bar"
-          style={{ maxWidth: 'min(92%, 960px)' }}
+          style={{ maxWidth: '680px' }}
         >
           <textarea
             ref={inputRef}

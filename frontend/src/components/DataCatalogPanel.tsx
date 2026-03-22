@@ -168,8 +168,8 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
     >
       {/* Top strip */}
       <div
-        className="shrink-0 px-8 py-5 flex items-center justify-between"
-        style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+        className="shrink-0 flex items-center justify-between"
+        style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)', padding: '20px 32px' }}
       >
         <div>
           <h2
@@ -219,7 +219,8 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
 
       {/* Tab bar */}
       <div
-        className="shrink-0 flex items-center gap-1 px-8 py-3"
+        className="shrink-0 flex items-center gap-1"
+        style={{ padding: '12px 32px' }}
         style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
       >
         {TABS.map(t => (
@@ -240,7 +241,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-8 py-6" style={{ minHeight: 0, maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%' }}>
+      <div className="flex-1 overflow-y-auto" style={{ minHeight: 0, maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%', padding: '24px 32px' }}>
         {loading ? (
           <div style={{ color: 'var(--color-ink-4)', fontSize: '13px', padding: '24px 0' }}>
             Loading catalog…
