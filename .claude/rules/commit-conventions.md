@@ -1,6 +1,6 @@
 # Commit Conventions
 
-*Auto-generated from last 29 commits: 2026-03-22 05:30*
+*Auto-generated from last 40 commits: 2026-03-22 12:45*
 
 ## Format: Conventional Commits
 
@@ -9,18 +9,19 @@
 ```
 
 ### Prefixes (by frequency)
-- `feat:` — 14 commits
-- `fix:` — 9 commits
+- `feat:` — 21 commits
+- `fix:` — 12 commits
+- `chore:` — 1 commits
 - `docs:` — 1 commits
 
 ### Examples from this repo
-- `feat(frontend): Canvas visualise button + dead code cleanup (Sprints 8+10)`
-- `feat(frontend): Browse pharma badges + Library/Admin split (Sprints 6-7)`
-- `feat(frontend): Entity dossier view replacing raw key-value drawer (Sprint 5)`
-- `feat(frontend): Node insight card + edge colour coding (Sprints 3-4)`
-- `feat(frontend): Graph auto-load + View in Graph cross-links (Sprints 1-2)`
-- `feat: Biomarker entity type with seed list + pattern extraction`
-- `feat: Data curation, mechanism hierarchy, safety signals, ConversationMemory wiring`
-- `feat: Research agent endpoint + enrichment pipeline + SPEC-003`
-- `feat: Data curation, TA onboarding framework, catalog upgrade (Phases 1-5)`
-- `docs: Update CLAUDE.md, memory, harness for team onboarding`
+- `feat(frontend): SearchPage decomposed 1,606â†’710 LOC (H5)`
+- `feat: React Router + API versioning (H6, H7)`
+- `fix(frontend): Widen chat content from 680px to 960px + field name labels`
+- `feat: Chat.py decomposition + edge legend + path finding (H4, M5, M2)`
+- `feat(frontend): Display name translation layer + UI humanization`
+- `feat: Memory persistence, retry logic, fallback LLM (C1, C4, C6, H8)`
+- `feat: CORS hardening + COMPETES_WITH link derivation (C3, H1)`
+- `fix: CORS restriction + connection pooling + os import`
+- `feat: EPC-to-mechanism backfill + dedup CIK fix`
+- `fix: Dedup CIK uniqueness check + post-ingestion scorecard`

@@ -1,14 +1,14 @@
 # Codebase Map
 
-*Auto-generated: 2026-03-22 05:30*
+*Auto-generated: 2026-03-22 12:45*
 
 ## Stats
 
-- **Python**: 128 files
-- **TSX/React**: 27 files
-- **TypeScript**: 6 files
+- **Python**: 137 files
+- **TSX/React**: 31 files
+- **TypeScript**: 7 files
 - **JavaScript**: 1 files
-- **Total source files**: 162
+- **Total source files**: 176
 
 ## Directory Structure
 
@@ -89,13 +89,13 @@
 
 - `fix_data_quality.py/` — 1 files
 
-### `frontend/` (34 files)
+### `frontend/` (39 files)
 
 - `frontend/eslint.config.js/` — 1 files
 - `frontend/src/App.tsx/` — 1 files
 - `frontend/src/api.ts/` — 1 files
 - `frontend/src/brand.ts/` — 1 files
-- `frontend/src/components/` — 22 files
+- `frontend/src/components/` — 27 files
 - `frontend/src/hooks/` — 3 files
 - `frontend/src/main.tsx/` — 1 files
 - `frontend/src/pages/` — 3 files
@@ -138,14 +138,16 @@
 - `scheduler/config.py/` — 1 files
 - `scheduler/runner.py/` — 1 files
 
-### `scripts/` (11 files)
+### `scripts/` (13 files)
 
 - `scripts/__init__.py/` — 1 files
 - `scripts/ai_enrich.py/` — 1 files
 - `scripts/auto_curate.py/` — 1 files
+- `scripts/backfill_mechanisms.py/` — 1 files
 - `scripts/backfill_ta_links.py/` — 1 files
 - `scripts/clean_drug_names.py/` — 1 files
 - `scripts/dedup_companies.py/` — 1 files
+- `scripts/derive_competition.py/` — 1 files
 - `scripts/enrich_companies.py/` — 1 files
 - `scripts/enrich_drugs.py/` — 1 files
 - `scripts/extract_biomarkers.py/` — 1 files
@@ -160,7 +162,7 @@
 
 - `semantic/__init__.py/` — 1 files
 
-### `services/` (29 files)
+### `services/` (34 files)
 
 - `services/__init__.py/` — 1 files
 - `services/agent/__init__.py/` — 1 files
@@ -169,6 +171,11 @@
 - `services/agent/presenter.py/` — 1 files
 - `services/agent/schema_introspector.py/` — 1 files
 - `services/agent/tools/` — 6 files
+- `services/chat_handlers/__init__.py/` — 1 files
+- `services/chat_handlers/context.py/` — 1 files
+- `services/chat_handlers/formatting.py/` — 1 files
+- `services/chat_handlers/handlers.py/` — 1 files
+- `services/chat_handlers/intent.py/` — 1 files
 - `services/conversation_memory.py/` — 1 files
 - `services/ctx_context.py/` — 1 files
 - `services/ctx_corpus.py/` — 1 files
@@ -185,7 +192,7 @@
 - `services/web_research.py/` — 1 files
 - `services/workspace.py/` — 1 files
 
-### `tests/` (23 files)
+### `tests/` (25 files)
 
 - `tests/__init__.py/` — 1 files
 - `tests/agent/__init__.py/` — 1 files
@@ -197,6 +204,7 @@
 - `tests/test_backfill_ta_links.py/` — 1 files
 - `tests/test_catalog_api.py/` — 1 files
 - `tests/test_clean_drug_names.py/` — 1 files
+- `tests/test_competition.py/` — 1 files
 - `tests/test_connector_overrides.py/` — 1 files
 - `tests/test_conversation_memory.py/` — 1 files
 - `tests/test_ctx_corpus.py/` — 1 files
@@ -206,6 +214,7 @@
 - `tests/test_domain_coverage.py/` — 1 files
 - `tests/test_enrichment.py/` — 1 files
 - `tests/test_entity_dossier.py/` — 1 files
+- `tests/test_memory_persistence.py/` — 1 files
 - `tests/test_quality_monitor.py/` — 1 files
 - `tests/test_research_agent.py/` — 1 files
 - `tests/test_ta_definitions.py/` — 1 files

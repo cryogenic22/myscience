@@ -1,14 +1,14 @@
 # Anti-Slop Rules — DO NOT DUPLICATE Existing Utilities
 
-*Auto-generated: 2026-03-22 05:30*
-*Scanned: 659 exports across 20 directories*
+*Auto-generated: 2026-03-22 12:45*
+*Scanned: 710 exports across 23 directories*
 
 **BEFORE creating any new function, class, or constant:**
 1. Search this list for an existing implementation
 2. If it exists, import it — do NOT create a new version
 3. If you need a variant, extend the existing one
 
-## Known Duplicates (39 — consolidate these)
+## Known Duplicates (40 — consolidate these)
 
 - **`EvidenceItem`** — defined in: `frontend/src/api.ts`, `services/query_engine.py`
 - **`GraphEdge`** — defined in: `frontend/src/api.ts`, `services/graph.py`
@@ -23,6 +23,7 @@
 - **`company_portfolio`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
 - **`competitive_landscape`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
 - **`create_research_job`** — defined in: `api/routes/chat.py`, `services/workspace.py`
+- **`derive_competition`** — defined in: `api/routes/enrichment.py`, `scripts/derive_competition.py`
 - **`enabled`** — defined in: `services/llm.py`, `services/web_research.py`
 - **`entity_summary`** — defined in: `api/routes/graph.py`, `services/graph.py`
 - **`evidence_density`** — defined in: `api/routes/metrics.py`, `services/metrics.py`
@@ -34,7 +35,7 @@
 - **`get_research_job`** — defined in: `api/routes/chat.py`, `services/workspace.py`
 - **`health_check`** — defined in: `connectors/base.py`, `connectors/clinical_trials.py`, `connectors/fda_shortages.py`, `connectors/mesh.py`, `connectors/openfda_faers.py`, `connectors/openfda_labels.py`, `connectors/orange_book.py`, `connectors/pmc.py`, `connectors/pubmed.py`, `connectors/sec_edgar.py`
 - **`list_research_jobs`** — defined in: `api/routes/chat.py`, `services/workspace.py`
-- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
+- **`main`** — defined in: `migrate.py`, `run_consolidation.py`, `scheduler/__main__.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_mechanisms.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/derive_competition.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
 - **`name`** — defined in: `services/agent/tools/base.py`, `services/agent/tools/graph_tool.py`, `services/agent/tools/metrics_tool.py`, `services/agent/tools/rag_tool.py`, `services/agent/tools/sql_tool.py`, `tests/conftest.py`, `tests/conftest.py`
 - **`neighborhood`** — defined in: `api/routes/graph.py`, `services/graph.py`
 - **`path_between`** — defined in: `api/routes/graph.py`, `services/graph.py`
@@ -42,7 +43,7 @@
 - **`refresh_materialized_views`** — defined in: `api/routes/catalog.py`, `fix_data_quality.py`
 - **`register`** — defined in: `domain/registry.py`, `integration/pipeline_hooks.py`
 - **`resolve`** — defined in: `integration/entity_resolver.py`, `integration/pipeline_hooks.py`
-- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
+- **`run`** — defined in: `backfill_data_linkage.py`, `fix_data_quality.py`, `integration/entity_consolidator.py`, `integration/pipeline.py`, `scripts/ai_enrich.py`, `scripts/auto_curate.py`, `scripts/backfill_mechanisms.py`, `scripts/backfill_ta_links.py`, `scripts/clean_drug_names.py`, `scripts/dedup_companies.py`, `scripts/enrich_companies.py`, `scripts/enrich_drugs.py`, `scripts/extract_biomarkers.py`, `scripts/onboard_ta.py`, `scripts/quality_scorecard.py`
 - **`run_enrichment`** — defined in: `api/routes/catalog.py`, `api/routes/enrichment.py`
 - **`search`** — defined in: `api/routes/search.py`, `services/search.py`, `services/web_research.py`
 - **`should_fire`** — defined in: `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`, `integration/pipeline_hooks.py`
@@ -175,12 +176,12 @@
 | `snapshot` | function | `services/conversation_memory.py:262` |
 | `summary` | function | `services/ctx_context.py:79` |
 | `synthesize` | function | `services/llm.py:261` |
-| `synthesize_comparison` | function | `services/llm.py:403` |
-| `synthesize_dossier` | function | `services/llm.py:374` |
-| `synthesize_landscape` | function | `services/llm.py:432` |
-| `synthesize_pipeline` | function | `services/llm.py:446` |
-| `synthesize_research_report` | function | `services/llm.py:462` |
-| `synthesize_stream` | function | `services/llm.py:326` |
+| `synthesize_comparison` | function | `services/llm.py:413` |
+| `synthesize_dossier` | function | `services/llm.py:384` |
+| `synthesize_landscape` | function | `services/llm.py:442` |
+| `synthesize_pipeline` | function | `services/llm.py:456` |
+| `synthesize_research_report` | function | `services/llm.py:472` |
+| `synthesize_stream` | function | `services/llm.py:336` |
 | `to_dict` | function | `services/conversation_memory.py:34` |
 | `traverse` | function | `services/graph.py:77` |
 | `trial_success_rate` | function | `services/metrics.py:103` |
@@ -238,13 +239,43 @@
 | `name` | function | `services/agent/tools/sql_tool.py:46` |
 | `scalar_value` | function | `services/agent/tools/base.py:28` |
 
+### `services/chat_handlers/`
+| Name | Type | File:Line |
+|------|------|-----------|
+| `Intent` | class | `services/chat_handlers/intent.py:11` |
+| `apply_chat_modes` | function | `services/chat_handlers/formatting.py:26` |
+| `build_comparison_table` | function | `services/chat_handlers/formatting.py:262` |
+| `build_conversation_context` | function | `services/chat_handlers/context.py:10` |
+| `build_visualizations` | function | `services/chat_handlers/formatting.py:220` |
+| `coerce_bool` | function | `services/chat_handlers/formatting.py:12` |
+| `compute_comparison_insights` | function | `services/chat_handlers/formatting.py:176` |
+| `detect_format_hint` | function | `services/chat_handlers/intent.py:38` |
+| `detect_intent` | function | `services/chat_handlers/intent.py:48` |
+| `expand_topic_synonyms` | function | `services/chat_handlers/formatting.py:167` |
+| `generate_followups` | function | `services/chat_handlers/formatting.py:119` |
+| `handle_compare` | function | `services/chat_handlers/handlers.py:708` |
+| `handle_deep_research` | function | `services/chat_handlers/handlers.py:1105` |
+| `handle_dossier` | function | `services/chat_handlers/handlers.py:473` |
+| `handle_general` | function | `services/chat_handlers/handlers.py:1088` |
+| `handle_landscape` | function | `services/chat_handlers/handlers.py:818` |
+| `handle_pipeline` | function | `services/chat_handlers/handlers.py:1001` |
+| `handle_portfolio` | function | `services/chat_handlers/handlers.py:933` |
+| `handle_structured_query` | function | `services/chat_handlers/handlers.py:406` |
+| `handle_team_eval` | function | `services/chat_handlers/handlers.py:441` |
+| `normalize_scope` | function | `services/chat_handlers/formatting.py:316` |
+| `resolve_entity` | function | `services/chat_handlers/formatting.py:69` |
+| `resolve_followup_question` | function | `services/chat_handlers/context.py:52` |
+| `safe_filename` | function | `services/chat_handlers/formatting.py:325` |
+| `sanitize_transcript` | function | `services/chat_handlers/formatting.py:330` |
+| `to_number` | function | `services/chat_handlers/formatting.py:351` |
+
 ## Other Exports (top directories only)
 
 *Use `Grep` to search for specific functions — this list shows key directories only.*
 
 ### `./` (66 exports)
-- `AgentConfig` (class) — `config.py:157`
-- `AppConfig` (class) — `config.py:171`
+- `AgentConfig` (class) — `config.py:158`
+- `AppConfig` (class) — `config.py:172`
 - `ConnectorConfig` (class) — `config.py:52`
 - `Database` (class) — `db.py:24`
 - `DatabaseConfig` (class) — `config.py:19`
@@ -252,10 +283,10 @@
 - `FAIRMetrics` (class) — `fair_analysis.py:31`
 - `LLMConfig` (class) — `config.py:135`
 - `PipelineConfig` (class) — `config.py:70`
-- `ResearchConfig` (class) — `config.py:148`
+- `ResearchConfig` (class) — `config.py:149`
 - *...and 56 more — search with Grep*
 
-### `api/` (38 exports)
+### `api/` (39 exports)
 - `CompareRequest` (class) — `api/schemas.py:32`
 - `DossierRequest` (class) — `api/schemas.py:27`
 - `EntityResponse` (class) — `api/schemas.py:75`
@@ -266,30 +297,30 @@
 - `HealthResponse` (class) — `api/schemas.py:120`
 - `QueryRequest` (class) — `api/schemas.py:20`
 - `QueryResponse` (class) — `api/schemas.py:66`
-- *...and 28 more — search with Grep*
+- *...and 29 more — search with Grep*
 
-### `api/routes/` (62 exports)
+### `api/routes/` (60 exports)
 - `BulkResolveRequest` (class) — `api/routes/catalog.py:805`
 - `BulkUpdateRequest` (class) — `api/routes/catalog.py:761`
 - `EnrichmentRequest` (class) — `api/routes/catalog.py:131`
 - `EntityTagRequest` (class) — `api/routes/catalog.py:137`
 - `EntityUpdateRequest` (class) — `api/routes/catalog.py:121`
 - `HITLResolveRequest` (class) — `api/routes/catalog.py:126`
-- `Intent` (class) — `api/routes/chat.py:54`
 - `RunEnrichmentRequest` (class) — `api/routes/catalog.py:877`
 - `add_entity_tag` (function) — `api/routes/catalog.py:398`
 - `browse_entities` (function) — `api/routes/catalog.py:170`
-- *...and 52 more — search with Grep*
+- `bulk_resolve_hitl` (function) — `api/routes/catalog.py:812`
+- *...and 50 more — search with Grep*
 
 ### `connectors/` (66 exports)
-- `BaseConnector` (class) — `connectors/base.py:167`
+- `BaseConnector` (class) — `connectors/base.py:172`
 - `ClinicalTrialsConnector` (class) — `connectors/clinical_trials.py:88`
-- `ConnectorError` (class) — `connectors/base.py:228`
+- `ConnectorError` (class) — `connectors/base.py:278`
 - `EnrichmentResult` (class) — `connectors/enrichment_runner.py:21`
 - `EnrichmentRunner` (class) — `connectors/enrichment_runner.py:29`
 - `FDAShortagesConnector` (class) — `connectors/fda_shortages.py:74`
-- `HealthCheckResult` (class) — `connectors/base.py:218`
-- `LinkType` (class) — `connectors/base.py:61`
+- `HealthCheckResult` (class) — `connectors/base.py:268`
+- `LinkType` (class) — `connectors/base.py:66`
 - `MeSHConnector` (class) — `connectors/mesh.py:42`
 - `OpenFDAFAERSConnector` (class) — `connectors/openfda_faers.py:55`
 - *...and 56 more — search with Grep*
@@ -320,7 +351,7 @@
 - `target_ciks` (function) — `domain/ta_definitions/schema.py:72`
 - `to_connector_overrides` (function) — `domain/ta_definitions/schema.py:76`
 
-### `frontend/src/` (45 exports)
+### `frontend/src/` (46 exports)
 - `CatalogBrowseResponse` (type) — `frontend/src/api.ts:272`
 - `CatalogDataset` (type) — `frontend/src/api.ts:252`
 - `CatalogEntity` (type) — `frontend/src/api.ts:267`
@@ -331,18 +362,34 @@
 - `ChatResponse` (type) — `frontend/src/api.ts:195`
 - `ChatSessionDetail` (type) — `frontend/src/api.ts:236`
 - `ChatSessionSummary` (type) — `frontend/src/api.ts:227`
-- *...and 35 more — search with Grep*
+- *...and 36 more — search with Grep*
 
 ### `frontend/src/components/` (1 exports)
 - `Message` (type) — `frontend/src/components/ChatMessage.tsx:24`
+
+### `frontend/src/components/layout/` (1 exports)
+- `TopBarTab` (type) — `frontend/src/components/layout/TopBar.tsx:5`
+
+### `frontend/src/components/search/` (20 exports)
+- `ENTITY_TYPES` (constant) — `frontend/src/components/search/search-utils.ts:7`
+- `GraphFocus` (type) — `frontend/src/components/search/search-utils.ts:5`
+- `InsightTile` (function) — `frontend/src/components/search/SearchResults.tsx:441`
+- `PAGE_SIZE` (constant) — `frontend/src/components/search/search-utils.ts:36`
+- `ResultsToolbar` (function) — `frontend/src/components/search/SearchFilters.tsx:176`
+- `SearchViewMode` (type) — `frontend/src/components/search/search-utils.ts:3`
+- `SortMode` (type) — `frontend/src/components/search/search-utils.ts:4`
+- `extractPreviewContent` (function) — `frontend/src/components/search/search-utils.ts:158`
+- `extractTherapeuticAreasFromResult` (function) — `frontend/src/components/search/search-utils.ts:57`
+- `formatDate` (function) — `frontend/src/components/search/search-utils.ts:47`
+- *...and 10 more — search with Grep*
 
 ### `integration/` (94 exports)
 - `ChangeDetectionHook` (class) — `integration/pipeline_hooks.py:129`
 - `CrossLinker` (class) — `integration/cross_linker.py:27`
 - `DataQualityEngine` (class) — `integration/data_quality.py:72`
 - `DatasetCatalog` (class) — `integration/dataset_catalog.py:213`
-- `EmbeddedRecord` (class) — `integration/embedder.py:20`
-- `Embedder` (class) — `integration/embedder.py:27`
+- `EmbeddedRecord` (class) — `integration/embedder.py:38`
+- `Embedder` (class) — `integration/embedder.py:45`
 - `EntityConsolidator` (class) — `integration/entity_consolidator.py:71`
 - `EntityResolver` (class) — `integration/entity_resolver.py:128`
 - `HITLEscalationHook` (class) — `integration/pipeline_hooks.py:533`
@@ -359,7 +406,7 @@
 - `status` (function) — `scheduler/runner.py:151`
 - `stop` (function) — `scheduler/runner.py:55`
 
-### `scripts/` (48 exports)
+### `scripts/` (52 exports)
 - `backfill_ta_links_from_mechanism` (function) — `scripts/backfill_ta_links.py:279`
 - `backfill_ta_links_from_trials` (function) — `scripts/backfill_ta_links.py:206`
 - `backfill_trial_ta_links` (function) — `scripts/backfill_ta_links.py:328`
@@ -370,7 +417,7 @@
 - `compute_overall_score` (function) — `scripts/quality_scorecard.py:240`
 - `compute_quality_scores` (function) — `scripts/quality_scorecard.py:213`
 - `compute_source_diversity` (function) — `scripts/quality_scorecard.py:147`
-- *...and 38 more — search with Grep*
+- *...and 42 more — search with Grep*
 
 ### `tests/` (25 exports)
 - `MockLLM` (class) — `tests/conftest.py:125`
@@ -384,14 +431,3 @@
 - `execute` (function) — `tests/conftest.py:31`
 - `execute` (function) — `tests/conftest.py:67`
 - *...and 15 more — search with Grep*
-
-### `tests/agent/` (9 exports)
-- `persona_llm` (function) — `tests/agent/conftest.py:171`
-- `personas` (function) — `tests/agent/conftest.py:261`
-- `populated_graph_tool` (function) — `tests/agent/conftest.py:109`
-- `populated_metrics_tool` (function) — `tests/agent/conftest.py:128`
-- `populated_rag_tool` (function) — `tests/agent/conftest.py:62`
-- `populated_sql_tool` (function) — `tests/agent/conftest.py:96`
-- `response_fn` (function) — `tests/agent/conftest.py:233`
-- `schema_text` (function) — `tests/agent/conftest.py:266`
-- `smart_llm` (function) — `tests/agent/conftest.py:229`
