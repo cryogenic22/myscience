@@ -1,24 +1,192 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ShieldCheck,
   ExternalLink,
   Loader2,
   MessageSquare,
-  X,
+  Network,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
 } from 'lucide-react';
 import type { SearchResult, GraphNode, GraphEdge } from '../../api';
+import { SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../../brand';
 import GraphMini from '../GraphMini';
 import {
   type GraphFocus,
+  TYPE_CONFIG,
   prettyType,
   truncateValue,
-  formatDate,
   getResultSnippet,
   getSourcePublicationDate,
-  extractPreviewContent,
   getRelatedDocuments,
-  getRelatedNodes,
 } from './search-utils';
+
+/* ── Entity type color map (matches design system CSS variables) ── */
+
+const ENTITY_TYPE_COLORS: Record<string, string> = {
+  drug: 'var(--color-drug)',
+  company: 'var(--color-company)',
+  trial: 'var(--color-trial)',
+  mechanism: 'var(--color-mechanism)',
+  therapeutic_area: 'var(--color-ta)',
+  literature: 'var(--color-literature)',
+};
+
+/* ── Summary generators (reuse patterns from EntityDossier) ── */
+
+function str(v: unknown): string {
+  if (v == null) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+function generateOneLiner(entityType: string, metadata: Record<string, unknown>, title: string): string {
+  switch (entityType) {
+    case 'drug': {
+      const generic = str(metadata.generic_name);
+      const brand = str(metadata.brand_name);
+      const supply = str(metadata.supply_status);
+      const phase = str(metadata.phase);
+      const parts: string[] = [];
+      if (brand && generic && brand.toLowerCase() !== generic.toLowerCase()) {
+        parts.push(`${brand} (${generic})`);
+      } else {
+        parts.push(title);
+      }
+      if (phase) parts.push(`${phase}`);
+      if (supply) parts.push(supply.charAt(0).toUpperCase() + supply.slice(1).toLowerCase());
+      return parts.join(' \u00b7 ');
+    }
+    case 'company': {
+      const ticker = str(metadata.ticker);
+      const region = str(metadata.region || metadata.country);
+      const tier = str(metadata.market_cap_tier);
+      const parts: string[] = [title];
+      if (ticker) parts.push(ticker);
+      if (tier) parts.push(tier.charAt(0).toUpperCase() + tier.slice(1));
+      if (region) parts.push(region);
+      return parts.join(' \u00b7 ');
+    }
+    case 'trial': {
+      const phase = str(metadata.phase);
+      const status = str(metadata.status);
+      const sponsor = str(metadata.sponsor_name);
+      const parts: string[] = [];
+      if (phase) parts.push(phase);
+      if (status) parts.push(status.charAt(0).toUpperCase() + status.slice(1).toLowerCase());
+      if (sponsor) parts.push(`by ${sponsor}`);
+      return parts.length > 0 ? parts.join(' \u00b7 ') : title;
+    }
+    case 'literature': {
+      const journal = str(metadata.journal);
+      const pubDate = str(metadata.publication_date);
+      const parts: string[] = [];
+      if (journal) parts.push(journal);
+      if (pubDate) {
+        const d = new Date(pubDate);
+        if (!Number.isNaN(d.getTime())) {
+          parts.push(d.toLocaleDateString(undefined, { year: 'numeric', month: 'short' }));
+        }
+      }
+      return parts.length > 0 ? parts.join(' \u00b7 ') : title;
+    }
+    default: {
+      const typeLabel = entityType.replace(/_/g, ' ');
+      return `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)}`;
+    }
+  }
+}
+
+/* ── Key metrics by entity type ── */
+
+interface MetricItem {
+  label: string;
+  value: string;
+}
+
+function extractKeyMetrics(
+  entityType: string,
+  metadata: Record<string, unknown>,
+  neighborsByType: Record<string, number>,
+  totalConnections: number,
+): MetricItem[] {
+  const metrics: MetricItem[] = [];
+
+  switch (entityType) {
+    case 'drug': {
+      const trials = neighborsByType['trial'] ?? 0;
+      const pubs = neighborsByType['literature'] ?? 0;
+      if (trials > 0) metrics.push({ label: 'Trials', value: String(trials) });
+      if (pubs > 0) metrics.push({ label: 'Publications', value: String(pubs) });
+      if (totalConnections > 0) metrics.push({ label: 'Connections', value: String(totalConnections) });
+      const phase = str(metadata.phase);
+      if (phase && metrics.length < 3) metrics.push({ label: 'Phase', value: phase });
+      break;
+    }
+    case 'company': {
+      const drugs = neighborsByType['drug'] ?? 0;
+      const trials = neighborsByType['trial'] ?? 0;
+      if (drugs > 0) metrics.push({ label: 'Drugs', value: String(drugs) });
+      if (trials > 0) metrics.push({ label: 'Trials', value: String(trials) });
+      if (totalConnections > 0) metrics.push({ label: 'Connections', value: String(totalConnections) });
+      break;
+    }
+    case 'trial': {
+      const phase = str(metadata.phase);
+      const enrollment = str(metadata.enrollment_target);
+      const status = str(metadata.status);
+      if (phase) metrics.push({ label: 'Phase', value: phase });
+      if (enrollment && enrollment !== '0') metrics.push({ label: 'Enrollment', value: enrollment });
+      if (status) metrics.push({ label: 'Status', value: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() });
+      break;
+    }
+    default: {
+      if (totalConnections > 0) metrics.push({ label: 'Connections', value: String(totalConnections) });
+      break;
+    }
+  }
+
+  return metrics.slice(0, 4);
+}
+
+/* ── Relative time helper ── */
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  if (Number.isNaN(then)) return dateStr;
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return `${Math.floor(diffMonths / 12)}y ago`;
+}
+
+/* ── Section header ── */
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: '11px',
+      fontWeight: 600,
+      textTransform: 'uppercase' as const,
+      letterSpacing: '0.08em',
+      color: 'var(--color-ink-4)',
+      marginBottom: '10px',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/* ── Props ── */
 
 interface EntityPreviewProps {
   result: SearchResult | null;
@@ -77,7 +245,8 @@ export default function EntityPreview({
   onOpenFocusedNodeInSearch,
 }: EntityPreviewProps) {
   const [neighborCursor, setNeighborCursor] = useState(0);
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [connectionsExpanded, setConnectionsExpanded] = useState(false);
+  const [graphExpanded, setGraphExpanded] = useState(false);
 
   useEffect(() => {
     setNeighborCursor(0);
@@ -85,10 +254,12 @@ export default function EntityPreview({
 
   useEffect(() => {
     if (!result) {
-      setPreviewModalOpen(false);
+      setConnectionsExpanded(false);
+      setGraphExpanded(false);
       return;
     }
-    setPreviewModalOpen(false);
+    setConnectionsExpanded(false);
+    setGraphExpanded(false);
   }, [result?.entity_id, result?.entity_type]);
 
   const handleNeighborKeyDown = useCallback(
@@ -113,562 +284,774 @@ export default function EntityPreview({
     [linkedNeighbors, neighborCursor, onGraphNeighborFocus],
   );
 
+  /* ── Empty state ── */
+
   if (!result) {
     return (
       <aside
         id="search-result-inspector"
-        className="h-fit card p-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+        className="h-fit lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+        style={{
+          padding: '32px 24px',
+          background: 'var(--color-surface)',
+          borderRadius: '12px',
+        }}
       >
-        <div className="text-[15px] font-semibold mb-2" style={{ color: 'var(--color-ink)' }}>
-          Result Details
+        <div style={{
+          fontSize: '15px',
+          fontWeight: 600,
+          color: 'var(--color-ink)',
+          marginBottom: '8px',
+        }}>
+          Entity Profile
         </div>
-        <p className="text-xs" style={{ color: 'var(--color-ink-3)' }}>
-          Select a result to inspect its source, quality, and metadata.
+        <p style={{
+          fontSize: '13px',
+          color: 'var(--color-ink-3)',
+          lineHeight: 1.5,
+        }}>
+          Select a result to view its profile, connections, and evidence.
         </p>
       </aside>
     );
   }
 
-  const sourceApi = String(result.provenance?.source_api ?? 'unknown source');
+  /* ── Derived data ── */
+
+  const entityColor = ENTITY_TYPE_COLORS[result.entity_type] ?? 'var(--color-ink-3)';
+  const cfg = TYPE_CONFIG[result.entity_type] ?? {
+    color: 'var(--color-ink-3)',
+    bgVar: 'rgba(148, 163, 184, 0.08)',
+    label: result.entity_type,
+  };
+  const typeLabel = ENTITY_TYPE_LABELS[result.entity_type] ?? prettyType(result.entity_type);
+  const sourceApi = String(result.provenance?.source_api ?? 'unknown');
+  const sourceLabel = SOURCE_LABELS[sourceApi] ?? sourceApi;
   const sourceUrl = result.provenance?.source_url ? String(result.provenance.source_url) : null;
   const retrievedAt = result.provenance?.retrieved_at ? String(result.provenance.retrieved_at) : null;
   const sourcePublishedAt = getSourcePublicationDate(result.metadata);
   const previewSnippet = getResultSnippet(result);
-  const similarityPct = Math.round(result.similarity * 100);
-  const qualityPct = typeof result.quality_score === 'number' ? Math.round(result.quality_score * 100) : null;
-  const metadataRows = Object.entries(result.metadata ?? {})
-    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '');
   const relatedDocuments = getRelatedDocuments(result);
-  const relatedNodes = getRelatedNodes(result);
-  const databasePreview = extractPreviewContent(result);
+
+  // Build connection counts by type
+  const neighborsByType: Record<string, number> = {};
+  for (const n of linkedNeighbors) {
+    neighborsByType[n.nodeType] = (neighborsByType[n.nodeType] || 0) + 1;
+  }
+  const totalConnections = linkedNeighbors.length;
+
+  const connectionGroups = Object.entries(neighborsByType)
+    .map(([type, count]) => ({ type, count, label: ENTITY_TYPE_LABELS[type] ?? prettyType(type) }))
+    .sort((a, b) => b.count - a.count);
+
+  const oneLiner = generateOneLiner(result.entity_type, result.metadata ?? {}, result.title);
+  const keyMetrics = extractKeyMetrics(result.entity_type, result.metadata ?? {}, neighborsByType, totalConnections);
+
+  // Top 3 connections to show as clickable links
+  const topConnections = linkedNeighbors.slice(0, connectionsExpanded ? 12 : 3);
+
+  // Literature-type results from neighbors
+  const literatureNeighbors = linkedNeighbors
+    .filter((n) => n.nodeType === 'literature')
+    .slice(0, 3);
 
   return (
     <aside
       id="search-result-inspector"
-      className="h-fit card space-y-4 p-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+      className="h-fit lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+      style={{
+        background: 'var(--color-surface)',
+        borderRadius: '12px',
+        overflow: 'hidden',
+      }}
     >
-      {/* Header */}
-      <div>
-        <div
-          className="text-[11px] uppercase tracking-[0.14em] font-semibold"
-          style={{ color: 'var(--color-ink-4)' }}
-        >
-          Selected Result
-        </div>
-        <h3
-          className="mt-1 text-[15px] font-semibold leading-relaxed"
-          style={{ color: 'var(--color-ink)' }}
-        >
-          {result.title}
-        </h3>
-        <div className="mt-1 text-xs capitalize" style={{ color: 'var(--color-ink-3)' }}>
-          {prettyType(result.entity_type)}
-        </div>
+      {/* ── Header section ── */}
+      <div style={{
+        padding: '24px 24px 20px',
+        borderBottom: '1px solid var(--color-line)',
+      }}>
+        {/* Navigation */}
         {totalVisibleResults > 1 && (
-          <div className="mt-2 flex items-center gap-2">
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '16px',
+          }}>
             <button
               type="button"
               onClick={onPrevResult}
               disabled={activeResultIndex <= 0}
-              className="rounded-md px-3 py-1 text-[11px] transition-colors disabled:opacity-40"
               style={{
+                fontSize: '11px',
+                padding: '4px 12px',
+                borderRadius: '6px',
                 border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
+                background: 'var(--color-bg)',
                 color: 'var(--color-ink-2)',
+                cursor: activeResultIndex <= 0 ? 'default' : 'pointer',
+                opacity: activeResultIndex <= 0 ? 0.4 : 1,
               }}
             >
               Prev
             </button>
-            <span className="text-[11px]" style={{ color: 'var(--color-ink-3)' }}>
+            <span style={{ fontSize: '11px', color: 'var(--color-ink-3)' }}>
               {Math.max(activeResultIndex + 1, 1)} of {totalVisibleResults}
             </span>
             <button
               type="button"
               onClick={onNextResult}
               disabled={activeResultIndex < 0 || activeResultIndex >= totalVisibleResults - 1}
-              className="rounded-md px-3 py-1 text-[11px] transition-colors disabled:opacity-40"
               style={{
+                fontSize: '11px',
+                padding: '4px 12px',
+                borderRadius: '6px',
                 border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
+                background: 'var(--color-bg)',
                 color: 'var(--color-ink-2)',
+                cursor: activeResultIndex >= totalVisibleResults - 1 ? 'default' : 'pointer',
+                opacity: activeResultIndex >= totalVisibleResults - 1 ? 0.4 : 1,
               }}
             >
               Next
             </button>
           </div>
         )}
+
+        {/* Entity name */}
+        <h3 style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          color: 'var(--color-ink)',
+          lineHeight: 1.3,
+          margin: 0,
+        }}>
+          {result.title}
+        </h3>
+
+        {/* Entity type badge */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginTop: '8px',
+        }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '11px',
+            fontWeight: 600,
+            textTransform: 'uppercase' as const,
+            letterSpacing: '0.04em',
+            color: entityColor,
+            background: cfg.bgVar,
+            padding: '3px 10px',
+            borderRadius: '12px',
+          }}>
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: entityColor,
+            }} />
+            {typeLabel}
+          </span>
+          <span style={{
+            fontSize: '11px',
+            color: 'var(--color-ink-4)',
+          }}>
+            {sourceLabel}
+          </span>
+        </div>
+
+        {/* One-line summary */}
+        {oneLiner && oneLiner !== result.title && (
+          <p style={{
+            fontSize: '13px',
+            color: 'var(--color-ink-2)',
+            marginTop: '10px',
+            lineHeight: 1.5,
+          }}>
+            {oneLiner}
+          </p>
+        )}
       </div>
 
-      {/* Snippet */}
-      {previewSnippet && (
-        <div
-          className="rounded-md px-4 py-3 text-xs leading-relaxed"
-          style={{
-            border: '1px solid var(--color-line)',
-            background: 'var(--color-surface)',
-            color: 'var(--color-ink-2)',
-          }}
-        >
-          {previewSnippet}
+      {/* ── Key metrics strip ── */}
+      {keyMetrics.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${Math.min(keyMetrics.length, 4)}, 1fr)`,
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+          gap: '4px',
+        }}>
+          {keyMetrics.map((m) => (
+            <div key={m.label} style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '18px',
+                fontWeight: 700,
+                color: 'var(--color-ink)',
+                lineHeight: 1.2,
+              }}>
+                {m.value}
+              </div>
+              <div style={{
+                fontSize: '10px',
+                fontWeight: 500,
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.06em',
+                color: 'var(--color-ink-4)',
+                marginTop: '2px',
+              }}>
+                {m.label}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Database preview */}
-      <section>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold" style={{ color: 'var(--color-ink)' }}>
-            Database Preview
-          </span>
-          <button
-            type="button"
-            onClick={() => setPreviewModalOpen(true)}
-            className="rounded-md px-3 py-1 text-[10px] transition-colors"
-            style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-ink-2)',
-            }}
-          >
-            Expand
-          </button>
-        </div>
-        <div
-          className="max-h-96 overflow-y-auto rounded-md px-4 py-3 text-xs leading-relaxed"
-          style={{
-            border: '1px solid var(--color-line)',
-            background: 'var(--color-surface)',
+      {/* ── Snippet / Description ── */}
+      {previewSnippet && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <p style={{
+            fontSize: '13px',
+            lineHeight: 1.6,
             color: 'var(--color-ink-2)',
-          }}
-        >
-          {databasePreview}
+            margin: 0,
+          }}>
+            {previewSnippet}
+          </p>
         </div>
-      </section>
+      )}
 
-      {/* Similarity / Quality bars */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-ink-3)' }}>
-            <ShieldCheck size={12} /> Similarity
-          </span>
-          <span className="font-semibold" style={{ color: 'var(--color-ink)' }}>
-            {similarityPct}%
-          </span>
-        </div>
-        <div
-          className="h-1.5 rounded-full overflow-hidden"
-          style={{ background: 'var(--color-surface-3)' }}
-        >
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: `${Math.min(similarityPct, 100)}%`,
-              background: 'var(--color-accent)',
-            }}
-          />
-        </div>
-        {qualityPct !== null && (
-          <>
-            <div className="flex items-center justify-between text-xs">
-              <span style={{ color: 'var(--color-ink-3)' }}>Quality score</span>
-              <span className="font-semibold" style={{ color: 'var(--color-ink)' }}>
-                {qualityPct}%
-              </span>
-            </div>
-            <div
-              className="h-1.5 rounded-full overflow-hidden"
-              style={{ background: 'var(--color-surface-3)' }}
-            >
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.min(qualityPct, 100)}%`,
-                  background: 'var(--color-green)',
-                }}
-              />
-            </div>
-          </>
-        )}
-      </div>
+      {/* ── Connections section (progressive disclosure) ── */}
+      {!linkedGraphLoading && totalConnections > 0 && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <SectionHeader>
+            Connections ({totalConnections})
+          </SectionHeader>
 
-      {/* Source information */}
-      <section>
-        <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-ink)' }}>
-          Source Information
-        </div>
-        <div className="space-y-1.5 text-xs">
-          <div
-            className="flex items-center justify-between gap-4 rounded-md px-3.5 py-2.5"
-            style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-            }}
-          >
-            <span style={{ color: 'var(--color-ink-3)' }}>Source API</span>
-            <span className="font-medium truncate" style={{ color: 'var(--color-ink)' }}>
-              {sourceApi}
-            </span>
+          {/* Connection type summary pills */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+            {connectionGroups.map((g) => {
+              const gColor = ENTITY_TYPE_COLORS[g.type] ?? 'var(--color-ink-3)';
+              const gCfg = TYPE_CONFIG[g.type];
+              return (
+                <span
+                  key={g.type}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: 'var(--color-ink-2)',
+                    background: gCfg?.bgVar ?? 'var(--color-surface-2)',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                  }}
+                >
+                  <span style={{
+                    fontWeight: 700,
+                    color: gColor,
+                  }}>
+                    {g.count}
+                  </span>
+                  {g.label}{g.count !== 1 ? 's' : ''}
+                </span>
+              );
+            })}
           </div>
-          {sourcePublishedAt && (
-            <div
-              className="flex items-center justify-between gap-4 rounded-md px-3.5 py-2.5"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-              }}
-            >
-              <span style={{ color: 'var(--color-ink-3)' }}>Source publication</span>
-              <span className="font-medium" style={{ color: 'var(--color-ink)' }}>
-                {formatDate(sourcePublishedAt)}
-              </span>
-            </div>
-          )}
-          {retrievedAt && (
-            <div
-              className="flex items-center justify-between gap-4 rounded-md px-3.5 py-2.5"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-              }}
-            >
-              <span style={{ color: 'var(--color-ink-3)' }}>Ingested to graph</span>
-              <span className="font-medium" style={{ color: 'var(--color-ink)' }}>
-                {formatDate(retrievedAt)}
-              </span>
-            </div>
-          )}
-          {sourceUrl && (
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-md px-3.5 py-2.5 transition-colors"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-ink-2)',
-              }}
-            >
-              <ExternalLink size={12} />
-              <span className="truncate">Open Source Document</span>
-            </a>
-          )}
-        </div>
-      </section>
 
-      {/* Linked Intelligence Graph */}
-      <section>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold" style={{ color: 'var(--color-ink)' }}>
-            Linked Intelligence Graph
-          </span>
-          {graphFocus && (
-            <button
-              type="button"
-              onClick={onOpenFocusedNodeInSearch}
-              className="rounded-md px-3 py-1.5 text-[10px] transition-colors"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-ink-2)',
-              }}
-            >
-              Open In Results
-            </button>
-          )}
-        </div>
-        {graphTrail.length > 0 && (
-          <div className="mb-2 flex flex-wrap items-center gap-1">
-            {graphTrail.map((node, index) => (
-              <button
-                key={`${node.type}-${node.id}`}
-                type="button"
-                onClick={() => onGraphTrailJump(node)}
-                className="max-w-[11rem] truncate rounded-md px-3 py-1 text-[10px]"
-                style={{
-                  border:
-                    graphFocus?.id === node.id && graphFocus.type === node.type
-                      ? '1px solid var(--color-accent)'
-                      : '1px solid var(--color-line)',
-                  background:
-                    graphFocus?.id === node.id && graphFocus.type === node.type
-                      ? 'var(--color-accent-soft)'
-                      : 'var(--color-surface)',
-                  color:
-                    graphFocus?.id === node.id && graphFocus.type === node.type
-                      ? 'var(--color-ink)'
-                      : 'var(--color-ink-3)',
-                }}
-              >
-                {index + 1}. {node.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[10px]" style={{ color: 'var(--color-ink-3)' }}>
-            Edges
-          </span>
-          <select
-            value={edgeTypeFilter}
-            onChange={(e) => onEdgeTypeFilterChange(e.target.value)}
-            className="rounded-md px-3 py-1.5 text-[10px] outline-none"
-            style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-ink-2)',
-            }}
-          >
-            <option value="all">All link types</option>
-            {edgeTypeOptions.map((type) => (
-              <option key={type} value={type}>
-                {prettyType(type)}
-              </option>
-            ))}
-          </select>
-        </div>
-        {linkedGraphLoading && (
-          <div
-            className="flex items-center gap-2 rounded-md px-3.5 py-2.5 text-xs"
-            style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-ink-3)',
-            }}
-          >
-            <Loader2 size={12} className="animate-spin" />
-            Building linked graph...
-          </div>
-        )}
-        {!linkedGraphLoading && linkedGraphError && (
-          <div
-            className="rounded-md px-3.5 py-2.5 text-xs"
-            style={{
-              border: '1px solid rgba(192, 57, 43, 0.25)',
-              background: 'var(--color-red-soft)',
-              color: 'var(--color-red)',
-            }}
-          >
-            {linkedGraphError}
-          </div>
-        )}
-        {!linkedGraphLoading && !linkedGraphError && linkedGraphNodes.length > 0 && (
-          <div className="space-y-2">
-            <div
-              className="overflow-hidden rounded-md"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-              }}
-            >
-              <GraphMini
-                nodes={linkedGraphNodes}
-                edges={linkedGraphEdges}
-                centerEntityId={graphFocus?.id ?? result.entity_id}
-                height={220}
-                onNodeClick={onGraphNodeSelect}
-              />
-            </div>
-            <div
-              tabIndex={0}
-              onKeyDown={handleNeighborKeyDown}
-              className="max-h-64 space-y-1.5 overflow-y-auto rounded-md p-1.5 outline-none"
-              style={{ border: '1px solid var(--color-line)' }}
-            >
-              <div className="mb-1 px-1 text-[10px]" style={{ color: 'var(--color-ink-4)' }}>
-                Use Up/Down and Enter to navigate neighbors
-              </div>
-              {linkedNeighbors.slice(0, 12).map((neighbor, index) => (
+          {/* Top connections as clickable items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {topConnections.map((neighbor) => {
+              const nColor = ENTITY_TYPE_COLORS[neighbor.nodeType] ?? 'var(--color-ink-4)';
+              return (
                 <button
                   key={neighbor.key}
                   type="button"
                   onClick={() =>
                     onGraphNeighborFocus({ id: neighbor.id, type: neighbor.type, label: neighbor.label })
                   }
-                  className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-xs transition-colors"
                   style={{
-                    border:
-                      index === neighborCursor
-                        ? '1px solid var(--color-accent)'
-                        : '1px solid var(--color-line)',
-                    background:
-                      index === neighborCursor ? 'var(--color-accent-soft)' : 'var(--color-surface)',
-                    color: index === neighborCursor ? 'var(--color-ink)' : 'var(--color-ink-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'var(--color-bg)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left' as const,
+                    width: '100%',
+                    transition: 'background 150ms',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg)'; }}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium" style={{ color: 'var(--color-ink)' }}>
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: nColor,
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: 'var(--color-ink)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap' as const,
+                    }}>
                       {neighbor.label}
                     </span>
-                    <span className="block truncate text-[10px]" style={{ color: 'var(--color-ink-4)' }}>
-                      {neighbor.relation} - {prettyType(neighbor.nodeType)}
+                    <span style={{
+                      display: 'block',
+                      fontSize: '11px',
+                      color: 'var(--color-ink-4)',
+                    }}>
+                      {neighbor.relation}
                     </span>
                   </span>
-                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--color-ink-3)' }}>
-                    {neighbor.confidence}%
-                  </span>
+                  <ArrowRight size={12} style={{ color: 'var(--color-ink-4)', flexShrink: 0 }} />
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        )}
-        {!linkedGraphLoading && !linkedGraphError && linkedGraphNodes.length === 0 && (
-          <div
-            className="rounded-md px-3.5 py-2.5 text-xs"
+
+          {/* Expand / collapse */}
+          {totalConnections > 3 && (
+            <button
+              type="button"
+              onClick={() => setConnectionsExpanded((prev) => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--color-accent)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px 0 0',
+              }}
+            >
+              {connectionsExpanded ? (
+                <>
+                  <ChevronUp size={14} />
+                  Show fewer
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={14} />
+                  Show all {totalConnections} connections
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Loading state for connections ── */}
+      {linkedGraphLoading && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <SectionHeader>Connections</SectionHeader>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '12px',
+            color: 'var(--color-ink-3)',
+          }}>
+            <Loader2 size={12} className="animate-spin" />
+            Loading connections...
+          </div>
+        </div>
+      )}
+
+      {/* ── Graph visualization (collapsed by default, expandable) ── */}
+      {!linkedGraphLoading && !linkedGraphError && linkedGraphNodes.length > 0 && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <button
+            type="button"
+            onClick={() => setGraphExpanded((prev) => !prev)}
             style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-ink-3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: graphExpanded ? '12px' : 0,
             }}
           >
-            No linked nodes available for this record.
-          </div>
-        )}
-      </section>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              textTransform: 'uppercase' as const,
+              letterSpacing: '0.08em',
+              color: 'var(--color-ink-4)',
+            }}>
+              Knowledge Graph
+            </span>
+            {graphExpanded ? (
+              <ChevronUp size={14} style={{ color: 'var(--color-ink-4)' }} />
+            ) : (
+              <ChevronDown size={14} style={{ color: 'var(--color-ink-4)' }} />
+            )}
+          </button>
 
-      {/* Related documents */}
-      {relatedDocuments.length > 0 && (
-        <section>
-          <div className="mb-2 text-[12px] font-semibold" style={{ color: 'var(--color-ink)' }}>
-            Related Documents
+          {graphExpanded && (
+            <>
+              {/* Graph trail breadcrumbs */}
+              {graphTrail.length > 1 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                  {graphTrail.map((node, index) => (
+                    <button
+                      key={`${node.type}-${node.id}`}
+                      type="button"
+                      onClick={() => onGraphTrailJump(node)}
+                      style={{
+                        maxWidth: '140px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap' as const,
+                        fontSize: '10px',
+                        padding: '3px 10px',
+                        borderRadius: '10px',
+                        border: graphFocus?.id === node.id && graphFocus.type === node.type
+                          ? '1px solid var(--color-accent)'
+                          : '1px solid var(--color-line)',
+                        background: graphFocus?.id === node.id && graphFocus.type === node.type
+                          ? 'var(--color-accent-soft)'
+                          : 'var(--color-bg)',
+                        color: graphFocus?.id === node.id && graphFocus.type === node.type
+                          ? 'var(--color-ink)'
+                          : 'var(--color-ink-3)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {index + 1}. {node.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Edge type filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>Filter</span>
+                <select
+                  value={edgeTypeFilter}
+                  onChange={(e) => onEdgeTypeFilterChange(e.target.value)}
+                  style={{
+                    fontSize: '10px',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--color-line)',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-ink-2)',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="all">All link types</option>
+                  {edgeTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {prettyType(type)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Graph mini visualization */}
+              <div style={{
+                borderRadius: '8px',
+                overflow: 'hidden',
+                border: '1px solid var(--color-line)',
+                background: 'var(--color-bg)',
+              }}>
+                <GraphMini
+                  nodes={linkedGraphNodes}
+                  edges={linkedGraphEdges}
+                  centerEntityId={graphFocus?.id ?? result.entity_id}
+                  height={200}
+                  onNodeClick={onGraphNodeSelect}
+                />
+              </div>
+
+              {/* Neighbor list (keyboard navigable) */}
+              <div
+                tabIndex={0}
+                onKeyDown={handleNeighborKeyDown}
+                style={{
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  marginTop: '8px',
+                  outline: 'none',
+                }}
+              >
+                {linkedNeighbors.slice(0, 12).map((neighbor, index) => (
+                  <button
+                    key={neighbor.key}
+                    type="button"
+                    onClick={() =>
+                      onGraphNeighborFocus({ id: neighbor.id, type: neighbor.type, label: neighbor.label })
+                    }
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: index === neighborCursor ? 'var(--color-accent-soft)' : 'transparent',
+                      cursor: 'pointer',
+                      textAlign: 'left' as const,
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: 'var(--color-ink)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap' as const,
+                      }}>
+                        {neighbor.label}
+                      </span>
+                      <span style={{
+                        display: 'block',
+                        fontSize: '10px',
+                        color: 'var(--color-ink-4)',
+                      }}>
+                        {neighbor.relation} \u00b7 {prettyType(neighbor.nodeType)}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Recent evidence (literature neighbors) ── */}
+      {literatureNeighbors.length > 0 && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <SectionHeader>Recent Evidence</SectionHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {literatureNeighbors.map((pub) => (
+              <div
+                key={pub.key}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--color-bg)',
+                }}
+              >
+                <div style={{
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: 'var(--color-ink)',
+                  lineHeight: 1.4,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical' as const,
+                  overflow: 'hidden',
+                }}>
+                  {pub.label}
+                </div>
+                <div style={{
+                  fontSize: '11px',
+                  color: 'var(--color-ink-4)',
+                  marginTop: '2px',
+                }}>
+                  {pub.relation}
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="space-y-1.5">
-            {relatedDocuments.slice(0, 4).map((link) => (
+        </div>
+      )}
+
+      {/* ── Related documents (external links) ── */}
+      {relatedDocuments.length > 0 && (
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--color-line)',
+        }}>
+          <SectionHeader>Source Documents</SectionHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {relatedDocuments.slice(0, 3).map((link) => (
               <a
                 key={link}
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-md px-3.5 py-2.5 text-xs transition-colors"
                 style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
                   color: 'var(--color-ink-2)',
+                  textDecoration: 'none',
+                  transition: 'background 150ms',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <ExternalLink size={12} />
-                <span className="truncate">{link}</span>
+                <ExternalLink size={12} style={{ flexShrink: 0, color: 'var(--color-ink-4)' }} />
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap' as const,
+                }}>
+                  {truncateValue(link, 60)}
+                </span>
               </a>
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Related graph nodes */}
-      {relatedNodes.length > 0 && linkedNeighbors.length === 0 && (
-        <section>
-          <div className="mb-2 text-[12px] font-semibold" style={{ color: 'var(--color-ink)' }}>
-            Related Graph Nodes
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {relatedNodes.slice(0, 8).map((node) => (
-              <button
-                key={`${node.key}-${node.value}`}
-                type="button"
-                onClick={() => onExploreNode(node.value)}
-                className="rounded-md px-3 py-1.5 text-[11px] transition-colors"
-                style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-ink-2)',
-                }}
-              >
-                {node.label}: {truncateValue(node.value, 30)}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Metadata */}
-      {metadataRows.length > 0 && (
-        <section>
-          <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-ink)' }}>
-            Metadata
-          </div>
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-            {metadataRows.map(([key, value]) => (
-              <div
-                key={key}
-                className="rounded-md px-3.5 py-2.5 text-xs"
-                style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                }}
-              >
-                <div className="capitalize" style={{ color: 'var(--color-ink-3)' }}>
-                  {prettyType(key)}
-                </div>
-                <div className="mt-0.5 font-medium break-words" style={{ color: 'var(--color-ink)' }}>
-                  {String(value)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Ask in Chat button */}
-      <button
-        onClick={() => onAskInChat(result)}
-        className="btn-primary inline-flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors"
-        style={{ color: '#fff' }}
-      >
-        <MessageSquare size={13} />
-        Ask In Chat
-      </button>
-
-      {/* Expanded preview modal */}
-      {previewModalOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-          style={{ background: 'rgba(10, 10, 11, 0.4)' }}
-          onClick={() => setPreviewModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-5xl rounded-md p-6"
-            style={{
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              boxShadow: 'var(--shadow-xl)',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold" style={{ color: 'var(--color-ink)' }}>
-                  {result.title}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--color-ink-3)' }}>
-                  Full source preview
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewModalOpen(false)}
-                className="rounded-md p-2 transition-colors"
-                style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-ink-3)',
-                }}
-                aria-label="Close preview"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div
-              className="max-h-[80vh] overflow-y-auto rounded-md px-4 py-3 text-sm leading-relaxed"
-              style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface-2)',
-                color: 'var(--color-ink-2)',
-              }}
-            >
-              {databasePreview}
-            </div>
-          </div>
         </div>
       )}
+
+      {/* ── Provenance footer ── */}
+      <div style={{
+        padding: '12px 24px',
+        borderBottom: '1px solid var(--color-line)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '12px',
+        fontSize: '11px',
+        color: 'var(--color-ink-4)',
+      }}>
+        <span>Source: {sourceLabel}</span>
+        {sourcePublishedAt && (
+          <span>Published: {new Date(sourcePublishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
+        )}
+        {retrievedAt && (
+          <span>Indexed {relativeTime(retrievedAt)}</span>
+        )}
+      </div>
+
+      {/* ── Action buttons ── */}
+      <div style={{
+        padding: '16px 24px 24px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+      }}>
+        <button
+          type="button"
+          onClick={() => onAskInChat(result)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: '#fff',
+            background: 'var(--color-accent)',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'opacity 150ms',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+        >
+          <MessageSquare size={14} />
+          Ask in Chat
+        </button>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={onOpenFocusedNodeInSearch}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'var(--color-ink-2)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-line)',
+              cursor: 'pointer',
+              transition: 'background 150ms',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg)'; }}
+          >
+            <Network size={12} />
+            Explore in Graph
+          </button>
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--color-ink-2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-line)',
+                cursor: 'pointer',
+                textDecoration: 'none',
+                transition: 'background 150ms',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg)'; }}
+            >
+              <FileText size={12} />
+              View Source
+            </a>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }

@@ -15,8 +15,9 @@ export default function SearchPagination({
 
   return (
     <div
-      className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1"
+      className="inline-flex items-center gap-1.5 rounded-md"
       style={{
+        padding: '4px 6px',
         border: '1px solid var(--color-line)',
         background: 'var(--color-surface)',
       }}
@@ -25,20 +26,20 @@ export default function SearchPagination({
         type="button"
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1 || disabled}
-        className="rounded-md px-3 py-1 text-xs transition-colors disabled:opacity-40"
-        style={{ color: 'var(--color-ink-2)' }}
+        className="rounded-md text-xs transition-colors disabled:opacity-40"
+        style={{ padding: '4px 12px', color: 'var(--color-ink-2)' }}
       >
         Prev
       </button>
-      <span className="px-1 text-[11px]" style={{ color: 'var(--color-ink-3)' }}>
+      <span className="text-[11px]" style={{ padding: '0 4px', color: 'var(--color-ink-3)' }}>
         Page {page}/{totalPages}
       </span>
       <button
         type="button"
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages || disabled}
-        className="rounded-md px-3 py-1 text-xs transition-colors disabled:opacity-40"
-        style={{ color: 'var(--color-ink-2)' }}
+        className="rounded-md text-xs transition-colors disabled:opacity-40"
+        style={{ padding: '4px 12px', color: 'var(--color-ink-2)' }}
       >
         Next
       </button>

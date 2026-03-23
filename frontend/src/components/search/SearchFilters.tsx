@@ -66,8 +66,9 @@ export default function SearchFilters({
               key={entityType.key}
               type="button"
               onClick={() => onTypeToggle(entityType.key)}
-              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-all"
+              className="flex items-center gap-1.5 rounded-full text-[12px] font-medium transition-all"
               style={{
+                padding: '8px 16px',
                 background: active ? cfg.bg : 'var(--color-surface-2)',
                 color: active ? cfg.color : 'var(--color-ink-3)',
               }}
@@ -85,8 +86,9 @@ export default function SearchFilters({
                 onTypeToggle(type);
               }
             }}
-            className="rounded-full px-4 py-2 text-[12px] font-medium transition-colors"
+            className="rounded-full text-[12px] font-medium transition-colors"
             style={{
+              padding: '8px 16px',
               background: 'var(--color-surface-2)',
               color: 'var(--color-ink-4)',
             }}
@@ -99,8 +101,9 @@ export default function SearchFilters({
       {activeTypes.includes('therapeutic_area') && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
           <span
-            className="rounded-md px-3 py-1.5 text-[11px] font-medium"
+            className="rounded-md text-[11px] font-medium"
             style={{
+              padding: '6px 12px',
               border: '1px solid rgba(225, 29, 72, 0.25)',
               background: 'rgba(225, 29, 72, 0.08)',
               color: 'var(--color-ta)',
@@ -120,8 +123,9 @@ export default function SearchFilters({
                 key={ta}
                 type="button"
                 onClick={() => onTherapeuticAreaToggle(ta)}
-                className="rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors"
+                className="rounded-md text-[11px] font-medium transition-colors"
                 style={{
+                  padding: '6px 12px',
                   border: active
                     ? '1px solid rgba(225, 29, 72, 0.25)'
                     : '1px solid var(--color-line)',
@@ -137,8 +141,9 @@ export default function SearchFilters({
             <button
               type="button"
               onClick={onClearTherapeuticAreas}
-              className="rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors"
+              className="rounded-md text-[11px] font-medium transition-colors"
               style={{
+                padding: '6px 12px',
                 border: '1px solid var(--color-line)',
                 color: 'var(--color-ink-3)',
               }}
@@ -185,8 +190,9 @@ export function ResultsToolbar({
           </span>
         ))}
         <span
-          className="rounded-md px-3 py-1.5 text-[11px]"
+          className="rounded-md text-[11px]"
           style={{
+            padding: '6px 12px',
             border: '1px solid rgba(26, 127, 75, 0.25)',
             background: 'var(--color-green-soft)',
             color: 'var(--color-green)',
@@ -198,8 +204,9 @@ export function ResultsToolbar({
 
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className="inline-flex items-center rounded-md p-1"
+          className="inline-flex items-center rounded-md"
           style={{
+            padding: '4px',
             border: '1px solid var(--color-line)',
             background: 'var(--color-surface)',
           }}
@@ -209,8 +216,9 @@ export function ResultsToolbar({
               key={option.value}
               type="button"
               onClick={() => onViewChange(option.value)}
-              className="rounded-md px-3 py-1.5 text-xs transition-colors"
+              className="rounded-md text-xs transition-colors"
               style={{
+                padding: '6px 12px',
                 background: viewMode === option.value ? 'var(--color-accent-soft)' : 'transparent',
                 fontWeight: viewMode === option.value ? 600 : 400,
                 color: viewMode === option.value ? 'var(--color-ink)' : 'var(--color-ink-3)',
@@ -223,9 +231,10 @@ export function ResultsToolbar({
         <select
           value={sortMode}
           onChange={(e) => onSortChange(e.target.value as SortMode)}
-          className="rounded-md px-3.5 py-1.5 text-xs outline-none"
+          className="rounded-md text-xs outline-none"
           aria-label="Sort results"
           style={{
+            padding: '6px 14px',
             border: '1px solid var(--color-line)',
             background: 'var(--color-surface)',
             color: 'var(--color-ink-2)',

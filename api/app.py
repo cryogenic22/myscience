@@ -67,6 +67,18 @@ def create_app() -> FastAPI:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
 
+    @app.post("/debug/migrate")
+    def debug_migrate():
+        """Debug: run pending migrations and report result."""
+        try:
+            db = get_db()
+            from migrate import run_migrations
+            count = run_migrations(db)
+            return {"ok": True, "migrations_applied": count}
+        except Exception as e:
+            import traceback
+            return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
     @app.get("/debug/routes")
     def debug_routes():
         """Debug: show registered route count and new router status."""

@@ -6,22 +6,38 @@ import {
   BookOpen,
   Dna,
   Target,
-  ShieldCheck,
-  Clock3,
   ChevronRight,
 } from 'lucide-react';
 import type { SearchResult } from '../../api';
+import { SOURCE_LABELS } from '../../brand';
 import {
   TYPE_CONFIG,
   type SearchViewMode,
   prettyType,
   truncateValue,
-  formatDate,
   getResultSnippet,
   getSourcePublicationDate,
   resultFingerprint,
-  safeTileValue,
 } from './search-utils';
+
+/* ── Relative time helper ── */
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  if (Number.isNaN(then)) return dateStr;
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return `${Math.floor(diffMonths / 12)}y ago`;
+}
 
 const ENTITY_ICONS_LARGE: Record<string, React.ReactNode> = {
   drug: <Pill size={20} />,
@@ -66,7 +82,7 @@ export default function SearchResults({
 }: SearchResultsProps) {
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center" style={{ padding: '80px 0' }}>
         <div
           className="w-6 h-6 rounded-full animate-spin"
           style={{
@@ -83,7 +99,7 @@ export default function SearchResults({
 
   if (hasSearched && totalResults === 0) {
     return (
-      <div className="text-center py-20">
+      <div className="text-center" style={{ padding: '80px 0' }}>
         <div
           className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-md"
           style={{
@@ -105,7 +121,7 @@ export default function SearchResults({
 
   if (hasSearched && totalResults > 0 && visibleCount === 0) {
     return (
-      <div className="text-center py-16">
+      <div className="text-center" style={{ padding: '64px 0' }}>
         <p className="text-sm font-medium" style={{ color: 'var(--color-ink)' }}>
           No results match the selected therapeutic areas.
         </p>
@@ -169,14 +185,20 @@ function SearchResultCard({
   const icon = ENTITY_ICONS_LARGE[result.entity_type] ?? <Search size={20} />;
   const smallIcon = ENTITY_ICONS_SMALL[result.entity_type] ?? <Search size={16} />;
 
-  const sourceApi = String(result.provenance?.source_api ?? 'unknown source');
+  const sourceApi = String(result.provenance?.source_api ?? 'unknown');
+  const sourceLabel = SOURCE_LABELS[sourceApi] ?? sourceApi.replace(/_/g, ' ');
   const retrievedAt = result.provenance?.retrieved_at ? String(result.provenance.retrieved_at) : null;
   const sourcePublishedAt = getSourcePublicationDate(result.metadata);
   const previewSnippet = getResultSnippet(result);
-  const similarity = (result.similarity * 100).toFixed(0);
   const quality = typeof result.quality_score === 'number' ? (result.quality_score * 100).toFixed(0) : null;
   const metadata = Object.entries(result.metadata ?? {})
-    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+    .filter(([key, value]) =>
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== '' &&
+      key !== 'content_hash' &&
+      !key.endsWith('_embedding')
+    )
     .slice(0, mode === 'cards' ? 4 : 2);
   const compact = mode === 'list';
 
@@ -199,13 +221,18 @@ function SearchResultCard({
           }}
           aria-hidden
         />
-        <div className="flex items-start gap-3 px-4 py-3.5">
-          <div
-            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm"
-            style={{ background: cfg.bgVar, color: cfg.color }}
-          >
-            {smallIcon}
-          </div>
+        <div className="flex items-start gap-3" style={{ padding: '14px 24px' }}>
+          {/* Entity type color dot */}
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: cfg.color,
+              flexShrink: 0,
+              marginTop: '6px',
+            }}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -215,30 +242,33 @@ function SearchResultCard({
                 >
                   {result.title}
                 </h3>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <span
-                    className="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                    style={{ background: cfg.bgVar, color: cfg.color }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      textTransform: 'uppercase' as const,
+                      letterSpacing: '0.04em',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: cfg.bgVar,
+                      color: cfg.color,
+                    }}
                   >
                     {cfg.label}
                   </span>
-                  <span
-                    className="chip-plain max-w-[12rem] truncate text-[11px]"
-                    style={{ color: 'var(--color-ink-3)' }}
-                  >
-                    {sourceApi}
+                  <span style={{
+                    fontSize: '11px',
+                    color: 'var(--color-ink-4)',
+                    maxWidth: '160px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap' as const,
+                  }}>
+                    {sourceLabel}
                   </span>
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-[12px] font-semibold" style={{ color: 'var(--color-ink)' }}>
-                  {similarity}%
-                </div>
-                <div
-                  className="text-[10px] uppercase tracking-wide"
-                  style={{ color: 'var(--color-ink-3)' }}
-                >
-                  match
                 </div>
               </div>
             </div>
@@ -252,43 +282,31 @@ function SearchResultCard({
               </p>
             )}
 
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '11px' }}>
               {quality && (
                 <span
-                  className="inline-flex items-center gap-1 rounded-sm px-2.5 py-0.5"
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 10px',
+                    borderRadius: '10px',
                     border: '1px solid rgba(26, 127, 75, 0.25)',
                     background: 'var(--color-green-soft)',
                     color: 'var(--color-green)',
                   }}
                 >
-                  quality {quality}%
+                  {quality}% quality
                 </span>
               )}
               {sourcePublishedAt && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm px-2.5 py-0.5"
-                  style={{
-                    border: '1px solid var(--color-line)',
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-ink-3)',
-                  }}
-                >
-                  <Clock3 size={11} />
-                  Source {formatDate(sourcePublishedAt)}
+                <span style={{ color: 'var(--color-ink-4)' }}>
+                  {new Date(sourcePublishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}
                 </span>
               )}
               {retrievedAt && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm px-2.5 py-0.5"
-                  style={{
-                    border: '1px solid var(--color-line)',
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-ink-3)',
-                  }}
-                >
-                  <Clock3 size={11} />
-                  Ingested {formatDate(retrievedAt)}
+                <span style={{ color: 'var(--color-ink-4)' }}>
+                  {relativeTime(retrievedAt)}
                 </span>
               )}
             </div>
@@ -310,11 +328,12 @@ function SearchResultCard({
       className={`group w-full text-left transition-all ${mode === 'grid' ? 'min-h-[206px]' : ''}`}
       style={{
         border: active ? '1px solid var(--color-accent)' : '1px solid var(--color-line)',
-        background: active ? 'var(--color-surface)' : 'var(--color-surface)',
+        background: 'var(--color-surface)',
         boxShadow: active ? 'var(--shadow-sm)' : 'none',
+        borderRadius: '8px',
       }}
     >
-      <div className="flex items-start gap-4 p-5">
+      <div className="flex items-start gap-4" style={{ padding: '20px 24px' }}>
         <div
           className={`flex shrink-0 items-center justify-center rounded-sm ${mode === 'grid' ? 'h-10 w-10' : 'h-11 w-11'}`}
           style={{ background: cfg.bgVar, color: cfg.color }}
@@ -322,16 +341,26 @@ function SearchResultCard({
           {mode === 'grid' ? smallIcon : icon}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex items-center gap-2.5">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+            {/* Entity type color dot */}
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: cfg.color,
+                flexShrink: 0,
+              }}
+            />
             <h3
               className="truncate text-[15px] font-semibold"
-              style={{ color: 'var(--color-ink)' }}
+              style={{ color: 'var(--color-ink)', flex: 1, minWidth: 0 }}
             >
               {result.title}
             </h3>
             <span
-              className="shrink-0 inline-flex items-center gap-1 rounded-sm px-3 py-1 text-[10px] font-medium uppercase tracking-wide"
-              style={{ background: cfg.bgVar, color: cfg.color }}
+              className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide"
+              style={{ padding: '4px 12px', borderRadius: '12px', background: cfg.bgVar, color: cfg.color }}
             >
               {cfg.label}
             </span>
@@ -346,82 +375,66 @@ function SearchResultCard({
             </p>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+            {/* Source badge */}
             <span
-              className="inline-flex items-center gap-1 rounded-sm px-3 py-1"
               style={{
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '3px 10px',
+                borderRadius: '10px',
+                background: 'var(--color-surface-2)',
                 color: 'var(--color-ink-3)',
+                fontWeight: 500,
               }}
             >
-              <ShieldCheck size={11} />
-              {similarity}% match
+              {sourceLabel}
             </span>
             {quality && (
               <span
-                className="inline-flex items-center gap-1 rounded-sm px-3 py-1"
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 10px',
+                  borderRadius: '10px',
                   border: '1px solid rgba(26, 127, 75, 0.25)',
                   background: 'var(--color-green-soft)',
                   color: 'var(--color-green)',
                 }}
               >
-                quality {quality}%
+                {quality}% quality
               </span>
             )}
-            <span
-              className="chip-plain inline-flex max-w-[12rem] items-center gap-1 truncate px-1 py-1"
-              style={{ color: 'var(--color-ink-3)' }}
-            >
-              {sourceApi}
-            </span>
             {sourcePublishedAt && (
-              <span
-                className="inline-flex items-center gap-1 rounded-sm px-3 py-1"
-                style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-ink-3)',
-                }}
-              >
-                <Clock3 size={11} />
-                Source {formatDate(sourcePublishedAt)}
+              <span style={{ color: 'var(--color-ink-4)' }}>
+                {new Date(sourcePublishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}
               </span>
             )}
             {retrievedAt && (
-              <span
-                className="inline-flex items-center gap-1 rounded-sm px-3 py-1"
-                style={{
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-ink-3)',
-                }}
-              >
-                <Clock3 size={11} />
-                Ingested {formatDate(retrievedAt)}
+              <span style={{ color: 'var(--color-ink-4)' }}>
+                {relativeTime(retrievedAt)}
               </span>
             )}
           </div>
 
           {mode === 'cards' && metadata.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 16px', marginTop: '8px' }}>
               {metadata.map(([key, value]) => (
                 <span
                   key={key}
-                  className="inline-flex items-center text-xs"
-                  style={{ color: 'var(--color-ink-3)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', fontSize: '12px', color: 'var(--color-ink-3)' }}
                 >
-                  <span className="font-medium capitalize" style={{ color: 'var(--color-ink-2)' }}>
+                  <span style={{ fontWeight: 500, color: 'var(--color-ink-2)', textTransform: 'capitalize' as const }}>
                     {prettyType(key)}:
                   </span>
-                  <span className="ml-1">{truncateValue(value, 34)}</span>
+                  <span style={{ marginLeft: '4px' }}>{truncateValue(value, 34)}</span>
                 </span>
               ))}
             </div>
           )}
         </div>
-        <div className="shrink-0 pt-1">
+        <div className="shrink-0" style={{ paddingTop: '4px' }}>
           <ChevronRight
             size={16}
             className={`transition-transform ${active ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`}
@@ -441,21 +454,34 @@ interface InsightTileProps {
 export function InsightTile({ label, value }: InsightTileProps) {
   return (
     <div
-      className="rounded-md px-3.5 py-3"
+      className="rounded-md"
       style={{
+        padding: '14px 16px',
         border: '1px solid var(--color-line)',
         background: 'var(--color-surface)',
       }}
     >
       <div
-        className="text-[10px] font-medium uppercase tracking-wide"
-        style={{ color: 'var(--color-ink-4)' }}
+        style={{
+          fontSize: '10px',
+          fontWeight: 500,
+          textTransform: 'uppercase' as const,
+          letterSpacing: '0.06em',
+          color: 'var(--color-ink-4)',
+        }}
       >
         {label}
       </div>
       <div
-        className="mt-1 truncate text-[13px] font-semibold"
-        style={{ color: 'var(--color-ink)' }}
+        style={{
+          marginTop: '4px',
+          fontSize: '13px',
+          fontWeight: 600,
+          color: 'var(--color-ink)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap' as const,
+        }}
       >
         {value}
       </div>
