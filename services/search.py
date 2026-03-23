@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,57 @@ ENTITY_SEARCH_CONFIG = {
         },
     },
 }
+
+
+def recency_score(dt: datetime | str | None) -> float:
+    """Score a timestamp by recency: recent → 1.0, old → 0.2.
+
+    < 30 days: 1.0, 30-90d: 0.7, 90-365d: 0.4, > 1 year: 0.2.
+    None → 0.5 (neutral default).
+    """
+    if dt is None:
+        return 0.5
+    if isinstance(dt, str):
+        try:
+            from datetime import datetime as dt_cls, timezone as tz
+            dt = dt_cls.fromisoformat(dt.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return 0.5
+    now = datetime.now(timezone.utc)
+    if hasattr(dt, 'tzinfo') and dt.tzinfo is None:
+        age_days = (now.replace(tzinfo=None) - dt).days
+    else:
+        age_days = (now - dt).days
+    if age_days <= 0:
+        return 1.0
+    if age_days <= 30:
+        return 1.0
+    if age_days <= 90:
+        return 0.7
+    if age_days <= 365:
+        return 0.4
+    return 0.2
+
+
+def rank_by_recency(evidence: list[dict], similarity_key: str = "similarity") -> list[dict]:
+    """Re-rank evidence by relevance × recency.
+
+    Each item gets a combined_score = similarity × recency_score.
+    Returns sorted list (highest combined first).
+    """
+    if not evidence:
+        return []
+
+    scored = []
+    for item in evidence:
+        sim = float(item.get(similarity_key, 0.5))
+        dt_val = item.get("retrieved_at") or item.get("publication_date")
+        recency = recency_score(dt_val)
+        combined = sim * recency
+        scored.append((combined, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored]
 
 
 class HybridSearch:

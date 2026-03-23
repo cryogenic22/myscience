@@ -63,6 +63,17 @@ ENTITY_TABLE_MAP = {
 }
 
 
+def detect_truncation(node_count: int, max_nodes: int = 100) -> dict:
+    """Check if graph traversal hit the node cap.
+
+    Returns: {"truncated": bool, "max_nodes": int}
+    """
+    return {
+        "truncated": node_count >= max_nodes,
+        "max_nodes": max_nodes,
+    }
+
+
 class GraphTraversal:
     """Navigate the entity_links graph via SQL."""
 

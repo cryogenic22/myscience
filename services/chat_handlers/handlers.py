@@ -791,11 +791,17 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     )
 
     # Normalize to standard QueryResponse format for frontend rendering
+    from services.chat_handlers.formatting import build_compare_graph
     entities_list = result.get("entities", [])
+    compare_gc = build_compare_graph(
+        entities_list,
+        result.get("shared_connections", []),
+        result.get("unique_connections", {}),
+    )
     normalized_data = {
         "question": f"Compare {' vs '.join(names)}",
         "evidence": [],
-        "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
+        "graph_context": compare_gc,
         "metrics_context": metrics_comp,
         "entity_focus": [
             {
@@ -821,7 +827,7 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     confidence = compute_response_confidence(
         entity_resolved=len(resolved) >= 2,
         evidence_count=sum(len(r.get("evidence", [])) for r in resolved),
-        graph_node_count=0,
+        graph_node_count=compare_gc.get("node_count", 0),
         metrics_available=bool(metrics_comp),
     )
 

@@ -67,7 +67,10 @@ def apply_chat_modes(payload: dict, include_graph: bool, include_metrics: bool, 
 
 
 def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
-    """Resolve a name or UUID to entity_id + metadata."""
+    """Resolve a name or UUID to entity_id + metadata + match_score.
+
+    match_score: 1.0 for UUID/exact match, 0.7 for fuzzy LIKE match.
+    """
     import re as _re
 
     table_map = {
@@ -90,7 +93,7 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
                 [uuid_val],
             )
             if row:
-                return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype}
+                return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 1.0}
 
     # Strip leading entity type words: "drug semaglutide" -> "semaglutide"
     clean_name = _re.sub(r'^(drug|company|trial|mechanism|therapeutic_area)\s+', '', name.strip(), flags=_re.IGNORECASE)
@@ -98,20 +101,20 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     for etype, (table, col) in table_map.items():
         if entity_type and entity_type != etype:
             continue
-        # Exact match first
+        # Exact match first (score 1.0)
         row = db.fetch_one(
             f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) = LOWER(%s) LIMIT 1",
             [clean_name],
         )
         if row:
-            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype}
-        # Fuzzy match
+            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 1.0}
+        # Fuzzy match (score 0.7)
         row = db.fetch_one(
             f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) LIKE LOWER(%s) LIMIT 1",
             [f"%{clean_name}%"],
         )
         if row:
-            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype}
+            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 0.7}
 
     return None
 
@@ -403,6 +406,83 @@ def compute_response_confidence(
         score += 0.2
 
     return round(min(1.0, max(0.0, score)), 2)
+
+
+# ── Compare graph builder ──
+
+
+def build_compare_graph(
+    entities: list[dict],
+    shared_connections: list[dict],
+    unique_connections: dict[str, list[dict]],
+) -> dict:
+    """Build graph_context from compare handler's shared/unique connections.
+
+    Returns standard graph_context: {nodes, edges, node_count, edge_count}.
+    Shared connections get edges to ALL compared entities.
+    Unique connections get edges to their owning entity only.
+    """
+    nodes_by_id: dict[str, dict] = {}
+    edges: list[dict] = []
+
+    # Add compared entities as nodes
+    for e in entities:
+        eid = e.get("entity_id", "")
+        if eid:
+            nodes_by_id[eid] = {
+                "entity_id": eid,
+                "entity_type": e.get("entity_type", "drug"),
+                "label": e.get("label", ""),
+            }
+
+    entity_ids = [e.get("entity_id", "") for e in entities]
+
+    # Shared connections → edges to ALL compared entities
+    for conn in (shared_connections or []):
+        cid = conn.get("entity_id", "")
+        if not cid:
+            continue
+        if cid not in nodes_by_id:
+            nodes_by_id[cid] = {
+                "entity_id": cid,
+                "entity_type": conn.get("entity_type", "unknown"),
+                "label": conn.get("label", ""),
+            }
+        for eid in entity_ids:
+            if eid and eid != cid:
+                edges.append({
+                    "source_id": eid,
+                    "target_id": cid,
+                    "link_type": "SHARED",
+                    "confidence": 1.0,
+                })
+
+    # Unique connections → edge to owning entity only
+    for owner_id, conns in (unique_connections or {}).items():
+        for conn in (conns or []):
+            cid = conn.get("entity_id", "")
+            if not cid:
+                continue
+            if cid not in nodes_by_id:
+                nodes_by_id[cid] = {
+                    "entity_id": cid,
+                    "entity_type": conn.get("entity_type", "unknown"),
+                    "label": conn.get("label", ""),
+                }
+            edges.append({
+                "source_id": owner_id,
+                "target_id": cid,
+                "link_type": "UNIQUE",
+                "confidence": 1.0,
+            })
+
+    nodes = list(nodes_by_id.values())
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+    }
 
 
 # ── Private chart builders ──

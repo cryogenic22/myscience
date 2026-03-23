@@ -57,6 +57,40 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
 
 
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
+_NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
+
+
+def _extract_source_numbers(metrics: dict | None, evidence_snippets: list[str] | None) -> set[float]:
+    """Extract all numeric values from metrics context and evidence for verification."""
+    numbers: set[float] = set()
+    if metrics:
+        _collect_numbers_from_dict(metrics, numbers)
+    if evidence_snippets:
+        for snippet in evidence_snippets[:10]:
+            for m in _NUMBER_RE.finditer(str(snippet)):
+                try:
+                    numbers.add(float(m.group(1)))
+                except ValueError:
+                    pass
+    return numbers
+
+
+def _collect_numbers_from_dict(d: dict | list, out: set[float], depth: int = 0) -> None:
+    """Recursively collect numeric values from nested dict/list."""
+    if depth > 5:
+        return
+    if isinstance(d, dict):
+        for v in d.values():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                out.add(float(v))
+            elif isinstance(v, (dict, list)):
+                _collect_numbers_from_dict(v, out, depth + 1)
+    elif isinstance(d, list):
+        for item in d:
+            if isinstance(item, (int, float)) and not isinstance(item, bool):
+                out.add(float(item))
+            elif isinstance(item, (dict, list)):
+                _collect_numbers_from_dict(item, out, depth + 1)
 
 
 def verify_narrative_numbers(
@@ -343,6 +377,34 @@ class LLMSynthesizer:
             self._client = OpenAI(api_key=self.config.llm.api_key)
         return self._client
 
+    def _post_validate(
+        self,
+        narrative: str,
+        evidence_count: int = 0,
+        source_numbers: set | None = None,
+    ) -> str:
+        """Post-synthesis validation: citation check + numeric verification.
+
+        Applied after every LLM synthesis to catch hallucinated citations
+        and numeric drift from source data.
+        """
+        # Citation validation
+        cit_result = validate_citations(narrative, evidence_count)
+        narrative = cit_result["narrative"]
+        if cit_result["stripped"] > 0:
+            logger.info("Stripped %d invalid citation(s) from narrative", cit_result["stripped"])
+
+        # Numeric verification (log only, don't modify narrative)
+        if source_numbers:
+            num_result = verify_narrative_numbers(narrative, source_numbers)
+            if num_result["flagged"] > 0:
+                logger.warning(
+                    "Narrative has %d unverified bold number(s): %s",
+                    num_result["flagged"], num_result["mismatches"],
+                )
+
+        return narrative
+
     def synthesize(
         self,
         question: str,
@@ -411,6 +473,13 @@ class LLMSynthesizer:
                 if narrative:
                     if model != primary_model:
                         logger.info("Used fallback model %s (primary unavailable)", model)
+                    # Post-synthesis validation
+                    source_nums = _extract_source_numbers(metrics, evidence_snippets)
+                    narrative = self._post_validate(
+                        narrative,
+                        evidence_count=len(evidence_snippets or []),
+                        source_numbers=source_nums,
+                    )
                     return narrative
             except Exception as e:
                 logger.warning("Model %s failed: %s", model, e)
