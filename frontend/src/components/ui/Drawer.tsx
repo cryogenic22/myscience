@@ -45,8 +45,8 @@ export function Drawer({ isOpen, onClose, title, subtitle, children, width }: Dr
       >
         {/* Header */}
         <div
-          className="shrink-0 flex items-start justify-between p-6"
-          style={{ borderBottom: '1px solid var(--color-line)' }}
+          className="shrink-0 flex items-start justify-between"
+          style={{ padding: '24px', borderBottom: '1px solid var(--color-line)' }}
         >
           <div>
             <h2
@@ -85,8 +85,8 @@ export function Drawer({ isOpen, onClose, title, subtitle, children, width }: Dr
 
         {/* Scrollable content */}
         <div
-          className="flex-1 overflow-y-auto p-6"
-          style={{ minHeight: 0 }}
+          className="flex-1 overflow-y-auto"
+          style={{ padding: '24px', minHeight: 0 }}
         >
           {children}
         </div>

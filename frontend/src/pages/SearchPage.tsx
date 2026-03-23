@@ -452,8 +452,8 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
           style={{ minHeight: hasSearched ? undefined : 0 }}
         >
           <div
-            className="mx-auto w-full px-6"
-            style={{ maxWidth: hasSearched ? '1360px' : '820px', paddingTop: hasSearched ? '24px' : 0 }}
+            className="mx-auto w-full"
+            style={{ maxWidth: hasSearched ? '1360px' : '820px', padding: hasSearched ? '24px 24px 0' : '0 24px' }}
           >
             {/* Logo / title — Google-style, above the search bar */}
             {!hasSearched && (
@@ -518,8 +518,8 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                       setQuery('');
                       inputRef.current?.focus();
                     }}
-                    className="rounded-full p-2 transition-colors"
-                    style={{ color: 'var(--color-ink-4)', flexShrink: 0 }}
+                    className="rounded-full transition-colors"
+                    style={{ padding: '8px', color: 'var(--color-ink-4)', flexShrink: 0 }}
                     aria-label="Clear search"
                   >
                     <X size={16} />
@@ -535,8 +535,9 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                   type="button"
                   onClick={() => void doSearch()}
                   disabled={!query.trim() || isLoading}
-                  className="rounded-lg px-5 text-[13px] font-medium transition-all disabled:opacity-30"
+                  className="rounded-lg text-[13px] font-medium transition-all disabled:opacity-30"
                   style={{
+                    padding: '0 20px',
                     height: '38px',
                     color: 'var(--color-ink-2)',
                     background: 'var(--color-surface-2)',
@@ -551,8 +552,9 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                     setQuery(lucky);
                     void doSearch(lucky);
                   }}
-                  className="rounded-lg px-5 text-[13px] font-medium transition-all"
+                  className="rounded-lg text-[13px] font-medium transition-all"
                   style={{
+                    padding: '0 20px',
                     height: '38px',
                     color: 'var(--color-ink-2)',
                     background: 'var(--color-surface-2)',
@@ -610,8 +612,8 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
         </div>
 
         {/* Results area */}
-        <main className="flex-1 overflow-y-auto px-6 pb-8">
-          <div className="mx-auto max-w-[1360px] pt-6">
+        <main className="flex-1 overflow-y-auto" style={{ padding: '0 24px 32px' }}>
+          <div className="mx-auto max-w-[1360px]" style={{ paddingTop: '24px' }}>
             {/* Loading / empty states */}
             {(isLoading || (hasSearched && visibleResults.length === 0)) && (
               <SearchResults
@@ -630,7 +632,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
             {/* Results grid */}
             {!isLoading && hasSearched && visibleResults.length > 0 && (
               <div className="space-y-4">
-                <section className="card p-6">
+                <section className="card" style={{ padding: '24px' }}>
                   <ResultsToolbar
                     resultTypeCounts={resultTypeCounts}
                     highConfidenceCount={resultInsights.highConfidence}

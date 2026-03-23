@@ -486,7 +486,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
           railCollapsed ? 'lg:w-[66px]' : 'lg:w-[430px]'
         }`}
       >
-        <div className={`h-full overflow-y-auto ${railCollapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
+        <div className="h-full overflow-y-auto" style={{ padding: railCollapsed ? '16px 8px' : '16px' }}>
           {railCollapsed ? (
             <div className="flex h-full flex-col items-center gap-3">
               <button
@@ -527,7 +527,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-        <div className="card p-4">
+        <div className="card" style={{ padding: '16px' }}>
           <div className="flex items-center justify-between gap-2">
             <div>
               <h3 className="text-[13px] font-semibold text-slate-900">Graph Explorer</h3>
@@ -543,7 +543,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
               >
                 <PanelLeftClose size={14} />
               </button>
-              <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-600">
+              <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-600" style={{ padding: '6px 12px' }}>
               <span>Hops</span>
               <select
                 value={hops}
@@ -566,11 +566,12 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                   key={item.id}
                   type="button"
                   onClick={() => setObjective(item.id)}
-                  className={`rounded-md border px-3 py-1.5 text-[11px] transition-colors ${
+                  className={`rounded-md border text-[11px] transition-colors ${
                     objective === item.id
                       ? 'border-slate-900 bg-slate-900 text-white'
                       : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                   }`}
+                  style={{ padding: '6px 12px' }}
                 >
                   {item.label}
                 </button>
@@ -587,7 +588,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                 value={entityLookupQuery}
                 onChange={(event) => handleLookupChange(event.target.value)}
                 placeholder="Search a drug, trial, company, mechanism, or therapeutic area..."
-                className="input-surface h-[48px] w-full rounded-lg py-2 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-brand/15"
+                className="input-surface h-[48px] w-full rounded-lg text-sm outline-none transition-all focus:ring-2 focus:ring-brand/15"
+                style={{ padding: '8px 16px 8px 40px' }}
               />
               {showSuggestions && (
                 <div className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl">
@@ -596,9 +598,10 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                       key={suggestion.entity_id}
                       type="button"
                       onClick={() => void loadGraph(suggestion.entity_id, suggestion._type, suggestion.label)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                      className="flex w-full items-center gap-3 text-left transition-colors hover:bg-slate-50"
+                      style={{ padding: '12px 16px' }}
                     >
-                      <span className="rounded-sm bg-slate-100 p-1.5 text-slate-600">
+                      <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '6px' }}>
                         {ENTITY_CONFIG[suggestion._type]?.icon ?? <Network size={14} />}
                       </span>
                       <div>
@@ -611,13 +614,13 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
               )}
             </div>
             {objectiveTypeHint && (
-              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-[11px] text-amber-700" style={{ padding: '8px 12px' }}>
                 <Compass size={12} />
                 {objectiveTypeHint}
               </div>
             )}
             {graphError && (
-              <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 text-xs text-rose-700" style={{ padding: '8px 12px' }}>
                 {graphError}
               </div>
             )}
@@ -716,9 +719,10 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                             key={s.entity_id}
                             type="button"
                             onClick={() => selectPathFrom(s)}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-slate-50"
+                            style={{ padding: '8px 12px' }}
                           >
-                            <span className="rounded-sm bg-slate-100 p-1 text-slate-600">
+                            <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '4px' }}>
                               {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
                             </span>
                             <div>
@@ -762,9 +766,10 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                             key={s.entity_id}
                             type="button"
                             onClick={() => selectPathTo(s)}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-slate-50"
+                            style={{ padding: '8px 12px' }}
                           >
-                            <span className="rounded-sm bg-slate-100 p-1 text-slate-600">
+                            <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '4px' }}>
                               {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
                             </span>
                             <div>
@@ -883,7 +888,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
         </div>
 
         {graphData && (
-          <div className="card animate-slide-in p-4">
+          <div className="card animate-slide-in" style={{ padding: '16px' }}>
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Graph Summary</h3>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <ControlStat label="Entities found" value={String(filteredGraphData?.nodes.length ?? graphData.nodes.length)} />
@@ -895,13 +900,14 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             {highConfidenceRows.length > 0 && (
               <div className="mt-3">
                 <div className="mb-2 text-[11px] font-semibold text-slate-700">High-confidence neighbors</div>
-                <div className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                <div className="max-h-40 space-y-1.5 overflow-y-auto" style={{ paddingRight: '2px' }}>
                   {highConfidenceRows.map((row) => (
                     <button
                       key={row.key}
                       type="button"
                       onClick={() => void loadGraph(row.otherId, row.otherType, row.otherLabel)}
-                      className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-[11px] transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white text-left text-[11px] transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      style={{ padding: '8px 12px' }}
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-medium text-slate-800">{row.otherLabel}</span>
@@ -917,7 +923,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             {linkTypeCounts.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {linkTypeCounts.slice(0, 8).map(([linkType, count]) => (
-                  <span key={linkType} className="rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600">
+                  <span key={linkType} className="rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600" style={{ padding: '4px 10px' }}>
                     {prettyType(linkType)}: <span className="font-semibold text-slate-800">{count}</span>
                   </span>
                 ))}
@@ -927,7 +933,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
         )}
 
         {graphData && (
-          <div className="card animate-slide-in p-4">
+          <div className="card animate-slide-in" style={{ padding: '16px' }}>
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Graph controls</h3>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="text-[11px] text-slate-500">
@@ -935,7 +941,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                 <select
                   value={nodeTypeFilter}
                   onChange={(event) => setNodeTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  style={{ padding: '0 10px' }}
                 >
                   <option value="all">All node types</option>
                   {availableNodeTypes.map((type) => (
@@ -948,7 +955,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                 <select
                   value={linkTypeFilter}
                   onChange={(event) => setLinkTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  style={{ padding: '0 10px' }}
                 >
                   <option value="all">All links</option>
                   {availableLinkTypes.map((type) => (
@@ -979,8 +987,9 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             />
             {showDemoBanner && !initialEntity && (
               <div
-                className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl px-5 py-2.5"
+                className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl"
                 style={{
+                  padding: '10px 20px',
                   background: 'rgba(255,255,255,0.92)',
                   backdropFilter: 'blur(12px)',
                   border: '1px solid var(--color-line)',
@@ -1004,7 +1013,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             )}
           </>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+          <div className="flex h-full flex-col items-center justify-center text-center" style={{ padding: '0 16px' }}>
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white/88 shadow-sm">
               <Network size={28} className="text-brand" />
             </div>
@@ -1035,7 +1044,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                       } catch { /* ignore */ }
                     })();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
+                  style={{ padding: '6px 12px' }}
                 >
                   {ENTITY_CONFIG[example.type]?.icon}
                   {example.label}
@@ -1044,7 +1054,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             </div>
             <div className="mt-6 grid max-w-lg grid-cols-2 gap-3 text-left">
               {OBJECTIVES.map((obj) => (
-                <div key={obj.id} className="rounded-lg border border-slate-100 bg-white/80 px-3 py-2">
+                <div key={obj.id} className="rounded-lg border border-slate-100 bg-white/80" style={{ padding: '8px 12px' }}>
                   <div className="text-[11px] font-semibold text-slate-700">{obj.label}</div>
                   <div className="mt-0.5 text-[10px] leading-relaxed text-slate-400">{obj.description}</div>
                 </div>
@@ -1057,8 +1067,9 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
         {quickNodeInsight && (
           <div className="absolute bottom-4 right-4 z-20" style={{ width: 'min(92vw, 340px)' }}>
             <div
-              className="rounded-xl p-4"
+              className="rounded-xl"
               style={{
+                padding: '16px',
                 background: 'rgba(255,255,255,0.96)',
                 backdropFilter: 'blur(12px)',
                 border: '1px solid var(--color-line)',
@@ -1114,7 +1125,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                   onClick={() => {
                     void loadGraph(quickNodeInsight.id, quickNodeInsight.type, quickNodeInsight.label, hops);
                   }}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  style={{ padding: '4px 10px' }}
                 >
                   <Network size={11} />
                   Focus node
@@ -1122,7 +1134,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  style={{ padding: '4px 10px' }}
                 >
                   <FileText size={11} />
                   Full details
@@ -1143,7 +1156,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
         <div className="space-y-5">
           <section>
             <h4 className="mb-2.5 text-sm font-medium text-slate-900">Overview</h4>
-            <div className="space-y-2 rounded-md border border-slate-200 bg-white p-4">
+            <div className="space-y-2 rounded-md border border-slate-200 bg-white" style={{ padding: '16px' }}>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Type</span>
                 <span className="font-medium text-slate-900">{selectedEntity?.type ? displayName(selectedEntity.type) : 'n/a'}</span>
@@ -1159,7 +1172,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                   {Object.entries(entitySummary.connections_by_entity_type)
                     .sort(([, a], [, b]) => Number(b) - Number(a))
                     .map(([eType, count]) => (
-                      <span key={eType} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                      <span key={eType} className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-[10px] font-medium text-slate-600" style={{ padding: '2px 8px' }}>
                         {displayName(eType)} <span className="text-slate-400">{Number(count)}</span>
                       </span>
                     ))}
@@ -1172,12 +1185,12 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             <h4 className="mb-2.5 text-sm font-medium text-slate-900">Relationships</h4>
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {edgeRows.length === 0 && (
-                <div className="rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
+                <div className="rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
                   Source data pending — this entity has no linked provenance yet.
                 </div>
               )}
               {edgeRows.slice(0, 14).map((row) => (
-                <div key={row.key} className="rounded-md border border-slate-200 bg-white px-3.5 py-3">
+                <div key={row.key} className="rounded-md border border-slate-200 bg-white" style={{ padding: '12px 14px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-slate-800">
@@ -1204,7 +1217,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
           <section>
             <h4 className="mb-2.5 text-sm font-medium text-slate-900">Connection breakdown</h4>
             {summaryLoading ? (
-              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
+              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
                 <Loader2 size={12} className="animate-spin" />
                 Loading...
               </div>
@@ -1217,7 +1230,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                     const total = entitySummary.total_connections || 1;
                     const pct = Math.round((Number(count) / total) * 100);
                     return (
-                      <div key={linkType} className="rounded-md border border-slate-200 bg-white px-3.5 py-2">
+                      <div key={linkType} className="rounded-md border border-slate-200 bg-white" style={{ padding: '8px 14px' }}>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-slate-600">{displayName(linkType)}</span>
                           <span className="font-semibold text-slate-900">{Number(count)}</span>
@@ -1230,7 +1243,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                   })}
               </div>
             ) : (
-              <div className="rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-500">
+              <div className="rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
                 No connections found for this entity.
               </div>
             )}
@@ -1248,7 +1261,8 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                      className="flex items-center gap-2 rounded-md border border-slate-200 bg-white text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                      style={{ padding: '10px 14px' }}
                     >
                       <ExternalLink size={12} />
                       <span className="truncate">{url}</span>
@@ -1265,7 +1279,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
 
 function ControlStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5">
+    <div className="rounded-md border border-slate-200 bg-white" style={{ padding: '10px 12px' }}>
       <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
       <div className="text-lg font-semibold tracking-tight text-slate-900">{value}</div>
     </div>
@@ -1274,7 +1288,7 @@ function ControlStat({ label, value }: { label: string; value: string }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-slate-200 bg-white px-2 py-1.5">
+    <div className="rounded-sm border border-slate-200 bg-white" style={{ padding: '6px 8px' }}>
       <div className="truncate text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
       <div className="truncate text-[11px] font-semibold text-slate-900">{value}</div>
     </div>

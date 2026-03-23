@@ -53,9 +53,9 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
   const freshness = freshnessBadge(provenance ?? {});
 
   return (
-    <div className={`rounded-md border border-slate-200/75 bg-white/88 px-4 py-3.5 text-[12px] shadow-sm transition-all ${
+    <div className={`rounded-md border border-slate-200/75 bg-white/88 text-[12px] shadow-sm transition-all ${
       highlighted ? 'ring-2 ring-brand/10' : 'hover:border-slate-300 hover:shadow-md'
-    }`}>
+    }`} style={{ padding: '14px 16px' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           {index !== undefined && (
@@ -63,20 +63,20 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
               {index}
             </span>
           )}
-          <span className={`flex items-center gap-1 rounded-sm px-2.5 py-1 text-[10px] font-medium ${SOURCE_COLORS[source] ?? SOURCE_COLORS.search}`}>
+          <span className={`flex items-center gap-1 rounded-sm text-[10px] font-medium ${SOURCE_COLORS[source] ?? SOURCE_COLORS.search}`} style={{ padding: '4px 10px' }}>
             {SOURCE_ICONS[source] ?? SOURCE_ICONS.search}
             {source}
           </span>
           <span className="text-[10px] text-slate-400 capitalize">{entityType.replace('_', ' ')}</span>
           {sourceTypeLabel && (
-            <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+            <span className="rounded-sm bg-slate-100 text-[10px] text-slate-500" style={{ padding: '2px 6px' }}>
               {sourceTypeLabel}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {freshness && (
-            <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${freshness.color}`}>
+            <span className={`rounded-sm text-[10px] font-medium ${freshness.color}`} style={{ padding: '2px 6px' }}>
               {freshness.label}
             </span>
           )}

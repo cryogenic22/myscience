@@ -220,8 +220,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
       {/* Tab bar */}
       <div
         className="shrink-0 flex items-center gap-1"
-        style={{ padding: '12px 32px' }}
-        style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+        style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
       >
         {TABS.map(t => (
           <button
@@ -348,8 +347,8 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
       {/* Stale data alert */}
       {staleCount > 0 && (
         <div
-          className="rounded-xl px-5 py-3 flex items-center gap-3"
-          style={{ background: 'var(--color-amber-soft)', border: '1px solid var(--color-amber)' }}
+          className="rounded-xl flex items-center gap-3"
+          style={{ padding: '12px 20px', background: 'var(--color-amber-soft)', border: '1px solid var(--color-amber)' }}
         >
           <Clock size={16} style={{ color: 'var(--color-amber)', flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: 'var(--color-amber)' }}>
@@ -370,8 +369,9 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
         ].map(({ label, value, urgent }) => (
           <div
             key={label}
-            className="rounded-2xl p-5"
+            className="rounded-2xl"
             style={{
+              padding: '20px',
               background: 'var(--color-surface)',
               border: `1px solid ${urgent ? 'var(--color-amber)' : 'var(--color-line)'}`,
             }}
@@ -390,10 +390,10 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
           className="rounded-2xl overflow-hidden"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
         >
-          <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--color-line)' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}>
             <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Field Completeness</h3>
           </div>
-          <div className="px-6 py-4 space-y-4">
+          <div className="space-y-4" style={{ padding: '16px 24px' }}>
             {Object.entries(completeness).map(([etype, data]) => (
               <div key={etype}>
                 <div className="flex items-center justify-between mb-2">
@@ -411,8 +411,9 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
                       <div
                         key={field}
                         title={`${label}: ${(score * 100).toFixed(0)}%`}
-                        className="rounded-lg px-2.5 py-1"
+                        className="rounded-lg"
                         style={{
+                          padding: '4px 10px',
                           fontSize: '11px',
                           fontWeight: 500,
                           background: score >= 0.7 ? 'var(--color-green-soft)' : score >= 0.4 ? 'var(--color-amber-soft)' : 'var(--color-red-soft)',
@@ -436,7 +437,7 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
           className="rounded-2xl overflow-hidden"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
         >
-          <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--color-line)' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}>
             <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Source Freshness</h3>
           </div>
           {Object.entries(freshData).map(([source, info]) => {
@@ -474,8 +475,7 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
       >
         <div
-          className="px-6 py-4"
-          style={{ borderBottom: '1px solid var(--color-line)' }}
+          style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}
         >
           <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Datasets</h3>
         </div>
@@ -606,14 +606,14 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
       >
         {loading ? (
-          <div className="py-12 text-center" style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading…</div>
+          <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading…</div>
         ) : !data || data.results.length === 0 ? (
-          <div className="py-12 text-center" style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>No entities found.</div>
+          <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>No entities found.</div>
         ) : (
           <>
             <div
-              className="flex items-center justify-between px-6 py-3"
-              style={{ borderBottom: '1px solid var(--color-line)' }}
+              className="flex items-center justify-between"
+              style={{ padding: '12px 24px', borderBottom: '1px solid var(--color-line)' }}
             >
               <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>
                 {fmt(data.total)} results
@@ -777,7 +777,7 @@ function ChangesTab({ changes }: { changes: ChangeLogEntry[] }) {
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
     >
       {changes.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>No changes recorded.</div>
+        <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>No changes recorded.</div>
       ) : (
         changes.map(ch => (
           <div key={ch.id} className="catalog-row">
@@ -879,8 +879,8 @@ function CurationTab({ items, onResolve }: {
         {Object.entries(queueStats).map(([type, count]) => (
           <div
             key={type}
-            className="rounded-lg px-3 py-1.5"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)', fontSize: '12px' }}
+            className="rounded-lg"
+            style={{ padding: '6px 12px', background: 'var(--color-surface)', border: '1px solid var(--color-line)', fontSize: '12px' }}
           >
             <span style={{ color: 'var(--color-ink-3)', textTransform: 'capitalize' }}>
               {type.replace(/_/g, ' ')}
@@ -930,15 +930,16 @@ function CurationTab({ items, onResolve }: {
       )}
 
       {sorted.length === 0 && (
-        <div className="py-12 text-center" style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>
+        <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>
           No pending reviews.
         </div>
       )}
       {sorted.map(item => (
         <div
           key={item.id}
-          className="rounded-2xl p-5"
+          className="rounded-2xl"
           style={{
+            padding: '20px',
             background: selected.has(item.id) ? 'var(--color-accent-soft)' : 'var(--color-surface)',
             border: `1px solid ${selected.has(item.id) ? 'var(--color-accent)' : 'var(--color-line)'}`,
           }}

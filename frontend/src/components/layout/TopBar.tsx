@@ -27,7 +27,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
       className="topbar sticky top-0 z-30 shrink-0"
       style={{ height: '52px' }}
     >
-      <div className="flex h-full items-center gap-4 px-5">
+      <div className="flex h-full items-center gap-4" style={{ padding: '0 20px' }}>
         {/* Back */}
         <button
           type="button"
@@ -54,8 +54,8 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
 
         {/* Tabs — segmented control */}
         <nav
-          className="flex items-center rounded-[10px] p-1 gap-0.5"
-          style={{ background: 'var(--color-surface-2)' }}
+          className="flex items-center rounded-[10px] gap-0.5"
+          style={{ padding: '4px', background: 'var(--color-surface-2)' }}
         >
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
@@ -97,8 +97,9 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
               <Search size={13} />
               <span style={{ color: 'var(--color-ink-3)' }}>Search</span>
               <kbd
-                className="rounded px-1.5 py-0.5"
+                className="rounded"
                 style={{
+                  padding: '2px 6px',
                   fontSize: '10px',
                   background: 'var(--color-surface-2)',
                   color: 'var(--color-ink-4)',

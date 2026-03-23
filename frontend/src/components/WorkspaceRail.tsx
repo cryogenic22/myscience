@@ -40,7 +40,7 @@ export default function WorkspaceRail({ active, onSelect, onBack }: Props) {
         borderRight: '1px solid var(--color-line)',
       }}
     >
-      <div className="flex h-full flex-col items-center py-3">
+      <div className="flex h-full flex-col items-center" style={{ padding: '12px 0' }}>
         {/* Back button */}
         <button
           type="button"

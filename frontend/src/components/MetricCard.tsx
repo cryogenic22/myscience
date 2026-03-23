@@ -24,7 +24,7 @@ const LABELS: Record<string, string> = {
 
 export default function MetricCard({ type, data, entityName }: Props) {
   return (
-    <div className="rounded-md border border-slate-200/75 bg-white/88 px-3 py-2.5 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
+    <div className="rounded-md border border-slate-200/75 bg-white/88 shadow-sm transition-all hover:border-slate-300 hover:shadow-md" style={{ padding: '10px 12px' }}>
       {/* Header row: icon + type label */}
       <div className="mb-1.5 flex items-center gap-2">
         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand-dark">
@@ -37,7 +37,7 @@ export default function MetricCard({ type, data, entityName }: Props) {
 
       {/* Entity name */}
       {entityName && (
-        <div className="mb-1.5 truncate pl-8 text-[12px] font-semibold text-slate-800">
+        <div className="mb-1.5 truncate text-[12px] font-semibold text-slate-800" style={{ paddingLeft: '32px' }}>
           {entityName}
         </div>
       )}

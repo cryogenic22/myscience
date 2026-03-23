@@ -503,8 +503,8 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
 
       {hoverInfo && (
         <div
-          className="pointer-events-none absolute z-20 max-w-[14rem] rounded-md border border-white/20 bg-slate-950/85 px-2 py-1.5 text-[10px] text-white/90 shadow-lg backdrop-blur"
-          style={{ left: hoverInfo.x, top: hoverInfo.y }}
+          className="pointer-events-none absolute z-20 max-w-[14rem] rounded-md border border-white/20 bg-slate-950/85 text-[10px] text-white/90 shadow-lg backdrop-blur"
+          style={{ padding: '6px 8px', left: hoverInfo.x, top: hoverInfo.y }}
         >
           <div className="truncate font-semibold">{hoverInfo.label}</div>
           <div className="mt-0.5 text-white/70">
@@ -513,11 +513,11 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
         </div>
       )}
 
-      <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-white/20 bg-slate-950/70 px-1.5 py-1 text-[10px] text-white/80 backdrop-blur">
+      <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-white/20 bg-slate-950/70 text-[10px] text-white/80 backdrop-blur" style={{ padding: '4px 6px' }}>
         <button
           type="button"
           onClick={() => zoomByFactor(0.9)}
-          className="rounded px-1 py-0.5 hover:bg-white/15"
+          className="rounded hover:bg-white/15" style={{ padding: '2px 4px' }}
           aria-label="Zoom out"
         >
           -
@@ -526,7 +526,7 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
         <button
           type="button"
           onClick={() => zoomByFactor(1.12)}
-          className="rounded px-1 py-0.5 hover:bg-white/15"
+          className="rounded hover:bg-white/15" style={{ padding: '2px 4px' }}
           aria-label="Zoom in"
         >
           +
@@ -534,7 +534,7 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
         <button
           type="button"
           onClick={resetView}
-          className="rounded px-1 py-0.5 hover:bg-white/15"
+          className="rounded hover:bg-white/15" style={{ padding: '2px 4px' }}
           aria-label="Reset view"
         >
           reset
@@ -551,8 +551,9 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
               key={type}
               type="button"
               onClick={() => toggleType(type)}
-              className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[9px] transition-opacity backdrop-blur"
+              className="flex items-center gap-1 rounded-sm text-[9px] transition-opacity backdrop-blur"
               style={{
+                padding: '2px 6px',
                 background: active ? `${color}25` : 'rgba(15,23,42,0.5)',
                 color: active ? color : 'rgba(255,255,255,0.35)',
                 border: `1px solid ${active ? `${color}40` : 'rgba(255,255,255,0.1)'}`,
@@ -567,14 +568,14 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
       </div>
 
       {/* Edge type legend */}
-      <div className="pointer-events-none absolute bottom-2 right-2 flex flex-wrap gap-x-3 gap-y-0.5 rounded-md border border-white/15 bg-slate-950/60 px-2 py-1 text-[9px] text-white/65 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-2 right-2 flex flex-wrap gap-x-3 gap-y-0.5 rounded-md border border-white/15 bg-slate-950/60 text-[9px] text-white/65 backdrop-blur" style={{ padding: '4px 8px' }}>
         <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(225, 29, 72, 0.5)' }} />Therapeutic</span>
         <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(124, 58, 237, 0.5)' }} />Mechanism</span>
         <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(217, 119, 6, 0.6)' }} />Ownership</span>
         <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(248, 200, 6, 0.3)' }} />Other</span>
       </div>
 
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-white/15 bg-slate-950/60 px-2 py-1 text-[10px] text-white/65 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-white/15 bg-slate-950/60 text-[10px] text-white/65 backdrop-blur" style={{ padding: '4px 8px' }}>
         Drag to pan. Wheel or +/- to zoom. Click type badges to filter.
       </div>
     </div>

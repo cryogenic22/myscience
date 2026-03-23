@@ -90,7 +90,8 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
       </sup>
       {show && (
         <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white p-3.5 text-left shadow-lg"
+          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white text-left shadow-lg"
+          style={{ padding: '14px' }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
@@ -102,7 +103,7 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
           </div>
           <p className="text-[11px] text-slate-600 leading-relaxed">{contentPreview}</p>
           {(sourceApi || sourceUrl) && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white" style={{ padding: '6px 8px' }}>
               <ExternalLink size={10} className="text-slate-400" />
               {sourceUrl ? (
                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-dark hover:underline truncate">
@@ -167,7 +168,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
     >
       <div className="w-full max-w-[90%]">
         {isUser ? (
-          <div className="ml-auto max-w-[82%] rounded-md bg-slate-900 px-4 py-3 text-[13px] text-white shadow-sm">
+          <div className="ml-auto max-w-[82%] rounded-md bg-slate-900 text-[13px] text-white shadow-sm" style={{ padding: '12px 16px' }}>
             {message.content}
           </div>
         ) : (
@@ -177,7 +178,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
             ) : (
               <>
                 {/* Narrative text - tighter font, relaxed leading, with inline citations */}
-                <div className="px-1 text-[14px] leading-relaxed text-slate-700">
+                <div className="text-[14px] leading-relaxed text-slate-700" style={{ padding: '0 4px' }}>
                   <RichText text={message.content} evidence={message.data?.evidence} />
                 </div>
 
@@ -198,13 +199,14 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
 
                 {/* Follow-up suggestions */}
                 {onFollowUp && message.followupSuggestions && message.followupSuggestions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2" style={{ paddingTop: '4px' }}>
                     {message.followupSuggestions.map((q) => (
                       <button
                         key={q}
                         type="button"
                         onClick={() => onFollowUp(q)}
-                        className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                        className="rounded-md border border-slate-200 bg-white text-[11px] text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                        style={{ padding: '6px 12px' }}
                       >
                         {q}
                       </button>
@@ -222,7 +224,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
 
 function LoadingIndicator() {
   return (
-    <div className="rounded-md border border-slate-200/70 bg-white/78 px-4 py-4">
+    <div className="rounded-md border border-slate-200/70 bg-white/78" style={{ padding: '16px' }}>
       <div className="flex items-center gap-3">
         <div className="flex gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -322,7 +324,7 @@ function ResponseCards({
 
       {/* ── 2. Charts (always visible, no collapse wrapper) ── */}
       {hasVisualizations && (
-        <div className="grid grid-cols-1 gap-3 pt-2">
+        <div className="grid grid-cols-1 gap-3" style={{ paddingTop: '8px' }}>
           {(visualizations ?? []).map((viz) => (
             <VisualizationCard key={viz.id} spec={viz} />
           ))}
@@ -331,7 +333,7 @@ function ResponseCards({
 
       {/* ── 3. Entities + Metrics (combined row) ── */}
       {(hasEntities || hasMetrics) && (
-        <div className="border-t border-slate-100 pt-3 mt-2">
+        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
           <div className="mb-2 text-[11px] font-medium text-slate-400">Key Entities & Metrics</div>
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {hasEntities && (
@@ -366,7 +368,7 @@ function ResponseCards({
 
       {/* ── 4. Knowledge Graph (collapsible) ── */}
       {hasGraph && data && (
-        <div className="border-t border-slate-100 pt-3 mt-2">
+        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowGraph(!showGraph)}
             className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
@@ -389,7 +391,7 @@ function ResponseCards({
 
       {/* ── 5. Evidence (collapsed by default, compact summary) ── */}
       {hasEvidence && data && (
-        <div className="border-t border-slate-100 pt-3 mt-2">
+        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowEvidence(!showEvidence)}
             className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
@@ -440,7 +442,7 @@ function ResponseCards({
 
       {/* ── 6. Deep Research Brief (collapsible, keeps border) ── */}
       {hasReport && (
-        <div className="border-t border-slate-100 pt-3 mt-2">
+        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowReport(!showReport)}
             className="mb-2 flex w-full items-center gap-1.5 text-left text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
@@ -459,7 +461,7 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('md')}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Markdown
@@ -467,13 +469,13 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('txt')}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Text
                 </button>
               </div>
-              <div className="max-h-[min(28rem,50vh)] overflow-y-auto rounded-md border border-slate-200/60 bg-slate-50/40 px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-line text-slate-600">
+              <div className="max-h-[min(28rem,50vh)] overflow-y-auto rounded-md border border-slate-200/60 bg-slate-50/40 text-[12px] leading-relaxed whitespace-pre-line text-slate-600" style={{ padding: '10px 12px' }}>
                 {report}
               </div>
               {webResults && webResults.length > 0 && (
@@ -485,7 +487,7 @@ function ResponseCards({
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-md border border-slate-200/60 px-2.5 py-2 text-[11px] text-slate-600 transition-colors hover:bg-slate-50"
+                      className="block rounded-md border border-slate-200/60 text-[11px] text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '8px 10px' }}
                     >
                       <div className="font-medium text-slate-700">{item.title}</div>
                       {item.snippet && <div className="mt-0.5 line-clamp-2 text-slate-500">{item.snippet}</div>}
@@ -500,7 +502,7 @@ function ResponseCards({
 
       {/* ── 7. Persona Analyses (collapsible) ── */}
       {hasPersonaAnalyses && personaAnalyses && (
-        <div className="border-t border-slate-100 pt-3 mt-2">
+        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
           {confidenceAssessment && (
             <div className="mb-2 flex items-center gap-3">
               <span className="text-[11px] font-medium text-slate-400">Team Confidence</span>
@@ -585,7 +587,7 @@ function DataTable({ tableData }: { tableData: TableData }) {
   const displayRows = showAll ? sortedRows : sortedRows.slice(0, 15);
 
   return (
-    <div className="pt-1">
+    <div style={{ paddingTop: '4px' }}>
       <div className="mb-2 flex items-center justify-between">
         {tableData.title && (
           <div className="text-[12px] font-medium text-slate-700">{tableData.title}</div>
@@ -593,7 +595,8 @@ function DataTable({ tableData }: { tableData: TableData }) {
         <button
           type="button"
           onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          style={{ padding: '4px 8px' }}
           title="Download CSV"
         >
           <Download size={10} />
@@ -608,7 +611,8 @@ function DataTable({ tableData }: { tableData: TableData }) {
                 <th
                   key={col.key}
                   onClick={() => handleSort(col.key)}
-                  className={`cursor-pointer whitespace-nowrap px-3 py-1.5 text-left font-medium text-slate-500 hover:text-slate-700 select-none ${col.type === 'number' ? 'text-right' : ''}`}
+                  className={`cursor-pointer whitespace-nowrap text-left font-medium text-slate-500 hover:text-slate-700 select-none ${col.type === 'number' ? 'text-right' : ''}`}
+                  style={{ padding: '6px 12px' }}
                 >
                   {col.label}
                   {sortCol === col.key && (
@@ -625,7 +629,8 @@ function DataTable({ tableData }: { tableData: TableData }) {
                   <td
                     key={col.key}
                     title={row[col.key] != null ? String(row[col.key]) : undefined}
-                    className={`px-3 py-1.5 whitespace-nowrap text-slate-600 ${col.type === 'number' ? 'text-right tabular-nums' : ''} ${ci === 0 ? 'font-medium text-slate-700' : ''}`}
+                    className={`whitespace-nowrap text-slate-600 ${col.type === 'number' ? 'text-right tabular-nums' : ''} ${ci === 0 ? 'font-medium text-slate-700' : ''}`}
+                    style={{ padding: '6px 12px' }}
                   >
                     {row[col.key] != null ? String(row[col.key]) : '-'}
                   </td>
@@ -659,7 +664,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
       : 'bg-red-500';
 
   return (
-    <div className="px-1 py-2">
+    <div style={{ padding: '8px 4px' }}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 text-left"
@@ -694,7 +699,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
       {analysis.data_gaps.length > 0 && (
         <div className="mt-1.5 ml-5 flex flex-wrap gap-1">
           {analysis.data_gaps.map((gap, i) => (
-            <span key={i} className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 border border-amber-200/50">
+            <span key={i} className="rounded-sm bg-amber-50 text-[10px] text-amber-700 border border-amber-200/50" style={{ padding: '2px 6px' }}>
               {gap}
             </span>
           ))}
@@ -703,7 +708,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
 
       {/* Full analysis (expandable) */}
       {expanded && (
-        <div className="mt-2.5 ml-5 rounded-md border border-slate-200/60 bg-slate-50/50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+        <div className="mt-2.5 ml-5 rounded-md border border-slate-200/60 bg-slate-50/50 text-[11px] leading-relaxed text-slate-600" style={{ padding: '8px 12px' }}>
           <RichText text={analysis.analysis} evidence={evidence} />
         </div>
       )}
@@ -741,7 +746,7 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
   }
 
   return (
-    <div className="px-1 py-1">
+    <div style={{ padding: '4px' }}>
       <div className="mb-2 text-[11px] font-medium text-slate-600">{spec.title}</div>
       <div className="w-full" style={{ minHeight: 220, height: 'clamp(220px, 24vw, 300px)' }}>
         <ResponsiveContainer width="100%" height="100%">

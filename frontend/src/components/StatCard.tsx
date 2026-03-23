@@ -12,7 +12,7 @@ export default function StatCard({ value, label, suffix, icon, delay = 0 }: Prop
   const animated = useAnimatedNumber(value, 1400 + delay);
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] p-5 backdrop-blur-sm hover:border-brand/20 transition-all duration-200">
+    <div className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm hover:border-brand/20 transition-all duration-200" style={{ padding: '20px' }}>
       {/* Subtle gold accent on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-brand/0 to-brand/0 group-hover:from-brand/[0.04] group-hover:to-transparent transition-all duration-300" />
 

@@ -59,8 +59,8 @@ export function LiteratureExplorer({ articleId, onClose }: LiteratureExplorerPro
       >
         {/* Header */}
         <div
-          className="shrink-0 flex items-start justify-between gap-4 px-6 py-4"
-          style={{ borderBottom: '1px solid var(--color-line)' }}
+          className="shrink-0 flex items-start justify-between gap-4"
+          style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="flex items-center gap-2" style={{ marginBottom: '4px' }}>

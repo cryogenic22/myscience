@@ -84,8 +84,8 @@ export default function CanvasPanel({
   if (!hasContent) {
     return (
       <div
-        className="flex h-full flex-col items-center justify-center px-8 text-center"
-        style={{ background: 'var(--color-surface-2)' }}
+        className="flex h-full flex-col items-center justify-center text-center"
+        style={{ padding: '0 32px', background: 'var(--color-surface-2)' }}
       >
         <div
           className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl"
@@ -115,8 +115,8 @@ export default function CanvasPanel({
     >
       {/* Header */}
       <div
-        className="shrink-0 flex items-center justify-between px-6 py-4"
-        style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+        className="shrink-0 flex items-center justify-between"
+        style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
       >
         <div className="flex items-center gap-3" style={{ flex: 1 }}>
           {intent && (
@@ -184,8 +184,8 @@ export default function CanvasPanel({
       {/* Tab bar */}
       {visibleTabs.length > 1 && (
         <div
-          className="shrink-0 flex items-center gap-1 px-6 py-3"
-          style={{ borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+          className="shrink-0 flex items-center gap-1"
+          style={{ padding: '12px 24px', borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
         >
           {visibleTabs.map(t => (
             <button
@@ -365,8 +365,8 @@ function ContextTab({
       {confidenceAssessment && (
         <Section title="Provenance">
           <div
-            className="rounded-xl p-4"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+            className="rounded-xl"
+            style={{ padding: '16px', background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
           >
             <div className="flex items-center gap-3 mb-3">
               <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>
@@ -651,8 +651,9 @@ function EntityGrid({ entities, onViewInGraph }: { entities: Record<string, unkn
         return (
           <div
             key={i}
-            className="rounded-xl p-4"
+            className="rounded-xl"
             style={{
+              padding: '16px',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-line)',
             }}
@@ -675,7 +676,7 @@ function EntityGrid({ entities, onViewInGraph }: { entities: Record<string, unkn
                 {type.replace('_', ' ')}
               </span>
             </div>
-            <div className="mt-2 flex items-center gap-2 pl-4">
+            <div className="mt-2 flex items-center gap-2" style={{ paddingLeft: '16px' }}>
               {onViewInGraph && e.entity_id && (
                 <button
                   type="button"
@@ -691,8 +692,8 @@ function EntityGrid({ entities, onViewInGraph }: { entities: Record<string, unkn
             </div>
             {conns != null && (
               <div
-                className="mt-1 pl-4"
-                style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}
+                className="mt-1"
+                style={{ paddingLeft: '16px', fontSize: '11px', color: 'var(--color-ink-4)' }}
               >
                 {conns} connections
               </div>
@@ -736,8 +737,9 @@ function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
         {shown.map((ev, i) => (
           <div
             key={i}
-            className="rounded-xl p-3"
+            className="rounded-xl"
             style={{
+              padding: '12px',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-line)',
               fontSize: '12px',
@@ -797,8 +799,9 @@ function PersonaRow({ analysis }: { analysis: PersonaAnalysis }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center gap-3 px-4 py-3"
+        className="flex w-full items-center gap-3"
         style={{
+          padding: '12px 16px',
           background: 'var(--color-surface)',
           cursor: 'pointer',
           border: 'none',
@@ -821,8 +824,7 @@ function PersonaRow({ analysis }: { analysis: PersonaAnalysis }) {
 
       {open && (
         <div
-          className="px-4 pb-4"
-          style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-line)' }}
+          style={{ padding: '0 16px 16px', background: 'var(--color-surface)', borderTop: '1px solid var(--color-line)' }}
         >
           <ul className="mt-3 space-y-1">
             {analysis.key_findings.slice(0, 3).map((f, i) => (

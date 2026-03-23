@@ -50,8 +50,9 @@ export default function NarrativeMessage({
               {/* Confidence warning */}
               {message.confidenceAssessment && message.confidenceAssessment.overall < 0.45 && (
                 <div
-                  className="mt-4 flex items-start gap-2 rounded-xl p-3"
+                  className="mt-4 flex items-start gap-2 rounded-xl"
                   style={{
+                    padding: '12px',
                     background: 'var(--color-amber-soft)',
                     fontSize: '12px',
                     color: 'var(--color-amber)',
@@ -70,8 +71,9 @@ export default function NarrativeMessage({
                       key={q}
                       type="button"
                       onClick={() => onFollowUp(q)}
-                      className="rounded-full px-4 py-2 text-[12px] transition-all duration-150"
+                      className="rounded-full text-[12px] transition-all duration-150"
                       style={{
+                        padding: '8px 16px',
                         background: 'var(--color-surface-2)',
                         color: 'var(--color-ink-3)',
                         border: '1px solid var(--color-line)',
@@ -100,7 +102,7 @@ export default function NarrativeMessage({
 
 function LoadingDots() {
   return (
-    <div className="flex items-center gap-1 py-2">
+    <div className="flex items-center gap-1" style={{ padding: '8px 0' }}>
       {[0, 1, 2].map((i) => (
         <div
           key={i}
@@ -243,8 +245,9 @@ function CitationRef({
       <span
         role="button"
         tabIndex={0}
-        className="rounded px-1 py-0.5 cursor-pointer select-none"
+        className="rounded cursor-pointer select-none"
         style={{
+          padding: '2px 4px',
           fontSize: '10px',
           fontWeight: 600,
           background: 'var(--color-accent-soft)',
@@ -260,8 +263,9 @@ function CitationRef({
 
       {show && evidence && (
         <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 rounded-xl p-3 text-left"
+          className="absolute bottom-full left-1/2 z-50 mb-2 rounded-xl text-left"
           style={{
+            padding: '12px',
             width: '260px',
             transform: 'translateX(-50%)',
             background: 'var(--color-surface)',
