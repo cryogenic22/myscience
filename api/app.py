@@ -71,10 +71,16 @@ def create_app() -> FastAPI:
     def debug_migrate():
         """Debug: run pending migrations and report result."""
         try:
-            db = get_db()
+            from config import config as cfg
+            from db import Database as MigrateDB
             from migrate import run_migrations
-            count = run_migrations(db)
-            return {"ok": True, "migrations_applied": count}
+            mdb = MigrateDB(cfg.db.dsn)
+            mdb.connect()
+            try:
+                count = run_migrations(mdb)
+                return {"ok": True, "migrations_applied": count}
+            finally:
+                mdb.close()
         except Exception as e:
             import traceback
             return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
