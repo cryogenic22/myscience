@@ -71,6 +71,41 @@ def run_full_curate(
     return {"status": "started", "pipeline": "auto_curate", "dry_run": dry_run}
 
 
+@router.post("/refresh")
+def refresh_sources(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+):
+    """Refresh all data sources (or a single source) via the pipeline scheduler.
+
+    Body: {source?: string}  — if omitted, refreshes ALL sources in order.
+    """
+    source = body.get("source")
+
+    def _refresh():
+        try:
+            from scheduler.runner import DataPipelineScheduler
+            sched = DataPipelineScheduler()
+            if source:
+                logger.info("Refreshing single source: %s", source)
+                result = sched.run_one(source)
+                logger.info("Refresh %s: %s", source, result)
+            else:
+                logger.info("Refreshing ALL sources...")
+                results = sched.run_now()
+                logger.info("Full refresh complete: %s", results)
+        except Exception:
+            logger.exception("Source refresh failed")
+
+    background_tasks.add_task(_refresh)
+    return {
+        "status": "started",
+        "source": source or "ALL",
+        "note": "Full refresh runs 9 connectors + post-tasks. Check /steward/status for progress.",
+    }
+
+
 @router.get("/status")
 def steward_status(db: Database = Depends(get_db)):
     """Return latest steward activity stats."""
