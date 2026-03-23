@@ -175,7 +175,8 @@ class TestCompositeScore:
             "citation": 1.0,
         }
         score = composite_score(dimensions)
-        expected = 0.15 * 1.0 + 0.25 * 0.8 + 0.25 * 0.6 + 0.25 * 0.9 + 0.10 * 1.0
+        # Weights: intent=0.10, grounding=0.25, factual=0.25, completeness=0.25, citation=0.15
+        expected = 0.10 * 1.0 + 0.25 * 0.8 + 0.25 * 0.6 + 0.25 * 0.9 + 0.15 * 1.0
         assert score == pytest.approx(expected, abs=0.01)
 
     def test_perfect_query(self):

@@ -111,5 +111,28 @@
    "note": "Incomplete compare — only one entity"},
   {"id": "E06", "intent": "general", "question": "",
    "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
-   "note": "Empty query — should handle gracefully"}
+   "note": "Empty query — should handle gracefully"},
+
+  {"id": "E07", "intent": "dossier", "question": "Tell me about Januvia",
+   "expected": {"entities": ["sitagliptin"], "must_mention": ["DPP-4"], "must_not_mention": [], "min_evidence": 1},
+   "note": "Disambiguation — brand name Januvia should resolve to sitagliptin"},
+  {"id": "E08", "intent": "general", "question": "What happened to Vioxx?",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
+   "note": "Historical withdrawn drug — tests graceful handling of absent entities"},
+  {"id": "E09", "intent": "dossier", "question": "Tell me about semaglutide and tirzepatide",
+   "expected": {"entities": ["semaglutide", "tirzepatide"], "must_mention": [], "must_not_mention": [], "min_evidence": 1},
+   "note": "Multi-entity ambiguity — dossier or compare?"},
+
+  {"id": "T01", "intent": "general", "question": "What drugs are being developed for Alzheimer's disease?",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
+   "note": "Thin data area — neurology. Tests 'limited data' grounding rule"},
+  {"id": "T02", "intent": "landscape", "question": "Rare disease competitive landscape",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
+   "note": "Thin data area — rare diseases. Should acknowledge sparse coverage"},
+  {"id": "T03", "intent": "pipeline", "question": "Immunology drug pipeline",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
+   "note": "Thin data area — immunology. Tests MV fallback + thin data honesty"},
+  {"id": "T04", "intent": "general", "question": "What CAR-T therapies are in clinical trials?",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0},
+   "note": "Thin data area — cell therapy. Tests data gap transparency"}
 ]

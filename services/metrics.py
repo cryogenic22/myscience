@@ -98,6 +98,13 @@ class PharmaMetrics:
                 late = (row.get("p3_count", 0) or 0) + (row.get("p4_count", 0) or 0)
                 row["phase_progression_rate"] = round(late / early, 2) if early > 0 else None
 
+        # Fallback: if MV returns sparse results for a TA query, try realtime
+        if len(rows) <= 2 and therapeutic_area:
+            logger.info("Pipeline MV returned %d rows for '%s', trying realtime", len(rows), therapeutic_area)
+            rt_rows = realtime_pipeline_strength(self.db, therapeutic_area, limit=limit)
+            if len(rt_rows) > len(rows):
+                return rt_rows
+
         return rows
 
     def trial_success_rate(
@@ -234,9 +241,20 @@ class PharmaMetrics:
                     dc = row.get("drug_count", 0) or 0
                     row["market_share_pct"] = round((dc / total_drugs) * 100, 1)
 
+            # Fallback: if MV returns sparse results, try real-time query
+            if len(rows) <= 2 and topic:
+                logger.info("MV returned %d rows for '%s', trying realtime fallback", len(rows), topic)
+                rt_rows = realtime_competitive_landscape(self.db, topic, limit=limit)
+                if len(rt_rows) > len(rows):
+                    return rt_rows
+
             return rows
         except Exception as exc:
             logger.warning("competitive_landscape unavailable: %s", exc)
+            # Fallback to realtime on MV failure
+            if topic:
+                logger.info("MV failed, trying realtime fallback for '%s'", topic)
+                return realtime_competitive_landscape(self.db, topic, limit=limit)
             return []
 
     def company_portfolio(

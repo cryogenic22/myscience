@@ -12,12 +12,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Weights for composite score
+# Per lead review: citation weight bumped (trust matters more than routing),
+# intent weight reduced (correct intent with bad citations < wrong intent with good data)
 WEIGHTS = {
-    "intent": 0.15,
+    "intent": 0.10,
     "grounding": 0.25,
     "factual": 0.25,
     "completeness": 0.25,
-    "citation": 0.10,
+    "citation": 0.15,
 }
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
