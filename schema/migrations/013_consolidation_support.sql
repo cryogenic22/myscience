@@ -16,11 +16,10 @@ CREATE INDEX IF NOT EXISTS idx_companies_name_lower
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS source_authority TEXT;
 UPDATE companies SET source_authority = source_api WHERE source_authority IS NULL;
 
--- Record migration
-INSERT INTO etl_runs (run_id, source, status, started_at, completed_at, records_fetched, records_stored, errors)
+-- Record migration (etl_runs uses source_name, not run_id)
+INSERT INTO etl_runs (source_name, status, started_at, completed_at, records_processed, records_inserted, records_updated)
 VALUES (
-    gen_random_uuid(),
     'migration_013_consolidation_support',
-    'completed',
-    NOW(), NOW(), 0, 0, '[]'::jsonb
-);
+    'SUCCESS',
+    NOW(), NOW(), 0, 0, 0
+) ON CONFLICT DO NOTHING;
