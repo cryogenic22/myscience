@@ -888,7 +888,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <ControlStat label="Entities found" value={String(filteredGraphData?.nodes.length ?? graphData.nodes.length)} />
               <ControlStat label="Relationships" value={String(filteredGraphData?.edges.length ?? graphData.edges.length)} />
-              <ControlStat label="Avg links/node" value={edgeDensity.toFixed(1)} />
+              <ControlStat label="Avg links/node" value={String(edgeDensity)} />
               <ControlStat label="Data sources" value={sourceDomains.size > 0 ? Array.from(sourceDomains).slice(0, 3).map(d => displayName(d)).join(', ') : 'Exploring...'} />
             </div>
 
