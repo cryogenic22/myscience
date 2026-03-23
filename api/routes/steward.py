@@ -49,6 +49,28 @@ def run_steward(
     return {"status": "started", "dry_run": dry_run, "max_iterations": max_iterations}
 
 
+@router.post("/curate")
+def run_full_curate(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+):
+    """Run the full 8-step auto_curate pipeline (dedup, clean, mechanisms, TA, enrich, competition, scorecard)."""
+    dry_run = body.get("dry_run", False)
+    skip_ai = body.get("skip_ai", True)
+
+    def _curate():
+        try:
+            from scripts.auto_curate import run as run_curate
+            result = run_curate(dry_run=dry_run, skip_ai=skip_ai)
+            logger.info("Full curate complete: %s", result)
+        except Exception:
+            logger.exception("Full curate failed")
+
+    background_tasks.add_task(_curate)
+    return {"status": "started", "pipeline": "auto_curate", "dry_run": dry_run}
+
+
 @router.get("/status")
 def steward_status(db: Database = Depends(get_db)):
     """Return latest steward activity stats."""

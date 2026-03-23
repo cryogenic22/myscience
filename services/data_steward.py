@@ -72,7 +72,10 @@ ACTION_MAP = {
     ("low_completeness", "ta_link"): ("backfill_ta_links", "scripts.backfill_ta_links", "run"),
     ("low_completeness", "approval_date"): ("enrich_drugs", "scripts.enrich_drugs", "run"),
     ("low_completeness", "company"): ("enrich_companies", "scripts.enrich_companies", "run"),
-    ("data_quality", None): ("clean_drugs", "scripts.clean_drug_names", "run"),
+    ("data_quality", "company"): ("dedup_companies", "scripts.dedup_companies", "run"),
+    ("data_quality", "drug"): ("clean_drugs", "scripts.clean_drug_names", "run"),
+    ("data_quality", None): ("auto_curate", "scripts.auto_curate", "run"),
+    ("data_request", None): ("enrich_drugs", "scripts.enrich_drugs", "run"),
     ("missing_entity", None): ("enrich_drugs", "scripts.enrich_drugs", "run"),
     ("stale_data", None): ("refetch", None, None),  # handled specially
 }

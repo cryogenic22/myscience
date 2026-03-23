@@ -53,14 +53,32 @@ class TestActionSelection:
         assert action_type == "backfill_mechanisms"
         assert "backfill_mechanisms" in mod
 
-    def test_data_quality_maps_to_clean(self):
+    def test_data_quality_drug_maps_to_clean(self):
+        from services.data_steward import DataSteward
+        db = MagicMock()
+        steward = DataSteward(db, MagicMock())
+
+        signal = _make_signal(gap_type="data_quality", entity_type="drug")
+        action_type, mod, func = steward._select_action(signal)
+        assert action_type == "clean_drugs"
+
+    def test_data_quality_company_maps_to_dedup(self):
+        from services.data_steward import DataSteward
+        db = MagicMock()
+        steward = DataSteward(db, MagicMock())
+
+        signal = _make_signal(gap_type="data_quality", entity_type="company")
+        action_type, mod, func = steward._select_action(signal)
+        assert action_type == "dedup_companies"
+
+    def test_data_quality_generic_maps_to_auto_curate(self):
         from services.data_steward import DataSteward
         db = MagicMock()
         steward = DataSteward(db, MagicMock())
 
         signal = _make_signal(gap_type="data_quality")
         action_type, mod, func = steward._select_action(signal)
-        assert action_type == "clean_drugs"
+        assert action_type == "auto_curate"
 
     def test_missing_entity_maps_to_enrich(self):
         from services.data_steward import DataSteward
