@@ -16,9 +16,94 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ── Post-synthesis validation ──────────────────────────────────────
+
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
+
+def validate_citations(narrative: str, evidence_count: int) -> dict:
+    """Validate citation markers [N] in narrative against evidence count.
+
+    Strips invalid citations (N > evidence_count or N == 0).
+    Returns: {"narrative": cleaned_text, "valid": int, "stripped": int}
+    """
+    if not narrative:
+        return {"narrative": "", "valid": 0, "stripped": 0}
+
+    valid = 0
+    stripped = 0
+
+    def _replace(match):
+        nonlocal valid, stripped
+        n = int(match.group(1))
+        if 1 <= n <= evidence_count:
+            valid += 1
+            return match.group(0)  # keep
+        stripped += 1
+        logger.debug("Stripped invalid citation [%d] (evidence_count=%d)", n, evidence_count)
+        return ""  # remove
+
+    cleaned = _CITATION_RE.sub(_replace, narrative)
+    # Clean up double spaces from removed citations
+    cleaned = re.sub(r"  +", " ", cleaned)
+
+    return {"narrative": cleaned, "valid": valid, "stripped": stripped}
+
+
+_BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
+
+
+def verify_narrative_numbers(
+    narrative: str,
+    source_numbers: set[float | int],
+    tolerance: float = 1.0,
+) -> dict:
+    """Extract bold numbers from narrative and verify against source data.
+
+    Extracts **N**, **N.N**, **N%** patterns.
+    Numbers within `tolerance` of any source number are verified.
+
+    Returns: {"verified": int, "flagged": int, "mismatches": [...]}
+    """
+    if not narrative:
+        return {"verified": 0, "flagged": 0, "mismatches": []}
+
+    matches = _BOLD_NUMBER_RE.findall(narrative)
+    verified = 0
+    flagged = 0
+    mismatches = []
+
+    for raw in matches:
+        clean = raw.rstrip("%")
+        try:
+            num = float(clean)
+        except ValueError:
+            continue
+
+        found = False
+        for src in source_numbers:
+            src_f = float(src)
+            if abs(num - src_f) <= tolerance:
+                found = True
+                break
+            # Also check percentage form: 82 matches 0.82
+            if 0 < src_f < 1 and abs(num - src_f * 100) <= tolerance:
+                found = True
+                break
+
+        if found:
+            verified += 1
+        else:
+            flagged += 1
+            mismatches.append(num)
+
+    return {"verified": verified, "flagged": flagged, "mismatches": mismatches}
 
 
 _BASE_RULES = """- Use **bold** for key entities, numbers, and findings.

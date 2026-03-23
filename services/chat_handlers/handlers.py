@@ -289,10 +289,20 @@ def _format_query_result(intent: str, question: str, result, db: Database, llm: 
         fallback_narrative=fallback,
     )
 
+    # Confidence scoring
+    from services.chat_handlers.formatting import compute_response_confidence
+    confidence = compute_response_confidence(
+        entity_resolved=bool(result.entity_focus),
+        evidence_count=len(result.evidence),
+        graph_node_count=gc.get("node_count", 0),
+        metrics_available=bool(mc),
+    )
+
     return {
         "narrative": narrative,
         "intent": intent,
         "data": _enrich_result(result, db),
+        "confidence": confidence,
     }
 
 
@@ -807,9 +817,18 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     # Build a comparison table so the frontend shows DataTable + CSV export
     comparison_table = build_comparison_table(resolved, metrics_comp)
 
+    from services.chat_handlers.formatting import compute_response_confidence
+    confidence = compute_response_confidence(
+        entity_resolved=len(resolved) >= 2,
+        evidence_count=sum(len(r.get("evidence", [])) for r in resolved),
+        graph_node_count=0,
+        metrics_available=bool(metrics_comp),
+    )
+
     return {
         "narrative": narrative,
         "intent": "compare",
+        "confidence": confidence,
         "data": normalized_data,
         "table_data": comparison_table,
     }
@@ -915,9 +934,16 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
         "title": "Competitive Landscape",
     }
 
+    from services.chat_handlers.formatting import compute_response_confidence
+    confidence = compute_response_confidence(
+        entity_resolved=False, evidence_count=0,
+        graph_node_count=0, metrics_available=bool(segments),
+    )
+
     return {
         "narrative": narrative,
         "intent": "landscape",
+        "confidence": confidence,
         "data": {
             "question": question,
             "evidence": [],
@@ -1070,9 +1096,16 @@ def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesize
         "title": f"Pipeline Strength{' — ' + ta if ta else ''}",
     }
 
+    from services.chat_handlers.formatting import compute_response_confidence
+    confidence = compute_response_confidence(
+        entity_resolved=False, evidence_count=0,
+        graph_node_count=0, metrics_available=bool(pipelines),
+    )
+
     return {
         "narrative": narrative,
         "intent": "pipeline",
+        "confidence": confidence,
         "data": {
             "question": f"Pipeline {'for ' + ta if ta else 'overview'}",
             "evidence": [],

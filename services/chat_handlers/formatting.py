@@ -357,6 +357,54 @@ def to_number(value) -> Optional[float]:
         return None
 
 
+# ── Confidence scoring ──
+
+
+def compute_response_confidence(
+    entity_resolved: bool = False,
+    entity_match_score: float | None = None,
+    evidence_count: int = 0,
+    graph_node_count: int = 0,
+    metrics_available: bool = False,
+    graph_truncated: bool = False,
+) -> float:
+    """Compute response confidence (0.0-1.0) from data quality signals.
+
+    Components:
+    - Entity resolution (0-0.3): resolution success × match quality
+    - Evidence depth (0-0.3): ≥10=0.3, ≥5=0.2, ≥1=0.1
+    - Graph context (0-0.2): ≥20 nodes=0.2, ≥5=0.1, truncated=-0.05
+    - Metrics available (0-0.2)
+    """
+    score = 0.0
+
+    # Entity resolution (0-0.3)
+    if entity_resolved:
+        score += 0.3 * (entity_match_score if entity_match_score is not None else 0.8)
+
+    # Evidence depth (0-0.3)
+    if evidence_count >= 10:
+        score += 0.3
+    elif evidence_count >= 5:
+        score += 0.2
+    elif evidence_count >= 1:
+        score += 0.1
+
+    # Graph context (0-0.2)
+    if graph_node_count >= 20:
+        score += 0.2
+    elif graph_node_count >= 5:
+        score += 0.1
+    if graph_truncated:
+        score -= 0.05
+
+    # Metrics (0-0.2)
+    if metrics_available:
+        score += 0.2
+
+    return round(min(1.0, max(0.0, score)), 2)
+
+
 # ── Private chart builders ──
 
 def _to_number(value) -> Optional[float]:

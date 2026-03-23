@@ -288,3 +288,108 @@ class PharmaMetrics:
                 results[view] = f"error: {e}"
                 logger.warning("Failed to refresh %s: %s", view, e)
         return results
+
+
+# ── Real-time fallback functions (module-level, used when MVs are stale) ──
+
+
+def realtime_competitive_landscape(db, topic: str, limit: int = 30) -> list[dict]:
+    """Compute competitive landscape from base tables (not materialized views).
+
+    Groups drugs by mechanism + therapeutic area, counting drugs and trials.
+    Used as fallback when mv_competitive_landscape returns sparse results.
+    """
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT
+                m.name AS mechanism_name,
+                ta.name AS therapeutic_area,
+                COUNT(DISTINCT d.id) AS drug_count,
+                COUNT(DISTINCT ct.id) AS trial_count,
+                COUNT(DISTINCT ct.id) FILTER (WHERE ct.status IN ('RECRUITING', 'ACTIVE_NOT_RECRUITING')) AS active_trial_count,
+                COALESCE(SUM(
+                    CASE ct.phase
+                        WHEN 'Phase 1' THEN 1 WHEN 'Phase 1/Phase 2' THEN 1.5
+                        WHEN 'Phase 2' THEN 2 WHEN 'Phase 2/Phase 3' THEN 3
+                        WHEN 'Phase 3' THEN 4 WHEN 'Phase 4' THEN 1
+                        ELSE 0.5
+                    END
+                ), 0) AS total_pipeline_score
+            FROM drugs d
+            JOIN mechanisms_of_action m ON d.mechanism_id = m.id
+            JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
+            LEFT JOIN entity_links el ON el.target_entity_id = d.id::text
+                AND el.target_entity_type = 'drug' AND el.link_type = 'INVESTIGATES'
+            LEFT JOIN clinical_trials ct ON ct.id = el.source_entity_id
+            WHERE d.record_status IS DISTINCT FROM 'excluded'
+              AND d.record_status IS DISTINCT FROM 'merged'
+              AND (LOWER(m.name) ILIKE %s OR LOWER(ta.name) ILIKE %s)
+            GROUP BY m.name, ta.name
+            ORDER BY total_pipeline_score DESC
+            LIMIT %s
+            """,
+            [f"%{topic.lower()}%", f"%{topic.lower()}%", limit],
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning("realtime_competitive_landscape failed: %s", e)
+        return []
+
+
+def realtime_pipeline_strength(db, therapeutic_area: str, limit: int = 20) -> list[dict]:
+    """Compute drug pipeline strength from base tables (not materialized views).
+
+    Used as fallback when mv_drug_pipeline_strength returns sparse results.
+    """
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT
+                d.generic_name AS drug_name,
+                d.id::text AS drug_id,
+                COUNT(DISTINCT ct.id) AS total_trials,
+                COUNT(DISTINCT ct.id) FILTER (WHERE ct.status IN ('RECRUITING', 'ACTIVE_NOT_RECRUITING')) AS active_trials,
+                COUNT(ct.id) FILTER (WHERE ct.phase = 'Phase 1') AS p1_count,
+                COUNT(ct.id) FILTER (WHERE ct.phase LIKE 'Phase 2%') AS p2_count,
+                COUNT(ct.id) FILTER (WHERE ct.phase LIKE 'Phase 3%') AS p3_count,
+                COUNT(ct.id) FILTER (WHERE ct.phase = 'Phase 4') AS p4_count,
+                COALESCE(SUM(
+                    CASE ct.phase
+                        WHEN 'Phase 1' THEN 1 WHEN 'Phase 1/Phase 2' THEN 1.5
+                        WHEN 'Phase 2' THEN 2 WHEN 'Phase 2/Phase 3' THEN 3
+                        WHEN 'Phase 3' THEN 4 WHEN 'Phase 4' THEN 1
+                        ELSE 0.5
+                    END
+                ), 0) AS pipeline_score
+            FROM drugs d
+            JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
+            LEFT JOIN entity_links el ON el.target_entity_id = d.id::text
+                AND el.target_entity_type = 'drug' AND el.link_type = 'INVESTIGATES'
+            LEFT JOIN clinical_trials ct ON ct.id = el.source_entity_id
+            WHERE d.record_status IS DISTINCT FROM 'excluded'
+              AND d.record_status IS DISTINCT FROM 'merged'
+              AND LOWER(ta.name) ILIKE %s
+            GROUP BY d.generic_name, d.id
+            HAVING COUNT(DISTINCT ct.id) > 0
+            ORDER BY pipeline_score DESC
+            LIMIT %s
+            """,
+            [f"%{therapeutic_area.lower()}%", limit],
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning("realtime_pipeline_strength failed: %s", e)
+        return []
+
+
+def competitive_landscape_with_fallback(
+    db, topic: str, mv_results: list[dict] | None = None,
+) -> list[dict]:
+    """Use MV results if sufficient (>2 rows), otherwise fall back to realtime.
+
+    If mv_results is None, caller should provide their own MV query.
+    """
+    if mv_results and len(mv_results) > 2:
+        return mv_results
+    return realtime_competitive_landscape(db, topic)
