@@ -191,6 +191,7 @@ class PharmaMetrics:
         therapeutic_area_id: Optional[str] = None,
         mechanism_id: Optional[str] = None,
         topic: Optional[str] = None,
+        original_topic: Optional[str] = None,
         limit: int = 50,
     ) -> list[dict]:
         """Drugs per mechanism per therapeutic area with pipeline depth.
@@ -244,7 +245,14 @@ class PharmaMetrics:
             # Fallback: if MV returns sparse results, try real-time query
             if len(rows) <= 2 and topic:
                 logger.info("MV returned %d rows for '%s', trying realtime fallback", len(rows), topic)
+                # Try expanded topic first
                 rt_rows = realtime_competitive_landscape(self.db, topic, limit=limit)
+                # If original_topic differs from expanded topic, also try the short form
+                if len(rt_rows) <= len(rows) and original_topic and original_topic.lower() != topic.lower():
+                    logger.info("Expanded topic '%s' returned %d rows, trying original '%s'", topic, len(rt_rows), original_topic)
+                    rt_original = realtime_competitive_landscape(self.db, original_topic, limit=limit)
+                    if len(rt_original) > len(rt_rows):
+                        rt_rows = rt_original
                 if len(rt_rows) > len(rows):
                     return rt_rows
 
@@ -254,7 +262,10 @@ class PharmaMetrics:
             # Fallback to realtime on MV failure
             if topic:
                 logger.info("MV failed, trying realtime fallback for '%s'", topic)
-                return realtime_competitive_landscape(self.db, topic, limit=limit)
+                rt_rows = realtime_competitive_landscape(self.db, topic, limit=limit)
+                if not rt_rows and original_topic and original_topic.lower() != topic.lower():
+                    rt_rows = realtime_competitive_landscape(self.db, original_topic, limit=limit)
+                return rt_rows
             return []
 
     def company_portfolio(

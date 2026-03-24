@@ -496,6 +496,7 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     etype = resolved["entity_type"]
     eid = resolved["entity_id"]
     label = resolved["label"]
+    match_score = resolved.get("match_score")
 
     result = engine.entity_dossier(eid, etype)
 
@@ -696,6 +697,15 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
 
     # ── LLM synthesis (with template fallback) ──
     fallback = " ".join(template_parts)
+
+    # Build extra_context: include fuzzy match warning + conversation context
+    dossier_extra_context = ""
+    if match_score is not None and match_score < 0.8:
+        dossier_extra_context += "[NOTE: Entity matched via fuzzy search — verify entity identity]\n"
+    if conv_context:
+        dossier_extra_context += conv_context
+    dossier_extra_context = dossier_extra_context.strip() or None
+
     narrative = llm.synthesize_dossier(
         question=f"Tell me about {label}",
         entity_name=label,
@@ -705,12 +715,24 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         graph_summary=graph_summary,
         evidence_snippets=evidence_snippets,
         fallback_narrative=fallback,
-        extra_context=conv_context if conv_context else None,
+        extra_context=dossier_extra_context,
+    )
+
+    # ── Confidence scoring with match_score ──
+    from services.chat_handlers.formatting import compute_response_confidence
+    gc = result.graph_context
+    confidence = compute_response_confidence(
+        entity_resolved=True,
+        entity_match_score=match_score,
+        evidence_count=len(result.evidence),
+        graph_node_count=gc.get("node_count", 0) if gc else 0,
+        metrics_available=bool(result.metrics_context),
     )
 
     return {
         "narrative": narrative,
         "intent": "dossier",
+        "confidence": confidence,
         "data": _enrich_result(result, db),
     }
 
@@ -843,7 +865,11 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
 def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "") -> dict:
     topic = params.get("topic", "")
     expanded_topic = expand_topic_synonyms(topic) if topic else ""
-    segments = metrics_svc.competitive_landscape(topic=expanded_topic if expanded_topic else None, limit=30)
+    segments = metrics_svc.competitive_landscape(
+        topic=expanded_topic if expanded_topic else None,
+        original_topic=topic if topic and expanded_topic != topic else None,
+        limit=30,
+    )
     if not segments:
         return {"narrative": "No competitive landscape data available.", "intent": "landscape", "data": None}
 

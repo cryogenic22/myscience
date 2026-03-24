@@ -7,7 +7,7 @@ When MVs return sparse results, fall back to real-time SQL against base tables.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch, call
 
 
 class TestRealtimeLandscape:
@@ -123,3 +123,115 @@ class TestMVFallback:
         segments = competitive_landscape_with_fallback(db, "GLP-1", mv_results=mv_results)
         # Should have called realtime
         assert db.fetch_all.call_count >= 1
+
+
+class TestLandscapeTriesBothTopics:
+    """Verify competitive_landscape tries both expanded and original topic."""
+
+    def test_landscape_tries_both_expanded_and_original(self):
+        """When MV is sparse and expanded topic returns nothing, try original short form."""
+        from services.metrics import PharmaMetrics
+
+        db = MagicMock()
+        config = MagicMock()
+        metrics = PharmaMetrics(db, config)
+
+        # MV query returns sparse results (1 row)
+        mv_sparse = [
+            {"mechanism_name": "GLP-1 RA", "therapeutic_area": "Diabetes",
+             "drug_count": 1, "trial_count": 2, "active_trial_count": 1,
+             "total_pipeline_score": 5.0, "market_share_pct": 100.0},
+        ]
+
+        # Realtime for expanded "Glucagon-Like Peptide-1" returns nothing
+        rt_expanded_empty = []
+
+        # Realtime for original "GLP-1" returns good results
+        rt_original_good = [
+            {"mechanism_name": "GLP-1 Receptor Agonists", "therapeutic_area": "Diabetes",
+             "drug_count": 5, "trial_count": 20, "active_trial_count": 8,
+             "total_pipeline_score": 42.5},
+            {"mechanism_name": "GLP-1 Receptor Agonists", "therapeutic_area": "Obesity",
+             "drug_count": 3, "trial_count": 10, "active_trial_count": 4,
+             "total_pipeline_score": 22.0},
+        ]
+
+        # db.fetch_all call sequence: MV query, then realtime(expanded), then realtime(original)
+        db.fetch_all.side_effect = [mv_sparse, rt_expanded_empty, rt_original_good]
+
+        result = metrics.competitive_landscape(
+            topic="Glucagon-Like Peptide-1",
+            original_topic="GLP-1",
+            limit=30,
+        )
+
+        # Should have fallen through to the original topic and returned those results
+        assert len(result) >= 2
+        assert result[0]["mechanism_name"] == "GLP-1 Receptor Agonists"
+        # Should have made 3 db calls: MV + expanded realtime + original realtime
+        assert db.fetch_all.call_count == 3
+
+    def test_landscape_skips_original_when_expanded_works(self):
+        """When expanded topic returns good results, don't try original."""
+        from services.metrics import PharmaMetrics
+
+        db = MagicMock()
+        config = MagicMock()
+        metrics = PharmaMetrics(db, config)
+
+        # MV query returns sparse
+        mv_sparse = [
+            {"mechanism_name": "GLP-1 RA", "therapeutic_area": "Diabetes",
+             "drug_count": 1, "trial_count": 2, "active_trial_count": 1,
+             "total_pipeline_score": 5.0, "market_share_pct": 100.0},
+        ]
+
+        # Realtime for expanded returns good results
+        rt_expanded_good = [
+            {"mechanism_name": "GLP-1 Receptor Agonists", "therapeutic_area": "Diabetes",
+             "drug_count": 5, "trial_count": 20, "active_trial_count": 8,
+             "total_pipeline_score": 42.5},
+            {"mechanism_name": "GLP-1 Receptor Agonists", "therapeutic_area": "Obesity",
+             "drug_count": 3, "trial_count": 10, "active_trial_count": 4,
+             "total_pipeline_score": 22.0},
+            {"mechanism_name": "GLP-1 Receptor Agonists", "therapeutic_area": "Heart Failure",
+             "drug_count": 2, "trial_count": 5, "active_trial_count": 2,
+             "total_pipeline_score": 10.0},
+        ]
+
+        db.fetch_all.side_effect = [mv_sparse, rt_expanded_good]
+
+        result = metrics.competitive_landscape(
+            topic="Glucagon-Like Peptide-1",
+            original_topic="GLP-1",
+            limit=30,
+        )
+
+        # Should use expanded results and not try original
+        assert len(result) == 3
+        # Only 2 db calls: MV + expanded realtime (no original needed)
+        assert db.fetch_all.call_count == 2
+
+    def test_landscape_no_original_when_same_as_topic(self):
+        """When original_topic == topic, don't double-query."""
+        from services.metrics import PharmaMetrics
+
+        db = MagicMock()
+        config = MagicMock()
+        metrics = PharmaMetrics(db, config)
+
+        mv_sparse = [{"mechanism_name": "X", "therapeutic_area": "Y",
+                       "drug_count": 1, "trial_count": 1, "active_trial_count": 0,
+                       "total_pipeline_score": 1.0, "market_share_pct": 100.0}]
+        rt_empty = []
+
+        db.fetch_all.side_effect = [mv_sparse, rt_empty]
+
+        result = metrics.competitive_landscape(
+            topic="diabetes",
+            original_topic="diabetes",
+            limit=30,
+        )
+
+        # original_topic == topic (case-insensitive), so no third query
+        assert db.fetch_all.call_count == 2
