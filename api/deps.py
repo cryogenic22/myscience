@@ -132,6 +132,12 @@ def get_workspace() -> ChatWorkspaceService:
 
 
 @lru_cache()
+def get_fair_scorer():
+    from services.fair_scorer import FAIRScorer
+    return FAIRScorer(get_db())
+
+
+@lru_cache()
 def get_unified_handler():
     """Build unified handler with CTX pipeline. Returns None if unavailable."""
     try:

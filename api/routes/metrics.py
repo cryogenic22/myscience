@@ -5,8 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
-from api.deps import get_db, get_metrics
+from api.deps import get_db, get_fair_scorer, get_metrics
 from db import Database
+from services.fair_scorer import FAIRScorer
 from services.metrics import PharmaMetrics
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -138,3 +139,55 @@ def ctx_telemetry(db: Database = Depends(get_db)):
            LIMIT 30"""
     )
     return {"telemetry": rows}
+
+
+@router.get("/fair-score")
+def fair_score(scorer: FAIRScorer = Depends(get_fair_scorer)):
+    """Latest FAIR data quality snapshot with trend (last 5 snapshots).
+
+    Returns the most recent computed snapshot plus historical trend
+    for tracking quality improvements over time.
+    """
+    latest = scorer.latest()
+    trend = scorer.trend(n=5)
+    return {
+        "latest": latest,
+        "trend": trend,
+    }
+
+
+@router.post("/fair-score/compute")
+def compute_fair_score(scorer: FAIRScorer = Depends(get_fair_scorer)):
+    """Compute a fresh FAIR score, persist it, and return the snapshot.
+
+    Use this after pipeline runs or data backfills to record a new
+    quality checkpoint.
+    """
+    snapshot = scorer.compute()
+    try:
+        scorer.persist(snapshot)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to persist FAIR snapshot: %s", exc)
+    return snapshot
+
+
+@router.post("/refresh-views")
+def refresh_views_with_timestamp(
+    svc: PharmaMetrics = Depends(get_metrics),
+    db: Database = Depends(get_db),
+):
+    """Refresh all materialized views and log timestamp.
+
+    Calls PharmaMetrics.refresh() and records when the refresh occurred.
+    """
+    import logging
+    from datetime import datetime, timezone
+
+    result = svc.refresh()
+    ts = datetime.now(timezone.utc).isoformat()
+    logging.getLogger(__name__).info("Materialized views refreshed at %s", ts)
+    return {
+        "refreshed_at": ts,
+        "views": result,
+    }

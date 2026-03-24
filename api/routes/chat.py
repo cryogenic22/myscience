@@ -43,6 +43,7 @@ from services.workspace import ChatWorkspaceService
 
 from services.chat_handlers import (
     Intent,
+    detect_compound_intent,
     detect_intent,
     build_conversation_context,
     resolve_followup_question,
@@ -50,10 +51,8 @@ from services.chat_handlers import (
     build_visualizations,
     coerce_bool,
     generate_followups,
-    normalize_scope,
-    safe_filename,
-    sanitize_transcript,
     handle_compare,
+    handle_compound,
     handle_deep_research,
     handle_dossier,
     handle_general,
@@ -62,6 +61,9 @@ from services.chat_handlers import (
     handle_portfolio,
     handle_structured_query,
     handle_team_eval,
+    normalize_scope,
+    safe_filename,
+    sanitize_transcript,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +75,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/ctx-benchmark")
 def ctx_benchmark(body: dict):
-    """Run A/B benchmark comparing CTX vs legacy context pipelines.
+    """Run benchmark comparing CTX vs legacy context pipelines.
 
     Send any chat-like payload with question + optional data,
     returns both pipelines' context text and metrics without calling the LLM.
@@ -87,8 +89,7 @@ def ctx_benchmark(body: dict):
     graph_summary = body.get("graph_summary")
     evidence = body.get("evidence_snippets", [])
 
-    builder = CTXContextBuilder(mode="both")
-    ab = builder.build(
+    build_args = dict(
         question=question,
         intent=intent,
         entity_info=entity_info,
@@ -97,20 +98,33 @@ def ctx_benchmark(body: dict):
         evidence_snippets=evidence,
     )
 
+    ctx_result = CTXContextBuilder(mode="ctx").build(**build_args)
+    legacy_result = CTXContextBuilder(mode="legacy").build(**build_args)
+
+    token_savings_pct = 0.0
+    if legacy_result.tokens > 0:
+        token_savings_pct = round((1 - ctx_result.tokens / legacy_result.tokens) * 100, 1)
+
     return {
-        "summary": ab.summary,
+        "summary": {
+            "ctx_tokens": ctx_result.tokens,
+            "ctx_build_ms": round(ctx_result.build_time_ms, 2),
+            "legacy_tokens": legacy_result.tokens,
+            "legacy_build_ms": round(legacy_result.build_time_ms, 2),
+            "token_savings_pct": token_savings_pct,
+        },
         "ctx": {
-            "text": ab.active.text,
-            "tokens": ab.active.tokens,
-            "source_tokens": ab.active.source_tokens,
-            "compression_ratio": ab.active.compression_ratio,
-            "build_time_ms": round(ab.active.build_time_ms, 2),
-            "sections": ab.active.sections,
+            "text": ctx_result.text,
+            "tokens": ctx_result.tokens,
+            "source_tokens": ctx_result.source_tokens,
+            "compression_ratio": ctx_result.compression_ratio,
+            "build_time_ms": round(ctx_result.build_time_ms, 2),
+            "sections": ctx_result.sections,
         },
         "legacy": {
-            "text": ab.comparison.text if ab.comparison else None,
-            "tokens": ab.comparison.tokens if ab.comparison else None,
-            "build_time_ms": round(ab.comparison.build_time_ms, 2) if ab.comparison else None,
+            "text": legacy_result.text,
+            "tokens": legacy_result.tokens,
+            "build_time_ms": round(legacy_result.build_time_ms, 2),
         },
     }
 
@@ -181,6 +195,32 @@ def chat(
             except Exception as e:
                 logger.warning("Unified handler error, falling back to legacy: %s", e)
 
+    # Compound intent detection: "Show Pfizer portfolio and compare their top 3 drugs"
+    if intent not in (Intent.DEEP_RESEARCH, Intent.TEAM_EVAL):
+        compound = detect_compound_intent(resolved_question)
+        if len(compound) > 1:
+            try:
+                logger.info("Compound intents detected: %s", [c[0] for c in compound])
+                payload = handle_compound(
+                    compound,
+                    question=resolved_question,
+                    db=db,
+                    engine=engine,
+                    metrics_svc=metrics_svc,
+                    llm=llm,
+                    conv_context=conv_context,
+                )
+                payload = apply_chat_modes(payload, include_graph, include_metrics, source_strict)
+                payload["visualizations"] = build_visualizations(payload.get("data"))
+                payload["followup_suggestions"] = generate_followups(
+                    question, payload.get("intent", "general"), payload.get("narrative", ""), {},
+                )
+                memory.add_exchange(question, payload.get("narrative", ""))
+                save_conversation_memory(session_id, memory, db)
+                return payload
+            except Exception as e:
+                logger.warning("Compound handler error, falling back to single intent: %s", e)
+
     try:
         if intent == Intent.TEAM_EVAL:
             payload = handle_team_eval(resolved_question, engine, db, llm)
@@ -236,7 +276,7 @@ def chat(
 
         # Fire-and-forget query telemetry for Data Steward signal collection
         try:
-            from services.query_telemetry import log_query_event, detect_query_gap
+            from services.telemetry import log_query_event, detect_query_gap
             latency_ms = (time.monotonic() - t0) * 1000
             data = payload.get("data") or {}
             entity_focus = data.get("entity_focus") or []
