@@ -1,13 +1,14 @@
-"""Graph traversal API routes."""
+"""Graph traversal and analytics API routes."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
-from api.deps import get_graph
+from api.deps import get_graph, get_graph_analytics
 from api.schemas import SubgraphResponse, GraphNodeResponse, GraphEdgeResponse, EntitySummaryResponse
 from services.graph import GraphTraversal
+from services.graph_analytics import GraphAnalytics
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -85,3 +86,60 @@ def path_between(
         ],
         "hops": len(edges),
     }
+
+
+# ── Graph analytics endpoints ──
+
+
+@router.get("/analytics/influence/{entity_id}")
+def entity_influence(
+    entity_id: str,
+    entity_type: str = Query("drug", description="Entity type"),
+    svc: GraphAnalytics = Depends(get_graph_analytics),
+):
+    """PageRank-inspired influence score (0-1) for an entity."""
+    score = svc.entity_influence(entity_id, entity_type)
+    return {
+        "entity_id": entity_id,
+        "entity_type": entity_type,
+        "influence": round(score, 4),
+    }
+
+
+@router.get("/analytics/clusters")
+def competitive_clusters(
+    mechanism_id: Optional[str] = Query(None, description="Filter by mechanism UUID"),
+    therapeutic_area_id: Optional[str] = Query(None, description="Filter by TA UUID"),
+    svc: GraphAnalytics = Depends(get_graph_analytics),
+):
+    """Competitive clusters: drugs grouped by shared mechanism + TA."""
+    clusters = svc.competitive_clusters(
+        mechanism_id=mechanism_id,
+        therapeutic_area_id=therapeutic_area_id,
+    )
+    return {"clusters": clusters, "count": len(clusters)}
+
+
+@router.get("/analytics/centrality")
+def entity_centrality(
+    entity_type: str = Query("drug", description="Entity type to rank"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    svc: GraphAnalytics = Depends(get_graph_analytics),
+):
+    """Top entities by influence score for a given type."""
+    results = svc.entity_centrality_batch(entity_type=entity_type, limit=limit)
+    return {"entities": results, "count": len(results)}
+
+
+@router.get("/analytics/weighted-path")
+def weighted_path(
+    source_id: str = Query(..., description="Source entity UUID"),
+    target_id: str = Query(..., description="Target entity UUID"),
+    max_hops: int = Query(4, ge=1, le=6, description="Maximum path length"),
+    svc: GraphAnalytics = Depends(get_graph_analytics),
+):
+    """Confidence-weighted path between two entities."""
+    path = svc.weighted_path(source_id, target_id, max_hops=max_hops)
+    if not path:
+        return {"path": [], "message": "No path found", "hops": 0}
+    return {"path": path, "hops": len(path)}

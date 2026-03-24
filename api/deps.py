@@ -15,6 +15,7 @@ from db import Database
 from config import config
 from services.search import HybridSearch
 from services.graph import GraphTraversal
+from services.graph_analytics import GraphAnalytics
 from services.metrics import PharmaMetrics
 from services.query_engine import QueryEngine
 from services.llm import LLMSynthesizer
@@ -95,6 +96,11 @@ def get_search() -> HybridSearch:
 @lru_cache()
 def get_graph() -> GraphTraversal:
     return GraphTraversal(get_db(), config)
+
+
+@lru_cache()
+def get_graph_analytics() -> GraphAnalytics:
+    return GraphAnalytics(get_db())
 
 
 @lru_cache()
