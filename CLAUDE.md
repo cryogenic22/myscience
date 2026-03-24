@@ -85,7 +85,7 @@ Read these before writing ANY code:
 ### ACTIVE in production:
 - `CTXContextBuilder` (services/ctx_context.py) — assembles LLM context in CTX L2 format
 - `ctx_evidence.pack_evidence()` — compresses evidence snippets
-- A/B benchmarking in "both" mode (default) — logs compression metrics
+- CTX is the default context format — logs compression metrics via telemetry
 - `/chat/ctx-benchmark` endpoint for dev testing
 
 ### OPT-IN (set MZ_UNIFIED_HANDLER=true):
@@ -111,7 +111,7 @@ Read these before writing ANY code:
 | `DATABASE_URL` | — | Railway PostgreSQL connection (preferred over MZ_DB_* vars) |
 | `OPENAI_API_KEY` | — | Embeddings + LLM |
 | `MZ_UNIFIED_HANDLER` | `false` | Enable CTX pipeline for chat |
-| `MZ_CTX_MODE` | `both` | CTX context mode: "ctx", "legacy", "both" |
+| `MZ_CTX_MODE` | `ctx` | CTX context mode: "ctx" (default), "legacy" (debug fallback) |
 | `MZ_DB_PORT` | `5432` | Database port (local dev) |
 | `PORT` | `8020` | HTTP server port |
 

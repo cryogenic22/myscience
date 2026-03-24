@@ -283,7 +283,7 @@ def _build_context_block(
     graph_summary: Optional[dict] = None,
     evidence_snippets: Optional[list[str]] = None,
     extra_context: Optional[str] = None,
-    ctx_mode: str = "both",
+    ctx_mode: str = "ctx",
 ) -> str:
     """Build a structured context block for the LLM.
 
@@ -293,7 +293,7 @@ def _build_context_block(
     3. Append few-shot exemplars for citation density
     4. Fall back to legacy flat format on failure
 
-    ctx_mode: "ctx" | "legacy" | "both" (default: "both" for benchmarking)
+    ctx_mode: "ctx" (default) | "legacy"
     """
     # Step 1: Try to compress evidence before context assembly
     snippets_for_ctx, compressed_evidence = _compress_evidence(
@@ -311,7 +311,7 @@ def _build_context_block(
     try:
         from services.ctx_context import CTXContextBuilder
         builder = CTXContextBuilder(mode=ctx_mode)
-        ab_result = builder.build(
+        ctx_result = builder.build(
             question=question,
             intent=intent,
             entity_info=entity_info,
@@ -320,8 +320,6 @@ def _build_context_block(
             evidence_snippets=snippets_for_ctx,
             extra_context=extra_context,
         )
-        if ab_result.comparison:
-            logger.info("Context A/B: %s", ab_result.summary)
 
         # Fire-and-forget telemetry
         try:
@@ -331,16 +329,15 @@ def _build_context_block(
                 db=get_db(),
                 question=question,
                 intent=intent,
-                ctx_tokens=ab_result.active.tokens,
-                legacy_tokens=ab_result.comparison.tokens if ab_result.comparison else None,
-                compression_ratio=ab_result.active.compression_ratio,
-                build_time_ms=ab_result.active.build_time_ms,
-                mode=ab_result.active.mode,
+                ctx_tokens=ctx_result.tokens,
+                compression_ratio=ctx_result.compression_ratio,
+                build_time_ms=ctx_result.build_time_ms,
+                mode=ctx_result.mode,
             )
         except Exception:
             pass  # telemetry must never break the main flow
 
-        context = ab_result.active.text
+        context = ctx_result.text
     except Exception as e:
         logger.warning("CTX context builder failed, falling back to legacy: %s", e)
         # Fallback to legacy inline
@@ -451,7 +448,7 @@ class LLMSynthesizer:
         if not self.enabled:
             return fallback_narrative
 
-        ctx_mode = getattr(self.config.llm, "ctx_mode", "both")
+        ctx_mode = getattr(self.config.llm, "ctx_mode", "ctx")
         context = _build_context_block(
             question=question,
             intent=intent,
@@ -517,7 +514,7 @@ class LLMSynthesizer:
         if not self.enabled:
             return
 
-        ctx_mode = getattr(self.config.llm, "ctx_mode", "both")
+        ctx_mode = getattr(self.config.llm, "ctx_mode", "ctx")
         context = _build_context_block(
             question=question,
             intent=intent,

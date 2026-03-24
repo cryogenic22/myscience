@@ -3,15 +3,15 @@
 Replaces the ad-hoc _build_context_block with structured, multi-resolution
 CTX documents that exploit salience ordering and lost-in-middle mitigation.
 
-Provides A/B benchmarking: both CTX and legacy context pipelines can run
-side-by-side, logging token counts, compression ratios, and latency for
-comparison. Toggle via config or per-request flag.
+The threshold gate (MIN_TOKENS_FOR_CTX) handles small payloads by falling
+back to legacy format automatically. Set MZ_CTX_MODE=legacy to force the
+old format for debugging.
 
 Usage:
-    builder = CTXContextBuilder(mode="ctx")  # or "legacy" or "both"
+    builder = CTXContextBuilder(mode="ctx")  # or "legacy"
     result = builder.build(question, intent, metrics=..., evidence=...)
-    # result.ctx_text  — the assembled context string
-    # result.metrics   — token counts, compression ratio, latency
+    # result.text    — the assembled context string
+    # result.tokens  — estimated token count
 """
 
 from __future__ import annotations
@@ -67,33 +67,6 @@ class ContextResult:
     compression_ratio: float = 1.0     # source_tokens / tokens
     build_time_ms: float = 0.0         # Assembly latency
     sections: int = 0                  # Number of CTX sections (ctx mode)
-
-
-@dataclass
-class ABResult:
-    """Side-by-side comparison of CTX vs legacy pipelines."""
-    active: ContextResult              # The one actually sent to LLM
-    comparison: Optional[ContextResult] = None  # The other pipeline (for logging)
-
-    @property
-    def summary(self) -> dict:
-        """Summary dict for logging / API response."""
-        out = {
-            "active_mode": self.active.mode,
-            "active_tokens": self.active.tokens,
-            "active_build_ms": round(self.active.build_time_ms, 2),
-        }
-        if self.comparison:
-            out["comparison_mode"] = self.comparison.mode
-            out["comparison_tokens"] = self.comparison.tokens
-            out["comparison_build_ms"] = round(self.comparison.build_time_ms, 2)
-            if self.comparison.tokens > 0:
-                out["token_savings_pct"] = round(
-                    (1 - self.active.tokens / self.comparison.tokens) * 100, 1
-                ) if self.active.mode == "ctx" else round(
-                    (1 - self.comparison.tokens / self.active.tokens) * 100, 1
-                )
-        return out
 
 
 # ── Legacy context builder (current approach) ──
@@ -369,12 +342,11 @@ def _flatten_metrics(obj: dict, children: list, max_depth: int = 2, prefix: str 
 # ── Main builder class ──
 
 class CTXContextBuilder:
-    """A/B-capable context builder for LLM synthesis.
+    """Context builder for LLM synthesis.
 
     Modes:
-        "ctx"    — Use CTX pipeline, log metrics
-        "legacy" — Use legacy pipeline (current behavior)
-        "both"   — Run both, use CTX for LLM, log comparison metrics
+        "ctx"    — Use CTX pipeline (default), log metrics
+        "legacy" — Use legacy flat-JSON pipeline (for debugging)
     """
 
     def __init__(self, mode: str = "ctx"):
@@ -392,52 +364,27 @@ class CTXContextBuilder:
         graph_summary: Optional[dict] = None,
         evidence_snippets: Optional[list[str]] = None,
         extra_context: Optional[str] = None,
-    ) -> ABResult:
-        """Build context and return A/B result with benchmarking metrics.
+    ) -> ContextResult:
+        """Build context and return a ContextResult.
 
         Respects MIN_TOKENS_FOR_CTX threshold — small payloads always use
         legacy format regardless of mode setting.
         """
 
         if self.mode == "legacy":
-            result = _build_legacy_context(
-                question, intent, entity_info, metrics,
-                graph_summary, evidence_snippets, extra_context,
-            )
-            return ABResult(active=result)
-
-        elif self.mode == "ctx":
-            result = _build_ctx_context(
-                question, intent, entity_info, metrics,
-                graph_summary, evidence_snippets, extra_context,
-            )
-            logger.info(
-                "CTX context: %d tokens (from ~%d source), ratio %.1fx, %.1fms, %d sections",
-                result.tokens, result.source_tokens, result.compression_ratio,
-                result.build_time_ms, result.sections,
-            )
-            return ABResult(active=result)
-
-        else:  # "both" — A/B benchmarking mode
-            ctx_result = _build_ctx_context(
-                question, intent, entity_info, metrics,
-                graph_summary, evidence_snippets, extra_context,
-            )
-            legacy_result = _build_legacy_context(
+            return _build_legacy_context(
                 question, intent, entity_info, metrics,
                 graph_summary, evidence_snippets, extra_context,
             )
 
-            savings = 0
-            if legacy_result.tokens > 0:
-                savings = round((1 - ctx_result.tokens / legacy_result.tokens) * 100, 1)
-
-            logger.info(
-                "CTX A/B: ctx=%d tokens (%.1fms) vs legacy=%d tokens (%.1fms) → %+.1f%% tokens",
-                ctx_result.tokens, ctx_result.build_time_ms,
-                legacy_result.tokens, legacy_result.build_time_ms,
-                -savings,
-            )
-
-            # Use CTX as active, legacy as comparison
-            return ABResult(active=ctx_result, comparison=legacy_result)
+        # Default: CTX mode
+        result = _build_ctx_context(
+            question, intent, entity_info, metrics,
+            graph_summary, evidence_snippets, extra_context,
+        )
+        logger.info(
+            "CTX context: %d tokens (from ~%d source), ratio %.1fx, %.1fms, %d sections",
+            result.tokens, result.source_tokens, result.compression_ratio,
+            result.build_time_ms, result.sections,
+        )
+        return result

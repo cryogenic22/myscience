@@ -35,6 +35,50 @@ logger = logging.getLogger(__name__)
 _concept_registry = ConceptRegistry(auto_register=True)
 
 
+def _hydrate_dossier_ctx(entity_name: str, entity_type: str) -> Optional[str]:
+    """Try to hydrate entity context from the CTX corpus for richer dossier context.
+
+    Uses the unified handler's CTXQueryPipeline (if available) to retrieve
+    structured corpus sections for the entity. Returns a rendered context
+    string, or None if CTX hydration is unavailable or finds nothing.
+
+    This is a best-effort enrichment — failures are silently swallowed.
+    """
+    try:
+        from api.deps import get_unified_handler
+
+        handler = get_unified_handler()
+        if handler is None:
+            return None
+
+        pipeline = handler.pipeline
+
+        plan = pipeline.understand(f"Tell me about {entity_name}")
+        if not plan.entities_detected:
+            # Try with entity type prefix for better matching
+            plan = pipeline.understand(f"{entity_type} {entity_name}")
+        if not plan.entities_detected:
+            return None
+
+        retrieval = pipeline.retrieve(plan)
+        if not retrieval.ctx_sections:
+            return None
+
+        context_text = retrieval.render_context()
+        if not context_text or len(context_text) < 50:
+            return None
+
+        logger.debug(
+            "CTX hydration for %s (%s): %d tokens from %d sections",
+            entity_name, entity_type,
+            retrieval.token_count, len(retrieval.ctx_sections),
+        )
+        return f"CTX CORPUS CONTEXT:\n{context_text}"
+    except Exception as e:
+        logger.debug("CTX hydration unavailable for dossier: %s", e)
+        return None
+
+
 # ── Agent response helpers ──
 
 def _tool_result_value(result_obj, field: str, default=None):
@@ -717,11 +761,16 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
             "connected_entities": {k: v[:10] for k, v in nodes_by_type.items()},
         }
 
+    # ── CTX hydration — enrich context from CTX corpus if available ──
+    ctx_hydration_context = _hydrate_dossier_ctx(label, etype)
+
     # ── LLM synthesis (with template fallback) ──
     fallback = " ".join(template_parts)
 
-    # Build extra_context: include fuzzy match warning + conversation context + concept hints
+    # Build extra_context: include fuzzy match warning + conversation context + concept hints + CTX hydration
     dossier_extra_context = ""
+    if ctx_hydration_context:
+        dossier_extra_context += ctx_hydration_context + "\n"
     if match_score is not None and match_score < 0.8:
         dossier_extra_context += "[NOTE: Entity matched via fuzzy search — verify entity identity]\n"
     if conv_context:

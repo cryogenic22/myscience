@@ -141,8 +141,8 @@ class LLMConfig:
     max_tokens: int = int(os.getenv("MZ_LLM_MAX_TOKENS", "1024"))
     temperature: float = float(os.getenv("MZ_LLM_TEMPERATURE", "0.3"))
     enabled: bool = os.getenv("MZ_LLM_ENABLED", "true").lower() == "true"
-    # CTX context mode: "ctx" | "legacy" | "both" (A/B benchmarking)
-    ctx_mode: str = os.getenv("MZ_CTX_MODE", "both")
+    # CTX context mode: "ctx" (default) | "legacy" (fallback for debugging)
+    ctx_mode: str = os.getenv("MZ_CTX_MODE", "ctx")
 
 
 @dataclass
