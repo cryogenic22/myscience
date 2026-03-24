@@ -162,6 +162,38 @@ def list_signals(
         return {"signals": [], "count": 0}
 
 
+@router.get("/insights")
+def get_insights(
+    since_days: int = Query(7, ge=1, le=90),
+    limit: int = Query(20, ge=1, le=100),
+    db: Database = Depends(get_db),
+):
+    """Get proactive intelligence signals — safety, pipeline, competitive."""
+    try:
+        from services.insight_engine import InsightEngine
+        engine = InsightEngine(db)
+        insights = engine.scan(since_days=since_days)[:limit]
+        return {
+            "insights": [
+                {
+                    "type": i.type,
+                    "severity": i.severity,
+                    "title": i.title,
+                    "description": i.description,
+                    "entity_name": i.entity_name,
+                    "entity_type": i.entity_type,
+                    "metric_value": round(i.metric_value, 3) if i.metric_value is not None else None,
+                    "detected_at": i.detected_at.isoformat() if i.detected_at else None,
+                }
+                for i in insights
+            ],
+            "count": len(insights),
+        }
+    except Exception:
+        logger.exception("Failed to generate insights")
+        return {"insights": [], "count": 0}
+
+
 @router.get("/agents")
 def list_entity_agents():
     """List all entity-level agents with their configs."""
