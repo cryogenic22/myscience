@@ -255,8 +255,12 @@ def _format_query_result(intent: str, question: str, result, db: Database, llm: 
     else:
         parts.append("I searched the knowledge graph but found limited results. Try being more specific.")
 
-    if gc.get("node_count", 0) > 0:
-        parts.append(f"Graph context: {gc['node_count']} nodes, {gc['edge_count']} edges.")
+    # Pass connected entity names to LLM (not raw node/edge counts — user can't see those)
+    connected = gc.get("connected_entities", {})
+    if connected:
+        for etype, labels in connected.items():
+            if labels:
+                parts.append(f"Connected {etype}: {', '.join(str(l) for l in labels[:5])}")
 
     if mc:
         for eid, metrics in mc.items():
@@ -1254,3 +1258,120 @@ def handle_deep_research(
         },
         "visualizations": build_visualizations(enriched),
     }
+
+
+# ── Compound intent handler ──
+
+# Maps intent names to handler callables. Each value is a callable that
+# accepts (intent, params, **handler_kwargs) and returns a response dict.
+_INTENT_DISPATCH = {
+    Intent.DOSSIER: lambda params, **kw: handle_dossier(params, kw["db"], kw["engine"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.COMPARE: lambda params, **kw: handle_compare(params, kw["db"], kw["engine"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.LANDSCAPE: lambda params, **kw: handle_landscape(kw.get("question", ""), params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.PORTFOLIO: lambda params, **kw: handle_portfolio(params, kw["db"], kw["engine"], kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.PIPELINE: lambda params, **kw: handle_pipeline(params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.GENERAL: lambda params, **kw: handle_general(kw.get("question", ""), kw["engine"], kw["db"], kw["llm"], conv_context=kw.get("conv_context", "")),
+}
+
+
+def _merge_data_contexts(data_a: dict | None, data_b: dict | None) -> dict:
+    """Merge two data context dicts (evidence, graph, entity_focus, etc.)."""
+    if not data_a:
+        return data_b or {}
+    if not data_b:
+        return data_a
+
+    merged = dict(data_a)
+
+    # Merge evidence lists
+    ev_a = data_a.get("evidence") or []
+    ev_b = data_b.get("evidence") or []
+    merged["evidence"] = ev_a + ev_b
+
+    # Merge graph_context
+    gc_a = data_a.get("graph_context") or {}
+    gc_b = data_b.get("graph_context") or {}
+    merged["graph_context"] = {
+        "nodes": (gc_a.get("nodes") or []) + (gc_b.get("nodes") or []),
+        "edges": (gc_a.get("edges") or []) + (gc_b.get("edges") or []),
+        "node_count": (gc_a.get("node_count") or 0) + (gc_b.get("node_count") or 0),
+        "edge_count": (gc_a.get("edge_count") or 0) + (gc_b.get("edge_count") or 0),
+    }
+
+    # Merge entity_focus
+    ef_a = data_a.get("entity_focus") or []
+    ef_b = data_b.get("entity_focus") or []
+    merged["entity_focus"] = ef_a + ef_b
+
+    # Merge provenance_summary
+    ps_a = (data_a.get("provenance_summary") or {}).get("by_source") or {}
+    ps_b = (data_b.get("provenance_summary") or {}).get("by_source") or {}
+    merged_by_source = dict(ps_a)
+    for src, count in ps_b.items():
+        merged_by_source[src] = merged_by_source.get(src, 0) + count
+    merged["provenance_summary"] = {
+        "total_evidence_items": len(merged["evidence"]),
+        "by_source": merged_by_source,
+    }
+
+    # Merge metrics_context
+    mc_a = data_a.get("metrics_context") or {}
+    mc_b = data_b.get("metrics_context") or {}
+    merged["metrics_context"] = {**mc_a, **mc_b}
+
+    return merged
+
+
+def handle_compound(intents: list[tuple[str, dict]], **handler_kwargs) -> dict:
+    """Execute multiple intents and merge their results.
+
+    Runs each intent's handler, merges narratives and data contexts,
+    and returns a combined response with the minimum confidence score.
+    """
+    if not intents:
+        return {"narrative": "", "intent": "general", "data": None}
+
+    results: list[dict] = []
+    for intent, params in intents:
+        handler_fn = _INTENT_DISPATCH.get(intent)
+        if handler_fn is None:
+            logger.warning("No dispatch entry for intent %s, skipping", intent)
+            continue
+        try:
+            result = handler_fn(params, **handler_kwargs)
+            results.append(result)
+        except Exception as exc:
+            logger.warning("Compound intent handler failed for %s: %s", intent, exc)
+
+    if not results:
+        return {"narrative": "", "intent": "general", "data": None}
+
+    if len(results) == 1:
+        return results[0]
+
+    # Merge narratives
+    narratives = [r.get("narrative", "") for r in results if r.get("narrative")]
+    combined_narrative = "\n\n---\n\n".join(narratives)
+
+    # Merge data contexts
+    merged_data = results[0].get("data")
+    for r in results[1:]:
+        merged_data = _merge_data_contexts(merged_data, r.get("data"))
+
+    # Confidence is min of all results
+    confidences = [r["confidence"] for r in results if "confidence" in r]
+    confidence = min(confidences) if confidences else None
+
+    # Intent label is a joined string
+    intent_labels = [r.get("intent", "general") for r in results]
+    compound_intent = "+".join(intent_labels)
+
+    payload = {
+        "narrative": combined_narrative,
+        "intent": compound_intent,
+        "data": merged_data,
+    }
+    if confidence is not None:
+        payload["confidence"] = confidence
+
+    return payload
