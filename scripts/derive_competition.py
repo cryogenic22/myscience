@@ -46,9 +46,10 @@ INSERT_LINK_SQL = """
 INSERT INTO entity_links (
     source_entity_id, source_entity_type,
     target_entity_id, target_entity_type,
-    link_type, confidence, link_via
+    link_type, confidence, link_via,
+    provenance_source
 )
-VALUES (%s, 'drug', %s, 'drug', 'COMPETES_WITH', %s, %s)
+VALUES (%s, 'drug', %s, 'drug', 'COMPETES_WITH', %s, %s, 'derive_competition')
 ON CONFLICT DO NOTHING
 """
 
