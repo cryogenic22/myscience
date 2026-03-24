@@ -1,6 +1,6 @@
 # Commit Conventions
 
-*Auto-generated from last 40 commits: 2026-03-22 12:45*
+*Auto-generated from last 50 commits: 2026-03-24 17:15*
 
 ## Format: Conventional Commits
 
@@ -9,19 +9,19 @@
 ```
 
 ### Prefixes (by frequency)
+- `fix:` — 22 commits
 - `feat:` — 21 commits
-- `fix:` — 12 commits
-- `chore:` — 1 commits
-- `docs:` — 1 commits
+- `docs:` — 4 commits
+- `chore:` — 3 commits
 
 ### Examples from this repo
-- `feat(frontend): SearchPage decomposed 1,606â†’710 LOC (H5)`
-- `feat: React Router + API versioning (H6, H7)`
-- `fix(frontend): Widen chat content from 680px to 960px + field name labels`
-- `feat: Chat.py decomposition + edge legend + path finding (H4, M5, M2)`
-- `feat(frontend): Display name translation layer + UI humanization`
-- `feat: Memory persistence, retry logic, fallback LLM (C1, C4, C6, H8)`
-- `feat: CORS hardening + COMPETES_WITH link derivation (C3, H1)`
-- `fix: CORS restriction + connection pooling + os import`
-- `feat: EPC-to-mechanism backfill + dedup CIK fix`
-- `fix: Dedup CIK uniqueness check + post-ingestion scorecard`
+- `feat: CTX as default format + dossier hydration (SPEC-005 Phase 3)`
+- `feat: Architecture simplification sprint â€” FAIR scorer, tests, telemetry (SPEC-005)`
+- `fix: Add provenance_source to COMPETES_WITH links (29,828 created)`
+- `feat: Backfill SPONSORS links from trial sponsor names (6,991 created)`
+- `fix: Stop LLM from referencing invisible UI elements`
+- `fix: Portfolio entity resolution â€” apostrophe in company names + empty guard`
+- `feat: Scenario primitives â€” entity removal, temporal filtering, threshold alerts`
+- `feat: Graph analytics â€” influence scoring, competitive clusters, weighted paths`
+- `feat: Few-shot prompt library â€” curated exemplars improve citation density`
+- `docs: Benchmark v3 â€” 81.6% after citation prompt fix (+6pts from v2)`
