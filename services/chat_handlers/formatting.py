@@ -98,6 +98,10 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     # Strip leading entity type words: "drug semaglutide" -> "semaglutide"
     clean_name = _re.sub(r'^(drug|company|trial|mechanism|therapeutic_area)\s+', '', name.strip(), flags=_re.IGNORECASE)
 
+    # Guard: empty name should not match anything
+    if not clean_name or len(clean_name) < 2:
+        return None
+
     for etype, (table, col) in table_map.items():
         if entity_type and entity_type != etype:
             continue
@@ -108,13 +112,14 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
         )
         if row:
             return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 1.0}
-        # Fuzzy match (score 0.7)
-        row = db.fetch_one(
-            f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) LIKE LOWER(%s) LIMIT 1",
-            [f"%{clean_name}%"],
-        )
-        if row:
-            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 0.7}
+        # Fuzzy match (score 0.7) — require at least 3 chars to prevent wildcard catch-all
+        if len(clean_name) >= 3:
+            row = db.fetch_one(
+                f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) LIKE LOWER(%s) LIMIT 1",
+                [f"%{clean_name}%"],
+            )
+            if row:
+                return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 0.7}
 
     return None
 

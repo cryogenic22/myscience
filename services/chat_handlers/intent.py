@@ -85,10 +85,14 @@ def detect_intent(question: str) -> tuple[str, dict]:
                 topic = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+|tabular\s+(?:breakdown\s+(?:of\s+)?)?(?:the\s+)?)', '', topic).strip()
         return Intent.LANDSCAPE, {"topic": topic}
 
-    # Portfolio: "company portfolio", "Novo Nordisk portfolio"
+    # Portfolio: "company portfolio", "Novo Nordisk portfolio", "Novo Nordisk's portfolio"
     if 'portfolio' in q:
-        name_match = re.search(r'(\w[\w\s]+?)\s+portfolio', q)
-        return Intent.PORTFOLIO, {"company_name": name_match.group(1).strip() if name_match else ""}
+        name_match = re.search(r"(.+?)(?:'s)?\s+portfolio", q, re.IGNORECASE)
+        company_name = ""
+        if name_match:
+            company_name = name_match.group(1).strip()
+            company_name = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|tell\s+me\s+about\s+(?:the\s+)?|the\s+)', '', company_name, flags=re.IGNORECASE).strip()
+        return Intent.PORTFOLIO, {"company_name": company_name}
 
     # Pipeline: "pipeline", "drug pipeline", "obesity pipeline", "heart failure pipeline"
     if 'pipeline' in q:
@@ -122,3 +126,53 @@ def detect_intent(question: str) -> tuple[str, dict]:
         return Intent.DOSSIER, {"entity_name": q}
 
     return Intent.GENERAL, {}
+
+
+# ── Compound connectors used to split multi-intent queries ──
+_COMPOUND_CONNECTORS = re.compile(
+    r'\s+(?:and\s+(?:also\s+)?|also\s+|plus\s+|then\s+)(?:show\s+me\s+(?:the\s+)?|give\s+me\s+(?:the\s+)?)?',
+    re.IGNORECASE,
+)
+
+# Maximum intents allowed per compound query
+_MAX_COMPOUND_INTENTS = 2
+
+
+def detect_compound_intent(question: str) -> list[tuple[str, dict]]:
+    """Detect 1-2 intents from a compound question.
+
+    Splits on "and", "also", "plus", "then" connectors, detects intent
+    for each clause, deduplicates, and caps at _MAX_COMPOUND_INTENTS.
+    Returns list of (intent, params) tuples.
+    """
+    q = question.strip()
+    if not q:
+        return [(Intent.GENERAL, {})]
+
+    # Split on compound connectors
+    parts = _COMPOUND_CONNECTORS.split(q)
+    # Filter out empty / whitespace-only parts
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if len(parts) <= 1:
+        # No compound connector found — single intent
+        intent, params = detect_intent(q)
+        return [(intent, params)]
+
+    # Detect intent for each clause
+    seen_intents: set[str] = set()
+    results: list[tuple[str, dict]] = []
+
+    for part in parts:
+        intent, params = detect_intent(part)
+        # Skip duplicates (same intent type) and GENERAL fallbacks after first
+        if intent in seen_intents:
+            continue
+        if intent == Intent.GENERAL and results:
+            continue
+        seen_intents.add(intent)
+        results.append((intent, params))
+        if len(results) >= _MAX_COMPOUND_INTENTS:
+            break
+
+    return results if results else [(Intent.GENERAL, {})]
