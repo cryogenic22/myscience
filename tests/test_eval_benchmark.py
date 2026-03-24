@@ -67,6 +67,18 @@ class TestScoreEntityGrounding:
         score = score_entity_grounding(response, expected)
         assert score < 1.0
 
+    def test_substring_entity_not_matched(self):
+        """'met' should NOT match inside 'metformin' (word boundary check)."""
+        from benchmark.scorers import score_entity_grounding
+        response = {
+            "narrative": "Metformin is a widely used drug for diabetes.",
+            "data": {"entity_focus": []},
+        }
+        expected = {"entities": ["met"], "must_mention": []}
+        score = score_entity_grounding(response, expected)
+        # "met" as a whole word is NOT in "Metformin" → entity not found → 0.5 max
+        assert score <= 0.5
+
 
 # ── Factual Accuracy ──
 
@@ -91,14 +103,38 @@ class TestScoreFactualAccuracy:
         score = score_factual_accuracy(response)
         assert score < 0.5
 
-    def test_no_bold_numbers_neutral(self):
+    def test_no_numbers_returns_half(self):
+        """Narrative with no extractable numbers returns 0.5 (unverified)."""
         from benchmark.scorers import score_factual_accuracy
         response = {
             "narrative": "Semaglutide is a promising drug.",
             "data": {"metrics_context": {}},
         }
         score = score_factual_accuracy(response)
-        assert score == 1.0  # nothing to verify → pass
+        assert score == 0.5
+
+    def test_all_numbers_checked_not_just_bold(self):
+        """Non-bold numbers are also verified against source data."""
+        from benchmark.scorers import score_factual_accuracy
+        response = {
+            "narrative": "There are 47 trials with a score of 42.5.",
+            "data": {"metrics_context": {"d1": {"pipeline": {"pipeline_score": 42.5, "total_trials": 47}}}},
+        }
+        score = score_factual_accuracy(response)
+        assert score >= 0.8
+
+    def test_evidence_content_used_for_verification(self):
+        """Numbers in evidence content count as source truth."""
+        from benchmark.scorers import score_factual_accuracy
+        response = {
+            "narrative": "The trial enrolled 250 patients.",
+            "data": {
+                "metrics_context": {},
+                "evidence": [{"content": "A total of 250 patients were enrolled."}],
+            },
+        }
+        score = score_factual_accuracy(response)
+        assert score >= 0.8
 
 
 # ── Evidence Completeness ──
@@ -148,7 +184,7 @@ class TestScoreCitationValidity:
             "narrative": "Evidence [1] shows results [2].",
             "data": {"evidence": [{"c": 1}, {"c": 2}, {"c": 3}]},
         }
-        assert score_citation_validity(response) == 1.0
+        assert score_citation_validity(response, {"min_citations": 0}) == 1.0
 
     def test_invalid_citations_penalize(self):
         from benchmark.scorers import score_citation_validity
@@ -156,8 +192,38 @@ class TestScoreCitationValidity:
             "narrative": "Evidence [1] and [99] support this.",
             "data": {"evidence": [{"c": 1}, {"c": 2}]},
         }
-        score = score_citation_validity(response)
+        score = score_citation_validity(response, {"min_citations": 0})
         assert score < 1.0
+
+    def test_no_citations_with_min_expected_scores_0(self):
+        """When min_citations > 0 and narrative has 0 citations, score is 0.0."""
+        from benchmark.scorers import score_citation_validity
+        response = {
+            "narrative": "Semaglutide is effective for weight loss.",
+            "data": {"evidence": [{"c": 1}, {"c": 2}]},
+        }
+        score = score_citation_validity(response, {"min_citations": 2})
+        assert score == 0.0
+
+    def test_no_citations_no_expectation_passes(self):
+        """When min_citations == 0 and no citations → 1.0 (unchanged)."""
+        from benchmark.scorers import score_citation_validity
+        response = {
+            "narrative": "Semaglutide is effective.",
+            "data": {"evidence": []},
+        }
+        score = score_citation_validity(response, {"min_citations": 0})
+        assert score == 1.0
+
+    def test_no_citations_default_expected_passes(self):
+        """When expected is None (backward compat), no citations → 1.0."""
+        from benchmark.scorers import score_citation_validity
+        response = {
+            "narrative": "Semaglutide is effective.",
+            "data": {"evidence": []},
+        }
+        score = score_citation_validity(response)
+        assert score == 1.0
 
 
 # ── Composite Score ──

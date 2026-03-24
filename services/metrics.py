@@ -412,13 +412,3 @@ def realtime_pipeline_strength(db, therapeutic_area: str, limit: int = 20) -> li
         return []
 
 
-def competitive_landscape_with_fallback(
-    db, topic: str, mv_results: list[dict] | None = None,
-) -> list[dict]:
-    """Use MV results if sufficient (>2 rows), otherwise fall back to realtime.
-
-    If mv_results is None, caller should provide their own MV query.
-    """
-    if mv_results and len(mv_results) > 2:
-        return mv_results
-    return realtime_competitive_landscape(db, topic)

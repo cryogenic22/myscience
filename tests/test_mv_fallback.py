@@ -97,33 +97,6 @@ class TestRealtimePipeline:
         assert drugs == []
 
 
-class TestMVFallback:
-    """Verify fallback logic: MV first, realtime if sparse."""
-
-    def test_uses_mv_when_sufficient(self):
-        """MV returns 5+ rows → no fallback needed."""
-        from services.metrics import competitive_landscape_with_fallback
-        db = MagicMock()
-        mv_results = [{"mechanism_name": f"mech_{i}", "drug_count": i + 1} for i in range(5)]
-        segments = competitive_landscape_with_fallback(db, "topic", mv_results=mv_results)
-        assert len(segments) == 5
-        # Should not call db.fetch_all (no realtime query)
-        db.fetch_all.assert_not_called()
-
-    def test_falls_back_when_mv_sparse(self):
-        """MV returns ≤2 rows → calls realtime."""
-        from services.metrics import competitive_landscape_with_fallback
-        db = MagicMock()
-        db.fetch_all.return_value = [
-            {"mechanism_name": "GLP-1 RA", "therapeutic_area": "Diabetes",
-             "drug_count": 5, "trial_count": 20, "active_trial_count": 8,
-             "total_pipeline_score": 42.5},
-        ]
-        mv_results = [{"mechanism_name": "mech_1", "drug_count": 1}]
-        segments = competitive_landscape_with_fallback(db, "GLP-1", mv_results=mv_results)
-        # Should have called realtime
-        assert db.fetch_all.call_count >= 1
-
 
 class TestLandscapeTriesBothTopics:
     """Verify competitive_landscape tries both expanded and original topic."""

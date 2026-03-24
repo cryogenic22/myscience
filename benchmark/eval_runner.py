@@ -152,7 +152,7 @@ class EvalRunner:
             "grounding": score_entity_grounding(response, expected),
             "factual": score_factual_accuracy(response),
             "completeness": score_evidence_completeness(response, expected),
-            "citation": score_citation_validity(response),
+            "citation": score_citation_validity(response, expected),
         }
         overall = composite_score(scores)
 

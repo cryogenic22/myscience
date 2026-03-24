@@ -24,6 +24,13 @@ WEIGHTS = {
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
+_ALL_NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
+
+
+def _entity_in_text(entity: str, text: str) -> bool:
+    """Check if *entity* appears in *text* as a whole word (word-boundary match)."""
+    pattern = r'\b' + re.escape(entity.lower()) + r'\b'
+    return bool(re.search(pattern, text.lower()))
 
 
 # ── Individual Scorers ──────────────────────────────────────────────
@@ -37,7 +44,7 @@ def score_intent(response: dict, expected: dict) -> float:
 def score_entity_grounding(response: dict, expected: dict) -> float:
     """Are expected entities present in response and must_not_mention absent?"""
     score = 0.0
-    narrative = response.get("narrative", "").lower()
+    narrative = response.get("narrative", "")
     data = response.get("data") or {}
     entity_focus = data.get("entity_focus") or []
 
@@ -45,7 +52,10 @@ def score_entity_grounding(response: dict, expected: dict) -> float:
     expected_entities = expected.get("entities", [])
     if expected_entities:
         focus_labels = {(e.get("label") or "").lower() for e in entity_focus}
-        found = sum(1 for e in expected_entities if e.lower() in focus_labels or e.lower() in narrative)
+        found = sum(
+            1 for e in expected_entities
+            if e.lower() in focus_labels or _entity_in_text(e, narrative)
+        )
         score += 0.5 * (found / len(expected_entities))
     else:
         score += 0.5  # no entity expectation → pass
@@ -53,7 +63,7 @@ def score_entity_grounding(response: dict, expected: dict) -> float:
     # Check must_mention terms in narrative (0-0.3)
     must_mention = expected.get("must_mention", [])
     if must_mention:
-        mentioned = sum(1 for term in must_mention if term.lower() in narrative)
+        mentioned = sum(1 for term in must_mention if _entity_in_text(term, narrative))
         score += 0.3 * (mentioned / len(must_mention))
     else:
         score += 0.3
@@ -61,7 +71,7 @@ def score_entity_grounding(response: dict, expected: dict) -> float:
     # Penalize must_not_mention (0-0.2)
     must_not = expected.get("must_not_mention", [])
     if must_not:
-        violations = sum(1 for term in must_not if term.lower() in narrative)
+        violations = sum(1 for term in must_not if _entity_in_text(term, narrative))
         if violations == 0:
             score += 0.2
         else:
@@ -73,26 +83,40 @@ def score_entity_grounding(response: dict, expected: dict) -> float:
 
 
 def score_factual_accuracy(response: dict) -> float:
-    """Do bold numbers in narrative match source metrics?"""
+    """Do numbers in narrative match source metrics/evidence?
+
+    Extracts ALL numbers (not just bold) and verifies against metrics_context
+    and evidence content.  Returns 0.5 (unverified) when narrative contains
+    no extractable numbers at all.
+    """
     narrative = response.get("narrative", "")
     data = response.get("data") or {}
     metrics = data.get("metrics_context") or {}
+    evidence = data.get("evidence") or []
 
-    # Extract all numbers from metrics
+    # Collect source numbers from metrics
     source_numbers: set[float] = set()
     _collect_numbers(metrics, source_numbers)
 
-    # Extract bold numbers from narrative
-    bold_matches = _BOLD_NUMBER_RE.findall(narrative)
-    if not bold_matches:
-        return 1.0  # nothing to verify → pass
+    # Also collect numbers from evidence content
+    for ev in evidence:
+        content = ev.get("content") or ev.get("text") or ""
+        for m in _ALL_NUMBER_RE.findall(str(content)):
+            try:
+                source_numbers.add(float(m))
+            except ValueError:
+                pass
+
+    # Extract ALL numbers from narrative (not just bold)
+    all_matches = _ALL_NUMBER_RE.findall(narrative)
+    if not all_matches:
+        return 0.5  # no numbers to verify → unverified, not perfect
 
     verified = 0
     total = 0
-    for raw in bold_matches:
-        clean = raw.rstrip("%")
+    for raw in all_matches:
         try:
-            num = float(clean)
+            num = float(raw)
         except ValueError:
             continue
         total += 1
@@ -104,7 +128,7 @@ def score_factual_accuracy(response: dict) -> float:
                 verified += 1
                 break
 
-    return round(verified / total, 2) if total > 0 else 1.0
+    return round(verified / total, 2) if total > 0 else 0.5
 
 
 def score_evidence_completeness(response: dict, expected: dict) -> float:
@@ -133,16 +157,29 @@ def score_evidence_completeness(response: dict, expected: dict) -> float:
     return round(min(1.0, score), 2)
 
 
-def score_citation_validity(response: dict) -> float:
-    """Are all [N] citations in the narrative valid?"""
+def score_citation_validity(response: dict, expected: dict | None = None) -> float:
+    """Are all [N] citations in the narrative valid?
+
+    When *expected* specifies ``min_citations > 0`` and the narrative has
+    zero citations, the response is penalised with 0.0 — dossier/compare
+    queries should always cite evidence.
+    """
+    if expected is None:
+        expected = {}
+
     narrative = response.get("narrative", "")
     data = response.get("data") or {}
     evidence = data.get("evidence") or []
     evidence_count = len(evidence)
 
     citations = _CITATION_RE.findall(narrative)
+    min_citations = expected.get("min_citations", 0)
+
     if not citations:
-        return 1.0  # no citations → pass
+        # No citations present — penalise if we expected some
+        if min_citations > 0:
+            return 0.0
+        return 1.0
 
     valid = sum(1 for c in citations if 1 <= int(c) <= evidence_count)
     return round(valid / len(citations), 2)
