@@ -290,7 +290,8 @@ def _build_context_block(
     Pipeline:
     1. Compress evidence snippets via ctxpack entity resolution (if above threshold)
     2. Assemble full context via CTXContextBuilder (with threshold gate)
-    3. Fall back to legacy flat format on failure
+    3. Append few-shot exemplars for citation density
+    4. Fall back to legacy flat format on failure
 
     ctx_mode: "ctx" | "legacy" | "both" (default: "both" for benchmarking)
     """
@@ -306,6 +307,7 @@ def _build_context_block(
         else:
             extra_context = compressed_evidence
 
+    context = None
     try:
         from services.ctx_context import CTXContextBuilder
         builder = CTXContextBuilder(mode=ctx_mode)
@@ -338,7 +340,7 @@ def _build_context_block(
         except Exception:
             pass  # telemetry must never break the main flow
 
-        return ab_result.active.text
+        context = ab_result.active.text
     except Exception as e:
         logger.warning("CTX context builder failed, falling back to legacy: %s", e)
         # Fallback to legacy inline
@@ -355,7 +357,19 @@ def _build_context_block(
                 parts.append(f"  [{i}] {snippet}")
         if extra_context:
             parts.append(f"ADDITIONAL CONTEXT: {extra_context}")
-        return "\n\n".join(parts)
+        context = "\n\n".join(parts)
+
+    # Step 3: Append few-shot exemplars for citation density
+    try:
+        from services.few_shot_library import FewShotLibrary
+        _few_shot_lib = FewShotLibrary()
+        exemplars = _few_shot_lib.get_exemplars(intent, max_examples=2)
+        if exemplars:
+            context += "\n\n" + _few_shot_lib.format_context(exemplars)
+    except Exception as e:
+        logger.debug("Few-shot library unavailable: %s", e)
+
+    return context
 
 
 class LLMSynthesizer:

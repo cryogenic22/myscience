@@ -27,8 +27,12 @@ from services.chat_handlers.formatting import (
     to_number,
 )
 from services.chat_handlers.context import build_conversation_context
+from services.concept_registry import ConceptRegistry, format_concept_context
 
 logger = logging.getLogger(__name__)
+
+# Module-level registry singleton (15 pharma concepts, zero DB calls)
+_concept_registry = ConceptRegistry(auto_register=True)
 
 
 # ── Agent response helpers ──
@@ -279,13 +283,27 @@ def _format_query_result(intent: str, question: str, result, db: Database, llm: 
             "connected_entities": {k: v[:10] for k, v in nodes_by_type.items()},
         }
 
+    # Activate domain concepts for this intent + entity types
+    entity_types_in_result = list({
+        ef.get("entity_type", "drug")
+        for ef in (result.entity_focus or [])
+        if isinstance(ef, dict) and ef.get("entity_type")
+    }) or ["drug"]
+    activated_concepts = _concept_registry.activate(intent, entity_types_in_result)
+    concept_hint = format_concept_context(activated_concepts)
+
+    # Merge concept hint into extra_context
+    extra_ctx = conv_context or ""
+    if concept_hint:
+        extra_ctx = f"{concept_hint}\n\n{extra_ctx}" if extra_ctx else concept_hint
+
     narrative = llm.synthesize(
         question=question,
         intent=intent,
         metrics=mc if mc else None,
         graph_summary=graph_summary,
         evidence_snippets=evidence_snippets,
-        extra_context=conv_context if conv_context else None,
+        extra_context=extra_ctx if extra_ctx else None,
         fallback_narrative=fallback,
     )
 
@@ -698,12 +716,19 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     # ── LLM synthesis (with template fallback) ──
     fallback = " ".join(template_parts)
 
-    # Build extra_context: include fuzzy match warning + conversation context
+    # Build extra_context: include fuzzy match warning + conversation context + concept hints
     dossier_extra_context = ""
     if match_score is not None and match_score < 0.8:
         dossier_extra_context += "[NOTE: Entity matched via fuzzy search — verify entity identity]\n"
     if conv_context:
         dossier_extra_context += conv_context
+
+    # Activate domain concepts for dossier + resolved entity type
+    dossier_concepts = _concept_registry.activate("dossier", [etype])
+    dossier_concept_hint = format_concept_context(dossier_concepts)
+    if dossier_concept_hint:
+        dossier_extra_context = f"{dossier_concept_hint}\n\n{dossier_extra_context}" if dossier_extra_context else dossier_concept_hint
+
     dossier_extra_context = dossier_extra_context.strip() or None
 
     narrative = llm.synthesize_dossier(
@@ -802,6 +827,13 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     comparison_insights = compute_comparison_insights(resolved, metrics_comp)
     if comparison_insights:
         fallback = fallback + "\n\n" + comparison_insights
+
+    # Activate domain concepts for compare + resolved entity types
+    compare_entity_types = list({r.get("entity_type", "drug") for r in resolved})
+    compare_concepts = _concept_registry.activate("compare", compare_entity_types)
+    compare_concept_hint = format_concept_context(compare_concepts)
+    if compare_concept_hint:
+        comparison_insights = f"{compare_concept_hint}\n\n{comparison_insights}" if comparison_insights else compare_concept_hint
 
     narrative = llm.synthesize_comparison(
         entity_names=names,
@@ -932,6 +964,12 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
     )
     if conv_context:
         extra_landscape_context += f"\n\nPRIOR CONVERSATION:\n{conv_context}"
+
+    # Activate domain concepts for landscape intent
+    landscape_concepts = _concept_registry.activate("landscape", ["drug", "company", "therapeutic_area"])
+    landscape_concept_hint = format_concept_context(landscape_concepts)
+    if landscape_concept_hint:
+        extra_landscape_context = f"{landscape_concept_hint}\n\n{extra_landscape_context}" if extra_landscape_context else landscape_concept_hint
 
     # LLM synthesis
     narrative = llm.synthesize(
@@ -1092,6 +1130,12 @@ def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesize
         extra_context += f"\nTherapeutic area focus: {ta}"
     if conv_context:
         extra_context += f"\n\nPRIOR CONVERSATION:\n{conv_context}"
+
+    # Activate domain concepts for pipeline intent
+    pipeline_concepts = _concept_registry.activate("pipeline", ["drug", "therapeutic_area"])
+    pipeline_concept_hint = format_concept_context(pipeline_concepts)
+    if pipeline_concept_hint:
+        extra_context = f"{pipeline_concept_hint}\n\n{extra_context}" if extra_context else pipeline_concept_hint
 
     # LLM synthesis
     narrative = llm.synthesize(

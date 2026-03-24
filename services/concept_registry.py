@@ -272,3 +272,27 @@ class ConceptRegistry:
             self.register(concept)
 
         logger.debug("Registered %d pharma concepts", len(concepts))
+
+
+def format_concept_context(concepts: list[Concept], max_concepts: int = 5) -> str:
+    """Format activated concepts as an LLM context hint.
+
+    Returns a string like:
+        RELEVANT CONCEPTS for this query:
+        - pipeline_strength: Drug pipeline depth and phase distribution (from PharmaMetrics.drug_pipeline_strength)
+        - competitive_landscape: Market segments by mechanism and TA (from PharmaMetrics.competitive_landscape)
+
+    Returns empty string if concepts list is empty.
+    """
+    if not concepts:
+        return ""
+
+    top = concepts[:max_concepts]
+    lines = ["RELEVANT CONCEPTS for this query:"]
+    for c in top:
+        # Extract the short computation reference (last two dotted parts)
+        parts = c.computation.rsplit(".", 2)
+        short_ref = ".".join(parts[-2:]) if len(parts) >= 2 else c.computation
+        lines.append(f"- {c.name}: {c.description} (from {short_ref})")
+
+    return "\n".join(lines)
