@@ -162,6 +162,41 @@ def list_signals(
         return {"signals": [], "count": 0}
 
 
+@router.get("/agents")
+def list_entity_agents():
+    """List all entity-level agents with their configs."""
+    from services.entity_agents import EntityAgentOrchestrator
+    db_inst = get_db()
+    orch = EntityAgentOrchestrator(db_inst)
+    return {"agents": orch.list_agents()}
+
+
+@router.post("/agents/{agent_name}/run")
+def run_entity_agent(
+    agent_name: str,
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+):
+    """Trigger a specific entity agent (or 'all') as a background task."""
+    dry_run = body.get("dry_run", False)
+
+    def _run_agent():
+        try:
+            from services.entity_agents import EntityAgentOrchestrator
+            orch = EntityAgentOrchestrator(db)
+            if agent_name == "all":
+                result = orch.run_all(dry_run=dry_run)
+            else:
+                result = orch.run_one(agent_name, dry_run=dry_run)
+            logger.info("Entity agent %s complete: %s", agent_name, result)
+        except Exception:
+            logger.exception("Entity agent %s failed", agent_name)
+
+    background_tasks.add_task(_run_agent)
+    return {"status": "started", "agent": agent_name, "dry_run": dry_run}
+
+
 @router.get("/actions")
 def list_actions(
     status: Optional[str] = Query(None),
