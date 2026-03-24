@@ -1,0 +1,25 @@
+{
+  "run_id": "eval-20260324-035959",
+  "timestamp": "2026-03-24T03:59:59.465942+00:00",
+  "total_queries": 10,
+  "overall_score": 0.816,
+  "by_intent": {
+    "dossier": 0.703,
+    "compare": 0.828,
+    "landscape": 0.795,
+    "pipeline": 0.675,
+    "portfolio": 0.945,
+    "structured_query": 0.75,
+    "general": 0.984
+  },
+  "by_dimension": {
+    "intent": 1.0,
+    "grounding": 0.88,
+    "factual": 0.704,
+    "completeness": 0.8,
+    "citation": 0.8
+  },
+  "failures": [],
+  "latency_p50": 7196.8,
+  "latency_p95": 14468.3
+}
