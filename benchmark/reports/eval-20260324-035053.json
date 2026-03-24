@@ -1,0 +1,39 @@
+{
+  "run_id": "eval-20260324-035053",
+  "timestamp": "2026-03-24T03:50:53.370839+00:00",
+  "total_queries": 20,
+  "overall_score": 0.756,
+  "by_intent": {
+    "dossier": 0.644,
+    "compare": 0.739,
+    "landscape": 0.748,
+    "pipeline": 0.675,
+    "portfolio": 0.891,
+    "structured_query": 0.75,
+    "general": 0.968
+  },
+  "by_dimension": {
+    "intent": 0.95,
+    "grounding": 0.815,
+    "factual": 0.718,
+    "completeness": 0.75,
+    "citation": 0.6
+  },
+  "failures": [
+    {
+      "id": "E07",
+      "question": "Tell me about Januvia",
+      "score": 0.453,
+      "error": null,
+      "scores": {
+        "intent": 1.0,
+        "grounding": 0.2,
+        "factual": 0.71,
+        "completeness": 0.5,
+        "citation": 0.0
+      }
+    }
+  ],
+  "latency_p50": 6464.6,
+  "latency_p95": 13239.6
+}
