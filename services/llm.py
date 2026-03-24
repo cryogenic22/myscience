@@ -143,7 +143,8 @@ def verify_narrative_numbers(
 _BASE_RULES = """- Use **bold** for key entities, numbers, and findings.
 - STRICT DATA GROUNDING: ONLY use numbers, percentages, and facts that appear in the PROVIDED CONTEXT below. Do NOT supplement with knowledge from your training data. No clinical efficacy numbers, no MACE reductions, no survival rates unless explicitly in the context.
 - If the data is thin, say so honestly ("limited data available for X") rather than padding with external knowledge.
-- CITATIONS: When you reference a fact from the EVIDENCE section, include the evidence number in square brackets inline, e.g. [1], [2]. Only cite evidence numbers that actually exist in the EVIDENCE section. If there is NO EVIDENCE section or it is empty, do NOT use any citation markers."""
+- CITATIONS: When you reference a specific fact, include the evidence number in square brackets inline, e.g. [1], [2]. Cite EVIDENCE items by their number. If there is a METRICS section, reference it as [metrics]. Only cite numbers that actually exist in the provided context. If there is NO EVIDENCE section and no METRICS section, do NOT use any citation markers.
+- AIM for at least 2 citations per paragraph when evidence is available. Every factual claim should be traceable to a source."""
 
 SYSTEM_PROMPTS: dict[str, str] = {
     "compare": f"""You are a senior pharmaceutical intelligence analyst. You are comparing entities head-to-head.
