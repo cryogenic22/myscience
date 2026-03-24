@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.deps import get_db
-from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment
+from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment, pricing
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
     all_routers = [
         search.router, metrics.router, graph.router, query.router,
         entities.router, chat.router, therapeutic_areas.router,
-        catalog.router, enrichment.router,
+        catalog.router, enrichment.router, pricing.router,
     ]
     if _NEW_ROUTERS_OK:
         all_routers.extend([feedback.router, steward.router, literature.router])
