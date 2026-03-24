@@ -65,6 +65,30 @@ def derive_competition(dry_run: bool = False, db: Database = Depends(get_db)):
     return result
 
 
+@router.post("/curate")
+def run_curation(db: Database = Depends(get_db)):
+    """Run 5-pass deterministic data curation pipeline.
+
+    Passes:
+      1. Company enrichment via SEC EDGAR (ticker, CIK)
+      2. Orphan company linking (find trial sponsors)
+      3. Resolution sweep with MentionNormalizer
+      4. HITL auto-resolve (substring heuristic, no LLM)
+      5. Compute and persist FAIR score
+    """
+    from scripts.auto_curate_v2 import run_all_curation
+
+    results = run_all_curation(db)
+    return {
+        "results": results,
+        "total_enriched": sum(
+            r.get("enriched", r.get("resolved", r.get("linked", 0)))
+            for r in results
+            if isinstance(r.get("enriched", r.get("resolved", r.get("linked", 0))), int)
+        ),
+    }
+
+
 @router.get("/status")
 def enrichment_status(db: Database = Depends(get_db)):
     """Current enrichment status: unresolved count, company gaps, etc."""
