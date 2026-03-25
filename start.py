@@ -23,7 +23,17 @@ try:
 except Exception as e:
     logger.warning("Migration failed (app will start anyway): %s", e)
 
-# 2. Start uvicorn
+# 2. Start data pipeline scheduler (background daemon)
+if os.environ.get("MZ_SCHEDULER", "true").lower() != "false":
+    try:
+        from scheduler import DataPipelineScheduler
+        scheduler = DataPipelineScheduler()
+        scheduler.start()
+        logger.info("Data pipeline scheduler started (background daemon).")
+    except Exception as e:
+        logger.warning("Scheduler failed to start (app will run without it): %s", e)
+
+# 3. Start uvicorn
 port = int(os.environ.get("PORT", 8020))
 logger.info("Starting uvicorn on port %d...", port)
 

@@ -145,6 +145,18 @@ class DataPipelineScheduler:
             logger.exception("Post-task auto_curate failed")
             results["auto_curate"] = f"ERROR: {e}"
 
+        # 6b. Auto-curate v2 (SEC enrichment, orphan linking, resolution sweep, HITL, FAIR)
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.auto_curate_v2")
+            v2_results = mod.run_all_curation(self.db)
+            total = sum(r.get('enriched', r.get('resolved', r.get('linked', 0))) for r in v2_results)
+            results["auto_curate_v2"] = f"OK — {total} items ({time.time()-t0:.1f}s)"
+            logger.info("Post-task: auto_curate_v2 completed — %d items", total)
+        except Exception as e:
+            logger.exception("Post-task auto_curate_v2 failed")
+            results["auto_curate_v2"] = f"ERROR: {e}"
+
         # 7. Data Steward loop (signal-driven autonomous curation)
         try:
             t0 = time.time()
