@@ -65,6 +65,18 @@ def derive_competition(dry_run: bool = False, db: Database = Depends(get_db)):
     return result
 
 
+@router.post("/refresh-source/{source_key}")
+def refresh_source(source_key: str, db: Database = Depends(get_db)):
+    """Re-run a single data connector to refresh stale records."""
+    from scheduler.runner import DataPipelineScheduler
+    scheduler = DataPipelineScheduler()
+    try:
+        result = scheduler.run_one(source_key)
+        return {"source": source_key, "status": "ok", "result": str(result)}
+    except Exception as e:
+        return {"source": source_key, "status": "error", "error": str(e)}
+
+
 @router.post("/curate")
 def run_curation(db: Database = Depends(get_db)):
     """Run 5-pass deterministic data curation pipeline.
