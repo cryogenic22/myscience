@@ -8,6 +8,8 @@ import {
   Clock,
   Database,
   Edit3,
+  ExternalLink,
+  Globe,
   MessageSquare,
   RefreshCw,
   Search,
@@ -22,6 +24,7 @@ import {
   type CatalogEntityDetail,
   type CatalogStats,
   type ChangeLogEntry,
+  type DatasetProfile,
   type FieldCompleteness,
   type HealthData,
   type HITLItem,
@@ -88,6 +91,20 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   const [hitlItems, setHitlItems] = useState<HITLItem[]>([]);
 
   const [editing, setEditing] = useState<Record<string, string>>({});
+
+  const [dsProfileOpen, setDsProfileOpen] = useState(false);
+  const [dsProfile, setDsProfile] = useState<DatasetProfile | null>(null);
+  const [dsProfileLoading, setDsProfileLoading] = useState(false);
+
+  const openDatasetProfile = useCallback((sourceKey: string) => {
+    setDsProfileOpen(true);
+    setDsProfileLoading(true);
+    setDsProfile(null);
+    api.datasetProfile(sourceKey)
+      .then(setDsProfile)
+      .catch(() => setDsProfile(null))
+      .finally(() => setDsProfileLoading(false));
+  }, []);
 
   const loadOverview = useCallback(async (initial = false) => {
     if (initial) setLoading(true);
@@ -253,6 +270,7 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
                 stats={stats}
                 datasets={datasets}
                 onBrowse={type => { setBrowseType(type); setTab('browse'); }}
+                onOpenProfile={openDatasetProfile}
               />
             )}
             {tab === 'browse' && (
@@ -314,6 +332,22 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
         )}
       </Drawer>
 
+      {/* Dataset profile drawer */}
+      <Drawer
+        isOpen={dsProfileOpen}
+        onClose={() => setDsProfileOpen(false)}
+        title={dsProfile?.display_name ?? 'Dataset Profile'}
+        subtitle={dsProfile?.source_key}
+      >
+        {dsProfileLoading ? (
+          <div style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading profile…</div>
+        ) : dsProfile ? (
+          <DatasetProfileCard profile={dsProfile} />
+        ) : (
+          <div style={{ color: 'var(--color-ink-4)', fontSize: '13px' }}>Profile not available.</div>
+        )}
+      </Drawer>
+
       {/* Literature Explorer overlay */}
       {litExplorerArticleId && (
         <LiteratureExplorer
@@ -326,11 +360,12 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
 }
 
 /* ══ Overview ══ */
-function OverviewTab({ health, stats, datasets, onBrowse }: {
+function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile }: {
   health: HealthData | null;
   stats: CatalogStats | null;
   datasets: CatalogDataset[];
   onBrowse: (type: string) => void;
+  onOpenProfile: (sourceKey: string) => void;
 }) {
   const [completeness, setCompleteness] = useState<Record<string, FieldCompleteness> | null>(null);
   const [freshData, setFreshData] = useState<Record<string, SourceFreshness> | null>(null);
@@ -447,10 +482,15 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
                 : { label: 'Stale', color: 'var(--color-red)' }
               : { label: 'Unknown', color: 'var(--color-ink-4)' };
             return (
-              <div key={source} className="catalog-row">
+              <div
+                key={source}
+                className="catalog-row"
+                onClick={() => onOpenProfile(source)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink)' }}>
-                    {source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    {SOURCE_LABELS[source] ?? source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
                     {info.entity_type} · {fmt(info.records)} records
@@ -481,12 +521,23 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
         </div>
         {datasets.map(ds => {
           const fresh = freshness(ds.last_refreshed_at);
+          // Map table names → primary source keys for profile lookup
+          const TABLE_TO_SOURCE: Record<string, string> = {
+            drugs: 'fda_orange_book',
+            clinical_trials: 'clinical_trials_gov',
+            pubmed_articles: 'pubmed',
+            companies: 'sec_edgar',
+            market_events: 'openfda_faers',
+            therapeutic_areas: 'mesh_ontology',
+            mechanisms_of_action: 'mesh_ontology',
+          };
+          const sourceKey = TABLE_TO_SOURCE[ds.dataset_name] ?? ds.source_type;
           return (
             <div
               key={ds.dataset_name}
-              className="catalog-row"
-              onClick={() => ds.entity_type && onBrowse(ds.entity_type)}
-              style={{ cursor: ds.entity_type ? 'pointer' : 'default' }}
+              className="catalog-row group"
+              onClick={() => onOpenProfile(sourceKey)}
+              style={{ cursor: 'pointer' }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-ink)' }}>
@@ -519,11 +570,179 @@ function OverviewTab({ health, stats, datasets, onBrowse }: {
               <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', minWidth: '100px', textAlign: 'right' }}>
                 {shortDate(ds.last_refreshed_at)}
               </div>
-              {ds.entity_type && <ChevronRight size={14} style={{ color: 'var(--color-ink-4)', flexShrink: 0 }} />}
+              <div className="flex items-center gap-1.5">
+                {ds.entity_type && (
+                  <button
+                    type="button"
+                    className="btn-icon opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ width: '24px', height: '24px' }}
+                    title="Browse entities"
+                    onClick={e => { e.stopPropagation(); onBrowse(ds.entity_type!); }}
+                  >
+                    <Database size={12} style={{ color: 'var(--color-ink-4)' }} />
+                  </button>
+                )}
+                <ChevronRight size={14} style={{ color: 'var(--color-ink-4)', flexShrink: 0 }} />
+              </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ══ Dataset Profile Card ══ */
+function DatasetProfileCard({ profile }: { profile: DatasetProfile }) {
+  const freshnessStyle = profile.freshness === 'fresh'
+    ? { bg: 'var(--color-green-soft)', color: 'var(--color-green)' }
+    : profile.freshness === 'recent'
+      ? { bg: 'var(--color-amber-soft)', color: 'var(--color-amber)' }
+      : profile.freshness === 'stale'
+        ? { bg: 'var(--color-red-soft)', color: 'var(--color-red)' }
+        : { bg: 'var(--color-surface-2)', color: 'var(--color-ink-4)' };
+
+  const qualityColor = profile.quality_score != null
+    ? profile.quality_score >= 0.7 ? 'var(--color-green)'
+      : profile.quality_score >= 0.4 ? 'var(--color-amber)'
+        : 'var(--color-red)'
+    : 'var(--color-ink-4)';
+
+  return (
+    <div className="space-y-6">
+      {/* Description */}
+      <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--color-ink-3)' }}>
+        {profile.description}
+      </p>
+
+      {/* Source URL */}
+      {profile.source_url && (
+        <a
+          href={profile.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2"
+          style={{
+            fontSize: '12px',
+            color: 'var(--color-accent)',
+            textDecoration: 'none',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            background: 'var(--color-accent-soft)',
+            display: 'inline-flex',
+          }}
+        >
+          <Globe size={13} />
+          {profile.source_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+          <ExternalLink size={11} style={{ opacity: 0.6 }} />
+        </a>
+      )}
+
+      {/* Live stats row */}
+      <div
+        className="grid grid-cols-3 gap-3"
+      >
+        <div
+          className="rounded-xl"
+          style={{ padding: '14px 16px', background: 'var(--color-surface-2)', border: '1px solid var(--color-line)' }}
+        >
+          <div style={{ fontSize: '20px', fontWeight: 300, color: 'var(--color-ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
+            {fmt(profile.records)}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Records</div>
+        </div>
+        <div
+          className="rounded-xl"
+          style={{ padding: '14px 16px', background: 'var(--color-surface-2)', border: '1px solid var(--color-line)' }}
+        >
+          <div style={{ fontSize: '20px', fontWeight: 300, color: qualityColor, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
+            {profile.quality_score != null ? `${(profile.quality_score * 100).toFixed(0)}%` : '--'}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Quality</div>
+        </div>
+        <div
+          className="rounded-xl"
+          style={{ padding: '14px 16px', background: 'var(--color-surface-2)', border: '1px solid var(--color-line)' }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span
+              className="rounded-full"
+              style={{ width: '7px', height: '7px', background: freshnessStyle.color, flexShrink: 0 }}
+            />
+            <span style={{ fontSize: '14px', fontWeight: 500, color: freshnessStyle.color, textTransform: 'capitalize' }}>
+              {profile.freshness}
+            </span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Freshness</div>
+        </div>
+      </div>
+
+      {/* Metadata rows */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ border: '1px solid var(--color-line)' }}
+      >
+        {[
+          { label: 'Entity Types', value: profile.entity_types.map(t => displayName(t)).join(', ') },
+          { label: 'Collection Method', value: profile.collection_method },
+          { label: 'Refresh Schedule', value: profile.refresh_schedule },
+          { label: 'Last Refreshed', value: profile.last_refreshed ? shortDate(profile.last_refreshed) : 'Unknown' },
+        ].map(({ label, value }) => (
+          <div
+            key={label}
+            className="flex items-start justify-between"
+            style={{ padding: '10px 16px', borderBottom: '1px solid var(--color-line)', fontSize: '12px' }}
+          >
+            <span style={{ color: 'var(--color-ink-4)', flexShrink: 0, minWidth: '130px' }}>{label}</span>
+            <span style={{ color: 'var(--color-ink)', textAlign: 'right', fontWeight: 500 }}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Fields collected */}
+      <div>
+        <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-ink)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Fields Collected
+        </h4>
+        <div className="flex flex-wrap gap-1.5">
+          {profile.fields_collected.map(field => (
+            <span
+              key={field}
+              className="rounded-md"
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: 500,
+                background: 'var(--color-surface-2)',
+                color: 'var(--color-ink-3)',
+                border: '1px solid var(--color-line)',
+              }}
+            >
+              {field}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Coverage notes */}
+      {profile.coverage_notes && (
+        <div
+          className="rounded-xl"
+          style={{ padding: '12px 16px', background: 'var(--color-surface-2)', border: '1px solid var(--color-line)' }}
+        >
+          <div className="flex items-start gap-2">
+            <Shield size={13} style={{ color: 'var(--color-ink-4)', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Coverage Notes
+              </div>
+              <p style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--color-ink-3)', margin: 0 }}>
+                {profile.coverage_notes}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

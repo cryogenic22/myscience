@@ -298,6 +298,22 @@ export interface CatalogDataset {
   description?: string;
 }
 
+export interface DatasetProfile {
+  source_key: string;
+  display_name: string;
+  description: string;
+  source_url: string | null;
+  entity_types: string[];
+  refresh_schedule: string;
+  collection_method: string;
+  fields_collected: string[];
+  coverage_notes: string;
+  records: number;
+  quality_score: number | null;
+  last_refreshed: string | null;
+  freshness: string;
+}
+
 export interface CatalogEntity {
   _label: string;
   [key: string]: unknown;
@@ -610,6 +626,8 @@ export const api = {
   // Catalog
   catalogStats: () => get<CatalogStats>('/catalog/stats'),
   catalogDatasets: () => get<{ datasets: CatalogDataset[]; count: number }>('/catalog/datasets'),
+  datasetProfile: (sourceKey: string) =>
+    get<DatasetProfile>(`/catalog/datasets/${encodeURIComponent(sourceKey)}/profile`),
   catalogBrowse: (entityType: string, params?: {
     search?: string; status?: string; quality_min?: number;
     sort_by?: string; sort_dir?: string; limit?: number; offset?: number;

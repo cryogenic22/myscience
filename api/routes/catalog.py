@@ -116,6 +116,147 @@ ENTITY_TABLES = {
 }
 
 
+# ── Static dataset profile metadata ──
+# Keyed by canonical source_api values (see connectors.base.SourceType).
+# Runtime data (records, quality_score, last_refreshed) is augmented from the DB.
+
+DATASET_PROFILES: dict[str, dict] = {
+    "clinical_trials_gov": {
+        "display_name": "ClinicalTrials.gov",
+        "description": "Federally mandated registry of clinical studies conducted in the US and worldwide.",
+        "source_url": "https://clinicaltrials.gov",
+        "entity_types": ["trial", "investigator"],
+        "refresh_schedule": "Daily at 02:00 UTC",
+        "collection_method": "API (REST JSON)",
+        "fields_collected": [
+            "NCT ID", "Title", "Phase", "Status", "Sponsor", "Enrollment",
+            "Start Date", "Completion Date", "Conditions", "Interventions",
+            "Outcomes", "Locations",
+        ],
+        "coverage_notes": "Covers all US-registered trials. International coverage varies by reporting requirements.",
+    },
+    "pubmed": {
+        "display_name": "PubMed",
+        "description": "NCBI index of biomedical literature — abstracts, MeSH terms, and citation metadata.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov",
+        "entity_types": ["literature"],
+        "refresh_schedule": "Weekly on Monday at 03:00 UTC",
+        "collection_method": "API (E-utilities XML)",
+        "fields_collected": [
+            "PMID", "Title", "Abstract", "Authors", "Journal", "Publication Date",
+            "MeSH Terms", "Keywords", "DOI", "Publication Type",
+        ],
+        "coverage_notes": "Over 36 million citations. Drug-specific queries scoped by therapeutic area.",
+    },
+    "fda_orange_book": {
+        "display_name": "FDA Orange Book",
+        "description": "Approved drug products with therapeutic equivalence evaluations, patent, and exclusivity data.",
+        "source_url": "https://www.fda.gov/drugs/drug-approvals-and-databases/approved-drug-products-therapeutic-equivalence-evaluations-orange-book",
+        "entity_types": ["drug", "patent"],
+        "refresh_schedule": "Monthly on 1st at 04:00 UTC",
+        "collection_method": "API (openFDA JSON)",
+        "fields_collected": [
+            "NDA Number", "Generic Name", "Brand Name", "Dosage Form", "Route",
+            "Marketing Status", "Applicant", "Approval Date", "Patent Number",
+            "Patent Expiry", "Exclusivity Code", "Exclusivity Date",
+        ],
+        "coverage_notes": "Covers FDA-approved drugs with NDA/ANDA numbers. Does not include biologics (see Purple Book).",
+    },
+    "openfda_faers": {
+        "display_name": "FDA Adverse Event Reports (FAERS)",
+        "description": "Post-market safety surveillance — adverse event and medication error reports submitted to FDA.",
+        "source_url": "https://open.fda.gov/apis/drug/event/",
+        "entity_types": ["event"],
+        "refresh_schedule": "Weekly on Wednesday at 03:00 UTC",
+        "collection_method": "API (openFDA JSON)",
+        "fields_collected": [
+            "Report ID", "Event Date", "Drug Name", "Reaction", "Outcome",
+            "Patient Age", "Patient Sex", "Reporter Type", "Seriousness",
+        ],
+        "coverage_notes": "Voluntary reporting — captures serious and unexpected adverse events. Under-reporting is common.",
+    },
+    "openfda_labels": {
+        "display_name": "FDA Drug Labels",
+        "description": "Structured product labeling (SPL) — prescribing information, indications, warnings, and dosage.",
+        "source_url": "https://open.fda.gov/apis/drug/label/",
+        "entity_types": ["drug"],
+        "refresh_schedule": "Monthly on 1st at 05:00 UTC",
+        "collection_method": "API (openFDA JSON)",
+        "fields_collected": [
+            "Set ID", "Brand Name", "Generic Name", "Indications",
+            "Warnings", "Dosage", "Adverse Reactions", "Pharmacology",
+            "Manufacturer", "Effective Date",
+        ],
+        "coverage_notes": "Comprehensive US drug labeling. Updated when labels are revised by manufacturers.",
+    },
+    "fda_shortages": {
+        "display_name": "FDA Drug Shortages",
+        "description": "Current and resolved drug shortages tracked by the FDA Drug Shortage Program.",
+        "source_url": "https://www.fda.gov/drugs/drug-safety-and-availability/drug-shortages",
+        "entity_types": ["drug", "event"],
+        "refresh_schedule": "Daily at 06:00 UTC",
+        "collection_method": "API (REST JSON)",
+        "fields_collected": [
+            "Drug Name", "Status", "Shortage Reason", "Expected Resolution",
+            "Affected NDCs", "Therapeutic Category",
+        ],
+        "coverage_notes": "Covers active US drug shortages. Historical data available for resolved shortages.",
+    },
+    "sec_edgar": {
+        "display_name": "SEC EDGAR",
+        "description": "SEC corporate filings — 10-K, 10-Q, and 8-K filings from pharmaceutical companies.",
+        "source_url": "https://www.sec.gov/cgi-bin/browse-edgar",
+        "entity_types": ["company"],
+        "refresh_schedule": "Weekly on Tuesday at 04:00 UTC",
+        "collection_method": "API (EDGAR REST + XBRL)",
+        "fields_collected": [
+            "CIK", "Company Name", "Ticker", "SIC Code", "Filing Type",
+            "Filing Date", "Revenue", "R&D Expense", "Market Cap Tier",
+        ],
+        "coverage_notes": "Covers publicly traded US companies. Non-US pharma companies may have limited coverage.",
+    },
+    "mesh_ontology": {
+        "display_name": "MeSH Ontology",
+        "description": "Medical Subject Headings — NLM controlled vocabulary for indexing biomedical literature.",
+        "source_url": "https://meshb.nlm.nih.gov",
+        "entity_types": ["therapeutic_area", "mechanism"],
+        "refresh_schedule": "Annually (with supplementals quarterly)",
+        "collection_method": "Bulk download (XML)",
+        "fields_collected": [
+            "MeSH ID", "Descriptor Name", "Tree Numbers", "Scope Note",
+            "Parent Descriptors", "Entry Terms", "Pharmacological Actions",
+        ],
+        "coverage_notes": "Authoritative biomedical ontology. Hierarchical tree structure for therapeutic areas and mechanisms.",
+    },
+    "pmc": {
+        "display_name": "PubMed Central",
+        "description": "Full-text open-access biomedical articles from the NLM digital archive.",
+        "source_url": "https://www.ncbi.nlm.nih.gov/pmc/",
+        "entity_types": ["literature"],
+        "refresh_schedule": "Weekly on Monday at 03:30 UTC",
+        "collection_method": "API (OAI-PMH XML + E-utilities)",
+        "fields_collected": [
+            "PMC ID", "PMID", "Title", "Abstract", "Full Text", "Authors",
+            "Journal", "Publication Date", "Figures", "Tables", "References",
+        ],
+        "coverage_notes": "Open-access subset of PubMed. Full-text available for approximately 8 million articles.",
+    },
+    "backfill": {
+        "display_name": "Internal Enrichment",
+        "description": "AI-assisted enrichment and cross-linking derived from existing knowledge base records.",
+        "source_url": None,
+        "entity_types": ["drug", "company", "trial", "mechanism", "therapeutic_area"],
+        "refresh_schedule": "On-demand (triggered by curation pipeline)",
+        "collection_method": "Internal (LLM + heuristic)",
+        "fields_collected": [
+            "Brand Name", "Company Link", "Mechanism Link", "TA Link",
+            "Approval Date", "Competition Links", "Name Cleanup",
+        ],
+        "coverage_notes": "Fills gaps in external source data. Quality validated through HITL review queue.",
+    },
+}
+
+
 # ── Request/Response models ──
 
 class EntityUpdateRequest(BaseModel):
@@ -164,6 +305,88 @@ def list_datasets(db: Database = Depends(get_db)):
         rows = _compute_dataset_stats(db)
 
     return {"datasets": rows, "count": len(rows)}
+
+
+@router.get("/datasets/{source_key}/profile")
+def dataset_profile(
+    source_key: str,
+    db: Database = Depends(get_db),
+):
+    """Rich profile card for a dataset — static metadata augmented with live DB stats."""
+    if source_key not in DATASET_PROFILES:
+        raise HTTPException(404, f"Unknown dataset: {source_key}. Known: {list(DATASET_PROFILES.keys())}")
+
+    profile = {**DATASET_PROFILES[source_key], "source_key": source_key}
+
+    # ── Live stats: records, quality, last_refreshed ──
+    records = 0
+    quality_score: float | None = None
+    last_refreshed: str | None = None
+
+    # Map source_key to the tables it populates
+    source_tables = {
+        "clinical_trials_gov": [("clinical_trials", "trial")],
+        "pubmed": [("pubmed_articles", "article")],
+        "fda_orange_book": [("drugs", "drug")],
+        "openfda_faers": [("market_events", "event")],
+        "openfda_labels": [("drugs", "drug")],
+        "fda_shortages": [("drugs", "drug"), ("market_events", "event")],
+        "sec_edgar": [("companies", "company")],
+        "mesh_ontology": [("therapeutic_areas", "therapeutic_area"), ("mechanisms_of_action", "mechanism")],
+        "pmc": [("pubmed_articles", "article")],
+        "backfill": [("drugs", "drug"), ("companies", "company")],
+    }
+
+    for table, etype in source_tables.get(source_key, []):
+        try:
+            row = db.fetch_one(
+                f"SELECT COUNT(*) AS cnt, MAX(retrieved_at) AS latest FROM {table} WHERE source_api = %s",
+                [source_key],
+            )
+            if row:
+                records += row["cnt"] or 0
+                latest = row.get("latest")
+                if latest and hasattr(latest, "isoformat"):
+                    iso = latest.isoformat()
+                    if last_refreshed is None or iso > last_refreshed:
+                        last_refreshed = iso
+        except Exception:
+            pass
+
+        # Quality score from data_quality_results
+        if _table_exists(db, "data_quality_results"):
+            try:
+                qrow = db.fetch_one(
+                    """
+                    SELECT ROUND(AVG(r.score)::numeric, 3) AS avg_score
+                    FROM data_quality_results r
+                    JOIN (SELECT id FROM %s WHERE source_api = %%s) e ON e.id::text = r.entity_id
+                    WHERE r.entity_type = %%s
+                    """ % table,
+                    [source_key, etype],
+                )
+                if qrow and qrow.get("avg_score") is not None:
+                    quality_score = float(qrow["avg_score"])
+            except Exception:
+                pass
+
+    # Freshness label
+    freshness_label = "unknown"
+    if last_refreshed:
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            latest_dt = _dt.fromisoformat(last_refreshed.replace("Z", "+00:00"))
+            days_old = (_dt.now(_tz.utc) - latest_dt).days
+            freshness_label = "fresh" if days_old <= 7 else "recent" if days_old <= 30 else "stale"
+        except Exception:
+            pass
+
+    profile["records"] = records
+    profile["quality_score"] = quality_score
+    profile["last_refreshed"] = last_refreshed
+    profile["freshness"] = freshness_label
+
+    return profile
 
 
 @router.get("/entities/{entity_type}")
