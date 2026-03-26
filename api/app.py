@@ -229,16 +229,42 @@ def create_app() -> FastAPI:
 
     # Serve frontend static files (must come after API routes)
     if FRONTEND_DIR.exists():
-        app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="static")
+        @app.middleware("http")
+        async def spa_fallback(request: Request, call_next):
+            """Serve SPA for frontend routes, let API routes pass through."""
+            response = await call_next(request)
+            # If the API returned 404 and the path looks like a frontend route,
+            # serve index.html instead. API paths return proper 404 JSON.
+            if response.status_code == 404:
+                path = request.url.path.lstrip("/")
+                is_api = any(path.startswith(p) for p in (
+                    "api/", "chat", "search/", "graph/", "query", "entities",
+                    "catalog/", "metrics", "enrichment", "health",
+                    "therapeutic-areas", "feedback", "scenarios", "steward",
+                    "literature", "pricing", "openapi.json", "docs", "redoc",
+                ))
+                if not is_api and not path.startswith("assets/"):
+                    return FileResponse(str(FRONTEND_DIR / "index.html"))
+            return response
 
-        @app.get("/{full_path:path}")
-        async def serve_spa(request: Request, full_path: str):
-            """Serve the React SPA for all non-API routes."""
-            # Try to serve exact file first
-            file_path = FRONTEND_DIR / full_path
-            if full_path and file_path.exists() and file_path.is_file():
-                return FileResponse(str(file_path))
-            # Fallback to index.html for SPA routing
+        # Serve static assets
+        @app.get("/assets/{file_path:path}")
+        async def serve_asset(file_path: str):
+            asset = FRONTEND_DIR / "assets" / file_path
+            if asset.exists() and asset.is_file():
+                return FileResponse(str(asset))
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "not_found"}, status_code=404)
+
+        # Root → index.html
+        @app.get("/")
+        async def serve_root():
+            return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+        # Frontend routes (workspace, search) → index.html
+        @app.get("/workspace")
+        @app.get("/search")
+        async def serve_frontend_routes():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
     return app
