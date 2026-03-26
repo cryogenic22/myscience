@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 # ── ctxpack path setup ──
 
-_CTX_MOD_PATH = r"C:\Users\kapil\Documents\CTX_mod"
-if _CTX_MOD_PATH not in sys.path:
-    sys.path.insert(0, _CTX_MOD_PATH)
+
+
+
 
 try:
     from ctxpack.core.packer.ir import (

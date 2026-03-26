@@ -23,9 +23,9 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 # Add ctxpack to path
-_CTX_MOD_PATH = r"C:\Users\kapil\Documents\CTX_mod"
-if _CTX_MOD_PATH not in sys.path:
-    sys.path.insert(0, _CTX_MOD_PATH)
+
+
+
 
 from ctxpack.core.model import CTXDocument, Section
 from ctxpack.core.hydrator import hydrate_by_name, hydrate_by_query, list_sections

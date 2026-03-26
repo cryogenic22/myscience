@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 MIN_TOKENS_FOR_CTX = 300
 
 # Add ctxpack to path if not installed
-_CTX_MOD_PATH = r"C:\Users\kapil\Documents\CTX_mod"
-if _CTX_MOD_PATH not in sys.path:
-    sys.path.insert(0, _CTX_MOD_PATH)
+
+
+
 
 try:
     from ctxpack.core.model import (

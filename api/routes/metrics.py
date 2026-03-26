@@ -156,6 +156,76 @@ def fair_score(scorer: FAIRScorer = Depends(get_fair_scorer)):
     }
 
 
+@router.get("/ctx-value-report")
+def ctx_value_report(db: Database = Depends(get_db)):
+    """CTX system value report — compression, cost savings, quality metrics.
+
+    Use this to track whether CTX is delivering value over time.
+    """
+    # Overall stats
+    overall = db.fetch_one("""
+        SELECT COUNT(*) as total_queries,
+               ROUND(AVG(ctx_tokens)::numeric, 0) as avg_ctx_tokens,
+               ROUND(AVG(NULLIF(legacy_tokens,0))::numeric, 0) as avg_legacy_tokens,
+               ROUND(AVG(compression_ratio)::numeric, 3) as avg_compression,
+               ROUND(AVG(build_time_ms)::numeric, 2) as avg_build_ms,
+               SUM(CASE WHEN legacy_tokens > 0 THEN legacy_tokens - ctx_tokens ELSE 0 END) as total_tokens_saved
+        FROM ctx_telemetry
+    """) or {}
+
+    # By mode
+    by_mode = db.fetch_all("""
+        SELECT mode, COUNT(*) as queries,
+               ROUND(AVG(ctx_tokens)::numeric, 0) as avg_tokens,
+               ROUND(AVG(compression_ratio)::numeric, 3) as avg_ratio
+        FROM ctx_telemetry GROUP BY mode ORDER BY queries DESC
+    """) or []
+
+    # By intent
+    by_intent = db.fetch_all("""
+        SELECT intent, COUNT(*) as queries,
+               ROUND(AVG(ctx_tokens)::numeric, 0) as avg_tokens,
+               ROUND(AVG(compression_ratio)::numeric, 3) as avg_ratio
+        FROM ctx_telemetry WHERE intent IS NOT NULL AND intent != ''
+        GROUP BY intent ORDER BY queries DESC
+    """) or []
+
+    # Weekly trend
+    weekly = db.fetch_all("""
+        SELECT DATE_TRUNC('week', created_at)::date as week,
+               COUNT(*) as queries,
+               ROUND(AVG(ctx_tokens)::numeric, 0) as avg_tokens,
+               ROUND(AVG(compression_ratio)::numeric, 3) as avg_ratio,
+               SUM(CASE WHEN legacy_tokens > 0 THEN legacy_tokens - ctx_tokens ELSE 0 END) as tokens_saved
+        FROM ctx_telemetry
+        GROUP BY 1 ORDER BY 1 DESC LIMIT 12
+    """) or []
+
+    # Cost estimate (GPT-4o pricing: $2.50/1M input tokens)
+    total_tokens_saved = overall.get('total_tokens_saved', 0) or 0
+    estimated_savings_usd = round(total_tokens_saved * 2.50 / 1_000_000, 2)
+
+    # CTX active status
+    ctx_queries = sum(1 for m in by_mode if m.get('mode') == 'ctx')
+    legacy_queries = sum(1 for m in by_mode if m.get('mode') == 'legacy')
+
+    return {
+        "status": "ctx_active" if ctx_queries > 0 else "legacy_only",
+        "summary": {
+            "total_queries": overall.get('total_queries', 0),
+            "avg_ctx_tokens": overall.get('avg_ctx_tokens'),
+            "avg_legacy_tokens": overall.get('avg_legacy_tokens'),
+            "avg_compression_ratio": overall.get('avg_compression'),
+            "avg_build_time_ms": overall.get('avg_build_ms'),
+            "total_tokens_saved": total_tokens_saved,
+            "estimated_cost_savings_usd": estimated_savings_usd,
+        },
+        "by_mode": by_mode,
+        "by_intent": by_intent,
+        "weekly_trend": weekly,
+    }
+
+
 @router.post("/fair-score/compute")
 def compute_fair_score(scorer: FAIRScorer = Depends(get_fair_scorer)):
     """Compute a fresh FAIR score, persist it, and return the snapshot.
