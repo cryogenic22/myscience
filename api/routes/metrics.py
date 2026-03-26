@@ -162,6 +162,16 @@ def ctx_value_report(db: Database = Depends(get_db)):
 
     Use this to track whether CTX is delivering value over time.
     """
+    # Check if telemetry table exists
+    try:
+        db.fetch_one("SELECT 1 FROM ctx_telemetry LIMIT 1")
+    except Exception:
+        return {
+            "status": "no_telemetry",
+            "message": "ctx_telemetry table not found. Run migration 014.",
+            "summary": {}, "by_mode": [], "by_intent": [], "weekly_trend": [],
+        }
+
     # Overall stats
     overall = db.fetch_one("""
         SELECT COUNT(*) as total_queries,
