@@ -30,8 +30,8 @@
   /* Borders — set to transparent for Apple-style borderless design.
      Components use var(--color-line) in inline styles; making it
      transparent kills all decorative borders without editing TSX. */
-  --color-line:         transparent;
-  --color-line-2:       transparent;
+  --color-line:         rgba(0,0,0,0.06);
+  --color-line-2:       rgba(0,0,0,0.04);
 
   /* When a visible divider is truly needed, use --color-divider explicitly */
   --color-divider:      #EBEBEA;
@@ -78,8 +78,8 @@ html.dark {
   --color-ink-2:        #AEAEB2;
   --color-ink-3:        #636366;
   --color-ink-4:        #48484A;
-  --color-line:         transparent;
-  --color-line-2:       transparent;
+  --color-line:         rgba(0,0,0,0.06);
+  --color-line-2:       rgba(0,0,0,0.04);
   --color-divider:      #2C2C2E;
   --color-divider-2:    rgba(255,255,255,0.06);
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
@@ -545,15 +545,15 @@ html.dark .glass { background: rgba(23,23,26,0.8); }
 .border-slate-200\/50, .border-slate-200\/60,
 .border-slate-200\/70, .border-slate-200\/75,
 .border-slate-200\/80 {
-  border-color: transparent !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
 .border-slate-300 {
-  border-color: transparent !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
 .border-slate-700\/50 {
-  border-color: transparent !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
 /* Keep dark borders for strong contrast elements (buttons, active states) */
@@ -562,7 +562,7 @@ html.dark .glass { background: rgba(23,23,26,0.8); }
 }
 
 .divide-slate-200\/70 > :not(:first-child) {
-  border-color: transparent !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
 /* ── Hover states ────────────────────────────────────── */
@@ -577,7 +577,7 @@ html.dark .glass { background: rgba(23,23,26,0.8); }
 }
 
 .hover\:border-slate-300:hover {
-  border-color: transparent !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
 .hover\:text-slate-600:hover,
