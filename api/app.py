@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.deps import get_db
+from db import Database
 from api.routes import search, metrics, graph, query, entities, chat, therapeutic_areas, catalog, enrichment, pricing, scenarios
 
 logger = logging.getLogger(__name__)
@@ -101,10 +102,37 @@ def create_app() -> FastAPI:
             "literature_file_exists": os.path.exists("api/routes/literature.py"),
         }
 
+    @app.get("/healthz")
+    def healthz():
+        """Lightweight liveness probe — no DB, instant 200."""
+        return {"status": "ok"}
+
     @app.get("/health")
     def health():
-        """Health check: database connectivity + table counts."""
-        db = get_db()
+        """Rich health check with DB stats — always returns 200.
+
+        Database details are best-effort; if the DB is unreachable the
+        endpoint still responds with status=degraded instead of crashing.
+        """
+        db_status = "unknown"
+        tables: dict = {}
+        total_records = 0
+        source_coverage: list = []
+
+        try:
+            db = get_db()
+        except Exception as e:
+            db_status = f"connection_error: {e}"
+            return {
+                "status": "degraded",
+                "database": db_status,
+                "tables": {},
+                "services": ["search", "graph", "metrics", "query_engine"],
+                "total_records": 0,
+                "source_coverage": [],
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
+
         try:
             row = db.fetch_one("SELECT 1 AS ok")
             db_status = "connected" if row else "error"
@@ -119,7 +147,6 @@ def create_app() -> FastAPI:
             "market_events",
             "entity_links",
         ]
-        tables = {}
         for table in tracked_tables:
             try:
                 count_row = db.fetch_one(f"SELECT COUNT(*) AS cnt FROM {table}")
@@ -129,7 +156,6 @@ def create_app() -> FastAPI:
 
         total_records = sum(int(v) for v in tables.values() if isinstance(v, int))
 
-        source_coverage = []
         try:
             source_rows = db.fetch_all(
                 """
@@ -165,7 +191,7 @@ def create_app() -> FastAPI:
                     }
                 )
         except Exception:
-            source_coverage = []
+            pass
 
         return {
             "status": "ok" if db_status == "connected" else "degraded",

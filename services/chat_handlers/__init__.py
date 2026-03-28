@@ -7,6 +7,7 @@ Re-exports all public symbols so callers can do:
 from services.chat_handlers.intent import (
     Intent,
     MECHANISM_SYNONYMS,
+    detect_compound_intent,
     detect_format_hint,
     detect_intent,
 )
@@ -33,6 +34,7 @@ from services.chat_handlers.formatting import (
 
 from services.chat_handlers.handlers import (
     handle_compare,
+    handle_compound,
     handle_deep_research,
     handle_dossier,
     handle_general,
@@ -47,6 +49,7 @@ __all__ = [
     # intent
     "Intent",
     "MECHANISM_SYNONYMS",
+    "detect_compound_intent",
     "detect_format_hint",
     "detect_intent",
     # context
@@ -67,6 +70,7 @@ __all__ = [
     "to_number",
     # handlers
     "handle_compare",
+    "handle_compound",
     "handle_deep_research",
     "handle_dossier",
     "handle_general",

@@ -268,3 +268,70 @@ def list_actions(
         }
     except Exception:
         return {"items": [], "total": 0, "limit": limit, "offset": offset}
+
+
+# ── Feedback Loops ─────────────────────────────────────────────────────
+
+
+@router.post("/feedback-loops")
+def run_feedback_loops(
+    body: dict,
+    db: Database = Depends(get_db),
+):
+    """Run all feedback loops and return proposed actions.
+
+    Body:
+        since_days (int, default 7): How far back to look for patterns.
+        dry_run (bool, default False): If true, return actions without persisting.
+    """
+    from services.feedback_loops import FeedbackLoopOrchestrator
+
+    since_days = body.get("since_days", 7)
+    dry_run = body.get("dry_run", False)
+
+    try:
+        orch = FeedbackLoopOrchestrator(db)
+        result = orch.run(since_days=since_days, dry_run=dry_run)
+        return result
+    except Exception:
+        logger.exception("Feedback loops failed")
+        return {
+            "actions": [],
+            "summary": {"loops_executed": 0, "total_actions": 0, "errors": ["internal error"]},
+            "dry_run": dry_run,
+        }
+
+
+@router.get("/feedback-loops/status")
+def feedback_loop_status(
+    since_days: int = Query(7, ge=1, le=90),
+    db: Database = Depends(get_db),
+):
+    """Return recent feedback loop activity."""
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT loop, action_type, COUNT(*) AS cnt
+            FROM feedback_loop_actions
+            WHERE created_at > NOW() - make_interval(days := %s)
+            GROUP BY loop, action_type
+            ORDER BY cnt DESC
+            """,
+            [since_days],
+        )
+        total = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM feedback_loop_actions"
+        )
+        latest = db.fetch_one(
+            "SELECT MAX(created_at) AS last_run FROM feedback_loop_actions"
+        )
+        return {
+            "total_actions": total["cnt"] if total else 0,
+            "last_run": latest["last_run"] if latest else None,
+            "recent_by_loop": [
+                {"loop": r["loop"], "action_type": r["action_type"], "count": r["cnt"]}
+                for r in rows
+            ],
+        }
+    except Exception:
+        return {"total_actions": 0, "last_run": None, "recent_by_loop": []}
