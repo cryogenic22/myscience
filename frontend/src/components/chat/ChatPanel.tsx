@@ -3,11 +3,13 @@ import { ArrowUp, Loader2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Message } from '../ChatMessage';
 import NarrativeMessage from './NarrativeMessage';
+import QueryProgress from './QueryProgress';
 
 interface ChatPanelProps {
   messages: Message[];
   onSend: (question: string) => void;
   isLoading: boolean;
+  queryStatus?: string | null;
   followupSuggestions?: string[];
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
@@ -38,6 +40,7 @@ export default function ChatPanel({
   messages,
   onSend,
   isLoading,
+  queryStatus,
   onFollowUp,
   onCitationClick,
 }: ChatPanelProps) {
@@ -172,6 +175,9 @@ export default function ChatPanel({
               )}
             </button>
           </div>
+        </div>
+        <div className="mx-auto" style={{ maxWidth: '680px' }}>
+          <QueryProgress status={queryStatus ?? null} visible={isLoading} />
         </div>
       </div>
     </div>

@@ -11,6 +11,7 @@ import GraphExplorer from '../components/GraphExplorer';
 import DataCatalogPanel from '../components/DataCatalogPanel';
 import { LiteratureExplorer } from '../components/LiteratureExplorer';
 import { IntelligenceFeed } from '../components/intelligence/IntelligenceFeed';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 type Tab = 'chat' | 'graph' | 'catalog' | 'feed';
 
@@ -219,48 +220,58 @@ export default function WorkspacePage({
 
       {activeTab === 'graph' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '0 16px' }}>
-          <GraphExplorer initialEntity={graphEntity} />
+          <ErrorBoundary onRetry={() => setActiveTab('graph')}>
+            <GraphExplorer initialEntity={graphEntity} />
+          </ErrorBoundary>
         </div>
       ) : activeTab === 'catalog' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <DataCatalogPanel
-            onAskInChat={q => {
-              setActiveTab('chat');
-              setTimeout(() => void sendQuery(q), 50);
-            }}
-          />
+          <ErrorBoundary onRetry={() => setActiveTab('catalog')}>
+            <DataCatalogPanel
+              onAskInChat={q => {
+                setActiveTab('chat');
+                setTimeout(() => void sendQuery(q), 50);
+              }}
+            />
+          </ErrorBoundary>
         </div>
       ) : activeTab === 'feed' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <IntelligenceFeed />
+          <ErrorBoundary onRetry={() => setActiveTab('feed')}>
+            <IntelligenceFeed />
+          </ErrorBoundary>
         </div>
       ) : (
         <WorkspaceLayout
           left={
-            <ChatPanel
-              messages={messages}
-              onSend={sendQuery}
-              isLoading={isLoading}
-              onFollowUp={q => void sendQuery(q)}
-            />
+            <ErrorBoundary>
+              <ChatPanel
+                messages={messages}
+                onSend={sendQuery}
+                isLoading={isLoading}
+                onFollowUp={q => void sendQuery(q)}
+              />
+            </ErrorBoundary>
           }
           right={
-            <CanvasPanel
-              intent={canvas.intent}
-              data={canvas.data}
-              tableData={canvas.tableData}
-              visualizations={canvas.visualizations}
-              confidence={canvas.confidence}
-              guardStatus={canvas.guardStatus}
-              loading={canvasLoading}
-              personaAnalyses={canvas.personaAnalyses}
-              confidenceAssessment={canvas.confidenceAssessment}
-              onViewInGraph={(entity) => {
-                setGraphEntity(entity);
-                setActiveTab('graph');
-              }}
-              onOpenLiterature={(articleId) => setLitExplorerArticleId(articleId)}
-            />
+            <ErrorBoundary>
+              <CanvasPanel
+                intent={canvas.intent}
+                data={canvas.data}
+                tableData={canvas.tableData}
+                visualizations={canvas.visualizations}
+                confidence={canvas.confidence}
+                guardStatus={canvas.guardStatus}
+                loading={canvasLoading}
+                personaAnalyses={canvas.personaAnalyses}
+                confidenceAssessment={canvas.confidenceAssessment}
+                onViewInGraph={(entity) => {
+                  setGraphEntity(entity);
+                  setActiveTab('graph');
+                }}
+                onOpenLiterature={(articleId) => setLitExplorerArticleId(articleId)}
+              />
+            </ErrorBoundary>
           }
           defaultSplit={50}
           minLeft={32}

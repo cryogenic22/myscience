@@ -3,6 +3,12 @@ import { motion } from 'framer-motion';
 import type { Message } from '../ChatMessage';
 import type { EvidenceItem } from '../../api';
 
+const PROMPT_ARTIFACT_RE = /\[(metrics|data|evidence|context|sources?|analysis|summary)\]/gi;
+
+function cleanPromptArtifacts(text: string): string {
+  return text.replace(PROMPT_ARTIFACT_RE, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 interface NarrativeMessageProps {
   message: Message;
   isUser: boolean;
@@ -41,7 +47,7 @@ export default function NarrativeMessage({
             <>
               <div className="chat-assistant-text">
                 <RichText
-                  text={message.content}
+                  text={cleanPromptArtifacts(message.content)}
                   evidence={message.data?.evidence as EvidenceItem[] | undefined}
                   onCitationClick={onCitationClick}
                 />

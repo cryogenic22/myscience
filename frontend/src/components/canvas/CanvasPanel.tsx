@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { TableData, VisualizationSpec, QueryResponse, EvidenceItem, PersonaAnalysis } from '../../api';
+import { DataTable as SortableDataTable, type DataTableColumn } from '../ui/DataTable';
 
 interface CanvasPanelProps {
   intent: string | null;
@@ -229,6 +230,7 @@ export default function CanvasPanel({
               <DataTab
                 tableData={hasTable ? tableData! : null}
                 visualizations={hasViz ? visualizations! : null}
+                onViewInGraph={onViewInGraph}
               />
             )}
 
@@ -251,6 +253,21 @@ export default function CanvasPanel({
       </div>
     </div>
   );
+}
+
+/* ── Row click → entity navigation helper ── */
+function makeRowClickHandler(
+  onViewInGraph?: (entity: { id: string; type: string; label: string }) => void,
+) {
+  if (!onViewInGraph) return undefined;
+  return (row: Record<string, unknown>) => {
+    const id = row.entity_id ?? row.id;
+    const type = row.entity_type ?? row.type ?? 'drug';
+    const label = row.name ?? row.title ?? row.label ?? row.drug_name ?? row.company_name ?? '';
+    if (id) {
+      onViewInGraph({ id: String(id), type: String(type), label: String(label) });
+    }
+  };
 }
 
 /* ── Summary tab: intent + confidence + first 5 rows + first viz + first 3 entities ── */
@@ -279,7 +296,7 @@ function SummaryTab({
     <>
       {summaryTable && summaryTable.rows.length > 0 && (
         <Section title="Data">
-          <DataTable tableData={summaryTable} />
+          <DataTable tableData={summaryTable} onRowClick={makeRowClickHandler(onViewInGraph)} />
         </Section>
       )}
       {firstViz && (
@@ -300,15 +317,17 @@ function SummaryTab({
 function DataTab({
   tableData,
   visualizations,
+  onViewInGraph,
 }: {
   tableData: TableData | null;
   visualizations: VisualizationSpec[] | null;
+  onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }) {
   return (
     <>
       {tableData && tableData.rows.length > 0 && (
         <Section title="Data">
-          <DataTable tableData={tableData} />
+          <DataTable tableData={tableData} onRowClick={makeRowClickHandler(onViewInGraph)} />
         </Section>
       )}
       {visualizations && visualizations.length > 0 && (
@@ -502,9 +521,22 @@ function exportCsv(columns: TableData['columns'], rows: TableData['rows'], title
   URL.revokeObjectURL(url);
 }
 
-function DataTable({ tableData }: { tableData: TableData }) {
+function DataTable({
+  tableData,
+  onRowClick,
+}: {
+  tableData: TableData;
+  onRowClick?: (row: Record<string, unknown>) => void;
+}) {
   const [showAll, setShowAll] = useState(false);
   const display = showAll ? tableData.rows : tableData.rows.slice(0, 12);
+
+  const columns: DataTableColumn[] = tableData.columns.map((col) => ({
+    key: col.key,
+    label: col.label,
+    sortable: true,
+    align: col.type === 'number' ? 'right' as const : 'left' as const,
+  }));
 
   return (
     <div>
@@ -524,42 +556,12 @@ function DataTable({ tableData }: { tableData: TableData }) {
         </button>
       </div>
 
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{ border: '1px solid var(--color-line)' }}
-      >
-        <div className="overflow-x-auto max-h-80">
-          <table className="data-table">
-            <thead>
-              <tr>
-                {tableData.columns.map(col => (
-                  <th key={col.key} style={{ textAlign: col.type === 'number' ? 'right' : 'left' }}>
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {display.map((row, i) => (
-                <tr key={i}>
-                  {tableData.columns.map((col, ci) => (
-                    <td
-                      key={col.key}
-                      style={{
-                        textAlign: col.type === 'number' ? 'right' : 'left',
-                        fontWeight: ci === 0 ? 500 : 400,
-                        color: ci === 0 ? 'var(--color-ink)' : 'var(--color-ink-3)',
-                      }}
-                    >
-                      {row[col.key] != null ? String(row[col.key]) : '—'}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <SortableDataTable
+        columns={columns}
+        rows={display}
+        onRowClick={onRowClick}
+        maxHeight={showAll ? '600px' : '320px'}
+      />
 
       {tableData.rows.length > 12 && !showAll && (
         <button

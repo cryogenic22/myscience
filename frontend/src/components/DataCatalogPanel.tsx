@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LiteratureExplorer } from './LiteratureExplorer';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { displayName, isUUID, QUALITY_CHECK_LABELS, SOURCE_LABELS } from '../brand';
 import {
   CheckCircle,
@@ -69,7 +70,40 @@ function shortDate(v: string | null | undefined) {
 
 /* ══════════════════════════════════════════════════════ */
 
-export default function DataCatalogPanel({ onAskInChat }: Props) {
+function Skeleton({ width, height }: { width?: string; height?: string }) {
+  return (
+    <div
+      style={{
+        width: width || '100%',
+        height: height || '16px',
+        borderRadius: '6px',
+        background: 'var(--color-surface-3)',
+        animation: 'skeleton-pulse 1.5s ease-in-out infinite',
+      }}
+    />
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div
+      style={{
+        padding: '20px',
+        borderRadius: '16px',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-line)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}
+    >
+      <Skeleton width="60%" height="24px" />
+      <Skeleton width="40%" height="12px" />
+    </div>
+  );
+}
+
+function DataCatalogPanelInner({ onAskInChat }: Props) {
   const [tab, setTab] = useState<CatalogTab>('browse');
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<HealthData | null>(null);
@@ -286,13 +320,39 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
         ) : (
           <>
             {tab === 'overview' && (
-              <OverviewTab
-                health={health}
-                stats={stats}
-                datasets={datasets}
-                onBrowse={type => { setBrowseType(type); setTab('browse'); }}
-                onOpenProfile={openDatasetProfile}
-              />
+              <ErrorBoundary
+                fallback={
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--color-ink-3)', fontSize: '13px' }}>
+                    Data quality metrics unavailable.{' '}
+                    <button
+                      type="button"
+                      onClick={() => void loadOverview(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--color-accent)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                }
+                onRetry={() => void loadOverview(false)}
+              >
+                <OverviewTab
+                  health={health}
+                  stats={stats}
+                  datasets={datasets}
+                  onBrowse={type => { setBrowseType(type); setTab('browse'); }}
+                  onOpenProfile={openDatasetProfile}
+                  visible={tab === 'overview'}
+                />
+              </ErrorBoundary>
             )}
             {tab === 'browse' && (
               <BrowseTab
@@ -384,29 +444,67 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   );
 }
 
+export default function DataCatalogPanel(props: Props) {
+  return (
+    <ErrorBoundary>
+      <DataCatalogPanelInner {...props} />
+    </ErrorBoundary>
+  );
+}
+
 /* ══ Overview ══ */
-function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile }: {
+function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile, visible }: {
   health: HealthData | null;
   stats: CatalogStats | null;
   datasets: CatalogDataset[];
   onBrowse: (type: string) => void;
   onOpenProfile: (sourceKey: string) => void;
+  visible: boolean;
 }) {
   const [completeness, setCompleteness] = useState<Record<string, FieldCompleteness> | null>(null);
   const [freshData, setFreshData] = useState<Record<string, SourceFreshness> | null>(null);
   const [graphSummary, setGraphSummary] = useState<{ link_types: Array<{type: string; count: number}>; total_links: number; total_entities: number; drug_completeness: Record<string, number> } | null>(null);
   const [taCoverage, setTaCoverage] = useState<Array<{id: string; name: string; drug_count: number; linked_drug_count: number; trial_count: number}> | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<Array<{source_key: string; label: string; schedule: string; last_run: string|null; days_since: number|null; records: number; status: string}> | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
 
+  // Only fetch when this tab is visible — avoids browser hang on mount
   useEffect(() => {
-    api.catalogCompleteness().then(r => setCompleteness(r.completeness)).catch(() => {});
-    api.catalogFreshness().then(r => setFreshData(r.freshness)).catch(() => {});
-    api.catalogGraphSummary().then(r => setGraphSummary(r)).catch(() => {});
-    api.catalogTaCoverage().then(r => setTaCoverage(r.therapeutic_areas)).catch(() => {});
-    api.catalogPipelineStatus().then(r => setPipelineStatus(r.connectors)).catch(() => {});
-  }, []);
+    if (!visible || fetched) return;
+    setOverviewLoading(true);
+    Promise.all([
+      api.catalogCompleteness().then(r => setCompleteness(r.completeness)).catch(() => {}),
+      api.catalogFreshness().then(r => setFreshData(r.freshness)).catch(() => {}),
+      api.catalogGraphSummary().then(r => setGraphSummary(r)).catch(() => {}),
+      api.catalogTaCoverage().then(r => setTaCoverage(r.therapeutic_areas)).catch(() => {}),
+      api.catalogPipelineStatus().then(r => setPipelineStatus(r.connectors)).catch(() => {}),
+    ]).finally(() => {
+      setOverviewLoading(false);
+      setFetched(true);
+    });
+  }, [visible, fetched]);
 
   const staleCount = freshData ? Object.values(freshData).filter(s => s.stale).length : 0;
+
+  if (overviewLoading) {
+    return (
+      <div className="space-y-8">
+        {/* Skeleton stat row */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+        {/* Skeleton sections */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Skeleton width="100%" height="120px" />
+          <Skeleton width="100%" height="180px" />
+          <Skeleton width="100%" height="140px" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
