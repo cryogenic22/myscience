@@ -57,47 +57,89 @@ def detect_intent(question: str) -> tuple[str, dict]:
         or re.search(r'(?:study|trial|randomized|multicenter|real-world|meta-analysis|systematic review)\b', q)
     )
 
-    # Compare: "compare X vs Y", "X versus Y", "X and Y comparison"
+    # Compare: "compare X vs Y", "X versus Y", "X and Y comparison",
+    # "differences between X and Y", "which is better", "how does X stack up", "which X or Y"
     # Skip if query looks like a literature title.
     vs_match = re.search(
         r'(?:compare\s+)?(.+?)\s+(?:vs\.?|versus|compared?\s+(?:to|with))\s+(.+?)(?:\s+in\s+|\?|$)',
         q
     )
-    if not _looks_like_title and (vs_match or ('compare' in q and 'landscape' not in q)):
-        if vs_match:
-            return Intent.COMPARE, {"entities": [vs_match.group(1).strip(), vs_match.group(2).strip()]}
+    diff_match = re.search(
+        r'differences?\s+between\s+(.+?)\s+and\s+(.+?)(?:\?|$)', q
+    )
+    stack_match = re.search(
+        r'how\s+does\s+(.+?)\s+stack\s+up(?:\s+(?:against|to|vs\.?)\s+(.+?))?(?:\?|$)', q
+    )
+    which_or_match = re.search(
+        r'(?:which|what)\s+.*?\b(.+?)\s+or\s+(.+?)(?:\?|$)', q
+    )
+    _has_compare_signal = (
+        vs_match or diff_match or stack_match or which_or_match
+        or ('compare' in q and 'landscape' not in q)
+        or 'which is better' in q
+    )
+    if not _looks_like_title and _has_compare_signal:
+        for m in (vs_match, diff_match, stack_match, which_or_match):
+            if m:
+                entities = [m.group(1).strip()]
+                if m.lastindex and m.lastindex >= 2 and m.group(2):
+                    entities.append(m.group(2).strip())
+                return Intent.COMPARE, {"entities": entities}
         return Intent.COMPARE, {"entities": []}
 
-    # Landscape: "competitive landscape", "market landscape", "GLP-1 landscape"
+    # Landscape: "competitive landscape", "market landscape", "GLP-1 landscape",
+    # "competing", "competitors to", "who competes with", "market share"
     # Must come before dossier to avoid "what is the competitive landscape" -> dossier
-    if any(w in q for w in ['landscape', 'competitive', 'market segments', 'market overview']):
+    _landscape_keywords = ['landscape', 'competitive', 'competing', 'market segments', 'market overview', 'market share']
+    _landscape_patterns = re.search(r'(?:competitors?\s+to|who\s+competes?\s+with)\s+(.+?)(?:\?|$)', q)
+    if _landscape_patterns or any(w in q for w in _landscape_keywords):
         # Extract topic: "GLP-1 landscape" → "GLP-1", "competitive landscape for diabetes" → "diabetes"
         topic = ""
-        topic_match = re.search(r'(?:landscape|competitive|market\s+(?:segments|overview))\s+(?:for|in|of)\s+(.+?)(?:\?|$)', q)
-        if topic_match:
-            topic = topic_match.group(1).strip()
+        if _landscape_patterns:
+            topic = _landscape_patterns.group(1).strip()
         else:
-            # Try prefix: "GLP-1 landscape", "obesity competitive landscape"
-            prefix_match = re.search(r'^(.+?)\s+(?:landscape|competitive|market)', q)
-            if prefix_match:
-                topic = prefix_match.group(1).strip()
-                # Strip filler words
-                topic = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+|tabular\s+(?:breakdown\s+(?:of\s+)?)?(?:the\s+)?)', '', topic).strip()
+            topic_match = re.search(r'(?:landscape|competitive|competing|market\s+(?:segments|overview|share))(?:\s+\w+)*?\s+(?:for|in|of)\s+(.+?)(?:\?|$)', q)
+            if topic_match:
+                topic = topic_match.group(1).strip()
+            else:
+                # Try prefix: "GLP-1 landscape", "obesity competitive landscape"
+                prefix_match = re.search(r'^(.+?)\s+(?:landscape|competitive|competing|market)', q)
+                if prefix_match:
+                    topic = prefix_match.group(1).strip()
+                    # Strip filler words
+                    topic = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+|tabular\s+(?:breakdown\s+(?:of\s+)?)?(?:the\s+)?)', '', topic).strip()
         return Intent.LANDSCAPE, {"topic": topic}
 
-    # Portfolio: "company portfolio", "Novo Nordisk portfolio", "Novo Nordisk's portfolio"
-    if 'portfolio' in q:
-        name_match = re.search(r"(.+?)(?:'s)?\s+portfolio", q, re.IGNORECASE)
+    # Portfolio: "company portfolio", "Novo Nordisk portfolio", "Novo Nordisk's portfolio",
+    # "what drugs does X have", "X's drugs"
+    _portfolio_drugs_match = re.search(r"what\s+drugs?\s+does\s+(.+?)\s+(?:have|own|make|sell|produce)", q)
+    _possessive_drugs_match = re.search(r"(.+?)(?:'s|s')\s+drugs?\b", q)
+    if 'portfolio' in q or _portfolio_drugs_match or _possessive_drugs_match:
         company_name = ""
-        if name_match:
-            company_name = name_match.group(1).strip()
-            company_name = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|tell\s+me\s+about\s+(?:the\s+)?|the\s+)', '', company_name, flags=re.IGNORECASE).strip()
+        if _portfolio_drugs_match:
+            company_name = _portfolio_drugs_match.group(1).strip()
+        elif _possessive_drugs_match:
+            company_name = _possessive_drugs_match.group(1).strip()
+        else:
+            name_match = re.search(r"(.+?)(?:'s)?\s+portfolio", q, re.IGNORECASE)
+            if name_match:
+                company_name = name_match.group(1).strip()
+        company_name = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|tell\s+me\s+about\s+(?:the\s+)?|the\s+)', '', company_name, flags=re.IGNORECASE).strip()
         return Intent.PORTFOLIO, {"company_name": company_name}
 
-    # Pipeline: "pipeline", "drug pipeline", "obesity pipeline", "heart failure pipeline"
-    if 'pipeline' in q:
-        ta_match = re.search(r'(.+?)\s+pipeline', q)
-        ta = ta_match.group(1).strip() if ta_match else ""
+    # Pipeline: "pipeline", "drug pipeline", "obesity pipeline", "heart failure pipeline",
+    # "phase 3 trials", "clinical trials for X", "drugs in development", "in clinical trials"
+    _clinical_trials_match = re.search(r'clinical\s+trials?\s+for\s+(.+?)(?:\?|$)', q)
+    _phase_trials_match = re.search(r'phase\s+[1234]\s+trials?(?:\s+(?:for|in)\s+(.+?))?(?:\?|$)', q)
+    if 'pipeline' in q or _clinical_trials_match or _phase_trials_match or 'drugs in development' in q or 'in clinical trials' in q:
+        ta = ""
+        if _clinical_trials_match:
+            ta = _clinical_trials_match.group(1).strip()
+        elif _phase_trials_match and _phase_trials_match.group(1):
+            ta = _phase_trials_match.group(1).strip()
+        elif 'pipeline' in q:
+            ta_match = re.search(r'(.+?)\s+pipeline', q)
+            ta = ta_match.group(1).strip() if ta_match else ""
         # Strip leading filler words
         ta = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+|drug\s+)', '', ta).strip()
         return Intent.PIPELINE, {"therapeutic_area": ta}

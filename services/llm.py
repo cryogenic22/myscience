@@ -102,15 +102,17 @@ def verify_narrative_numbers(
 
     Extracts **N**, **N.N**, **N%** patterns.
     Numbers within `tolerance` of any source number are verified.
+    Unverified numbers have bold formatting stripped (trust signal removal).
 
-    Returns: {"verified": int, "flagged": int, "mismatches": [...]}
+    Returns: {"narrative": str, "verified": int, "flagged": int, "stripped": int, "mismatches": [...]}
     """
     if not narrative:
-        return {"verified": 0, "flagged": 0, "mismatches": []}
+        return {"narrative": "", "verified": 0, "flagged": 0, "stripped": 0, "mismatches": []}
 
     matches = _BOLD_NUMBER_RE.findall(narrative)
     verified = 0
     flagged = 0
+    stripped = 0
     mismatches = []
 
     for raw in matches:
@@ -135,9 +137,12 @@ def verify_narrative_numbers(
             verified += 1
         else:
             flagged += 1
+            stripped += 1
             mismatches.append(num)
+            # Strip bold formatting from unverified numbers (remove trust signal)
+            narrative = narrative.replace(f"**{raw}**", f"{raw}")
 
-    return {"verified": verified, "flagged": flagged, "mismatches": mismatches}
+    return {"narrative": narrative, "verified": verified, "flagged": flagged, "stripped": stripped, "mismatches": mismatches}
 
 
 _BASE_RULES = """- Use **bold** for key entities, numbers, and findings.
@@ -406,13 +411,14 @@ class LLMSynthesizer:
         if cit_result["stripped"] > 0:
             logger.info("Stripped %d invalid citation(s) from narrative", cit_result["stripped"])
 
-        # Numeric verification (log only, don't modify narrative)
+        # Numeric verification — strip bold from unverified numbers
         if source_numbers:
             num_result = verify_narrative_numbers(narrative, source_numbers)
-            if num_result["flagged"] > 0:
+            narrative = num_result["narrative"]
+            if num_result["stripped"] > 0:
                 logger.warning(
-                    "Narrative has %d unverified bold number(s): %s",
-                    num_result["flagged"], num_result["mismatches"],
+                    "Stripped bold from %d unverified number(s): %s",
+                    num_result["stripped"], num_result["mismatches"],
                 )
 
         return narrative
@@ -584,6 +590,7 @@ class LLMSynthesizer:
         unique_connections: Optional[dict] = None,
         fallback_narrative: str = "",
         computed_insights: str = "",
+        extra_context: Optional[str] = None,
     ) -> str:
         """Specialized comparison synthesis."""
         extra = ""
@@ -596,6 +603,8 @@ class LLMSynthesizer:
                 extra += f"Unique to {eid}: {', '.join(labels)}. "
         if computed_insights:
             extra += f"\n{computed_insights}"
+        if extra_context:
+            extra += f"\n\nPRIOR CONVERSATION:\n{extra_context}"
 
         return self.synthesize(
             question=f"Compare {' vs '.join(entity_names)}",

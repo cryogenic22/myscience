@@ -895,6 +895,7 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         unique_connections=result.get("unique_connections"),
         fallback_narrative=fallback,
         computed_insights=comparison_insights,
+        extra_context=conv_context if conv_context else None,
     )
 
     # Normalize to standard QueryResponse format for frontend rendering
@@ -1109,6 +1110,10 @@ def handle_portfolio(params: dict, db: Database, engine: QueryEngine, metrics_sv
 
     evidence_snippets = [e.content for e in result.evidence[:10]]
 
+    portfolio_extra_context = None
+    if conv_context:
+        portfolio_extra_context = f"PRIOR CONVERSATION:\n{conv_context}"
+
     narrative = llm.synthesize_dossier(
         question=f"{resolved['label']} portfolio",
         entity_name=resolved["label"],
@@ -1117,6 +1122,7 @@ def handle_portfolio(params: dict, db: Database, engine: QueryEngine, metrics_sv
         metrics={"portfolio": portfolio[0]} if portfolio else None,
         evidence_snippets=evidence_snippets,
         fallback_narrative=template,
+        extra_context=portfolio_extra_context,
     )
 
     # Build table for DataTable + CSV export
