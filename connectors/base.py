@@ -41,6 +41,7 @@ class SourceType(str, Enum):
     PMC = "pmc"
     EMA = "ema"
     NADAC = "nadac"
+    NEWS = "pharma_news"
     USER_DOCUMENT = "user_document"
     USER_URL = "user_url"
 

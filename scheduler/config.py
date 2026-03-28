@@ -61,10 +61,18 @@ CONNECTOR_SCHEDULES: dict[SourceType, dict] = {
         "cron": {"hour": 4, "minute": 0, "day_of_week": "thu"},     # Thursday 04:00
     },
 
-    # ── Tier 3: International sources (weekly) ──
+    # ── Tier 3: International + pricing + news ──
     SourceType.EMA: {
         "label": "EMA (EU Medicines)",
         "cron": {"hour": 4, "minute": 30, "day_of_week": "fri"},    # Friday 04:30
+    },
+    SourceType.NADAC: {
+        "label": "CMS NADAC Pricing",
+        "cron": {"hour": 5, "minute": 0, "day_of_week": "sat"},     # Saturday 05:00
+    },
+    SourceType.NEWS: {
+        "label": "Pharma News & Events",
+        "cron": {"hour": 6, "minute": 0},                           # Daily 06:00
     },
 
     # ── Tier 4: Ontology (monthly) ──
@@ -86,6 +94,8 @@ RUN_ORDER: list[SourceType] = [
     SourceType.OPENFDA_LABELS,
     SourceType.FDA_SHORTAGES,
     SourceType.SEC_EDGAR,
+    SourceType.NADAC,
+    SourceType.NEWS,
 ]
 
 # Post-run tasks to execute after all connectors complete.

@@ -232,7 +232,8 @@ class TestDatasetProfile:
         expected_sources = [
             "clinical_trials_gov", "pubmed", "fda_orange_book",
             "openfda_faers", "openfda_labels", "fda_shortages",
-            "sec_edgar", "mesh_ontology", "pmc", "ema", "backfill",
+            "sec_edgar", "mesh_ontology", "pmc", "ema",
+            "nadac", "pharma_news", "backfill",
         ]
 
         assert set(DATASET_PROFILES.keys()) == set(expected_sources)

@@ -18,6 +18,8 @@ from connectors.openfda_faers import OpenFDAFAERSConnector
 from connectors.openfda_labels import OpenFDALabelsConnector
 from connectors.pmc import PMCConnector
 from connectors.ema import EMAConnector
+from connectors.nadac import NadacConnector
+from connectors.news import PharmaNewsConnector
 
 # Registry is populated as connectors are implemented.
 CONNECTOR_REGISTRY: dict[SourceType, type[BaseConnector]] = {
@@ -31,7 +33,8 @@ CONNECTOR_REGISTRY: dict[SourceType, type[BaseConnector]] = {
     SourceType.OPENFDA_LABELS: OpenFDALabelsConnector,
     SourceType.PMC: PMCConnector,
     SourceType.EMA: EMAConnector,
-    # SourceType.NADAC: NadacConnector,                  # Pending: wrap scripts/fetch_nadac_pricing.py
+    SourceType.NADAC: NadacConnector,
+    SourceType.NEWS: PharmaNewsConnector,
     # SourceType.USER_DOCUMENT: UserDocumentConnector,   # Phase 7
     # SourceType.USER_URL: UserURLConnector,             # Phase 7
 }

@@ -228,6 +228,32 @@ DATASET_PROFILES: dict[str, dict] = {
         ],
         "coverage_notes": "Authoritative biomedical ontology. Hierarchical tree structure for therapeutic areas and mechanisms.",
     },
+    "nadac": {
+        "display_name": "CMS NADAC Pricing",
+        "description": "National Average Drug Acquisition Cost — Medicaid benchmark pricing for drugs.",
+        "source_url": "https://data.medicaid.gov",
+        "entity_types": ["drug"],
+        "refresh_schedule": "Weekly on Saturday at 05:00 UTC",
+        "collection_method": "API (Socrata JSON)",
+        "fields_collected": [
+            "NDC Code", "Drug Name", "NADAC Per Unit", "Pricing Unit",
+            "Effective Date", "Classification",
+        ],
+        "coverage_notes": "Covers drugs reimbursed by Medicaid. Provides acquisition cost benchmark for US market pricing analysis.",
+    },
+    "pharma_news": {
+        "display_name": "Pharma News & Events",
+        "description": "Real-time competitive signals from FDA press releases and pharma news aggregators.",
+        "source_url": "https://www.fda.gov/news-events",
+        "entity_types": ["event"],
+        "refresh_schedule": "Daily at 06:00 UTC",
+        "collection_method": "RSS Feed (XML)",
+        "fields_collected": [
+            "Title", "Event Type", "Event Date", "Source", "URL",
+            "Classification (approval/trial_readout/M&A/safety)",
+        ],
+        "coverage_notes": "FDA press releases + Google News pharma queries. Provides real-time event layer for competitive intelligence.",
+    },
     "ema": {
         "display_name": "EMA (EU Medicines)",
         "description": "European Medicines Agency — EU-authorised medicines and EU Clinical Trials Register.",
