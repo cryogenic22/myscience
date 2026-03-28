@@ -42,6 +42,24 @@ EXCLUDE_PATTERNS = [
     re.compile(r"^lifestyle", re.IGNORECASE),
     re.compile(r"^device:", re.IGNORECASE),
     re.compile(r"^procedure:", re.IGNORECASE),
+    re.compile(r"^administration\s+of\b", re.IGNORECASE),
+    re.compile(r"^DBPR\d+;", re.IGNORECASE),
+    re.compile(r"^GMRx-\d+\b", re.IGNORECASE),
+    re.compile(r"^CKD-\d+\(", re.IGNORECASE),
+    re.compile(r"\btest\s+drug\b", re.IGNORECASE),
+    re.compile(r"\boral\s+tablet\b", re.IGNORECASE),
+    re.compile(r"\bfilm-coated\s+tablet\b", re.IGNORECASE),
+    re.compile(r"^exendin\s+\d+-\d+\b", re.IGNORECASE),
+]
+
+# Names > this length are almost always raw intervention strings, not drug names
+MAX_DRUG_NAME_LENGTH = 60
+
+# Patterns that indicate a multi-drug intervention arm (not a single entity)
+MULTI_DRUG_INDICATORS = [
+    re.compile(r"\b(?:and|plus|\+|/)\b.*\b(?:and|plus|\+|/)\b", re.IGNORECASE),  # two+ conjunctions
+    re.compile(r"(?:rosuvastatin|metformin|sitagliptin|telmisartan).*,.*,", re.IGNORECASE),  # comma-separated drug lists
+    re.compile(r"\b\w+\s*[-/]\s*\w+\s*[-/]\s*\w+\b.*(?:mg|tablet|capsule)", re.IGNORECASE),  # multi-drug combos with dosage
 ]
 
 # Regex to extract a likely drug name from an intervention string
@@ -87,7 +105,15 @@ def _extract_drug_name(raw: str) -> str | None:
 
 def _should_exclude(name: str) -> bool:
     """Return True if the drug name matches an exclude pattern."""
-    return any(p.match(name) for p in EXCLUDE_PATTERNS)
+    if any(p.search(name) for p in EXCLUDE_PATTERNS):
+        return True
+    # Long names are almost always intervention descriptions
+    if len(name) > MAX_DRUG_NAME_LENGTH:
+        return True
+    # Multi-drug intervention arms
+    if any(p.search(name) for p in MULTI_DRUG_INDICATORS):
+        return True
+    return False
 
 
 def clean_drug_names(db: Database, dry_run: bool = False) -> dict[str, int]:

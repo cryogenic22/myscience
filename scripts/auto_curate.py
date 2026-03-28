@@ -47,8 +47,19 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("Drug cleanup failed: %s", e)
         results["clean_drug_names"] = {"error": str(e)}
 
+    # 2.5. Drug consolidation (merge duplicates)
+    logger.info("Step 2.5/9: Drug consolidation")
+    try:
+        from scripts.consolidate_drugs import run as run_consolidate
+        t0 = time.time()
+        results["consolidate_drugs"] = run_consolidate(dry_run=dry_run)
+        results["consolidate_drugs"]["elapsed_s"] = round(time.time() - t0, 1)
+    except Exception as e:
+        logger.error("Drug consolidation failed: %s", e)
+        results["consolidate_drugs"] = {"error": str(e)}
+
     # 3. Mechanism backfill (before TA linkage — mechanisms feed TA links)
-    logger.info("Step 3/8: Mechanism backfill")
+    logger.info("Step 3/9: Mechanism backfill")
     try:
         from scripts.backfill_mechanisms import run as run_mech_backfill
         t0 = time.time()

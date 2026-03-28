@@ -203,21 +203,50 @@ def create_app() -> FastAPI:
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
 
-    # ── Background Data Steward (runs every 6 hours) ──
+    # ── Background Pipeline Scheduler + Data Steward ──
 
-    _steward_thread = None
+    _scheduler = None
 
     @app.on_event("startup")
-    def start_steward_loop():
+    def start_background_agents():
+        """Start the pipeline scheduler and data steward as background agents.
+
+        Delayed 30s after startup so the app can pass healthcheck first.
+        Only starts if MZ_SCHEDULER env var is not 'false'.
+        """
+        if os.environ.get("MZ_SCHEDULER", "true").lower() == "false":
+            logger.info("Background agents disabled (MZ_SCHEDULER=false)")
+            return
+
         import threading
 
-        def _steward_worker():
+        def _delayed_start():
             import time as _time
-            interval = 6 * 3600  # 6 hours
-            _time.sleep(60)  # wait for app to stabilize
+            _time.sleep(30)  # let app stabilize and pass healthcheck
+
+            # 1. Start APScheduler for data collection
+            try:
+                from scheduler.runner import DataPipelineScheduler
+                nonlocal _scheduler
+                _scheduler = DataPipelineScheduler()
+                _scheduler._register_jobs()
+                _scheduler._scheduler.start()
+                logger.info("Pipeline scheduler started (cron jobs registered)")
+            except Exception:
+                logger.exception("Pipeline scheduler failed to start")
+
+            # 2. Run auto-curate once on startup (catches up any missed curation)
+            try:
+                from scripts.auto_curate import run as auto_curate_run
+                result = auto_curate_run(dry_run=False, skip_ai=True)
+                logger.info("Startup auto-curate: %s", result)
+            except Exception:
+                logger.exception("Startup auto-curate failed")
+
+            # 3. Run data steward loop every 6 hours
+            interval = 6 * 3600
             while True:
                 try:
-                    logger.info("Data Steward background loop starting")
                     from services.steward_signals import StewardSignalCollector
                     from services.data_steward import DataSteward, StewardConfig
                     from config import config as _cfg
@@ -228,23 +257,22 @@ def create_app() -> FastAPI:
                         collector = StewardSignalCollector(sdb)
                         steward = DataSteward(
                             sdb, collector,
-                            StewardConfig(max_iterations=10, skip_ai=True),
+                            StewardConfig(max_iterations=20, skip_ai=True),
                         )
                         summary = steward.run_loop()
                         logger.info(
-                            "Data Steward complete: %d completed, %d feedback resolved",
+                            "Data Steward: %d completed, %d feedback resolved",
                             summary.completed, summary.feedback_resolved,
                         )
                     finally:
                         sdb.close()
                 except Exception:
-                    logger.exception("Data Steward background loop error")
+                    logger.exception("Data Steward loop error")
                 _time.sleep(interval)
 
-        nonlocal _steward_thread
-        _steward_thread = threading.Thread(target=_steward_worker, daemon=True, name="data-steward")
-        _steward_thread.start()
-        logger.info("Data Steward background thread started (6h interval)")
+        t = threading.Thread(target=_delayed_start, daemon=True, name="bg-agents")
+        t.start()
+        logger.info("Background agents thread started (30s delayed)")
 
     @app.on_event("shutdown")
     def shutdown():
