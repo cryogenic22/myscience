@@ -358,6 +358,8 @@ export interface EntityLink {
   link_type: string;
   confidence: number;
   provenance_source: string;
+  source_label?: string;
+  target_label?: string;
 }
 
 export interface EntityTag {

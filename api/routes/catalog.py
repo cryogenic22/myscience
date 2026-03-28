@@ -830,8 +830,12 @@ def entity_detail(
         """
         SELECT el.source_entity_id, el.source_entity_type,
                el.target_entity_id, el.target_entity_type,
-               el.link_type, el.confidence, el.provenance_source
+               el.link_type, el.confidence, el.provenance_source,
+               COALESCE(vs.label, el.source_entity_id) AS source_label,
+               COALESCE(vt.label, el.target_entity_id) AS target_label
         FROM entity_links el
+        LEFT JOIN v_entity_labels vs ON vs.entity_id = el.source_entity_id AND vs.entity_type = el.source_entity_type
+        LEFT JOIN v_entity_labels vt ON vt.entity_id = el.target_entity_id AND vt.entity_type = el.target_entity_type
         WHERE (el.source_entity_id = %s AND el.source_entity_type = %s)
            OR (el.target_entity_id = %s AND el.target_entity_type = %s)
         ORDER BY el.confidence DESC

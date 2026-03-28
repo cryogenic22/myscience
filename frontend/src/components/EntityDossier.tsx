@@ -359,15 +359,17 @@ interface EntityDossierProps {
   onEditField: (f: string, v: string) => void;
   onSave: () => Promise<void>;
   onAskInChat?: (q: string) => void;
+  onNavigateEntity?: (entityType: string, entityId: string) => void;
 }
 
-export default function EntityDossier({ detail, editing, onEditField, onSave, onAskInChat }: EntityDossierProps) {
+export default function EntityDossier({ detail, editing, onEditField, onSave, onAskInChat, onNavigateEntity }: EntityDossierProps) {
   const entity = detail.entity;
   const entityType = detail.entity_type;
   const editable = new Set(detail.editable_fields);
   const hasEdits = Object.keys(editing).length > 0;
   const [saving, setSaving] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+  const [expandedConnection, setExpandedConnection] = useState<string | null>(null);
 
   const entityId = String(entity.id ?? '');
   const sections = getSections(entityType);
@@ -432,22 +434,85 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {connections.map(c => (
-              <span
+              <button
                 key={c.type}
+                onClick={() => setExpandedConnection(expandedConnection === c.type ? null : c.type)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px',
                   fontSize: '12px', fontWeight: 500,
-                  color: 'var(--color-ink-2)',
-                  background: 'var(--color-surface-2)',
+                  color: expandedConnection === c.type ? 'var(--color-accent)' : 'var(--color-ink-2)',
+                  background: expandedConnection === c.type ? 'var(--color-accent-soft)' : 'var(--color-surface-2)',
                   padding: '4px 12px', borderRadius: '16px',
-                  border: '1px solid var(--color-line)',
+                  border: `1px solid ${expandedConnection === c.type ? 'var(--color-accent)' : 'var(--color-line)'}`,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <span style={{ fontWeight: 600, color: 'var(--color-ink)' }}>{c.count}</span>
+                <span style={{ fontWeight: 600, color: expandedConnection === c.type ? 'var(--color-accent)' : 'var(--color-ink)' }}>{c.count}</span>
                 <span>{ENTITY_TYPE_LABELS[c.type] ?? c.type.replace(/_/g, ' ')}{c.count !== 1 ? 's' : ''}</span>
-              </span>
+              </button>
             ))}
           </div>
+
+          {/* Expanded connection: show linked entity names */}
+          {expandedConnection && (() => {
+            const linked = detail.links.filter(l => {
+              const isSource = l.source_entity_id === entityId;
+              const otherType = isSource ? l.target_entity_type : l.source_entity_type;
+              return otherType === expandedConnection;
+            });
+            // Deduplicate by entity ID
+            const seen = new Set<string>();
+            const unique = linked.filter(l => {
+              const otherId = l.source_entity_id === entityId ? l.target_entity_id : l.source_entity_id;
+              if (seen.has(otherId)) return false;
+              seen.add(otherId);
+              return true;
+            });
+            return (
+              <div style={{
+                marginTop: '8px', padding: '10px 12px',
+                background: 'var(--color-surface-2)', borderRadius: '8px',
+                maxHeight: '200px', overflowY: 'auto',
+              }}>
+                <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginBottom: '6px', fontWeight: 600 }}>
+                  {ENTITY_TYPE_LABELS[expandedConnection] ?? expandedConnection} ({unique.length})
+                </div>
+                {unique.slice(0, 50).map(l => {
+                  const otherId = l.source_entity_id === entityId ? l.target_entity_id : l.source_entity_id;
+                  const otherType = l.source_entity_id === entityId ? l.target_entity_type : l.source_entity_type;
+                  const isSource = l.source_entity_id === entityId;
+                  const label = isSource
+                    ? (l.target_label ?? otherId)
+                    : (l.source_label ?? otherId);
+                  return (
+                    <div
+                      key={otherId + l.link_type}
+                      onClick={() => onNavigateEntity?.(otherType, otherId)}
+                      style={{
+                        fontSize: '12px', padding: '4px 0',
+                        color: 'var(--color-ink-2)',
+                        cursor: onNavigateEntity ? 'pointer' : 'default',
+                        borderBottom: '1px solid var(--color-line)',
+                      }}
+                    >
+                      <span style={{ fontWeight: 500, color: 'var(--color-ink)' }}>
+                        {String(label)}
+                      </span>
+                      <span style={{ marginLeft: '8px', fontSize: '10px', color: 'var(--color-ink-4)' }}>
+                        {l.link_type.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  );
+                })}
+                {unique.length > 50 && (
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', paddingTop: '6px' }}>
+                    + {unique.length - 50} more
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </section>
       )}
 
