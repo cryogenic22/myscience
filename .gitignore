@@ -41,3 +41,25 @@ research_results.tsv
 # Windows special files
 nul
 NUL
+
+# Docs/notes (keep only README.md and specs/)
+*.md
+!README.md
+!CLAUDE.md
+!ROADMAP.md
+!specs/*.md
+!specs/**/*.md
+!ctxpack/**/*.md
+!.claude/**/*.md
+
+# Images/screenshots
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.backup
+*.docx
+
+# Temp files
+tmp_*.json
+test_write.txt
