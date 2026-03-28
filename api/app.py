@@ -205,6 +205,57 @@ def create_app() -> FastAPI:
 
     # ── Background Pipeline Scheduler + Data Steward ──
 
+    def _run_stale_connectors():
+        """Check each connector's last run and re-run if stale."""
+        from scheduler.config import CONNECTOR_SCHEDULES, RUN_ORDER
+        from connectors.base import SourceType
+        from datetime import timedelta
+
+        db = get_db()
+        now = datetime.now(timezone.utc)
+
+        # Calculate staleness thresholds per schedule type
+        for source_type in RUN_ORDER:
+            sched = CONNECTOR_SCHEDULES.get(source_type)
+            if not sched:
+                continue
+
+            cron = sched["cron"]
+            # Determine expected freshness: daily → 2 days, weekly → 10 days, monthly → 45 days
+            if "day" in cron:  # monthly
+                max_age = timedelta(days=45)
+            elif "day_of_week" in cron:  # weekly
+                max_age = timedelta(days=10)
+            else:  # daily
+                max_age = timedelta(days=2)
+
+            try:
+                last = db.fetch_one(
+                    """SELECT MAX(retrieved_at) AS last_run
+                       FROM (
+                           SELECT retrieved_at FROM drugs WHERE source_api = %s
+                           UNION ALL SELECT retrieved_at FROM clinical_trials WHERE source_api = %s
+                           UNION ALL SELECT retrieved_at FROM pubmed_articles WHERE source_api = %s
+                           UNION ALL SELECT retrieved_at FROM companies WHERE source_api = %s
+                           UNION ALL SELECT retrieved_at FROM market_events WHERE source_api = %s
+                       ) AS t""",
+                    [source_type.value] * 5,
+                )
+                last_run = last["last_run"] if last else None
+
+                if last_run and (now - last_run) < max_age:
+                    continue  # not stale
+
+                logger.info(
+                    "Stale connector: %s (last=%s, max_age=%s) — running catch-up",
+                    source_type.value, last_run, max_age,
+                )
+                if _scheduler:
+                    _scheduler._run_connector(source_type)
+                    logger.info("Catch-up complete: %s", source_type.value)
+            except Exception as e:
+                logger.warning("Catch-up failed for %s: %s", source_type.value, e)
+
     _scheduler = None
 
     @app.on_event("startup")
@@ -243,7 +294,13 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("Startup auto-curate failed")
 
-            # 3. Run data steward loop every 6 hours
+            # 3. Catch-up: run any stale connectors (>2x their schedule interval)
+            try:
+                _run_stale_connectors()
+            except Exception:
+                logger.exception("Stale connector catch-up failed")
+
+            # 4. Run data steward loop every 6 hours
             interval = 6 * 3600
             while True:
                 try:

@@ -370,14 +370,15 @@ def dataset_profile(
             except Exception:
                 pass
 
-    # Freshness label
+    # Freshness label — relative to expected schedule
     freshness_label = "unknown"
+    days_old = None
     if last_refreshed:
         try:
             from datetime import datetime as _dt, timezone as _tz
             latest_dt = _dt.fromisoformat(last_refreshed.replace("Z", "+00:00"))
             days_old = (_dt.now(_tz.utc) - latest_dt).days
-            freshness_label = "fresh" if days_old <= 7 else "recent" if days_old <= 30 else "stale"
+            freshness_label = "fresh" if days_old <= 2 else "recent" if days_old <= 7 else "stale"
         except Exception:
             pass
 
@@ -385,6 +386,7 @@ def dataset_profile(
     profile["quality_score"] = quality_score
     profile["last_refreshed"] = last_refreshed
     profile["freshness"] = freshness_label
+    profile["days_since_refresh"] = days_old
 
     return profile
 
