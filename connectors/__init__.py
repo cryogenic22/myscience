@@ -20,6 +20,9 @@ from connectors.pmc import PMCConnector
 from connectors.ema import EMAConnector
 from connectors.nadac import NadacConnector
 from connectors.news import PharmaNewsConnector
+from connectors.chembl import ChEMBLConnector
+from connectors.pubchem import PubChemConnector
+from connectors.open_targets import OpenTargetsConnector
 
 # Registry is populated as connectors are implemented.
 CONNECTOR_REGISTRY: dict[SourceType, type[BaseConnector]] = {
@@ -35,6 +38,9 @@ CONNECTOR_REGISTRY: dict[SourceType, type[BaseConnector]] = {
     SourceType.EMA: EMAConnector,
     SourceType.NADAC: NadacConnector,
     SourceType.NEWS: PharmaNewsConnector,
+    SourceType.CHEMBL: ChEMBLConnector,
+    SourceType.PUBCHEM: PubChemConnector,
+    SourceType.OPEN_TARGETS: OpenTargetsConnector,
     # SourceType.USER_DOCUMENT: UserDocumentConnector,   # Phase 7
     # SourceType.USER_URL: UserURLConnector,             # Phase 7
 }

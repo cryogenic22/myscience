@@ -75,7 +75,21 @@ CONNECTOR_SCHEDULES: dict[SourceType, dict] = {
         "cron": {"hour": 6, "minute": 0},                           # Daily 06:00
     },
 
-    # ── Tier 4: Ontology (monthly) ──
+    # ── Tier 4: Molecular & discovery (weekly) ──
+    SourceType.CHEMBL: {
+        "label": "ChEMBL Bioactivity",
+        "cron": {"hour": 5, "minute": 30, "day_of_week": "sat"},    # Saturday 05:30
+    },
+    SourceType.PUBCHEM: {
+        "label": "PubChem Compounds",
+        "cron": {"hour": 6, "minute": 0, "day_of_week": "sat"},     # Saturday 06:00
+    },
+    SourceType.OPEN_TARGETS: {
+        "label": "Open Targets Genetics",
+        "cron": {"hour": 6, "minute": 30, "day_of_week": "sat"},    # Saturday 06:30
+    },
+
+    # ── Tier 5: Ontology (monthly) ──
     SourceType.MESH_ONTOLOGY: {
         "label": "MeSH Ontology",
         "cron": {"hour": 5, "minute": 0, "day": 1},                 # 1st of month 05:00
@@ -96,6 +110,9 @@ RUN_ORDER: list[SourceType] = [
     SourceType.SEC_EDGAR,
     SourceType.NADAC,
     SourceType.NEWS,
+    SourceType.CHEMBL,
+    SourceType.PUBCHEM,
+    SourceType.OPEN_TARGETS,
 ]
 
 # Post-run tasks to execute after all connectors complete.

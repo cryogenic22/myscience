@@ -42,6 +42,9 @@ class SourceType(str, Enum):
     EMA = "ema"
     NADAC = "nadac"
     NEWS = "pharma_news"
+    CHEMBL = "chembl"
+    PUBCHEM = "pubchem"
+    OPEN_TARGETS = "open_targets"
     USER_DOCUMENT = "user_document"
     USER_URL = "user_url"
 
