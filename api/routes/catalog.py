@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.deps import get_db, get_metrics
@@ -1579,16 +1579,41 @@ def ta_coverage(db: Database = Depends(get_db)):
 
 @router.get("/pipeline-status")
 def pipeline_status(db: Database = Depends(get_db)):
-    """Pipeline connector status — schedule, last run, next run."""
+    """Pipeline connector status — schedule, last run, records, freshness."""
     from scheduler.config import CONNECTOR_SCHEDULES
-    from connectors.base import SourceType
+
+    # Build freshness data from ALL entity tables (same approach as /catalog/freshness)
+    all_tables = ["drugs", "clinical_trials", "pubmed_articles", "companies",
+                  "market_events", "therapeutic_areas", "mechanisms_of_action",
+                  "drug_labels", "adverse_events", "patents"]
+    freshness_by_source: dict = {}
+    for table in all_tables:
+        try:
+            rows = db.fetch_all(
+                f"""SELECT source_api,
+                           COUNT(*) AS records,
+                           MAX(retrieved_at) AS latest
+                    FROM {table}
+                    WHERE source_api IS NOT NULL AND source_api != ''
+                    GROUP BY source_api"""
+            )
+            for row in rows:
+                src = row["source_api"]
+                existing = freshness_by_source.get(src, {"records": 0, "latest": None})
+                existing["records"] = existing.get("records", 0) + (row["records"] or 0)
+                latest = row.get("latest")
+                if latest and (existing.get("latest") is None or latest > existing["latest"]):
+                    existing["latest"] = latest
+                freshness_by_source[src] = existing
+        except Exception:
+            continue
 
     result = []
+    now = datetime.now(timezone.utc)
     for st, sched in CONNECTOR_SCHEDULES.items():
         source_key = st.value
         cron = sched["cron"]
 
-        # Determine schedule description
         if "day" in cron:
             schedule_desc = f"Monthly on day {cron['day']} at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
         elif "day_of_week" in cron:
@@ -1596,31 +1621,21 @@ def pipeline_status(db: Database = Depends(get_db)):
         else:
             schedule_desc = f"Daily at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
 
-        # Last run from source_coverage in health data
-        last_run = None
-        record_count = 0
-        try:
-            for table in ["drugs", "clinical_trials", "pubmed_articles", "companies", "market_events"]:
-                row = db.fetch_one(
-                    f"SELECT MAX(retrieved_at) AS latest, COUNT(*) AS cnt FROM {table} WHERE source_api = %s",
-                    [source_key],
-                )
-                if row and row["latest"]:
-                    ts = row["latest"].isoformat() if hasattr(row["latest"], "isoformat") else None
-                    if ts and (last_run is None or ts > last_run):
-                        last_run = ts
-                    record_count += row["cnt"] or 0
-        except Exception:
-            pass
-
+        info = freshness_by_source.get(source_key, {"records": 0, "latest": None})
+        latest = info.get("latest")
+        last_run = latest.isoformat() if latest and hasattr(latest, "isoformat") else None
         days_since = None
-        if last_run:
+        if latest:
             try:
-                from datetime import datetime as _dt, timezone as _tz
-                latest_dt = _dt.fromisoformat(last_run.replace("Z", "+00:00"))
-                days_since = (_dt.now(_tz.utc) - latest_dt).total_seconds() / 86400
+                if latest.tzinfo is None:
+                    latest = latest.replace(tzinfo=timezone.utc)
+                days_since = (now - latest).total_seconds() / 86400
             except Exception:
                 pass
+
+        status = "never"
+        if days_since is not None:
+            status = "fresh" if days_since <= 2 else "ok" if days_since <= 7 else "stale"
 
         result.append({
             "source_key": source_key,
@@ -1628,13 +1643,49 @@ def pipeline_status(db: Database = Depends(get_db)):
             "schedule": schedule_desc,
             "last_run": last_run,
             "days_since": round(days_since, 1) if days_since is not None else None,
-            "records": record_count,
-            "status": "fresh" if days_since is not None and days_since <= 2 else
-                      "ok" if days_since is not None and days_since <= 7 else
-                      "stale" if days_since is not None else "unknown",
+            "records": info["records"],
+            "status": status,
         })
 
     return {"connectors": result}
+
+
+@router.post("/pipeline-run")
+def trigger_pipeline_run(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+):
+    """Manually trigger a connector run. Body: {source?: string, all?: bool}."""
+    source = body.get("source")
+    run_all = body.get("all", False)
+
+    def _run():
+        try:
+            from scheduler.runner import DataPipelineScheduler
+            sched = DataPipelineScheduler()
+            if run_all:
+                logger.info("Manual pipeline run: ALL connectors")
+                sched.run_now()
+            elif source:
+                logger.info("Manual pipeline run: %s", source)
+                sched.run_one(source)
+            else:
+                # Run stale connectors only
+                logger.info("Manual pipeline run: stale connectors")
+                from connectors.base import SourceType
+                from scheduler.config import CONNECTOR_SCHEDULES
+                for st in CONNECTOR_SCHEDULES:
+                    sched.run_one(st.value)
+        except Exception:
+            logger.exception("Manual pipeline run failed")
+
+    background_tasks.add_task(_run)
+    return {
+        "status": "started",
+        "source": source or ("ALL" if run_all else "stale"),
+        "note": "Running in background. Check /catalog/pipeline-status for progress.",
+    }
 
 
 class RunEnrichmentRequest(BaseModel):

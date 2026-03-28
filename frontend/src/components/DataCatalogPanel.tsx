@@ -559,15 +559,19 @@ function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile, visible
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: 'var(--color-line-2)' }}>
             {pipelineStatus.map(c => {
-              const statusIcon = c.status === 'fresh' ? '\u2713' : c.status === 'ok' ? '\u2713' : c.status === 'stale' ? '\u26A0' : '\u2014';
-              const statusColor = c.status === 'fresh' ? 'var(--color-green)' : c.status === 'ok' ? 'var(--color-accent)' : c.status === 'stale' ? 'var(--color-amber)' : 'var(--color-ink-4)';
-              const statusBg = c.status === 'fresh' ? 'var(--color-green-soft)' : c.status === 'ok' ? 'var(--color-accent-soft)' : c.status === 'stale' ? 'var(--color-amber-soft)' : 'var(--color-surface-2)';
+              const statusMap: Record<string, {icon: string; color: string; bg: string; label: string}> = {
+                fresh: { icon: '\u2713', color: 'var(--color-green)', bg: 'var(--color-green-soft)', label: 'Live' },
+                ok:    { icon: '\u2713', color: 'var(--color-accent)', bg: 'var(--color-accent-soft)', label: 'OK' },
+                stale: { icon: '\u26A0', color: 'var(--color-amber)', bg: 'var(--color-amber-soft)', label: 'Stale' },
+                never: { icon: '\u2014', color: 'var(--color-ink-4)', bg: 'var(--color-surface-2)', label: 'Awaiting' },
+              };
+              const st = statusMap[c.status] || statusMap.never;
               return (
                 <div key={c.source_key} style={{ padding: '14px 18px', background: 'var(--color-surface)', cursor: 'pointer' }} onClick={() => onOpenProfile(c.source_key)}>
                   <div className="flex items-center justify-between">
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>{c.label}</span>
-                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '10px', background: statusBg, color: statusColor }}>
-                      {statusIcon} {c.status === 'fresh' ? 'Live' : c.status === 'ok' ? 'OK' : c.status === 'stale' ? 'Stale' : 'Pending'}
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '10px', background: st.bg, color: st.color }}>
+                      {st.icon} {st.label}
                     </span>
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '4px' }}>{c.schedule}</div>
