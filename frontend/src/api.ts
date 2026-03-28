@@ -128,6 +128,17 @@ export interface SearchResult {
   metadata: Record<string, unknown>;
   provenance?: Record<string, unknown>;
   quality_score?: number | null;
+  /** Enriched search: connection counts by entity type (e.g. {trial: 12, company: 3}) */
+  connection_counts?: Record<string, number>;
+  /** Enriched search: entity influence score (0-1) */
+  influence_score?: number;
+}
+
+export interface SearchSuggestion {
+  entity_id: string;
+  entity_type: string;
+  label: string;
+  similarity: number;
 }
 
 export interface GraphNode {
@@ -501,6 +512,8 @@ export const api = {
       limit: limit ?? 10,
       offset: offset ?? 0,
     }),
+  searchSuggest: (q: string, limit?: number) =>
+    get<{ suggestions: SearchSuggestion[] }>(`/search/suggest?q=${encodeURIComponent(q)}&limit=${limit ?? 8}`),
 
   // Graph
   traverse: (entityType: string, entityId: string, hops?: number) =>

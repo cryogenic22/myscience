@@ -246,7 +246,7 @@ export default function EntityPreview({
 }: EntityPreviewProps) {
   const [neighborCursor, setNeighborCursor] = useState(0);
   const [connectionsExpanded, setConnectionsExpanded] = useState(false);
-  const [graphExpanded, setGraphExpanded] = useState(false);
+  const [graphExpanded, setGraphExpanded] = useState(true);
 
   useEffect(() => {
     setNeighborCursor(0);
@@ -259,7 +259,7 @@ export default function EntityPreview({
       return;
     }
     setConnectionsExpanded(false);
-    setGraphExpanded(false);
+    setGraphExpanded(true);
   }, [result?.entity_id, result?.entity_type]);
 
   const handleNeighborKeyDown = useCallback(

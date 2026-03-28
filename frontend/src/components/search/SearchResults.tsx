@@ -9,7 +9,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { SearchResult } from '../../api';
-import { SOURCE_LABELS } from '../../brand';
+import { SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../../brand';
 import {
   TYPE_CONFIG,
   type SearchViewMode,
@@ -56,6 +56,79 @@ const ENTITY_ICONS_SMALL: Record<string, React.ReactNode> = {
   mechanism: <Dna size={16} />,
   therapeutic_area: <Target size={16} />,
 };
+
+/* ── Connection count bar ── */
+
+function ConnectionBar({ counts }: { counts: Record<string, number> }) {
+  const entries = Object.entries(counts).filter(([, v]) => v > 0);
+  if (entries.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+      {entries.map(([type, count]) => {
+        const cfg = TYPE_CONFIG[type];
+        const color = cfg?.color ?? 'var(--color-ink-3)';
+        const label = ENTITY_TYPE_LABELS[type] ?? type.replace(/_/g, ' ');
+        return (
+          <span
+            key={type}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 500,
+              color: 'var(--color-ink-3)',
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: color,
+                flexShrink: 0,
+              }}
+            />
+            {count} {label.toLowerCase()}{count !== 1 ? 's' : ''}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Influence indicator (5 dots) ── */
+
+function InfluenceIndicator({ score }: { score: number }) {
+  const filled = Math.round(Math.min(Math.max(score, 0), 1) * 5);
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        fontSize: '11px',
+        fontWeight: 500,
+        color: 'var(--color-ink-3)',
+      }}
+    >
+      Influence:
+      <span style={{ display: 'inline-flex', gap: '2px' }}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <span
+            key={i}
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: i < filled ? 'var(--color-accent)' : 'var(--color-line)',
+            }}
+          />
+        ))}
+      </span>
+    </span>
+  );
+}
 
 interface SearchResultsProps {
   results: SearchResult[];
@@ -200,6 +273,11 @@ function SearchResultCard({
       !key.endsWith('_embedding')
     )
     .slice(0, mode === 'cards' ? 4 : 2);
+
+  // Enriched search fields (graceful degradation — only render when present)
+  const connectionCounts = (result as Record<string, unknown>).connection_counts as Record<string, number> | undefined;
+  const influenceScore = (result as Record<string, unknown>).influence_score as number | undefined;
+
   const compact = mode === 'list';
 
   if (compact) {
@@ -269,9 +347,14 @@ function SearchResultCard({
                   }}>
                     {sourceLabel}
                   </span>
+                  {typeof influenceScore === 'number' && (
+                    <InfluenceIndicator score={influenceScore} />
+                  )}
                 </div>
               </div>
             </div>
+
+            {connectionCounts && <ConnectionBar counts={connectionCounts} />}
 
             {previewSnippet && (
               <p
@@ -365,6 +448,14 @@ function SearchResultCard({
               {cfg.label}
             </span>
           </div>
+
+          {/* Enriched search: connection counts + influence */}
+          {(connectionCounts || typeof influenceScore === 'number') && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+              {connectionCounts && <ConnectionBar counts={connectionCounts} />}
+              {typeof influenceScore === 'number' && <InfluenceIndicator score={influenceScore} />}
+            </div>
+          )}
 
           {previewSnippet && (
             <p
