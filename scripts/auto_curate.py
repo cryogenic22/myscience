@@ -116,8 +116,27 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("Competition derivation failed: %s", e)
         results["derive_competition"] = {"error": str(e)}
 
-    # 8. Quality scorecard
-    logger.info("Step 8/8: Quality scorecard")
+    # 8. Refresh materialized views (ensures portfolio/pipeline data is current)
+    logger.info("Step 8/10: Refresh materialized views")
+    try:
+        from config import config as _cfg
+        _db = Database(_cfg.db.dsn)
+        _db.connect()
+        for mv in ['mv_drug_pipeline_strength', 'mv_company_portfolio', 'mv_trial_success_rate',
+                    'mv_evidence_density', 'mv_competitive_landscape', 'mv_safety_signals']:
+            try:
+                _db.execute(f'REFRESH MATERIALIZED VIEW {mv}')
+            except Exception:
+                pass
+        _db.close()
+        results["refresh_mvs"] = {"status": "ok", "elapsed_s": round(time.time() - t0, 1)}
+        logger.info("Materialized views refreshed")
+    except Exception as e:
+        logger.error("MV refresh failed: %s", e)
+        results["refresh_mvs"] = {"error": str(e)}
+
+    # 9. Quality scorecard
+    logger.info("Step 9/10: Quality scorecard")
     try:
         from scripts.quality_scorecard import run as run_scorecard
         t0 = time.time()

@@ -475,6 +475,10 @@ class HybridSearch:
         conditions = [f"{emb_col} IS NOT NULL"]
         params: list = []
 
+        # Exclude merged and excluded records (golden record pattern)
+        if entity_type in ("drug", "company"):
+            conditions.append("(record_status IS NULL OR record_status NOT IN ('excluded', 'merged'))")
+
         if filters:
             for key, value in filters.items():
                 if key in cfg["filters"]:
