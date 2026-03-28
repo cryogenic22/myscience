@@ -24,7 +24,9 @@ except Exception as e:
     logger.warning("Migration failed (app will start anyway): %s", e)
 
 # 2. Start data pipeline scheduler (background daemon)
-if os.environ.get("MZ_SCHEDULER", "true").lower() != "false":
+# Disabled by default on Railway — scheduler init can delay startup
+# beyond healthcheck window. Enable via MZ_SCHEDULER=true when ready.
+if os.environ.get("MZ_SCHEDULER", "false").lower() == "true":
     try:
         from scheduler import DataPipelineScheduler
         scheduler = DataPipelineScheduler()
