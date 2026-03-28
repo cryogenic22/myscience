@@ -226,6 +226,78 @@ def enrich_from_labels(db: Database, dry_run: bool = False) -> dict[str, int]:
     return stats
 
 
+# Authoritative reference data for top drugs in Diabetes/CV/Obesity TA.
+# These override sponsor-based company assignments which are often wrong
+# (trial sponsors != drug manufacturers).
+DRUG_REFERENCE = [
+    ("%sitagliptin%", "Januvia", "Merck Sharp & Dohme"),
+    ("%semaglutide%", "Ozempic", "Novo Nordisk"),
+    ("%empagliflozin%", "Jardiance", "Boehringer Ingelheim"),
+    ("%dapagliflozin%", "Farxiga", "AstraZeneca"),
+    ("%liraglutide%", "Victoza", "Novo Nordisk"),
+    ("%tirzepatide%", "Mounjaro", "Eli Lilly"),
+    ("%dulaglutide%", "Trulicity", "Eli Lilly"),
+    ("%canagliflozin%", "Invokana", "Janssen Pharmaceuticals"),
+    ("%saxagliptin%", "Onglyza", "AstraZeneca"),
+    ("%linagliptin%", "Tradjenta", "Boehringer Ingelheim"),
+    ("%pioglitazone%", "Actos", "Takeda"),
+    ("%rosiglitazone%", "Avandia", "GlaxoSmithKline"),
+    ("%alogliptin%", "Nesina", "Takeda"),
+    ("%vildagliptin%", "Galvus", "Novartis"),
+    ("%exenatide%", "Byetta", "AstraZeneca"),
+    ("%lixisenatide%", "Adlyxin", "Sanofi"),
+    ("%insulin glargine%", "Lantus", "Sanofi"),
+    ("%insulin lispro%", "Humalog", "Eli Lilly"),
+    ("%insulin aspart%", "NovoLog", "Novo Nordisk"),
+    ("%insulin degludec%", "Tresiba", "Novo Nordisk"),
+    ("%metformin%", "Glucophage", "Merck Sante"),
+    ("%ertugliflozin%", "Steglatro", "Merck Sharp & Dohme"),
+    ("%finerenone%", "Kerendia", "Bayer"),
+    ("%valsartan%", "Diovan", "Novartis"),
+    ("%losartan%", "Cozaar", "Merck Sharp & Dohme"),
+    ("%amlodipine%", "Norvasc", "Pfizer"),
+    ("%atorvastatin%", "Lipitor", "Pfizer"),
+    ("%rosuvastatin%", "Crestor", "AstraZeneca"),
+    ("%sacubitril%", "Entresto", "Novartis"),
+    ("%carvedilol%", "Coreg", "GlaxoSmithKline"),
+    ("%apixaban%", "Eliquis", "Bristol-Myers Squibb"),
+    ("%rivaroxaban%", "Xarelto", "Bayer"),
+]
+
+
+def enrich_from_reference(db: Database, dry_run: bool = False) -> int:
+    """Apply authoritative brand + company for well-known drugs.
+
+    Trial-sponsor-based company inference is wrong for many top drugs
+    (e.g., a university sponsors a semaglutide trial but Novo Nordisk
+    manufactures it).  This step overrides with known-correct data.
+    """
+    count = 0
+    for pattern, brand, company_name in DRUG_REFERENCE:
+        co = db.fetch_one(
+            "SELECT id FROM companies WHERE name ILIKE %s LIMIT 1",
+            [f"%{company_name}%"],
+        )
+        if not co:
+            continue
+
+        if dry_run:
+            logger.info("[DRY RUN] Reference fix: %s → brand=%s, company=%s",
+                        pattern.strip("%"), brand, company_name)
+            count += 1
+            continue
+
+        db.execute(
+            """UPDATE drugs SET brand_name = %s, company_id = %s
+               WHERE LOWER(generic_name) LIKE %s
+               AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))""",
+            [brand, co["id"], pattern],
+        )
+        count += 1
+    logger.info("Reference data enrichment: %d drug families updated", count)
+    return count
+
+
 def run(dry_run: bool = False) -> dict:
     """Run all drug enrichment tasks."""
     db = Database(config.db.dsn)
@@ -235,11 +307,13 @@ def run(dry_run: bool = False) -> dict:
         milestone_stats = enrich_from_milestones(db, dry_run)
         sponsor_count = enrich_company_from_trials(db, dry_run)
         label_stats = enrich_from_labels(db, dry_run)
+        ref_count = enrich_from_reference(db, dry_run)
         return {
             "approval_from_milestones": milestone_stats["approval_date"],
             "company_from_sponsors": sponsor_count,
             "brand_from_labels": label_stats["brand_name"],
             "company_from_labels": label_stats["company"],
+            "reference_data_fixes": ref_count,
         }
     finally:
         db.close()
