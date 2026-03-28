@@ -529,6 +529,9 @@ def _browse_drugs(
     if status:
         conditions.append("d.record_status = %s")
         params.append(status)
+    else:
+        # Default: hide merged and excluded records
+        conditions.append("(d.record_status IS NULL OR d.record_status NOT IN ('excluded', 'merged'))")
     if quality_min is not None:
         conditions.append("d.quality_score >= %s")
         params.append(quality_min)
@@ -543,14 +546,38 @@ def _browse_drugs(
     )
     total = count_row["total"] if count_row else 0
 
+    # Subqueries to resolve company/mechanism/TA from entity_links when FK is NULL
+    company_fallback = """
+        COALESCE(c.name,
+            (SELECT c2.name FROM entity_links el
+             JOIN companies c2 ON c2.id::text = el.source_entity_id
+             WHERE el.target_entity_id = d.id::text AND el.link_type = 'OWNS'
+             LIMIT 1)
+        ) AS company_name"""
+    mechanism_fallback = """
+        COALESCE(m.name,
+            (SELECT m2.name FROM entity_links el
+             JOIN mechanisms_of_action m2 ON m2.id::text = el.target_entity_id
+             WHERE el.source_entity_id = d.id::text AND el.link_type = 'TARGETS_MECHANISM'
+             LIMIT 1)
+        ) AS mechanism_name"""
+    ta_fallback = """
+        COALESCE(ta.name,
+            (SELECT ta2.name FROM entity_links el
+             JOIN therapeutic_areas ta2 ON ta2.id::text = el.target_entity_id
+             WHERE el.source_entity_id = d.id::text AND el.link_type = 'IN_THERAPEUTIC_AREA'
+             LIMIT 1)
+        ) AS therapeutic_area"""
+
     params.extend([limit_val, offset_val])
     try:
         rows = db.fetch_all(
             f"""
             SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
                    d.supply_status, d.quality_score, d.record_status,
-                   m.name AS mechanism_name, c.name AS company_name,
-                   ta.name AS therapeutic_area,
+                   {mechanism_fallback},
+                   {company_fallback},
+                   {ta_fallback},
                    (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
                    COALESCE(mv.pipeline_score, 0) AS pipeline_score
             FROM drugs d
@@ -574,8 +601,9 @@ def _browse_drugs(
             f"""
             SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
                    d.supply_status, d.quality_score, d.record_status,
-                   m.name AS mechanism_name, c.name AS company_name,
-                   ta.name AS therapeutic_area,
+                   {mechanism_fallback},
+                   {company_fallback},
+                   {ta_fallback},
                    (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
                    0 AS pipeline_score
             FROM drugs d
@@ -613,6 +641,8 @@ def _browse_companies(
     if status:
         conditions.append("c.record_status = %s")
         params.append(status)
+    else:
+        conditions.append("(c.record_status IS NULL OR c.record_status NOT IN ('excluded', 'merged'))")
     if quality_min is not None:
         conditions.append("c.quality_score >= %s")
         params.append(quality_min)
@@ -701,6 +731,8 @@ def _browse_generic(
     if status and "record_status" in meta["display_cols"]:
         conditions.append("record_status = %s")
         params.append(status)
+    elif "record_status" in meta["display_cols"]:
+        conditions.append("(record_status IS NULL OR record_status NOT IN ('excluded', 'merged'))")
 
     if quality_min is not None and "quality_score" in meta["display_cols"]:
         conditions.append("quality_score >= %s")
