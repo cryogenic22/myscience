@@ -405,6 +405,43 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
         {summary}
       </div>
 
+      {/* Trust & confidence card */}
+      {detail.quality_results.length > 0 && (() => {
+        const passed = detail.quality_results.filter(q => q.passed).length;
+        const total = detail.quality_results.length;
+        const pct = Math.round((passed / total) * 100);
+        const trustLevel = pct >= 80 ? 'Certified' : pct >= 50 ? 'Partial' : 'Incomplete';
+        const trustColor = pct >= 80 ? 'var(--color-green)' : pct >= 50 ? 'var(--color-amber)' : 'var(--color-ink-4)';
+        const trustBg = pct >= 80 ? 'var(--color-green-soft)' : pct >= 50 ? 'var(--color-amber-soft)' : 'var(--color-surface-2)';
+        const sourceCount = new Set(detail.links.map(l => l.provenance_source).filter(Boolean)).size;
+        const linkCount = detail.links.length;
+
+        return (
+          <div style={{
+            display: 'flex', gap: '12px', flexWrap: 'wrap',
+          }}>
+            <div style={{
+              flex: 1, minWidth: '140px',
+              padding: '10px 14px', borderRadius: '10px',
+              background: trustBg, border: `1px solid color-mix(in srgb, ${trustColor} 20%, transparent)`,
+            }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: trustColor }}>{pct}%</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: trustColor }}>{trustLevel}</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginTop: '2px' }}>{passed}/{total} checks passed</div>
+            </div>
+            <div style={{
+              flex: 1, minWidth: '140px',
+              padding: '10px 14px', borderRadius: '10px',
+              background: 'var(--color-surface-2)',
+            }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-ink)' }}>{linkCount}</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ink-3)' }}>Connections</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginTop: '2px' }}>{sourceCount} data source{sourceCount !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Structured sections */}
       {sections.length > 0 && (
         <div>

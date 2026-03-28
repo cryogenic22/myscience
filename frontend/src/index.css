@@ -383,14 +383,100 @@ html.dark .topbar {
    ══════════════════════════════════════════════════════ */
 .catalog-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
-  padding: 10px 24px;
+  padding: 12px 24px 12px 20px;
   cursor: pointer;
-  transition: background 120ms ease;
+  border-left: 4px solid transparent;
+  transition: all 150ms ease;
+  position: relative;
 }
-.catalog-row:hover { background: var(--color-surface-2); }
-/* Separator via background shift, not border */
+.catalog-row:hover {
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-xs);
+  border-left-color: var(--color-accent);
+  transform: translateX(2px);
+}
+.catalog-row:active { transform: translateX(1px); }
+/* Subtle separator between rows */
+.catalog-row + .catalog-row { border-top: 1px solid var(--color-line-2); }
+
+/* Entity type accent bars (set via inline style on border-left-color) */
+.catalog-row[data-type="drug"]:hover { border-left-color: var(--color-drug); }
+.catalog-row[data-type="company"]:hover { border-left-color: var(--color-company); }
+.catalog-row[data-type="trial"]:hover { border-left-color: var(--color-trial); }
+.catalog-row[data-type="mechanism"]:hover { border-left-color: var(--color-mechanism); }
+.catalog-row[data-type="therapeutic_area"]:hover { border-left-color: var(--color-ta); }
+
+/* Featured card styling */
+.featured-card {
+  padding: 16px 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-left: 4px solid var(--color-amber);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 180ms ease;
+  position: relative;
+}
+.featured-card:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-3px);
+  border-left-color: var(--color-accent);
+}
+.featured-card::after {
+  content: '\2605';
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 14px;
+  color: var(--color-amber);
+  opacity: 0.6;
+}
+
+/* Trust badge styles */
+.trust-certified {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  color: var(--color-green);
+  background: var(--color-green-soft);
+  padding: 2px 8px; border-radius: 10px;
+}
+.trust-warning {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  color: var(--color-amber);
+  background: var(--color-amber-soft);
+  padding: 2px 8px; border-radius: 10px;
+}
+.trust-unknown {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500;
+  color: var(--color-ink-4);
+  background: var(--color-surface-2);
+  padding: 2px 8px; border-radius: 10px;
+}
+
+/* Phase icons */
+.phase-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px;
+}
+.phase-4 { color: var(--color-green); background: var(--color-green-soft); }
+.phase-3 { color: var(--color-accent); background: var(--color-accent-soft); }
+.phase-2 { color: var(--color-amber); background: var(--color-amber-soft); }
+.phase-1 { color: var(--color-ink-3); background: var(--color-surface-2); }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--color-ink-4);
+}
+.empty-state-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+.empty-state-title { font-size: 14px; font-weight: 500; color: var(--color-ink-3); }
+.empty-state-hint { font-size: 12px; margin-top: 6px; }
 
 /* ══════════════════════════════════════════════════════
    BADGES / PILLS

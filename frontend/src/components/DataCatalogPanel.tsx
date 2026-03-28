@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  AlertCircle,
   X,
   XCircle,
 } from 'lucide-react';
@@ -781,28 +782,13 @@ const SORT_OPTIONS = [
 
 /** Quality indicator: green check >= 80%, amber dot 50-79%, grey text < 50% */
 function QualityIndicator({ score }: { score: number }) {
-  const pct = (score * 100).toFixed(0);
   if (score >= 0.8) {
-    return (
-      <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-green)', flexShrink: 0 }}>
-        <CheckCircle size={10} />
-        {pct}%
-      </span>
-    );
+    return <span className="trust-certified"><CheckCircle size={10} /> Certified</span>;
   }
   if (score >= 0.5) {
-    return (
-      <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-amber)', flexShrink: 0 }}>
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-amber)', display: 'inline-block' }} />
-        {pct}%
-      </span>
-    );
+    return <span className="trust-warning"><AlertCircle size={10} /> Partial</span>;
   }
-  return (
-    <span style={{ fontSize: '10px', color: 'var(--color-ink-4)', flexShrink: 0 }}>
-      {pct}%
-    </span>
-  );
+  return <span className="trust-unknown">Incomplete</span>;
 }
 
 /** Build a context line (line 2) from entity fields, joining with middot */
@@ -922,8 +908,8 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
       {/* Featured entities — only shown on first page with no search */}
       {featured.length > 0 && page === 0 && !search && browseType === 'drug' && (
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-            Featured
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '13px' }}>{'\u2605'}</span> Top by Pipeline Score
           </div>
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
             {featured.map(entity => {
@@ -940,16 +926,7 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                 <div
                   key={id}
                   onClick={() => id && onOpen('drug', id)}
-                  className="rounded-xl"
-                  style={{
-                    padding: '14px 16px',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-line)',
-                    cursor: 'pointer',
-                    transition: 'box-shadow 120ms ease',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                  className="featured-card"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
@@ -1001,9 +978,17 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
       >
         {loading ? (
-          <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>Loading…</div>
+          <div className="empty-state">
+            <div className="empty-state-icon">{'\u23F3'}</div>
+            <div className="empty-state-title">Loading entities...</div>
+            <div className="empty-state-hint">Fetching from knowledge graph</div>
+          </div>
         ) : !data || data.results.length === 0 ? (
-          <div className="text-center" style={{ padding: '48px 0', color: 'var(--color-ink-4)', fontSize: '13px' }}>No entities found.</div>
+          <div className="empty-state">
+            <div className="empty-state-icon">{'\uD83D\uDD0D'}</div>
+            <div className="empty-state-title">No entities found</div>
+            <div className="empty-state-hint">{search ? `No results for "${search}". Try a different term.` : 'Try selecting a different entity type or adjusting filters.'}</div>
+          </div>
         ) : (
           <>
             <div
@@ -1089,13 +1074,16 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                 <div
                   key={id}
                   className="catalog-row group"
+                  data-type={browseType}
                   onClick={() => id && onOpen(browseType, id)}
+                  style={{ borderLeftColor: dotColor }}
                 >
-                  {/* Entity dot */}
+                  {/* Entity type indicator */}
                   <span
                     style={{
-                      width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
-                      background: dotColor, marginTop: '4px', alignSelf: 'flex-start',
+                      width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
+                      background: dotColor, marginTop: '5px', alignSelf: 'flex-start',
+                      boxShadow: `0 0 0 3px color-mix(in srgb, ${dotColor} 15%, transparent)`,
                     }}
                   />
 
@@ -1121,8 +1109,8 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                           </span>
                         )}
                         {phase && (
-                          <span style={{ fontSize: '11px', fontWeight: 500, color: phaseColor }}>
-                            {phase}
+                          <span className={`phase-badge ${phase.includes('4') ? 'phase-4' : phase.includes('3') ? 'phase-3' : phase.includes('2') ? 'phase-2' : 'phase-1'}`}>
+                            {phase.includes('4') ? '\u2713 ' : ''}{phase}
                           </span>
                         )}
                         {browseType === 'trial' && trialStatus && (
