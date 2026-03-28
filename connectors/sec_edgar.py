@@ -5,9 +5,14 @@ Fetches company filings from the SEC EDGAR system. For each target company
 (by CIK), downloads recent 10-K and 10-Q filings and extracts key sections
 (Risk Factors, MD&A) as text chunks for the knowledge layer.
 
+Also fetches:
+  - XBRL financial facts (revenue, R&D, profit, assets, cash) via companyfacts API
+  - Full-text search for drug mentions in SEC filings
+
 Produces:
-  - COMPANY records (enriched with SEC metadata)
+  - COMPANY records (enriched with SEC metadata + XBRL financials)
   - DOCUMENT_CHUNK records (filing text sections)
+  - EVENT records (drug mentions in filings via full-text search)
 
 IMPORTANT: SEC requires a User-Agent header with company name + email.
 Rate limit: 10 requests/second (strictly enforced).
@@ -23,6 +28,7 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import quote
 
 import requests
 
@@ -39,6 +45,8 @@ from connectors.base import (
 logger = logging.getLogger(__name__)
 
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+XBRL_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+EFTS_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 FILING_BASE_URL = "https://www.sec.gov/Archives/edgar/data"
 
 # Filing types we care about
@@ -63,6 +71,33 @@ SECTION_PATTERNS = {
     ),
 }
 
+# Max results from EFTS full-text search
+MAX_SEARCH_RESULTS = 20
+
+# XBRL concept → canonical metric name mapping
+# US-GAAP concepts
+US_GAAP_METRICS: dict[str, str] = {
+    "Revenues": "revenue",
+    "RevenueFromContractWithCustomerExcludingAssessedTax": "revenue",
+    "ResearchAndDevelopmentExpense": "rd_expense",
+    "NetIncomeLoss": "profit",
+    "CostOfGoodsSold": "cost_of_sales",
+    "CostOfGoodsAndServicesSold": "cost_of_sales",
+    "Assets": "total_assets",
+    "CashAndCashEquivalentsAtCarryingValue": "cash",
+    "CommonStockSharesOutstanding": "shares_outstanding",
+}
+
+# IFRS concepts
+IFRS_METRICS: dict[str, str] = {
+    "Revenue": "revenue",
+    "ResearchAndDevelopmentExpense": "rd_expense",
+    "ProfitLoss": "profit",
+    "CostOfSales": "cost_of_sales",
+    "Assets": "total_assets",
+    "CashAndCashEquivalents": "cash",
+}
+
 # Text chunk size for embedding
 CHUNK_SIZE = 2000  # characters
 CHUNK_OVERLAP = 200
@@ -80,24 +115,27 @@ class SECEdgarConnector(BaseConnector):
     def __init__(self, config=None, target_overrides=None):
         self.config = config
         self.company_name = "MarketZero"
-        self.contact_email = ""
-        self.request_delay = 0.12  # ~8 req/sec (under 10 limit)
+        self.contact_email = "contact@marketzero.com"
+        self.request_delay = 0.15  # ~6.6 req/sec (well under SEC 10 limit)
         self.target_ciks: list[str] = []
+        self.target_drugs: list[str] = []
 
         if config:
             self.company_name = config.connectors.edgar_company_name
             self.contact_email = config.connectors.edgar_contact_email
             self.target_ciks = config.target_company_ciks
-            self.request_delay = max(0.12, config.connectors.default_request_delay_seconds)
+            self.request_delay = max(0.15, config.connectors.default_request_delay_seconds)
 
         # Allow dynamic target overrides for TA onboarding
         overrides = target_overrides or {}
         if overrides.get("ciks"):
             self.target_ciks = overrides["ciks"]
+        if overrides.get("drugs"):
+            self.target_drugs = overrides["drugs"]
 
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": f"{self.company_name} {self.contact_email}",
+            "User-Agent": f"{self.company_name}/1.0 {self.contact_email}",
             "Accept-Encoding": "gzip, deflate",
         })
 
@@ -132,13 +170,14 @@ class SECEdgarConnector(BaseConnector):
             )
 
     def fetch(self, since: Optional[datetime] = None) -> list[RawRecord]:
-        """Fetch filings for all target companies."""
+        """Fetch filings, XBRL financials, and drug mentions for all target companies."""
         records: list[RawRecord] = []
 
         if not self.target_ciks:
             logger.warning("No target CIKs configured for SEC EDGAR")
             return records
 
+        # Step 1: Existing filing metadata + text chunks
         for cik in self.target_ciks:
             logger.info("Fetching EDGAR data for CIK: %s", cik)
             try:
@@ -146,6 +185,24 @@ class SECEdgarConnector(BaseConnector):
                 records.extend(company_records)
             except Exception as e:
                 logger.error("Error fetching CIK %s: %s", cik, e)
+
+        # Step 2: XBRL financial facts for each CIK
+        for cik in self.target_ciks:
+            logger.info("Fetching XBRL facts for CIK: %s", cik)
+            try:
+                xbrl_records = self.fetch_xbrl_facts(cik)
+                records.extend(xbrl_records)
+            except Exception as e:
+                logger.error("Error fetching XBRL for CIK %s: %s", cik, e)
+
+        # Step 3: Full-text search for target drug names
+        for drug in self.target_drugs:
+            logger.info("Searching EDGAR filings for drug: %s", drug)
+            try:
+                search_records = self.search_filings(drug)
+                records.extend(search_records)
+            except Exception as e:
+                logger.error("Error searching filings for %s: %s", drug, e)
 
         logger.info("SEC EDGAR fetch complete: %d records", len(records))
         return records
@@ -330,6 +387,196 @@ class SECEdgarConnector(BaseConnector):
             len(records), form_type, accession,
         )
         return records
+
+    # ------------------------------------------------------------------ #
+    # XBRL Financial Facts
+    # ------------------------------------------------------------------ #
+
+    def fetch_xbrl_facts(self, cik: str) -> list[RawRecord]:
+        """Fetch structured XBRL financial data for a company.
+
+        Calls the SEC companyfacts API to extract key financial metrics
+        (revenue, R&D expense, profit, assets, cash) from both US-GAAP
+        and IFRS taxonomies. Only annual (FY) data points are returned.
+
+        Args:
+            cik: SEC Central Index Key (zero-padded 10-digit string).
+
+        Returns:
+            List of RawRecord objects with record_type=COMPANY containing
+            one record per (fiscal_year, metric_name) pair.
+        """
+        records: list[RawRecord] = []
+        now = datetime.utcnow()
+
+        url = XBRL_FACTS_URL.format(cik=cik)
+        resp = self.session.get(url, timeout=30)
+        time.sleep(self.request_delay)
+
+        if resp.status_code != 200:
+            logger.warning("XBRL facts returned %d for CIK %s", resp.status_code, cik)
+            return records
+
+        data = resp.json()
+        entity_name = data.get("entityName", "")
+        facts = data.get("facts", {})
+
+        raw_bytes = json.dumps(data, sort_keys=True).encode()[:10000]
+        resp_hash = Provenance.hash_response(raw_bytes)
+
+        prov = Provenance(
+            source_type=SourceType.SEC_EDGAR,
+            api_endpoint=url,
+            query_params={"cik": cik},
+            retrieved_at=now,
+            raw_response_hash=resp_hash,
+        )
+
+        # Try US-GAAP taxonomy first, then IFRS
+        taxonomy_maps = [
+            ("us-gaap", US_GAAP_METRICS),
+            ("ifrs-full", IFRS_METRICS),
+        ]
+
+        seen: set[tuple[int, str]] = set()  # (fiscal_year, metric_name) dedup
+
+        for taxonomy, metric_map in taxonomy_maps:
+            taxonomy_facts = facts.get(taxonomy, {})
+            if not taxonomy_facts:
+                continue
+
+            for concept_name, canonical_name in metric_map.items():
+                concept_data = taxonomy_facts.get(concept_name)
+                if not concept_data:
+                    continue
+
+                # Iterate over all unit types (USD, DKK, shares, etc.)
+                units_dict = concept_data.get("units", {})
+                for currency, data_points in units_dict.items():
+                    for dp in data_points:
+                        fp = dp.get("fp", "")
+                        fy = dp.get("fy")
+
+                        # Only annual data
+                        if fp != "FY" or fy is None:
+                            continue
+
+                        dedup_key = (fy, canonical_name)
+                        if dedup_key in seen:
+                            continue
+                        seen.add(dedup_key)
+
+                        metric_data = {
+                            "cik": cik,
+                            "company_name": entity_name,
+                            "fiscal_year": fy,
+                            "fiscal_period": "FY",
+                            "metric_name": canonical_name,
+                            "metric_value": dp.get("val"),
+                            "currency": currency,
+                            "filed_date": dp.get("filed"),
+                        }
+
+                        ext_id = f"xbrl|{cik}|{fy}|{canonical_name}"
+                        records.append(RawRecord(
+                            record_type=RecordType.COMPANY,
+                            external_id=ext_id,
+                            source_name="SEC EDGAR",
+                            provenance=prov,
+                            data=metric_data,
+                            text_content=(
+                                f"{entity_name} {canonical_name} FY{fy}: "
+                                f"{dp.get('val')} {currency}"
+                            ),
+                            identifiers={"cik": cik, "company_name": entity_name},
+                        ))
+
+        logger.info("  XBRL: extracted %d financial data points for CIK %s", len(records), cik)
+        return records
+
+    # ------------------------------------------------------------------ #
+    # Full-Text Search (EFTS)
+    # ------------------------------------------------------------------ #
+
+    def search_filings(self, drug_name: str) -> list[RawRecord]:
+        """Search SEC filings for mentions of a drug name.
+
+        Uses the EDGAR Full-Text Search System (EFTS) to find 10-K, 10-Q,
+        and 8-K filings that mention the given drug name.
+
+        Args:
+            drug_name: Drug name to search for (exact phrase match).
+
+        Returns:
+            List of RawRecord objects with record_type=EVENT, capped at
+            MAX_SEARCH_RESULTS (20).
+        """
+        records: list[RawRecord] = []
+        now = datetime.utcnow()
+
+        url = EFTS_SEARCH_URL
+        params = {
+            "q": f'"{drug_name}"',
+            "forms": "10-K,10-Q,8-K",
+        }
+
+        resp = self.session.get(url, params=params, timeout=30)
+        time.sleep(self.request_delay)
+
+        if resp.status_code != 200:
+            logger.warning("EFTS search returned %d for '%s'", resp.status_code, drug_name)
+            return records
+
+        data = resp.json()
+
+        raw_bytes = json.dumps(data, sort_keys=True).encode()[:10000]
+        resp_hash = Provenance.hash_response(raw_bytes)
+
+        prov = Provenance(
+            source_type=SourceType.SEC_EDGAR,
+            api_endpoint=url,
+            query_params=params,
+            retrieved_at=now,
+            raw_response_hash=resp_hash,
+        )
+
+        hits = data.get("hits", {}).get("hits", [])
+
+        for hit in hits[:MAX_SEARCH_RESULTS]:
+            source = hit.get("_source", {})
+            hit_id = hit.get("_id", "")
+
+            company_name = source.get("entity_name", "")
+            form_type = source.get("form_type", "")
+            file_date = source.get("file_date", "")
+            display_names = source.get("display_names", [])
+            description = display_names[0] if display_names else company_name
+
+            filing_data = {
+                "drug_name": drug_name,
+                "company_name": company_name,
+                "form_type": form_type,
+                "file_date": file_date,
+                "description": f"{drug_name} mentioned in {form_type} by {description}",
+            }
+
+            ext_id = f"efts|{drug_name}|{hit_id}" if hit_id else f"efts|{drug_name}|{company_name}|{file_date}"
+            records.append(RawRecord(
+                record_type=RecordType.EVENT,
+                external_id=ext_id,
+                source_name="SEC EDGAR",
+                provenance=prov,
+                data=filing_data,
+                text_content=f"{drug_name} mentioned in {form_type} filing by {company_name} ({file_date})",
+                identifiers={"drug_name": drug_name, "company_name": company_name},
+            ))
+
+        logger.info("  EFTS: found %d filings mentioning '%s'", len(records), drug_name)
+        return records
+
+    # ------------------------------------------------------------------ #
+    # Private helpers
+    # ------------------------------------------------------------------ #
 
     def _extract_section(self, text: str, start_pattern: str, end_pattern: str) -> str:
         """Extract text between two section header patterns."""
