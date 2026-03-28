@@ -394,10 +394,16 @@ function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile }: {
 }) {
   const [completeness, setCompleteness] = useState<Record<string, FieldCompleteness> | null>(null);
   const [freshData, setFreshData] = useState<Record<string, SourceFreshness> | null>(null);
+  const [graphSummary, setGraphSummary] = useState<{ link_types: Array<{type: string; count: number}>; total_links: number; total_entities: number; drug_completeness: Record<string, number> } | null>(null);
+  const [taCoverage, setTaCoverage] = useState<Array<{id: string; name: string; drug_count: number; linked_drug_count: number; trial_count: number}> | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<Array<{source_key: string; label: string; schedule: string; last_run: string|null; days_since: number|null; records: number; status: string}> | null>(null);
 
   useEffect(() => {
     api.catalogCompleteness().then(r => setCompleteness(r.completeness)).catch(() => {});
     api.catalogFreshness().then(r => setFreshData(r.freshness)).catch(() => {});
+    api.catalogGraphSummary().then(r => setGraphSummary(r)).catch(() => {});
+    api.catalogTaCoverage().then(r => setTaCoverage(r.therapeutic_areas)).catch(() => {});
+    api.catalogPipelineStatus().then(r => setPipelineStatus(r.connectors)).catch(() => {});
   }, []);
 
   const staleCount = freshData ? Object.values(freshData).filter(s => s.stale).length : 0;
@@ -443,6 +449,142 @@ function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile }: {
           </div>
         ))}
       </div>
+
+      {/* ── Data Pipeline Status ── */}
+      {pipelineStatus && pipelineStatus.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Data Pipeline</h3>
+            <p style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '2px' }}>
+              9 connectors collect data from federal registries, literature databases, and regulatory filings
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: 'var(--color-line-2)' }}>
+            {pipelineStatus.map(c => {
+              const statusIcon = c.status === 'fresh' ? '\u2713' : c.status === 'ok' ? '\u2713' : c.status === 'stale' ? '\u26A0' : '\u2014';
+              const statusColor = c.status === 'fresh' ? 'var(--color-green)' : c.status === 'ok' ? 'var(--color-accent)' : c.status === 'stale' ? 'var(--color-amber)' : 'var(--color-ink-4)';
+              const statusBg = c.status === 'fresh' ? 'var(--color-green-soft)' : c.status === 'ok' ? 'var(--color-accent-soft)' : c.status === 'stale' ? 'var(--color-amber-soft)' : 'var(--color-surface-2)';
+              return (
+                <div key={c.source_key} style={{ padding: '14px 18px', background: 'var(--color-surface)', cursor: 'pointer' }} onClick={() => onOpenProfile(c.source_key)}>
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>{c.label}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '10px', background: statusBg, color: statusColor }}>
+                      {statusIcon} {c.status === 'fresh' ? 'Live' : c.status === 'ok' ? 'OK' : c.status === 'stale' ? 'Stale' : 'Pending'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '4px' }}>{c.schedule}</div>
+                  <div className="flex items-center gap-3" style={{ marginTop: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--color-ink-3)' }}>{fmt(c.records)} records</span>
+                    <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+                      {c.days_since != null ? `Updated ${c.days_since < 1 ? 'today' : Math.round(c.days_since) + 'd ago'}` : 'Never run'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Knowledge Graph Summary ── */}
+      {graphSummary && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Knowledge Graph</h3>
+            <p style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '2px' }}>
+              {fmt(graphSummary.total_entities)} entities connected by {fmt(graphSummary.total_links)} relationships
+            </p>
+          </div>
+          <div style={{ padding: '16px 24px' }}>
+            {/* Link type distribution */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+              {graphSummary.link_types.slice(0, 10).map(lt => (
+                <span key={lt.type} style={{
+                  fontSize: '11px', fontWeight: 500, padding: '4px 10px', borderRadius: '16px',
+                  background: 'var(--color-surface-2)', color: 'var(--color-ink-2)',
+                  border: '1px solid var(--color-line)',
+                }}>
+                  {lt.type.replace(/_/g, ' ')} <strong>{fmt(lt.count)}</strong>
+                </span>
+              ))}
+            </div>
+            {/* Drug linking completeness */}
+            {graphSummary.drug_completeness?.total > 0 && (() => {
+              const dc = graphSummary.drug_completeness;
+              const bars = [
+                { label: 'Company', pct: Math.round((dc.with_company / dc.total) * 100), color: 'var(--color-company)' },
+                { label: 'Mechanism', pct: Math.round((dc.with_mechanism / dc.total) * 100), color: 'var(--color-mechanism)' },
+                { label: 'Therapy Area', pct: Math.round((dc.with_therapeutic_area / dc.total) * 100), color: 'var(--color-ta)' },
+                { label: 'Brand Name', pct: Math.round((dc.with_brand_name / dc.total) * 100), color: 'var(--color-accent)' },
+              ];
+              return (
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: '8px' }}>
+                    Drug Entity Completeness ({fmt(dc.total)} active drugs)
+                  </div>
+                  {bars.map(b => (
+                    <div key={b.label} className="flex items-center gap-3" style={{ marginBottom: '6px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--color-ink-3)', width: '90px', flexShrink: 0 }}>{b.label}</span>
+                      <div style={{ flex: 1, height: '6px', borderRadius: '3px', background: 'var(--color-surface-3)', overflow: 'hidden' }}>
+                        <div style={{ width: `${b.pct}%`, height: '100%', borderRadius: '3px', background: b.color, transition: 'width 600ms ease' }} />
+                      </div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: b.pct >= 70 ? 'var(--color-green)' : b.pct >= 40 ? 'var(--color-amber)' : 'var(--color-red)', width: '36px', textAlign: 'right' }}>
+                        {b.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Therapeutic Area Coverage ── */}
+      {taCoverage && taCoverage.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-line)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)' }}>Therapeutic Area Coverage</h3>
+            <p style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '2px' }}>
+              {taCoverage.length} therapeutic areas across Diabetes, Cardiovascular, Obesity, and Metabolic disease
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1px', background: 'var(--color-line-2)' }}>
+            {taCoverage.map(ta => {
+              const totalDrugs = ta.drug_count + ta.linked_drug_count;
+              const hasData = totalDrugs > 0 || ta.trial_count > 0;
+              return (
+                <div
+                  key={ta.id}
+                  style={{
+                    padding: '12px 16px', background: 'var(--color-surface)',
+                    cursor: 'pointer', transition: 'background 120ms',
+                    borderLeft: `3px solid ${hasData ? 'var(--color-ta)' : 'var(--color-line)'}`,
+                  }}
+                  onClick={() => onBrowse('therapeutic_area')}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface-2)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface)'; }}
+                >
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: hasData ? 'var(--color-ink)' : 'var(--color-ink-4)' }}>
+                    {ta.name}
+                  </div>
+                  <div className="flex items-center gap-3" style={{ marginTop: '4px' }}>
+                    {totalDrugs > 0 && (
+                      <span style={{ fontSize: '10px', color: 'var(--color-drug)' }}>{totalDrugs} drugs</span>
+                    )}
+                    {ta.trial_count > 0 && (
+                      <span style={{ fontSize: '10px', color: 'var(--color-trial)' }}>{fmt(ta.trial_count)} trials</span>
+                    )}
+                    {!hasData && (
+                      <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>No data yet</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Completeness bars */}
       {completeness && (

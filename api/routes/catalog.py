@@ -1413,6 +1413,149 @@ def source_freshness(db: Database = Depends(get_db)):
     return {"freshness": freshness}
 
 
+@router.get("/graph-summary")
+def graph_summary(db: Database = Depends(get_db)):
+    """Knowledge graph connectivity summary — link types, entity coverage, density."""
+    link_types = db.fetch_all(
+        "SELECT link_type, COUNT(*) AS cnt FROM entity_links GROUP BY link_type ORDER BY cnt DESC"
+    )
+
+    # Entity linking completeness for drugs
+    drug_stats = {}
+    try:
+        total = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM drugs WHERE record_status IS NULL OR record_status NOT IN ('excluded','merged')"
+        )["cnt"]
+        with_co = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM drugs WHERE company_id IS NOT NULL AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+        )["cnt"]
+        with_mech = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM drugs WHERE mechanism_id IS NOT NULL AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+        )["cnt"]
+        with_ta = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM drugs WHERE therapeutic_area_id IS NOT NULL AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+        )["cnt"]
+        with_brand = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM drugs WHERE brand_name IS NOT NULL AND brand_name != '' AND LOWER(brand_name) != LOWER(generic_name) AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+        )["cnt"]
+        drug_stats = {
+            "total": total,
+            "with_company": with_co,
+            "with_mechanism": with_mech,
+            "with_therapeutic_area": with_ta,
+            "with_brand_name": with_brand,
+        }
+    except Exception:
+        pass
+
+    total_links = db.fetch_one("SELECT COUNT(*) AS cnt FROM entity_links")
+    total_entities = db.fetch_one(
+        "SELECT COUNT(*) AS cnt FROM v_entity_labels WHERE entity_type IN ('drug','company','trial','literature','mechanism','therapeutic_area')"
+    )
+
+    return {
+        "link_types": [{"type": r["link_type"], "count": r["cnt"]} for r in link_types],
+        "total_links": total_links["cnt"] if total_links else 0,
+        "total_entities": total_entities["cnt"] if total_entities else 0,
+        "drug_completeness": drug_stats,
+    }
+
+
+@router.get("/ta-coverage")
+def ta_coverage(db: Database = Depends(get_db)):
+    """Therapeutic area coverage — drug counts, trial counts, mechanism counts per TA."""
+    rows = db.fetch_all(
+        """
+        SELECT ta.id, ta.name,
+               (SELECT COUNT(*) FROM drugs d
+                WHERE d.therapeutic_area_id = ta.id
+                AND (d.record_status IS NULL OR d.record_status NOT IN ('excluded','merged'))) AS drug_count,
+               (SELECT COUNT(*) FROM entity_links el
+                WHERE el.target_entity_id = ta.id::text
+                AND el.link_type = 'IN_THERAPEUTIC_AREA'
+                AND el.source_entity_type = 'drug') AS linked_drug_count,
+               (SELECT COUNT(*) FROM entity_links el
+                WHERE el.target_entity_id = ta.id::text
+                AND el.link_type = 'IN_THERAPEUTIC_AREA'
+                AND el.source_entity_type = 'trial') AS trial_count
+        FROM therapeutic_areas ta
+        ORDER BY drug_count DESC, linked_drug_count DESC
+        """
+    )
+    return {
+        "therapeutic_areas": [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "drug_count": r["drug_count"],
+                "linked_drug_count": r["linked_drug_count"],
+                "trial_count": r["trial_count"],
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/pipeline-status")
+def pipeline_status(db: Database = Depends(get_db)):
+    """Pipeline connector status — schedule, last run, next run."""
+    from scheduler.config import CONNECTOR_SCHEDULES
+    from connectors.base import SourceType
+
+    result = []
+    for st, sched in CONNECTOR_SCHEDULES.items():
+        source_key = st.value
+        cron = sched["cron"]
+
+        # Determine schedule description
+        if "day" in cron:
+            schedule_desc = f"Monthly on day {cron['day']} at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+        elif "day_of_week" in cron:
+            schedule_desc = f"Weekly ({cron['day_of_week']}) at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+        else:
+            schedule_desc = f"Daily at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+
+        # Last run from source_coverage in health data
+        last_run = None
+        record_count = 0
+        try:
+            for table in ["drugs", "clinical_trials", "pubmed_articles", "companies", "market_events"]:
+                row = db.fetch_one(
+                    f"SELECT MAX(retrieved_at) AS latest, COUNT(*) AS cnt FROM {table} WHERE source_api = %s",
+                    [source_key],
+                )
+                if row and row["latest"]:
+                    ts = row["latest"].isoformat() if hasattr(row["latest"], "isoformat") else None
+                    if ts and (last_run is None or ts > last_run):
+                        last_run = ts
+                    record_count += row["cnt"] or 0
+        except Exception:
+            pass
+
+        days_since = None
+        if last_run:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                latest_dt = _dt.fromisoformat(last_run.replace("Z", "+00:00"))
+                days_since = (_dt.now(_tz.utc) - latest_dt).total_seconds() / 86400
+            except Exception:
+                pass
+
+        result.append({
+            "source_key": source_key,
+            "label": sched["label"],
+            "schedule": schedule_desc,
+            "last_run": last_run,
+            "days_since": round(days_since, 1) if days_since is not None else None,
+            "records": record_count,
+            "status": "fresh" if days_since is not None and days_since <= 2 else
+                      "ok" if days_since is not None and days_since <= 7 else
+                      "stale" if days_since is not None else "unknown",
+        })
+
+    return {"connectors": result}
+
+
 class RunEnrichmentRequest(BaseModel):
     entity_type: str = "drug"
     max_entities: int = 50

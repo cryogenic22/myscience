@@ -672,6 +672,12 @@ export const api = {
     ),
   catalogFreshness: () =>
     get<{ freshness: Record<string, SourceFreshness> }>('/catalog/freshness'),
+  catalogGraphSummary: () =>
+    get<{ link_types: Array<{type: string; count: number}>; total_links: number; total_entities: number; drug_completeness: Record<string, number> }>('/catalog/graph-summary'),
+  catalogTaCoverage: () =>
+    get<{ therapeutic_areas: Array<{id: string; name: string; drug_count: number; linked_drug_count: number; trial_count: number}> }>('/catalog/ta-coverage'),
+  catalogPipelineStatus: () =>
+    get<{ connectors: Array<{source_key: string; label: string; schedule: string; last_run: string|null; days_since: number|null; records: number; status: string}> }>('/catalog/pipeline-status'),
   catalogBulkUpdate: (entityType: string, entityIds: string[], fields: Record<string, unknown>, reason?: string) =>
     post<{ ok: boolean; updated: number }>(`/catalog/bulk-update?entity_type=${encodeURIComponent(entityType)}`, {
       entity_ids: entityIds, fields, reason: reason ?? '',
