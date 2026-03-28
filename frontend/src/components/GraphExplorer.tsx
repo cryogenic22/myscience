@@ -29,15 +29,16 @@ import {
 } from '../api';
 import { displayName, LINK_TYPE_LABELS, SOURCE_LABELS, isUUID } from '../brand';
 import ModernGraph from './ModernGraph';
+import { NODE_COLORS } from './graph/graph-constants';
 import { Drawer } from './ui/Drawer';
 
 const ENTITY_CONFIG: Record<string, { icon: ReactNode; color: string; label: string }> = {
-  drug: { icon: <PillIcon size={14} />, color: '#2563eb', label: 'Drug' },
-  company: { icon: <Building2 size={14} />, color: '#d97706', label: 'Company' },
-  trial: { icon: <FlaskConical size={14} />, color: '#0d9488', label: 'Trial' },
-  mechanism: { icon: <Dna size={14} />, color: '#7c3aed', label: 'Mechanism' },
-  therapeutic_area: { icon: <Target size={14} />, color: '#e11d48', label: 'Therapeutic Area' },
-  literature: { icon: <FileText size={14} />, color: '#16a34a', label: 'Literature' },
+  drug: { icon: <PillIcon size={14} />, color: NODE_COLORS.drug, label: 'Drug' },
+  company: { icon: <Building2 size={14} />, color: NODE_COLORS.company, label: 'Company' },
+  trial: { icon: <FlaskConical size={14} />, color: NODE_COLORS.trial, label: 'Trial' },
+  mechanism: { icon: <Dna size={14} />, color: NODE_COLORS.mechanism, label: 'Mechanism' },
+  therapeutic_area: { icon: <Target size={14} />, color: NODE_COLORS.therapeutic_area, label: 'Therapeutic Area' },
+  literature: { icon: <FileText size={14} />, color: NODE_COLORS.literature, label: 'Literature' },
 };
 
 const OBJECTIVES = [

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphEdge, GraphNode } from '../api';
+import { NODE_COLORS, EDGE_COLORS, NODE_TYPE_LABELS } from './graph/graph-constants';
 
 interface Props {
   nodes: GraphNode[];
@@ -9,23 +10,9 @@ interface Props {
   onNodeClick?: (node: GraphNode) => void;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  drug: '#2563eb',
-  company: '#d97706',
-  trial: '#0d9488',
-  therapeutic_area: '#e11d48',
-  mechanism: '#7c3aed',
-  literature: '#16a34a',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  drug: 'Drug',
-  company: 'Company',
-  trial: 'Trial',
-  therapeutic_area: 'Ther. Area',
-  mechanism: 'Mechanism',
-  literature: 'Literature',
-};
+// Alias shared constants to preserve internal variable names
+const TYPE_COLORS = NODE_COLORS;
+const TYPE_LABELS = NODE_TYPE_LABELS;
 
 type Viewport = { zoom: number; offsetX: number; offsetY: number };
 
@@ -393,20 +380,16 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
         const s = toScreen(source.x, source.y);
         const t = toScreen(target.x, target.y);
         const linkType = edgeType(edge as unknown as Record<string, unknown>);
-        const edgeColor = linkType.includes('THERAPEUTIC')
-          ? 'rgba(225, 29, 72, 0.18)'
-          : linkType.includes('MECHANISM')
-            ? 'rgba(124, 58, 237, 0.18)'
-            : linkType.includes('OWNS')
-              ? 'rgba(217, 119, 6, 0.25)'
-              : 'rgba(248, 200, 6, 0.10)';
+        const rawEdgeColor = EDGE_COLORS[linkType] || '#64748b';
 
         ctx.beginPath();
-        ctx.strokeStyle = edgeColor;
+        ctx.strokeStyle = rawEdgeColor;
+        ctx.globalAlpha = 0.35;
         ctx.lineWidth = Math.max(0.6, 0.8 * zoom);
         ctx.moveTo(s.x, s.y);
         ctx.lineTo(t.x, t.y);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
 
       for (const node of simNodes) {
@@ -569,10 +552,10 @@ export default function GraphMini({ nodes, edges, centerEntityId, height = 280, 
 
       {/* Edge type legend */}
       <div className="pointer-events-none absolute bottom-2 right-2 flex flex-wrap gap-x-3 gap-y-0.5 rounded-md border border-white/15 bg-slate-950/60 text-[9px] text-white/65 backdrop-blur" style={{ padding: '4px 8px' }}>
-        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(225, 29, 72, 0.5)' }} />Therapeutic</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(124, 58, 237, 0.5)' }} />Mechanism</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(217, 119, 6, 0.6)' }} />Ownership</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: 'rgba(248, 200, 6, 0.3)' }} />Other</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: EDGE_COLORS.IN_THERAPEUTIC_AREA }} />Therapeutic</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: EDGE_COLORS.TARGETS_MECHANISM }} />Mechanism</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: EDGE_COLORS.OWNS }} />Ownership</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-px w-3" style={{ background: EDGE_COLORS.SPONSORS }} />Sponsors</span>
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-white/15 bg-slate-950/60 text-[10px] text-white/65 backdrop-blur" style={{ padding: '4px 8px' }}>

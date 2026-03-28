@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type GraphNode, type GraphEdge } from '../api';
+import { NODE_COLORS, EDGE_COLORS, EDGE_LABELS, GRAPH_BG, GRAPH_TEXT } from './graph/graph-constants';
 
 interface ModernGraphProps {
     nodes: GraphNode[];
@@ -8,27 +9,6 @@ interface ModernGraphProps {
     onNodeClick: (node: GraphNode) => void;
     className?: string;
 }
-
-const TYPE_COLORS: Record<string, string> = {
-    drug: '#2563eb',       // Blue 600
-    company: '#d97706',    // Amber 600
-    trial: '#0d9488',      // Teal 600
-    therapeutic_area: '#e11d48', // Rose 600
-    mechanism: '#7c3aed',  // Violet 600
-    literature: '#16a34a', // Green 600
-};
-
-const EDGE_COLORS: Record<string, string> = {
-    OWNS: '#d97706',            // Amber — ownership
-    MANUFACTURES: '#d97706',
-    SPONSORS: '#0d9488',        // Teal — sponsorship
-    INVESTIGATES: '#2563eb',    // Blue — clinical investigation
-    EVIDENCE_FOR: '#16a34a',    // Green — literature evidence
-    TARGETS: '#7c3aed',         // Violet — mechanism targeting
-    TREATS: '#e11d48',          // Rose — therapeutic
-    HAS_SIGNAL: '#dc2626',      // Red — safety signal
-    ASSOCIATED_WITH: '#94a3b8', // Grey — generic association
-};
 
 export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick, className = '' }: ModernGraphProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -93,14 +73,32 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
         const cx = width / 2;
         const cy = height / 2;
 
-        const simNodes = nodes.map((n) => ({
-            ...n,
-            x: cx + (Math.random() - 0.5) * 200,
-            y: cy + (Math.random() - 0.5) * 200,
-            vx: 0,
-            vy: 0,
-            radius: n.entity_id === centerEntityId ? 16 : 8
-        }));
+        // Build degree map for node sizing
+        const degreeMap = new Map<string, number>();
+        for (const edge of edges) {
+            const sId = (edge as any).source_id || (edge as any).source;
+            const tId = (edge as any).target_id || (edge as any).target;
+            degreeMap.set(sId, (degreeMap.get(sId) ?? 0) + 1);
+            degreeMap.set(tId, (degreeMap.get(tId) ?? 0) + 1);
+        }
+
+        const simNodes = nodes.map((n) => {
+            const degree = degreeMap.get(n.entity_id) ?? 0;
+            const isCenter = n.entity_id === centerEntityId;
+            let radius = 7; // default
+            if (isCenter) radius = 20;
+            else if (degree >= 5) radius = 12;
+            else if (degree >= 3) radius = 9;
+            return {
+                ...n,
+                x: cx + (Math.random() - 0.5) * 200,
+                y: cy + (Math.random() - 0.5) * 200,
+                vx: 0,
+                vy: 0,
+                radius,
+                degree,
+            };
+        });
 
         const nodeMap = new Map(simNodes.map(n => [n.entity_id, n]));
 
@@ -155,10 +153,10 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
             // Draw
             const w = canvas.width / (window.devicePixelRatio || 1);
             const h = canvas.height / (window.devicePixelRatio || 1);
-            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = GRAPH_BG;
+            ctx.fillRect(0, 0, w, h);
 
             // Edges — only draw visible (non-hidden) edges
-            ctx.lineWidth = 1;
             for (const edge of visibleEdges) {
                 const sId = (edge as any).source_id || (edge as any).source;
                 const tId = (edge as any).target_id || (edge as any).target;
@@ -167,13 +165,14 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
 
                 if (s && t) {
                     const linkType = (edge as any).link_type || '';
-                    const edgeColor = EDGE_COLORS[linkType] || '#d4d4d8';
+                    const edgeColor = EDGE_COLORS[linkType] || '#64748b';
                     const conf = (edge as any).confidence ?? 0.5;
                     ctx.beginPath();
                     ctx.moveTo(s.x, s.y);
                     ctx.lineTo(t.x, t.y);
                     ctx.strokeStyle = edgeColor;
-                    ctx.globalAlpha = 0.3 + conf * 0.5; // Higher confidence = more visible
+                    ctx.lineWidth = 0.8 + conf * 1.5;
+                    ctx.globalAlpha = Math.max(0.4, 0.3 + conf * 0.5);
                     ctx.stroke();
                     ctx.globalAlpha = 1;
                 }
@@ -184,35 +183,43 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
                 const isCenter = node.entity_id === centerEntityId;
                 const isHover = node.entity_id === hoverNodeId;
 
+                // Degree-based radius with hover override
+                const r = isHover ? Math.max(node.radius, 14) : node.radius;
+
                 ctx.beginPath();
-                const r = isCenter ? 20 : (isHover ? 10 : 8);
                 ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
 
                 // Fill
-                ctx.fillStyle = TYPE_COLORS[node.entity_type] || '#64748b';
+                ctx.fillStyle = NODE_COLORS[node.entity_type] || NODE_COLORS.unknown;
                 ctx.fill();
 
-                // Border (White ring)
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 2;
+                // Border (White ring — slightly subtler on dark bg)
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.lineWidth = isCenter ? 2.5 : 1.5;
                 ctx.stroke();
 
-                // Label
-                if (isCenter || isHover || nodes.length < 20) {
-                    ctx.beginPath();
-                    ctx.font = isCenter ? 'bold 12px Inter' : '10px Inter';
+                // Label — show for: center, hovered, high-degree (>=3), non-drug types, or small graphs
+                const showLabel = isCenter
+                    || isHover
+                    || node.degree >= 3
+                    || (node.entity_type !== 'drug' && node.entity_type !== 'literature')
+                    || nodes.length < 20;
+
+                if (showLabel) {
+                    const rawLabel = node.label.length > 25 ? `${node.label.slice(0, 23)}...` : node.label;
+                    ctx.font = isCenter ? 'bold 12px Inter, sans-serif' : '10px Inter, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#0f172a'; // Slate 900
 
-                    // Background for text
-                    const textWidth = ctx.measureText(node.label).width;
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                    ctx.roundRect(node.x - textWidth / 2 - 4, node.y + r + 4, textWidth + 8, 16, 4);
+                    // Semi-transparent dark pill behind text for legibility on dark bg
+                    const textWidth = ctx.measureText(rawLabel).width;
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+                    ctx.beginPath();
+                    ctx.roundRect(node.x - textWidth / 2 - 4, node.y + r + 3, textWidth + 8, 16, 4);
                     ctx.fill();
 
-                    ctx.fillStyle = '#0f172a';
-                    ctx.fillText(node.label, node.x, node.y + r + 12);
+                    ctx.fillStyle = isCenter ? GRAPH_TEXT : 'rgba(226, 232, 240, 0.8)';
+                    ctx.fillText(rawLabel, node.x, node.y + r + 11);
                 }
             }
 
@@ -268,7 +275,7 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
     }, [nodes, edges, visibleEdges, centerEntityId, onNodeClick]);
 
     return (
-        <div ref={containerRef} className={`relative w-full h-full bg-slate-50 overflow-hidden ${className}`}>
+        <div ref={containerRef} className={`relative w-full h-full overflow-hidden ${className}`} style={{ background: GRAPH_BG }}>
             <canvas ref={canvasRef} className="block" />
             {presentEdgeTypes.length > 0 && (
                 <div
@@ -281,17 +288,18 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
                         gap: '4px 12px',
                         padding: '8px 12px',
                         borderRadius: '8px',
-                        background: 'rgba(255, 255, 255, 0.92)',
+                        background: 'rgba(15, 23, 42, 0.85)',
                         backdropFilter: 'blur(8px)',
-                        border: '1px solid var(--color-line, #e2e8f0)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
                         fontSize: '11px',
-                        maxWidth: 'min(90%, 420px)',
+                        maxWidth: 'min(90%, 480px)',
                         zIndex: 10,
                     }}
                 >
                     {presentEdgeTypes.map((linkType) => {
                         const isHidden = hiddenEdgeTypes.has(linkType);
-                        const dotColor = EDGE_COLORS[linkType] || '#94a3b8';
+                        const dotColor = EDGE_COLORS[linkType] || '#64748b';
+                        const label = EDGE_LABELS[linkType] || linkType.replace(/_/g, ' ');
                         return (
                             <button
                                 key={linkType}
@@ -307,7 +315,7 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
                                     cursor: 'pointer',
                                     padding: '2px 4px',
                                     borderRadius: '4px',
-                                    color: isHidden ? 'var(--color-ink-4, #a1a1aa)' : 'var(--color-ink-2, #374151)',
+                                    color: isHidden ? 'rgba(148, 163, 184, 0.5)' : 'rgba(226, 232, 240, 0.85)',
                                     opacity: isHidden ? 0.5 : 1,
                                     fontFamily: 'inherit',
                                     fontSize: '11px',
@@ -322,11 +330,11 @@ export default function ModernGraph({ nodes, edges, centerEntityId, onNodeClick,
                                         width: '8px',
                                         height: '8px',
                                         borderRadius: '50%',
-                                        background: isHidden ? 'var(--color-ink-4, #a1a1aa)' : dotColor,
+                                        background: isHidden ? 'rgba(148, 163, 184, 0.4)' : dotColor,
                                         flexShrink: 0,
                                     }}
                                 />
-                                {linkType.replace(/_/g, ' ')}
+                                {label}
                             </button>
                         );
                     })}
