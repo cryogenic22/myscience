@@ -35,7 +35,6 @@ class NadacConnector(BaseConnector):
         self._config = config
         self._limit = (target_overrides or {}).get("limit", 5000)
 
-    @property
     def source_type(self) -> SourceType:
         return SourceType.NADAC
 
@@ -45,15 +44,15 @@ class NadacConnector(BaseConnector):
             resp = requests.get(NADAC_API_URL, params={"$limit": 1}, timeout=10)
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=resp.status_code == 200,
-                latency_ms=0,
+                healthy=resp.status_code == 200,
+                response_time_ms=0,
                 message=f"HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=False,
-                latency_ms=0,
+                healthy=False,
+                response_time_ms=0,
                 message=str(e),
             )
 

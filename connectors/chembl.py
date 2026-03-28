@@ -49,7 +49,6 @@ class ChEMBLConnector(BaseConnector):
         self._target_drugs = (target_overrides or {}).get("drugs", [])
         self._max_per_drug = (target_overrides or {}).get("max_activities", 50)
 
-    @property
     def source_type(self) -> SourceType:
         return SourceType.CHEMBL
 
@@ -59,15 +58,15 @@ class ChEMBLConnector(BaseConnector):
             resp = requests.get(f"{CHEMBL_API_BASE}/status.json", timeout=10)
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=resp.status_code == 200,
-                latency_ms=0,
+                healthy=resp.status_code == 200,
+                response_time_ms=0,
                 message=f"ChEMBL API: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=False,
-                latency_ms=0,
+                healthy=False,
+                response_time_ms=0,
                 message=str(e),
             )
 

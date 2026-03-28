@@ -15,15 +15,15 @@ from unittest.mock import MagicMock
 
 
 # ── Query dispatch keys ──
-# The feed query has "FROM assessed_events ae" as main table with a LATERAL join
+# The feed query has "FROM market_events ae" as main table with a LATERAL join
 # to impact_assessments.  The standalone assessments query has
 # "FROM impact_assessments ia" as the main FROM clause.
-# We distinguish by checking for "FROM assessed_events" (feed) vs
+# We distinguish by checking for "FROM market_events" (feed) vs
 # "FROM impact_assessments ia" (detail assessments).
 
-_KEY_FEED = "FROM assessed_events"
+_KEY_FEED = "FROM market_events"
 _KEY_DETAIL_ASSESSMENTS = "FROM impact_assessments ia"
-_KEY_DISMISS = "UPDATE assessed_events"
+_KEY_DISMISS = "UPDATE market_events"
 
 
 def _make_feed_row(
@@ -67,9 +67,9 @@ def _mock_db(
     """Build a MagicMock DB that dispatches based on SQL content.
 
     Dispatch rules (substring match on query text):
-    - "FROM assessed_events" → feed_rows (get_feed, get_feed_summary, chat_context)
+    - "FROM market_events" → feed_rows (get_feed, get_feed_summary, chat_context)
     - "FROM impact_assessments ia" → assessment_rows (get_event_detail assessments)
-    - fetch_one with "FROM assessed_events" → event_detail_row
+    - fetch_one with "FROM market_events" → event_detail_row
     """
     db = MagicMock()
     feed = feed_rows if feed_rows is not None else []
@@ -77,9 +77,9 @@ def _mock_db(
     detail_row = event_detail_row
 
     def _fetch_all(query, params=None):
-        # The feed queries always have "FROM assessed_events" — check first.
+        # The feed queries always have "FROM market_events" — check first.
         # The standalone assessments query has "FROM impact_assessments ia"
-        # but NOT "FROM assessed_events".
+        # but NOT "FROM market_events".
         if _KEY_FEED in query:
             return feed
         if _KEY_DETAIL_ASSESSMENTS in query:
@@ -242,14 +242,14 @@ class TestGetEventDetail:
             {
                 "assessment_id": "a-1",
                 "event_id": "evt-detail",
-                "entity_id": "drug-1",
-                "entity_type": "drug",
-                "entity_name": "DrugX",
-                "impact_type": "safety",
-                "magnitude": 0.8,
-                "direction": "negative",
-                "reasoning": "PRR spike detected",
-                "confidence": 0.85,
+                "affected_entity_id": "drug-1",
+                "affected_entity_type": "drug",
+                "affected_entity_name": "DrugX",
+                "assessment_type": "safety",
+                "impact_magnitude": 0.8,
+                "impact_direction": "negative",
+                "narrative": "PRR spike detected",
+                "scenario_result": None,
             },
         ]
         db = _mock_db(event_detail_row=detail, assessment_rows=assessments)

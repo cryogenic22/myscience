@@ -45,7 +45,6 @@ class OpenTargetsConnector(BaseConnector):
         self._config = config
         self._target_drugs = (target_overrides or {}).get("drugs", [])
 
-    @property
     def source_type(self) -> SourceType:
         return SourceType.OPEN_TARGETS
 
@@ -59,15 +58,15 @@ class OpenTargetsConnector(BaseConnector):
             )
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=resp.status_code == 200,
-                latency_ms=0,
+                healthy=resp.status_code == 200,
+                response_time_ms=0,
                 message=f"Open Targets API: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=False,
-                latency_ms=0,
+                healthy=False,
+                response_time_ms=0,
                 message=str(e),
             )
 
@@ -138,6 +137,9 @@ class OpenTargetsConnector(BaseConnector):
                 return None
 
             data = resp.json()
+            if "errors" in data:
+                logger.warning("Open Targets GraphQL error: %s", data["errors"][:1])
+                return None
             hits = data.get("data", {}).get("search", {}).get("hits", [])
             for hit in hits:
                 obj = hit.get("object")

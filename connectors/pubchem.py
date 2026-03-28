@@ -45,7 +45,6 @@ class PubChemConnector(BaseConnector):
         self._config = config
         self._target_drugs = (target_overrides or {}).get("drugs", [])
 
-    @property
     def source_type(self) -> SourceType:
         return SourceType.PUBCHEM
 
@@ -58,15 +57,15 @@ class PubChemConnector(BaseConnector):
             )
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=resp.status_code == 200,
-                latency_ms=0,
+                healthy=resp.status_code == 200,
+                response_time_ms=0,
                 message=f"PubChem API: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=False,
-                latency_ms=0,
+                healthy=False,
+                response_time_ms=0,
                 message=str(e),
             )
 

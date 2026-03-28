@@ -1,7 +1,8 @@
-"""Intelligence Feed Service — assessed events + impact assessments for the frontend feed panel.
+"""Intelligence Feed Service — market events + impact assessments for the frontend feed.
 
-Queries assessed_events and impact_assessments tables, classifies severity,
-and provides feed retrieval, summary, detail, dismissal, and chat context.
+Queries market_events (extended by migration 026) and impact_assessments,
+classifies severity, and provides feed retrieval, summary, detail, dismissal,
+and chat context injection.
 """
 
 from __future__ import annotations
@@ -17,14 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def derive_severity(trust_score: float, max_impact_magnitude: float) -> str:
-    """Classify event severity from trust score and max impact magnitude.
-
-    Thresholds:
-    - critical: trust >= 0.8 AND max_impact >= 0.7
-    - high:     trust >= 0.6 AND max_impact >= 0.4
-    - medium:   trust >= 0.4
-    - low:      everything else
-    """
+    """Classify event severity from trust score and max impact magnitude."""
     if trust_score >= 0.8 and max_impact_magnitude >= 0.7:
         return "critical"
     if trust_score >= 0.6 and max_impact_magnitude >= 0.4:
@@ -67,7 +61,7 @@ class FeedSummary:
 
 
 class IntelligenceFeedService:
-    """Query assessed events and impact assessments for the intelligence feed."""
+    """Query market events and impact assessments for the intelligence feed."""
 
     def __init__(self, db):
         self.db = db
@@ -80,21 +74,17 @@ class IntelligenceFeedService:
         entity_type: Optional[str] = None,
         since_hours: int = 168,
     ) -> list[FeedItem]:
-        """Return feed items sorted by trust_score DESC, created_at DESC.
-
-        Applies optional severity and entity_type post-filters (severity is
-        derived, not stored, so we filter in Python after retrieval).
-        """
+        """Return feed items sorted by trust_score DESC, created_at DESC."""
         try:
-            conditions = ["ae.status != 'dismissed'"]
+            conditions = ["me.status != 'dismissed'"]
             params: list = []
 
             if entity_type:
-                conditions.append("ae.primary_entity_type = %s")
+                conditions.append("me.primary_entity_type = %s")
                 params.append(entity_type)
 
             conditions.append(
-                "ae.created_at > NOW() - make_interval(hours := %s)"
+                "me.created_at > NOW() - make_interval(hours := %s)"
             )
             params.append(since_hours)
 
@@ -103,29 +93,29 @@ class IntelligenceFeedService:
             rows = self.db.fetch_all(
                 f"""
                 SELECT
-                    ae.event_id::text AS event_id,
-                    ae.event_type,
-                    ae.event_date::text AS event_date,
-                    ae.description,
-                    ae.source_url,
-                    ae.source_tier,
-                    ae.trust_score,
-                    ae.primary_entity_name,
-                    ae.primary_entity_type,
+                    me.id::text AS event_id,
+                    me.event_type,
+                    me.event_date::text AS event_date,
+                    me.description,
+                    me.source_url,
+                    COALESCE(me.source_tier, 'tier_3') AS source_tier,
+                    COALESCE(me.trust_score, 0.5) AS trust_score,
+                    me.primary_entity_name,
+                    me.primary_entity_type,
                     COALESCE(ic.impact_count, 0) AS impact_count,
-                    COALESCE(ic.max_impact_magnitude, 0) AS max_impact_magnitude,
-                    ae.status,
-                    ae.created_at::text AS created_at
-                FROM assessed_events ae
+                    COALESCE(ic.max_impact, 0) AS max_impact_magnitude,
+                    COALESCE(me.status, 'new') AS status,
+                    me.created_at::text AS created_at
+                FROM market_events me
                 LEFT JOIN LATERAL (
                     SELECT
                         COUNT(*) AS impact_count,
-                        MAX(magnitude) AS max_impact_magnitude
+                        MAX(ia.impact_magnitude) AS max_impact
                     FROM impact_assessments ia
-                    WHERE ia.event_id = ae.event_id
+                    WHERE ia.event_id = me.id
                 ) ic ON true
                 WHERE {where}
-                ORDER BY ae.trust_score DESC, ae.created_at DESC
+                ORDER BY me.trust_score DESC NULLS LAST, me.created_at DESC
                 LIMIT %s OFFSET %s
                 """,
                 params + [limit, offset],
@@ -136,7 +126,6 @@ class IntelligenceFeedService:
 
         items = [self._row_to_feed_item(row) for row in rows]
 
-        # Post-filter by severity (derived field, not in DB)
         if severity:
             items = [item for item in items if item.severity == severity]
 
@@ -148,17 +137,16 @@ class IntelligenceFeedService:
             rows = self.db.fetch_all(
                 """
                 SELECT
-                    ae.trust_score,
-                    COALESCE(ic.max_impact_magnitude, 0) AS max_impact_magnitude,
-                    ae.status
-                FROM assessed_events ae
+                    COALESCE(me.trust_score, 0.5) AS trust_score,
+                    COALESCE(ic.max_impact, 0) AS max_impact_magnitude
+                FROM market_events me
                 LEFT JOIN LATERAL (
-                    SELECT MAX(magnitude) AS max_impact_magnitude
+                    SELECT MAX(ia.impact_magnitude) AS max_impact
                     FROM impact_assessments ia
-                    WHERE ia.event_id = ae.event_id
+                    WHERE ia.event_id = me.id
                 ) ic ON true
-                WHERE ae.status != 'dismissed'
-                  AND ae.created_at > NOW() - make_interval(hours := %s)
+                WHERE COALESCE(me.status, 'new') != 'dismissed'
+                  AND me.created_at > NOW() - make_interval(hours := %s)
                 """,
                 [since_hours],
             )
@@ -192,19 +180,19 @@ class IntelligenceFeedService:
             row = self.db.fetch_one(
                 """
                 SELECT
-                    ae.event_id::text AS event_id,
-                    ae.event_type,
-                    ae.event_date::text AS event_date,
-                    ae.description,
-                    ae.source_url,
-                    ae.source_tier,
-                    ae.trust_score,
-                    ae.primary_entity_name,
-                    ae.primary_entity_type,
-                    ae.status,
-                    ae.created_at::text AS created_at
-                FROM assessed_events ae
-                WHERE ae.event_id::text = %s
+                    me.id::text AS event_id,
+                    me.event_type,
+                    me.event_date::text AS event_date,
+                    me.description,
+                    me.source_url,
+                    COALESCE(me.source_tier, 'tier_3') AS source_tier,
+                    COALESCE(me.trust_score, 0.5) AS trust_score,
+                    me.primary_entity_name,
+                    me.primary_entity_type,
+                    COALESCE(me.status, 'new') AS status,
+                    me.created_at::text AS created_at
+                FROM market_events me
+                WHERE me.id::text = %s
                 LIMIT 1
                 """,
                 [event_id],
@@ -220,19 +208,19 @@ class IntelligenceFeedService:
             assessments = self.db.fetch_all(
                 """
                 SELECT
-                    ia.assessment_id::text AS assessment_id,
+                    ia.id::text AS assessment_id,
                     ia.event_id::text AS event_id,
-                    ia.entity_id::text AS entity_id,
-                    ia.entity_type,
-                    ia.entity_name,
-                    ia.impact_type,
-                    ia.magnitude,
-                    ia.direction,
-                    ia.reasoning,
-                    ia.confidence
+                    ia.affected_entity_id,
+                    ia.affected_entity_type,
+                    ia.affected_entity_name,
+                    ia.assessment_type,
+                    ia.impact_magnitude,
+                    ia.impact_direction,
+                    ia.narrative,
+                    ia.scenario_result
                 FROM impact_assessments ia
                 WHERE ia.event_id::text = %s
-                ORDER BY ia.magnitude DESC
+                ORDER BY ia.impact_magnitude DESC NULLS LAST
                 """,
                 [event_id],
             )
@@ -247,12 +235,7 @@ class IntelligenceFeedService:
     def dismiss_event(self, event_id: str) -> None:
         """Mark an event as dismissed."""
         self.db.execute(
-            """
-            UPDATE assessed_events
-            SET status = 'dismissed',
-                updated_at = NOW()
-            WHERE event_id::text = %s
-            """,
+            "UPDATE market_events SET status = 'dismissed' WHERE id::text = %s",
             [event_id],
         )
 
@@ -261,31 +244,27 @@ class IntelligenceFeedService:
         entity_names: list[str],
         since_hours: int = 72,
     ) -> list[dict]:
-        """Return recent events relevant to the given entity names for chat context.
-
-        Used by the chat handler to inject intelligence signals into LLM context.
-        """
+        """Return recent events relevant to given entity names for chat context."""
         if not entity_names:
             return []
 
         try:
-            # Build parameterized IN clause
             placeholders = ", ".join(["%s"] * len(entity_names))
             rows = self.db.fetch_all(
                 f"""
                 SELECT
-                    ae.event_id::text AS event_id,
-                    ae.event_type,
-                    ae.description,
-                    ae.trust_score,
-                    ae.primary_entity_name,
-                    ae.primary_entity_type,
-                    ae.created_at::text AS created_at
-                FROM assessed_events ae
-                WHERE ae.entity_name IN ({placeholders})
-                  AND ae.status != 'dismissed'
-                  AND ae.created_at > NOW() - make_interval(hours := %s)
-                ORDER BY ae.trust_score DESC, ae.created_at DESC
+                    me.id::text AS event_id,
+                    me.event_type,
+                    me.description,
+                    COALESCE(me.trust_score, 0.5) AS trust_score,
+                    me.primary_entity_name,
+                    me.primary_entity_type,
+                    me.created_at::text AS created_at
+                FROM market_events me
+                WHERE me.primary_entity_name IN ({placeholders})
+                  AND COALESCE(me.status, 'new') != 'dismissed'
+                  AND me.created_at > NOW() - make_interval(hours := %s)
+                ORDER BY me.trust_score DESC NULLS LAST, me.created_at DESC
                 LIMIT 10
                 """,
                 entity_names + [since_hours],

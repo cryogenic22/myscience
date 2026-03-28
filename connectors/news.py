@@ -58,7 +58,6 @@ class PharmaNewsConnector(BaseConnector):
         self._queries = (target_overrides or {}).get("queries", NEWS_QUERIES)
         self._max_per_query = (target_overrides or {}).get("max_per_query", 20)
 
-    @property
     def source_type(self) -> SourceType:
         return SourceType.NEWS
 
@@ -68,15 +67,15 @@ class PharmaNewsConnector(BaseConnector):
             resp = requests.get(FDA_PRESS_RSS, timeout=10)
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=resp.status_code == 200,
-                latency_ms=0,
+                healthy=resp.status_code == 200,
+                response_time_ms=0,
                 message=f"FDA RSS: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
                 source_type=self.source_type,
-                available=False,
-                latency_ms=0,
+                healthy=False,
+                response_time_ms=0,
                 message=str(e),
             )
 

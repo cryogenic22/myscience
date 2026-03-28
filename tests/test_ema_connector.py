@@ -10,7 +10,7 @@ from connectors.base import SourceType
 class TestEMAConnector:
     def test_source_type(self):
         connector = EMAConnector()
-        assert connector.source_type == SourceType.EMA
+        assert connector.source_type() == SourceType.EMA
 
     def test_extract_phase_roman(self):
         connector = EMAConnector()
