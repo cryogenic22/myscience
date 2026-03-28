@@ -300,9 +300,15 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("Stale connector catch-up failed")
 
-            # 4. Run data steward loop every 6 hours
-            interval = 6 * 3600
+            # 4. Continuous agent loop — steward + auto-curate + FAIR scoring
+            # Runs every 2 hours to keep data quality high
+            steward_interval = 2 * 3600  # 2 hours (was 6)
+            cycle = 0
             while True:
+                cycle += 1
+                logger.info("=== Background agent cycle %d starting ===", cycle)
+
+                # 4a. Data Steward — signal-driven curation
                 try:
                     from services.steward_signals import StewardSignalCollector
                     from services.data_steward import DataSteward, StewardConfig
@@ -318,14 +324,85 @@ def create_app() -> FastAPI:
                         )
                         summary = steward.run_loop()
                         logger.info(
-                            "Data Steward: %d completed, %d feedback resolved",
-                            summary.completed, summary.feedback_resolved,
+                            "Data Steward [cycle %d]: %d completed, %d feedback",
+                            cycle, summary.completed, summary.feedback_resolved,
                         )
                     finally:
                         sdb.close()
                 except Exception:
-                    logger.exception("Data Steward loop error")
-                _time.sleep(interval)
+                    logger.exception("Data Steward error [cycle %d]", cycle)
+
+                # 4b. Auto-curate every 4th cycle (~8 hours)
+                if cycle % 4 == 0:
+                    try:
+                        from scripts.auto_curate import run as _curate
+                        result = _curate(dry_run=False, skip_ai=True)
+                        logger.info("Auto-curate [cycle %d]: %s", cycle, result)
+                    except Exception:
+                        logger.exception("Auto-curate error [cycle %d]", cycle)
+
+                # 4c. FAIR scoring every 6th cycle (~12 hours)
+                if cycle % 6 == 0:
+                    try:
+                        from services.fair_scorer import FAIRScorer
+                        from config import config as _cfg2
+                        fdb = Database(_cfg2.db.dsn)
+                        fdb.connect()
+                        try:
+                            scorer = FAIRScorer(fdb)
+                            fair = scorer.compute()
+                            scorer.persist(fair)
+                            logger.info("FAIR score [cycle %d]: %.3f", cycle, fair.overall)
+                        finally:
+                            fdb.close()
+                    except Exception:
+                        logger.exception("FAIR scoring error [cycle %d]", cycle)
+
+                # 4d. Stale connector catch-up every 3rd cycle (~6 hours)
+                if cycle % 3 == 0:
+                    try:
+                        _run_stale_connectors()
+                        logger.info("Stale connector catch-up [cycle %d] complete", cycle)
+                    except Exception:
+                        logger.exception("Stale connector catch-up error [cycle %d]", cycle)
+
+                # 4e. Intelligence event collection every cycle
+                try:
+                    from services.event_collector import EventCollector
+                    edb = Database(_cfg.db.dsn)
+                    edb.connect()
+                    try:
+                        ec = EventCollector(edb)
+                        # Collect from news connector
+                        from connectors.news import PharmaNewsConnector
+                        news = PharmaNewsConnector()
+                        from services.event_collector import EventCandidate
+                        candidates = []
+                        for record in news.fetch()[:20]:
+                            candidates.append(EventCandidate(
+                                source_feed=record.data.get("source_feed", "news"),
+                                source_tier="tier_3",
+                                event_type=record.data.get("event_type", "general"),
+                                description=record.data.get("description", ""),
+                                event_date=None,
+                                source_url=record.data.get("source_url", ""),
+                                entity_hint=record.data.get("drug_name"),
+                                entity_type_hint="drug",
+                                raw_data=record.data,
+                            ))
+                        if candidates:
+                            result = ec.collect(candidates)
+                            logger.info(
+                                "Event collection [cycle %d]: %d new, %d dupes",
+                                cycle, result.new_events, result.duplicates_skipped,
+                            )
+                    finally:
+                        edb.close()
+                except Exception:
+                    logger.exception("Event collection error [cycle %d]", cycle)
+
+                logger.info("=== Background agent cycle %d complete, sleeping %ds ===", cycle, steward_interval)
+                _time.sleep(steward_interval)
 
         t = threading.Thread(target=_delayed_start, daemon=True, name="bg-agents")
         t.start()
