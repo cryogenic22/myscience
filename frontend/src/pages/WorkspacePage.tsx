@@ -10,8 +10,9 @@ import CanvasPanel from '../components/canvas/CanvasPanel';
 import GraphExplorer from '../components/GraphExplorer';
 import DataCatalogPanel from '../components/DataCatalogPanel';
 import { LiteratureExplorer } from '../components/LiteratureExplorer';
+import { IntelligenceFeed } from '../components/intelligence/IntelligenceFeed';
 
-type Tab = 'chat' | 'graph' | 'catalog';
+type Tab = 'chat' | 'graph' | 'catalog' | 'feed';
 
 interface WorkspacePageProps {
   onBack: () => void;
@@ -228,6 +229,10 @@ export default function WorkspacePage({
               setTimeout(() => void sendQuery(q), 50);
             }}
           />
+        </div>
+      ) : activeTab === 'feed' ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <IntelligenceFeed />
         </div>
       ) : (
         <WorkspaceLayout

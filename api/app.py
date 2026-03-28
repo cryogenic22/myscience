@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 # New routers — import with fallback to avoid blocking startup
 try:
-    from api.routes import feedback, steward, literature
+    from api.routes import feedback, steward, literature, intelligence
     _NEW_ROUTERS_OK = True
 except Exception as _e:
-    logger.error("Failed to import new routers (feedback/steward/literature): %s", _e)
+    logger.error("Failed to import new routers (feedback/steward/literature/intelligence): %s", _e)
     _NEW_ROUTERS_OK = False
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -63,7 +63,7 @@ def create_app() -> FastAPI:
         catalog.router, enrichment.router, pricing.router, scenarios.router,
     ]
     if _NEW_ROUTERS_OK:
-        all_routers.extend([feedback.router, steward.router, literature.router])
+        all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router])
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
@@ -352,7 +352,8 @@ def create_app() -> FastAPI:
                     "api/", "chat", "search/", "graph/", "query", "entities",
                     "catalog/", "metrics", "enrichment", "health",
                     "therapeutic-areas", "feedback", "scenarios", "steward",
-                    "literature", "pricing", "openapi.json", "docs", "redoc",
+                    "literature", "pricing", "intelligence",
+                    "openapi.json", "docs", "redoc",
                 ))
                 if not is_api and not path.startswith("assets/"):
                     return FileResponse(str(FRONTEND_DIR / "index.html"))

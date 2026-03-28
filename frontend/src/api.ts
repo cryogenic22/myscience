@@ -434,6 +434,32 @@ export interface ResearchJob {
   result_payload?: ChatResponse;
 }
 
+// ── Intelligence Feed types ──
+
+export interface IntelligenceFeedItem {
+  event_id: string;
+  event_type: string;
+  event_date: string | null;
+  description: string;
+  source_url: string | null;
+  source_tier: string;
+  trust_score: number;
+  primary_entity_name: string | null;
+  primary_entity_type: string | null;
+  severity: string;
+  impact_count: number;
+  max_impact_magnitude: number;
+  status: string;
+  created_at: string;
+}
+
+export interface FeedSummary {
+  total_unread: number;
+  critical_count: number;
+  high_count: number;
+  since_hours: number;
+}
+
 // ── API Calls ──
 
 async function get<T>(path: string): Promise<T> {
@@ -694,6 +720,16 @@ export const api = {
   // Literature Explorer
   literatureDocument: (articleId: string) =>
     get<LiteratureDocument>(`/literature/${encodeURIComponent(articleId)}/document`),
+
+  // Intelligence Feed
+  intelligenceFeed: (params?: {limit?: number; offset?: number; severity?: string}) =>
+    get<{items: IntelligenceFeedItem[]; total: number}>(`/intelligence/feed?${qs(params)}`),
+  intelligenceFeedSummary: (sinceHours?: number) =>
+    get<FeedSummary>(`/intelligence/feed/summary?since_hours=${sinceHours ?? 24}`),
+  intelligenceEventDetail: (eventId: string) =>
+    get<{event: Record<string, unknown>; assessments: Record<string, unknown>[]}>(`/intelligence/feed/${encodeURIComponent(eventId)}`),
+  intelligenceDismiss: (eventId: string) =>
+    post<{ok: boolean}>(`/intelligence/feed/${encodeURIComponent(eventId)}/dismiss`, {}),
 
   exportReport: (report: string, title: string, format: 'md' | 'txt' | 'json' = 'md') =>
     fetch(`${BASE}/chat/export/report`, {

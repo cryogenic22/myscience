@@ -1,8 +1,9 @@
-import { ArrowLeft, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
+import { ArrowLeft, Bell, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { PRODUCT_NAME } from '../../brand';
+import { FeedBadge } from '../intelligence/FeedBadge';
 
-export type TopBarTab = 'chat' | 'graph' | 'catalog' | 'search';
+export type TopBarTab = 'chat' | 'graph' | 'catalog' | 'search' | 'feed';
 
 interface TopBarProps {
   onBack: () => void;
@@ -14,6 +15,7 @@ interface TopBarProps {
 
 const TABS = [
   { key: 'chat' as const, label: 'Intelligence', icon: Sparkles },
+  { key: 'feed' as const, label: 'Feed', icon: Bell },
   { key: 'search' as const, label: 'Search', icon: Search },
   { key: 'graph' as const, label: 'Graph', icon: Network },
   { key: 'catalog' as const, label: 'Data', icon: Database },
@@ -72,6 +74,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
             >
               <Icon size={13} />
               <span className="hidden sm:inline">{label}</span>
+              {key === 'feed' && <FeedBadge />}
             </button>
           ))}
         </nav>
