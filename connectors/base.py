@@ -39,6 +39,8 @@ class SourceType(str, Enum):
     OPENFDA_FAERS = "openfda_faers"
     OPENFDA_LABELS = "openfda_labels"
     PMC = "pmc"
+    EMA = "ema"
+    NADAC = "nadac"
     USER_DOCUMENT = "user_document"
     USER_URL = "user_url"
 

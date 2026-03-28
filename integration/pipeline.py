@@ -216,6 +216,8 @@ class IntegrationPipeline:
                         e,
                         exc_info=True,
                     )
+                    # Persist to dead-letter queue for retry
+                    self._dlq_insert(etl_run_id, record, e)
 
             # Finalize
             result.completed_at = datetime.utcnow()
@@ -390,6 +392,38 @@ class IntegrationPipeline:
                     pass  # Non-critical; don't fail the pipeline
 
     # ---- ETL run lifecycle ----
+
+    def _dlq_insert(self, etl_run_id: str, record, error: Exception) -> None:
+        """Insert a failed record into the dead-letter queue for retry."""
+        import traceback as _tb
+        import json as _json
+        try:
+            prov = {}
+            if hasattr(record, 'provenance') and record.provenance:
+                p = record.provenance
+                prov = {
+                    "source_type": p.source_type.value if hasattr(p.source_type, 'value') else str(p.source_type),
+                    "api_endpoint": getattr(p, 'api_endpoint', ''),
+                    "retrieved_at": p.retrieved_at.isoformat() if hasattr(p, 'retrieved_at') and p.retrieved_at else None,
+                }
+            self.db.execute(
+                """INSERT INTO failed_records
+                   (etl_run_id, source_type, external_id, record_type,
+                    error_message, error_traceback, raw_payload, provenance)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)""",
+                [
+                    etl_run_id,
+                    prov.get("source_type", "unknown"),
+                    getattr(record, 'external_id', None),
+                    getattr(record, 'record_type', None) and record.record_type.value if hasattr(record.record_type, 'value') else str(getattr(record, 'record_type', '')),
+                    str(error)[:1000],
+                    _tb.format_exc()[:2000],
+                    _json.dumps(getattr(record, 'data', {}), default=str),
+                    _json.dumps(prov, default=str),
+                ],
+            )
+        except Exception as dlq_err:
+            logger.debug("DLQ insert failed (table may not exist): %s", dlq_err)
 
     def _create_etl_run(
         self,

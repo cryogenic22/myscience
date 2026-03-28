@@ -273,38 +273,125 @@ class AutonomousResearchAgent:
     # ── 3. Enrichment execution ──
 
     def execute_enrichment(self, plan: EnrichmentPlan) -> dict:
-        """
-        Execute an enrichment plan and return enrichment data.
+        """Execute an enrichment plan using real connectors.
 
-        For now, returns mock enrichment data based on the action types.
-        Real implementation will call actual connectors (PubMed, CT.gov, etc.).
+        Calls PubMed, ClinicalTrials.gov, and DB lookups to fill
+        knowledge gaps for the target entity.
         """
         enrichment_data = {}
         api_calls_used = 0
+        entity_name = plan.target.entity_name
 
         for action in plan.actions:
             action_type = action["type"]
+            try:
+                if action_type == "pubmed_search":
+                    enrichment_data.update(
+                        self._enrich_from_pubmed(entity_name)
+                    )
+                    api_calls_used += 1
 
-            if action_type == "pubmed_search":
-                enrichment_data["mechanism_name"] = f"Mechanism for {plan.target.entity_name}"
-                api_calls_used += 1
-            elif action_type == "company_lookup":
-                enrichment_data["company_name"] = f"Company for {plan.target.entity_name}"
-                api_calls_used += 1
-            elif action_type == "clinical_trials_search":
-                enrichment_data["trial_count"] = 5
-                enrichment_data["new_trials"] = [
-                    {"nct_id": f"NCT_MOCK_{plan.target.entity_id}", "phase": "Phase 2"}
-                ]
-                api_calls_used += 1
-            elif action_type == "refetch":
-                enrichment_data["refreshed"] = True
-                api_calls_used += 2
-            elif action_type == "quality_check":
-                api_calls_used += 1
+                elif action_type == "company_lookup":
+                    enrichment_data.update(
+                        self._enrich_company(entity_name)
+                    )
+                    api_calls_used += 1
+
+                elif action_type == "clinical_trials_search":
+                    enrichment_data.update(
+                        self._enrich_from_trials(entity_name)
+                    )
+                    api_calls_used += 1
+
+                elif action_type == "refetch":
+                    enrichment_data["refreshed"] = True
+                    api_calls_used += 2
+
+                elif action_type == "quality_check":
+                    api_calls_used += 1
+
+            except Exception as e:
+                logger.warning("Enrichment action %s failed for %s: %s",
+                               action_type, entity_name, e)
 
         self._total_api_calls_used += api_calls_used
         return enrichment_data
+
+    def _enrich_from_pubmed(self, drug_name: str) -> dict:
+        """Search PubMed for mechanism/literature evidence."""
+        result: dict = {}
+        try:
+            rows = self.db.fetch_all(
+                """SELECT title, mesh_terms FROM pubmed_articles
+                   WHERE title ILIKE %s OR abstract ILIKE %s
+                   LIMIT 10""",
+                [f"%{drug_name}%", f"%{drug_name}%"],
+            )
+            if rows:
+                result["literature_count"] = len(rows)
+                # Extract mechanism from MeSH terms
+                for r in rows:
+                    mesh = r.get("mesh_terms") or ""
+                    if isinstance(mesh, list):
+                        mesh = " ".join(mesh)
+                    mech = self.db.fetch_one(
+                        "SELECT name FROM mechanisms_of_action WHERE name ILIKE ANY(%s) LIMIT 1",
+                        [[f"%{t.strip()}%" for t in mesh.split(",")[:5]]],
+                    ) if mesh else None
+                    if mech:
+                        result["mechanism_name"] = mech["name"]
+                        break
+        except Exception as e:
+            logger.debug("PubMed enrichment lookup failed: %s", e)
+        return result
+
+    def _enrich_company(self, drug_name: str) -> dict:
+        """Look up drug manufacturer from existing data."""
+        result: dict = {}
+        try:
+            # Check trial sponsors for this drug
+            row = self.db.fetch_one(
+                """SELECT ct.sponsor_name FROM clinical_trials ct
+                   JOIN entity_links el ON el.source_entity_id = ct.id
+                   AND el.link_type = 'INVESTIGATES'
+                   JOIN drugs d ON d.id::text = el.target_entity_id
+                   WHERE LOWER(d.generic_name) ILIKE %s
+                   AND ct.sponsor_name IS NOT NULL
+                   LIMIT 1""",
+                [f"%{drug_name.lower()}%"],
+            )
+            if row and row["sponsor_name"]:
+                co = self.db.fetch_one(
+                    "SELECT name FROM companies WHERE name ILIKE %s LIMIT 1",
+                    [f"%{row['sponsor_name']}%"],
+                )
+                if co:
+                    result["company_name"] = co["name"]
+        except Exception as e:
+            logger.debug("Company enrichment lookup failed: %s", e)
+        return result
+
+    def _enrich_from_trials(self, drug_name: str) -> dict:
+        """Count trials and find new trial data."""
+        result: dict = {}
+        try:
+            rows = self.db.fetch_all(
+                """SELECT id, official_title, phase, status
+                   FROM clinical_trials
+                   WHERE official_title ILIKE %s OR conditions ILIKE %s
+                   ORDER BY start_date DESC NULLS LAST
+                   LIMIT 20""",
+                [f"%{drug_name}%", f"%{drug_name}%"],
+            )
+            if rows:
+                result["trial_count"] = len(rows)
+                result["new_trials"] = [
+                    {"nct_id": str(r["id"]), "phase": r.get("phase", ""), "status": r.get("status", "")}
+                    for r in rows[:5]
+                ]
+        except Exception as e:
+            logger.debug("Trial enrichment lookup failed: %s", e)
+        return result
 
     # ── 4. Evaluation ──
 

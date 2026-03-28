@@ -225,14 +225,14 @@ class TestDatasetProfile:
             dataset_profile(source_key="bogus_source", db=db)
         assert exc_info.value.status_code == 404
 
-    def test_all_ten_sources_have_profiles(self):
-        """All 10 source keys in DATASET_PROFILES should be present and well-formed."""
+    def test_all_sources_have_profiles(self):
+        """All source keys in DATASET_PROFILES should be present and well-formed."""
         from api.routes.catalog import DATASET_PROFILES
 
         expected_sources = [
             "clinical_trials_gov", "pubmed", "fda_orange_book",
             "openfda_faers", "openfda_labels", "fda_shortages",
-            "sec_edgar", "mesh_ontology", "pmc", "backfill",
+            "sec_edgar", "mesh_ontology", "pmc", "ema", "backfill",
         ]
 
         assert set(DATASET_PROFILES.keys()) == set(expected_sources)

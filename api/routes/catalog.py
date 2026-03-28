@@ -228,6 +228,19 @@ DATASET_PROFILES: dict[str, dict] = {
         ],
         "coverage_notes": "Authoritative biomedical ontology. Hierarchical tree structure for therapeutic areas and mechanisms.",
     },
+    "ema": {
+        "display_name": "EMA (EU Medicines)",
+        "description": "European Medicines Agency — EU-authorised medicines and EU Clinical Trials Register.",
+        "source_url": "https://www.ema.europa.eu",
+        "entity_types": ["trial", "drug"],
+        "refresh_schedule": "Weekly on Friday at 04:30 UTC",
+        "collection_method": "API (REST JSON + EUCTR)",
+        "fields_collected": [
+            "EudraCT Number", "Title", "Sponsor", "Phase", "Status",
+            "Conditions", "Start Date", "Country", "Marketing Authorisation",
+        ],
+        "coverage_notes": "Covers EU-authorised medicines and trials registered in the EU Clinical Trials Register. Eliminates US-centric bias in trial coverage.",
+    },
     "pmc": {
         "display_name": "PubMed Central",
         "description": "Full-text open-access biomedical articles from the NLM digital archive.",

@@ -61,7 +61,13 @@ CONNECTOR_SCHEDULES: dict[SourceType, dict] = {
         "cron": {"hour": 4, "minute": 0, "day_of_week": "thu"},     # Thursday 04:00
     },
 
-    # ── Tier 3: Ontology (monthly) ──
+    # ── Tier 3: International sources (weekly) ──
+    SourceType.EMA: {
+        "label": "EMA (EU Medicines)",
+        "cron": {"hour": 4, "minute": 30, "day_of_week": "fri"},    # Friday 04:30
+    },
+
+    # ── Tier 4: Ontology (monthly) ──
     SourceType.MESH_ONTOLOGY: {
         "label": "MeSH Ontology",
         "cron": {"hour": 5, "minute": 0, "day": 1},                 # 1st of month 05:00
@@ -73,6 +79,7 @@ RUN_ORDER: list[SourceType] = [
     SourceType.MESH_ONTOLOGY,
     SourceType.FDA_ORANGE_BOOK,
     SourceType.CLINICAL_TRIALS_GOV,
+    SourceType.EMA,
     SourceType.PUBMED,
     SourceType.PMC,
     SourceType.OPENFDA_FAERS,
