@@ -385,7 +385,7 @@ html.dark .topbar {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px 24px;
+  padding: 10px 24px;
   cursor: pointer;
   transition: background 120ms ease;
 }

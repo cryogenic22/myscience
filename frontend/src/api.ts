@@ -630,7 +630,7 @@ export const api = {
     get<DatasetProfile>(`/catalog/datasets/${encodeURIComponent(sourceKey)}/profile`),
   catalogBrowse: (entityType: string, params?: {
     search?: string; status?: string; quality_min?: number;
-    sort_by?: string; sort_dir?: string; limit?: number; offset?: number;
+    sort?: string; sort_by?: string; sort_dir?: string; limit?: number; offset?: number;
   }) => get<CatalogBrowseResponse>(`/catalog/entities/${entityType}?${qs(params)}`),
   catalogEntityDetail: (entityType: string, entityId: string) =>
     get<CatalogEntityDetail>(`/catalog/entities/${entityType}/${encodeURIComponent(entityId)}`),

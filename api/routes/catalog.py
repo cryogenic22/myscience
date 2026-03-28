@@ -389,23 +389,302 @@ def dataset_profile(
     return profile
 
 
+@router.get("/featured")
+def featured_entities(db: Database = Depends(get_db)):
+    """Return top 3 entities per type by pipeline score for showcase display."""
+    drugs: list[dict] = []
+    companies: list[dict] = []
+    try:
+        drugs = db.fetch_all("""
+            SELECT d.id, d.generic_name AS name, d.brand_name, 'drug' AS entity_type,
+                   m.name AS mechanism_name, c.name AS company_name,
+                   COALESCE(mv.pipeline_score, 0) AS pipeline_score,
+                   (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
+                   d.quality_score
+            FROM drugs d
+            LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
+            LEFT JOIN companies c ON d.company_id = c.id
+            LEFT JOIN mv_drug_pipeline_strength mv ON mv.drug_id = d.id
+            ORDER BY pipeline_score DESC NULLS LAST
+            LIMIT 3
+        """)
+    except Exception:
+        logger.debug("featured_entities: drug query failed (mv may not exist)")
+
+    try:
+        companies = db.fetch_all("""
+            SELECT c.id, c.name, 'company' AS entity_type, c.ticker,
+                   (SELECT COUNT(*) FROM drugs d WHERE d.company_id = c.id) AS drug_count,
+                   (SELECT COUNT(*) FROM entity_links el
+                    WHERE el.source_entity_id = c.id::text
+                      AND el.link_type = 'SPONSORS') AS trial_count,
+                   c.quality_score
+            FROM companies c
+            ORDER BY (
+                SELECT COALESCE(SUM(mv.pipeline_score), 0)
+                FROM mv_drug_pipeline_strength mv
+                JOIN drugs d ON mv.drug_id = d.id
+                WHERE d.company_id = c.id
+            ) DESC
+            LIMIT 3
+        """)
+    except Exception:
+        logger.debug("featured_entities: company query failed (mv may not exist)")
+
+    return {"featured": {"drugs": drugs, "companies": companies}}
+
+
+# ── Sort parameter values ──
+_VALID_SORT_VALUES = {"pipeline_score", "quality", "name", "recent"}
+
+
 @router.get("/entities/{entity_type}")
 def browse_entities(
     entity_type: str,
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="Filter by record_status"),
     quality_min: Optional[float] = Query(None, ge=0, le=1),
-    sort_by: Optional[str] = Query("label", description="Sort column"),
-    sort_dir: Optional[str] = Query("asc", regex="^(asc|desc)$"),
+    sort: Optional[str] = Query(None, description="Sort mode: pipeline_score, quality, name, recent"),
+    sort_by: Optional[str] = Query(None, description="(deprecated) Sort column"),
+    sort_dir: Optional[str] = Query(None, pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Database = Depends(get_db),
 ):
-    """Browse entities with rich metadata, search, filtering, and pagination."""
+    """Browse entities with rich joined metadata, search, filtering, and pagination."""
     if entity_type not in ENTITY_TABLES:
         raise HTTPException(400, f"Unknown entity type: {entity_type}. Valid: {list(ENTITY_TABLES.keys())}")
 
     meta = ENTITY_TABLES[entity_type]
+
+    # ── Rich queries for drugs and companies; fallback for other types ──
+    if entity_type == "drug":
+        return _browse_drugs(search, status, quality_min, sort, sort_by, sort_dir, limit, offset, db, meta)
+    elif entity_type == "company":
+        return _browse_companies(search, status, quality_min, sort, sort_by, sort_dir, limit, offset, db, meta)
+    else:
+        return _browse_generic(entity_type, search, status, quality_min, sort, sort_by, sort_dir, limit, offset, db, meta)
+
+
+def _resolve_sort(
+    entity_type: str,
+    sort: Optional[str],
+    sort_by: Optional[str],
+    sort_dir: Optional[str],
+) -> tuple[str, str]:
+    """Resolve sort column and direction from new `sort` or legacy `sort_by`/`sort_dir`.
+
+    Returns (order_clause, direction) suitable for interpolation into SQL.
+    """
+    # New sort parameter takes precedence
+    if sort and sort in _VALID_SORT_VALUES:
+        if sort == "pipeline_score":
+            return "pipeline_score", "DESC"
+        elif sort == "quality":
+            return "quality_score", "DESC"
+        elif sort == "name":
+            return "_label", "ASC"
+        elif sort == "recent":
+            if entity_type == "trial":
+                return "start_date", "DESC"
+            return "retrieved_at", "DESC"
+
+    # Legacy sort_by support
+    if sort_by:
+        direction = "DESC" if sort_dir == "desc" else "ASC"
+        if sort_by == "label":
+            return "_label", direction
+        elif sort_by == "quality":
+            return "quality_score", direction
+        elif sort_by == "updated":
+            return "retrieved_at", direction
+        elif sort_by == "status":
+            return "record_status", direction
+        return "_label", direction
+
+    # Default sort per entity type
+    if entity_type == "drug":
+        return "pipeline_score", "DESC"
+    elif entity_type == "company":
+        return "pipeline_score", "DESC"
+    elif entity_type == "trial":
+        return "start_date", "DESC"
+    else:
+        return "quality_score", "DESC"
+
+
+def _browse_drugs(
+    search, status, quality_min, sort, sort_by, sort_dir,
+    limit_val, offset_val, db, meta,
+) -> dict:
+    """Browse drugs with joined mechanism, company, TA, trial count, pipeline score."""
+    conditions = []
+    params: list = []
+
+    if search:
+        conditions.append("(d.generic_name ILIKE %s OR d.brand_name ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    if status:
+        conditions.append("d.record_status = %s")
+        params.append(status)
+    if quality_min is not None:
+        conditions.append("d.quality_score >= %s")
+        params.append(quality_min)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sort_col, direction = _resolve_sort("drug", sort, sort_by, sort_dir)
+
+    # Count from base table with same filters
+    count_params = list(params)
+    count_row = db.fetch_one(
+        f"SELECT COUNT(*) AS total FROM drugs d {where}", count_params,
+    )
+    total = count_row["total"] if count_row else 0
+
+    params.extend([limit_val, offset_val])
+    try:
+        rows = db.fetch_all(
+            f"""
+            SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
+                   d.supply_status, d.quality_score, d.record_status,
+                   m.name AS mechanism_name, c.name AS company_name,
+                   ta.name AS therapeutic_area,
+                   (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
+                   COALESCE(mv.pipeline_score, 0) AS pipeline_score
+            FROM drugs d
+            LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
+            LEFT JOIN companies c ON d.company_id = c.id
+            LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
+            LEFT JOIN mv_drug_pipeline_strength mv ON mv.drug_id = d.id
+            {where}
+            ORDER BY {sort_col} {direction} NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
+    except Exception:
+        # Fallback: mv_drug_pipeline_strength may not exist
+        logger.debug("browse_drugs: rich query failed, falling back to simple join")
+        fallback_sort = "d.quality_score" if sort_col == "pipeline_score" else sort_col
+        if fallback_sort == "_label":
+            fallback_sort = "d.generic_name"
+        rows = db.fetch_all(
+            f"""
+            SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
+                   d.supply_status, d.quality_score, d.record_status,
+                   m.name AS mechanism_name, c.name AS company_name,
+                   ta.name AS therapeutic_area,
+                   (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
+                   0 AS pipeline_score
+            FROM drugs d
+            LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
+            LEFT JOIN companies c ON d.company_id = c.id
+            LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
+            {where}
+            ORDER BY {fallback_sort} {direction} NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
+
+    return {
+        "entity_type": "drug",
+        "results": rows,
+        "total": total,
+        "limit": limit_val,
+        "offset": offset_val,
+        "editable_fields": meta["editable_cols"],
+    }
+
+
+def _browse_companies(
+    search, status, quality_min, sort, sort_by, sort_dir,
+    limit_val, offset_val, db, meta,
+) -> dict:
+    """Browse companies with drug count, trial count, pipeline score."""
+    conditions = []
+    params: list = []
+
+    if search:
+        conditions.append("(c.name ILIKE %s OR c.ticker ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    if status:
+        conditions.append("c.record_status = %s")
+        params.append(status)
+    if quality_min is not None:
+        conditions.append("c.quality_score >= %s")
+        params.append(quality_min)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sort_col, direction = _resolve_sort("company", sort, sort_by, sort_dir)
+
+    count_params = list(params)
+    count_row = db.fetch_one(
+        f"SELECT COUNT(*) AS total FROM companies c {where}", count_params,
+    )
+    total = count_row["total"] if count_row else 0
+
+    params.extend([limit_val, offset_val])
+    try:
+        rows = db.fetch_all(
+            f"""
+            SELECT c.id, c.name AS _label, c.ticker, c.cik, c.country,
+                   c.quality_score, c.record_status,
+                   (SELECT COUNT(*) FROM drugs d WHERE d.company_id = c.id) AS drug_count,
+                   (SELECT COUNT(*) FROM entity_links el
+                    WHERE el.source_entity_id = c.id::text
+                      AND el.link_type = 'SPONSORS') AS trial_count,
+                   COALESCE((
+                       SELECT SUM(mv.pipeline_score)
+                       FROM mv_drug_pipeline_strength mv
+                       JOIN drugs d2 ON mv.drug_id = d2.id
+                       WHERE d2.company_id = c.id
+                   ), 0) AS pipeline_score
+            FROM companies c
+            {where}
+            ORDER BY {sort_col} {direction} NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
+    except Exception:
+        # Fallback: mv_drug_pipeline_strength may not exist
+        logger.debug("browse_companies: rich query failed, falling back to simple query")
+        fallback_sort = "c.quality_score" if sort_col == "pipeline_score" else sort_col
+        if fallback_sort == "_label":
+            fallback_sort = "c.name"
+        rows = db.fetch_all(
+            f"""
+            SELECT c.id, c.name AS _label, c.ticker, c.cik, c.country,
+                   c.quality_score, c.record_status,
+                   (SELECT COUNT(*) FROM drugs d WHERE d.company_id = c.id) AS drug_count,
+                   (SELECT COUNT(*) FROM entity_links el
+                    WHERE el.source_entity_id = c.id::text
+                      AND el.link_type = 'SPONSORS') AS trial_count,
+                   0 AS pipeline_score
+            FROM companies c
+            {where}
+            ORDER BY {fallback_sort} {direction} NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
+
+    return {
+        "entity_type": "company",
+        "results": rows,
+        "total": total,
+        "limit": limit_val,
+        "offset": offset_val,
+        "editable_fields": meta["editable_cols"],
+    }
+
+
+def _browse_generic(
+    entity_type, search, status, quality_min, sort, sort_by, sort_dir,
+    limit_val, offset_val, db, meta,
+) -> dict:
+    """Browse non-drug, non-company entity types with the original flat query."""
     cols = ", ".join(meta["display_cols"])
     label_expr = meta["label_col"]
 
@@ -427,25 +706,24 @@ def browse_entities(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # Sort mapping
-    sort_col = meta["id_col"]
-    if sort_by == "label":
+    sort_col, direction = _resolve_sort(entity_type, sort, sort_by, sort_dir)
+    # Map abstract sort columns to actual table columns for generic types
+    if sort_col == "pipeline_score":
+        sort_col = "quality_score"  # no pipeline_score for generic types
+    if sort_col == "_label":
         sort_col = label_expr
-    elif sort_by == "quality" and "quality_score" in meta["display_cols"]:
-        sort_col = "quality_score"
-    elif sort_by == "updated" and "retrieved_at" in meta["display_cols"]:
-        sort_col = "retrieved_at"
-    elif sort_by == "status" and "record_status" in meta["display_cols"]:
-        sort_col = "record_status"
 
-    direction = "DESC" if sort_dir == "desc" else "ASC"
+    # Legacy sort_dir override (only when using legacy sort_by)
+    if sort_by and sort_dir:
+        direction = "DESC" if sort_dir == "desc" else "ASC"
 
-    # Count
-    count_row = db.fetch_one(f"SELECT COUNT(*) AS total FROM {meta['table']} {where}", params)
+    count_params = list(params)
+    count_row = db.fetch_one(
+        f"SELECT COUNT(*) AS total FROM {meta['table']} {where}", count_params,
+    )
     total = count_row["total"] if count_row else 0
 
-    # Fetch
-    params.extend([limit, offset])
+    params.extend([limit_val, offset_val])
     rows = db.fetch_all(
         f"""
         SELECT {cols}, {label_expr} AS _label
@@ -461,8 +739,8 @@ def browse_entities(
         "entity_type": entity_type,
         "results": rows,
         "total": total,
-        "limit": limit,
-        "offset": offset,
+        "limit": limit_val,
+        "offset": offset_val,
         "editable_fields": meta["editable_cols"],
     }
 

@@ -21,6 +21,7 @@ import {
   api,
   type CatalogBrowseResponse,
   type CatalogDataset,
+  type CatalogEntity,
   type CatalogEntityDetail,
   type CatalogStats,
   type ChangeLogEntry,
@@ -80,6 +81,8 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   const [browseData, setBrowseData] = useState<CatalogBrowseResponse | null>(null);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browsePage, setBrowsePage] = useState(0);
+  const [browseSort, setBrowseSort] = useState('pipeline_score');
+  const [featured, setFeatured] = useState<CatalogEntity[]>([]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
@@ -129,13 +132,30 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
   const loadBrowse = useCallback(async () => {
     setBrowseLoading(true);
     try {
+      // Map frontend sort values to backend sort parameter
+      const sortMap: Record<string, string> = {
+        pipeline_score: 'pipeline_score',
+        quality: 'quality',
+        label: 'name',
+        updated: 'recent',
+      };
       const res = await api.catalogBrowse(browseType, {
-        search: browseSearch || undefined, limit: 30, offset: browsePage * 30,
+        search: browseSearch || undefined,
+        sort: sortMap[browseSort] ?? 'pipeline_score',
+        limit: 30,
+        offset: browsePage * 30,
       });
       setBrowseData(res);
     } catch { setBrowseData(null); }
     finally { setBrowseLoading(false); }
-  }, [browseType, browseSearch, browsePage]);
+  }, [browseType, browseSearch, browsePage, browseSort]);
+
+  // Load featured entities (graceful fail if endpoint not available)
+  useEffect(() => {
+    api.catalogBrowse('drug', { sort: 'pipeline_score', limit: 3 })
+      .then(res => setFeatured(res.results))
+      .catch(() => setFeatured([]));
+  }, []);
 
   useEffect(() => { if (tab === 'browse') void loadBrowse(); }, [tab, loadBrowse]);
 
@@ -285,6 +305,10 @@ export default function DataCatalogPanel({ onAskInChat }: Props) {
                 onPage={setBrowsePage}
                 onOpen={openEntity}
                 onAskInChat={onAskInChat}
+                sort={browseSort}
+                onSort={s => { setBrowseSort(s); setBrowsePage(0); }}
+                featured={featured}
+                stats={stats}
               />
             )}
             {tab === 'changes' && <ChangesTab changes={changes} />}
@@ -748,7 +772,71 @@ function DatasetProfileCard({ profile }: { profile: DatasetProfile }) {
 }
 
 /* ══ Browse ══ */
-function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, page, onPage, onOpen, onAskInChat }: {
+const SORT_OPTIONS = [
+  { value: 'pipeline_score', label: 'Pipeline Score' },
+  { value: 'quality', label: 'Quality' },
+  { value: 'label', label: 'Name' },
+  { value: 'updated', label: 'Recent' },
+];
+
+/** Quality indicator: green check >= 80%, amber dot 50-79%, grey text < 50% */
+function QualityIndicator({ score }: { score: number }) {
+  const pct = (score * 100).toFixed(0);
+  if (score >= 0.8) {
+    return (
+      <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-green)', flexShrink: 0 }}>
+        <CheckCircle size={10} />
+        {pct}%
+      </span>
+    );
+  }
+  if (score >= 0.5) {
+    return (
+      <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-amber)', flexShrink: 0 }}>
+        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-amber)', display: 'inline-block' }} />
+        {pct}%
+      </span>
+    );
+  }
+  return (
+    <span style={{ fontSize: '10px', color: 'var(--color-ink-4)', flexShrink: 0 }}>
+      {pct}%
+    </span>
+  );
+}
+
+/** Build a context line (line 2) from entity fields, joining with middot */
+function entityContextParts(entity: CatalogEntity, browseType: string): string[] {
+  const parts: string[] = [];
+  if (browseType === 'drug') {
+    if (entity.mechanism_name) parts.push(String(entity.mechanism_name));
+    else if (entity.mechanism_id && !isUUID(String(entity.mechanism_id))) parts.push(String(entity.mechanism_id));
+    if (entity.company_name) parts.push(String(entity.company_name));
+    else if (entity.company_id && !isUUID(String(entity.company_id))) parts.push(String(entity.company_id));
+    if (entity.therapeutic_area_name) parts.push(String(entity.therapeutic_area_name));
+    else if (entity.therapeutic_area) parts.push(String(entity.therapeutic_area));
+    else if (entity.therapeutic_area_id && !isUUID(String(entity.therapeutic_area_id))) parts.push(String(entity.therapeutic_area_id));
+  } else if (browseType === 'company') {
+    if (entity.drug_count != null) parts.push(`${fmt(Number(entity.drug_count))} drugs`);
+    if (entity.trial_count != null) parts.push(`${fmt(Number(entity.trial_count))} trials`);
+    if (entity.pipeline_score != null) parts.push(`Pipeline ${Number(entity.pipeline_score).toFixed(1)}`);
+  } else if (browseType === 'trial') {
+    if (entity.drug_name) parts.push(String(entity.drug_name));
+    if (entity.sponsor_name) parts.push(String(entity.sponsor_name));
+    if (entity.conditions) {
+      const cond = String(entity.conditions);
+      parts.push(cond.length > 40 ? cond.slice(0, 37) + '...' : cond);
+    }
+  } else if (browseType === 'mechanism') {
+    if (entity.scope_note) {
+      const note = String(entity.scope_note);
+      parts.push(note.length > 60 ? note.slice(0, 57) + '...' : note);
+    }
+  }
+  return parts;
+}
+
+function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, page, onPage, onOpen, onAskInChat, sort, onSort, featured, stats }: {
   browseType: string;
   onTypeChange: (t: string) => void;
   search: string;
@@ -759,6 +847,10 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
   onPage: (p: number) => void;
   onOpen: (type: string, id: string) => void;
   onAskInChat?: (q: string) => void;
+  sort: string;
+  onSort: (s: string) => void;
+  featured: CatalogEntity[];
+  stats: CatalogStats | null;
 }) {
   const [input, setInput] = useState(search);
   const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
@@ -770,22 +862,30 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
         <div>
           <div className="text-label mb-2">Entity Type</div>
           <div className="flex flex-wrap gap-1.5">
-            {ENTITY_TYPES.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onTypeChange(opt.value)}
-                className="btn btn-sm"
-                style={{
-                  borderRadius: '8px',
-                  background: browseType === opt.value ? 'var(--color-ink)' : 'var(--color-surface-2)',
-                  color: browseType === opt.value ? 'var(--color-surface)' : 'var(--color-ink-3)',
-                  border: 'none',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
+            {ENTITY_TYPES.map(opt => {
+              const count = stats?.entity_counts?.[opt.value];
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onTypeChange(opt.value)}
+                  className="btn btn-sm"
+                  style={{
+                    borderRadius: '8px',
+                    background: browseType === opt.value ? 'var(--color-ink)' : 'var(--color-surface-2)',
+                    color: browseType === opt.value ? 'var(--color-surface)' : 'var(--color-ink-3)',
+                    border: 'none',
+                  }}
+                >
+                  {opt.label}
+                  {count != null && (
+                    <span style={{ marginLeft: '4px', fontSize: '10px', opacity: 0.7 }}>
+                      {fmt(count)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -819,6 +919,82 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
         </div>
       </div>
 
+      {/* Featured entities — only shown on first page with no search */}
+      {featured.length > 0 && page === 0 && !search && browseType === 'drug' && (
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+            Featured
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+            {featured.map(entity => {
+              const id = String(entity.id ?? entity._label ?? '');
+              const label = String(entity._label ?? entity.generic_name ?? entity.name ?? id);
+              const brandName = entity.brand_name ? String(entity.brand_name) : null;
+              const q = entity.quality_score != null ? Number(entity.quality_score) : null;
+              const phase = entity.phase ? String(entity.phase) : null;
+              const contextParts = entityContextParts(entity, 'drug');
+              const trialCount = entity.trial_count != null ? Number(entity.trial_count) : null;
+              const pipelineScore = entity.pipeline_score != null ? Number(entity.pipeline_score) : null;
+
+              return (
+                <div
+                  key={id}
+                  onClick={() => id && onOpen('drug', id)}
+                  className="rounded-xl"
+                  style={{
+                    padding: '14px 16px',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-line)',
+                    cursor: 'pointer',
+                    transition: 'box-shadow 120ms ease',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
+                      <span
+                        style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0, background: 'var(--color-drug)' }}
+                      />
+                      <span className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                        {label}
+                      </span>
+                    </div>
+                    {phase && (
+                      <span style={{
+                        fontSize: '10px', fontWeight: 500, flexShrink: 0, marginLeft: '6px',
+                        color: phase.includes('4') ? 'var(--color-green)' : phase.includes('3') ? 'var(--color-accent)' : 'var(--color-ink-4)',
+                      }}>
+                        {phase}
+                      </span>
+                    )}
+                  </div>
+                  {brandName && (
+                    <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginTop: '2px' }}>
+                      {brandName}
+                    </div>
+                  )}
+                  {contextParts.length > 0 && (
+                    <div style={{ fontSize: '11px', color: 'var(--color-ink-3)', marginTop: '4px' }}>
+                      {contextParts.join(' · ')}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3" style={{ marginTop: '8px' }}>
+                    {trialCount != null && (
+                      <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>{fmt(trialCount)} trials</span>
+                    )}
+                    {pipelineScore != null && (
+                      <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>Score {pipelineScore.toFixed(1)}</span>
+                    )}
+                    {q != null && <QualityIndicator score={q} />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Results */}
       <div
         className="rounded-2xl overflow-hidden"
@@ -832,11 +1008,36 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
           <>
             <div
               className="flex items-center justify-between"
-              style={{ padding: '12px 24px', borderBottom: '1px solid var(--color-line)' }}
+              style={{ padding: '10px 24px', borderBottom: '1px solid var(--color-line)' }}
             >
-              <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>
-                {fmt(data.total)} results
-              </span>
+              <div className="flex items-center gap-3">
+                <span style={{ fontSize: '12px', color: 'var(--color-ink-4)' }}>
+                  {fmt(data.total)} results
+                </span>
+                {/* Sort dropdown */}
+                <div className="flex items-center gap-1">
+                  <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>Sort:</span>
+                  <select
+                    value={sort}
+                    onChange={e => onSort(e.target.value)}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: 'var(--color-ink)',
+                      background: 'var(--color-surface-2)',
+                      border: '1px solid var(--color-line)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                    }}
+                  >
+                    {SORT_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               {totalPages > 1 && (
                 <div className="flex items-center gap-1">
                   <button type="button" disabled={page === 0} onClick={() => onPage(page - 1)} className="btn-icon" style={{ width: '28px', height: '28px' }}>
@@ -859,11 +1060,11 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
 
               // Type-specific fields
               const brandName = entity.brand_name ? String(entity.brand_name) : null;
-              const supplyStatus = entity.supply_status ? String(entity.supply_status) : null;
               const phase = entity.phase ? String(entity.phase) : null;
               const trialStatus = entity.status ? String(entity.status) : null;
               const ticker = entity.ticker ? String(entity.ticker) : null;
-              const approvalDate = entity.approval_date ? String(entity.approval_date).slice(0, 10) : null;
+              const trialCount = entity.trial_count != null ? Number(entity.trial_count) : null;
+              const enrollment = entity.enrollment_target != null ? Number(entity.enrollment_target) : null;
 
               // Phase badge colours
               const phaseColor = phase?.includes('4') || phase?.toLowerCase().includes('approved')
@@ -876,6 +1077,14 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                 : trialStatus === 'TERMINATED' || trialStatus === 'WITHDRAWN' ? 'var(--color-red)'
                 : 'var(--color-ink-4)';
 
+              // Context line parts (line 2)
+              const contextParts = entityContextParts(entity, browseType);
+
+              // Entity dot color
+              const dotColor = browseType === 'drug' ? 'var(--color-drug)' : browseType === 'company' ? 'var(--color-company)'
+                : browseType === 'trial' ? 'var(--color-trial)' : browseType === 'mechanism' ? 'var(--color-mechanism)'
+                : browseType === 'therapeutic_area' ? 'var(--color-ta)' : 'var(--color-ink-4)';
+
               return (
                 <div
                   key={id}
@@ -886,12 +1095,12 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                   <span
                     style={{
                       width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
-                      background: browseType === 'drug' ? 'var(--color-drug)' : browseType === 'company' ? 'var(--color-company)'
-                        : browseType === 'trial' ? 'var(--color-trial)' : 'var(--color-ink-4)',
+                      background: dotColor, marginTop: '4px', alignSelf: 'flex-start',
                     }}
                   />
 
                   <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Line 1: name + brand + right-aligned phase/ticker */}
                     <div className="flex items-center gap-2">
                       <span
                         className="truncate"
@@ -904,57 +1113,46 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                           ({brandName})
                         </span>
                       )}
-                      {ticker && (
-                        <span className="badge badge-neutral" style={{ fontSize: '10px', flexShrink: 0 }}>
-                          {ticker}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      {/* Phase badge for drugs/trials */}
-                      {phase && (
-                        <span
-                          className="badge"
-                          style={{ fontSize: '10px', background: `color-mix(in srgb, ${phaseColor} 12%, transparent)`, color: phaseColor }}
-                        >
-                          {phase}
-                        </span>
-                      )}
-                      {/* Trial status */}
-                      {browseType === 'trial' && trialStatus && (
-                        <span
-                          className="badge"
-                          style={{ fontSize: '10px', background: `color-mix(in srgb, ${statusColor} 12%, transparent)`, color: statusColor, textTransform: 'capitalize' }}
-                        >
-                          {trialStatus.toLowerCase().replace(/_/g, ' ')}
-                        </span>
-                      )}
-                      {/* Supply status for drugs */}
-                      {browseType === 'drug' && supplyStatus && supplyStatus !== 'NORMAL' && (
-                        <span className="badge badge-amber" style={{ fontSize: '10px' }}>
-                          {supplyStatus.toLowerCase()}
-                        </span>
-                      )}
-                      {/* Approval date */}
-                      {approvalDate && (
-                        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>
-                          Approved {approvalDate}
-                        </span>
-                      )}
-                      {/* Quality bar */}
-                      {q != null && (
-                        <span className="flex items-center gap-1" style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginLeft: 'auto', flexShrink: 0 }}>
-                          <span style={{
-                            display: 'inline-block', width: '32px', height: '3px', borderRadius: '2px',
-                            background: 'var(--color-surface-3)', overflow: 'hidden',
-                          }}>
-                            <span style={{
-                              display: 'block', height: '100%', borderRadius: '2px',
-                              width: `${q * 100}%`,
-                              background: q > 0.7 ? 'var(--color-green)' : q > 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
-                            }} />
+                      {/* Right-aligned badges */}
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        {ticker && (
+                          <span className="badge badge-neutral" style={{ fontSize: '10px' }}>
+                            {ticker}
                           </span>
-                          {(q * 100).toFixed(0)}%
+                        )}
+                        {phase && (
+                          <span style={{ fontSize: '11px', fontWeight: 500, color: phaseColor }}>
+                            {phase}
+                          </span>
+                        )}
+                        {browseType === 'trial' && trialStatus && (
+                          <span style={{ fontSize: '10px', fontWeight: 500, color: statusColor, textTransform: 'capitalize' }}>
+                            {trialStatus.toLowerCase().replace(/_/g, ' ')}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {/* Line 2: context parts + trial count + quality */}
+                    <div className="flex items-center gap-1.5" style={{ marginTop: '2px' }}>
+                      {contextParts.length > 0 && (
+                        <span style={{ fontSize: '11px', color: 'var(--color-ink-3)' }}>
+                          {contextParts.join(' · ')}
+                        </span>
+                      )}
+                      {trialCount != null && (
+                        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>
+                          {contextParts.length > 0 ? ' · ' : ''}{fmt(trialCount)} trials
+                        </span>
+                      )}
+                      {browseType === 'trial' && enrollment != null && enrollment > 0 && (
+                        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>
+                          {contextParts.length > 0 || trialCount != null ? ' · ' : ''}{fmt(enrollment)} enrolled
+                        </span>
+                      )}
+                      {/* Quality indicator — right-aligned */}
+                      {q != null && (
+                        <span style={{ marginLeft: 'auto' }}>
+                          <QualityIndicator score={q} />
                         </span>
                       )}
                     </div>
