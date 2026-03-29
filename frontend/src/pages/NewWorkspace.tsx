@@ -1,14 +1,13 @@
 /**
- * NewWorkspace — Three-zone workspace shell (SPEC-009 Phase 3).
+ * NewWorkspace — Three-zone workspace shell (SPEC-009 Phase 5).
  *
- * Layout: Toolbar (top 48px) + three-zone body:
- *   Left:   DialoguePanel (280px, collapsible)
- *   Center: Graph canvas (fills remaining space) — ModernGraph
- *   Right:  InspectorPanel (320px, appears on entity selection)
+ * Layout: Toolbar (top 48px) + full-width graph canvas with overlays:
+ *   Left:   DialoguePanel (380px glass overlay, collapsible)
+ *   Center: Graph canvas (fills entire space) or CurateView
+ *   Right:  InspectorPanel (360px glass overlay, on entity selection)
  *
- * Phase 3: Inspector with real data — fetches CatalogEntityDetail
- *          when an entity is selected, graph neighborhood exploration,
- *          entity click from chat entity mentions.
+ * Phase 5: Glass overlay dialogue, Curate lens, keyboard shortcuts,
+ *          responsive auto-collapse, slide animations.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -16,6 +15,7 @@ import '../newui.css';
 import Toolbar from '../components/v2/Toolbar';
 import DialoguePanel from '../components/v2/DialoguePanel';
 import InspectorPanel from '../components/v2/InspectorPanel';
+import CurateView from '../components/v2/CurateView';
 import ModernGraph from '../components/ModernGraph';
 import { api } from '../api';
 import type { ChatResponse, GraphNode, GraphEdge, CatalogEntityDetail, SearchSuggestion } from '../api';
@@ -47,6 +47,29 @@ function extractEntityMentions(
     .filter((m) => m.name.length > 0);
 }
 
+/* ── Lens type ───────────────────────────────────────── */
+
+type Lens = 'explore' | 'curate';
+
+/* ── Pipeline / graph summary types for curate lens ── */
+
+interface PipelineConnector {
+  source_key: string;
+  label: string;
+  schedule: string;
+  last_run: string | null;
+  days_since: number | null;
+  records: number;
+  status: string;
+}
+
+interface GraphSummary {
+  link_types: Array<{ type: string; count: number }>;
+  total_links: number;
+  total_entities: number;
+  drug_completeness: Record<string, number>;
+}
+
 export default function NewWorkspace() {
   const [messages, setMessages] = useState<V2Message[]>([]);
   const [graphData, setGraphData] = useState<{
@@ -71,6 +94,24 @@ export default function NewWorkspace() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const debouncedSearch = useDebounce(searchValue, 300);
 
+  // Lens state (explore vs curate)
+  const [lens, setLens] = useState<Lens>('explore');
+
+  // Curate lens data
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineConnector[] | null>(null);
+  const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null);
+
+  // Fetch curate data when lens switches to 'curate'
+  useEffect(() => {
+    if (lens !== 'curate') return;
+    api.catalogPipelineStatus()
+      .then((r) => setPipelineStatus(r.connectors))
+      .catch(() => {});
+    api.catalogGraphSummary()
+      .then((r) => setGraphSummary(r))
+      .catch(() => {});
+  }, [lens]);
+
   // Fetch suggestions when debounced search changes
   useEffect(() => {
     if (debouncedSearch.length < 2) { setSuggestions([]); return; }
@@ -81,16 +122,34 @@ export default function NewWorkspace() {
       .finally(() => setSuggestionsLoading(false));
   }, [debouncedSearch]);
 
-  // Cmd+K / Ctrl+K focuses search input
+  // Keyboard shortcuts: Cmd+K search, Cmd+/ toggle dialogue, Escape close inspector
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         document.querySelector<HTMLInputElement>('[data-search-input]')?.focus();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        setDialogueCollapsed((prev) => !prev);
+      }
+      if (e.key === 'Escape') {
+        if (selectedEntity) setSelectedEntity(null);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, [selectedEntity]);
+
+  // Responsive: auto-collapse dialogue on narrow viewports
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1024px)');
+    const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) setDialogueCollapsed(true);
+    };
+    handleChange(mq); // check on mount
+    mq.addEventListener('change', handleChange);
+    return () => mq.removeEventListener('change', handleChange);
   }, []);
 
   // Fetch entity detail when selectedEntity changes
@@ -336,19 +395,13 @@ export default function NewWorkspace() {
         }}
         suggestions={suggestions}
         suggestionsLoading={suggestionsLoading}
+        lens={lens}
+        onLensChange={setLens}
       />
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <DialoguePanel
-          messages={messages}
-          onSend={handleSend}
-          onEntityClick={handleEntityClick}
-          isLoading={isLoading}
-          collapsed={dialogueCollapsed}
-          onToggle={() => setDialogueCollapsed(!dialogueCollapsed)}
-        />
-
-        {/* Center: Graph Canvas */}
+      {/* Body: graph fills full width, panels overlay */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {/* Graph / CurateView fills FULL width */}
         <div
           style={{
             flex: 1,
@@ -357,43 +410,102 @@ export default function NewWorkspace() {
             minWidth: 0,
           }}
         >
+          {lens === 'explore' ? (
+            <>
+              {graphData && graphData.nodes.length > 0 ? (
+                <ModernGraph
+                  nodes={graphData.nodes}
+                  edges={graphData.edges}
+                  centerEntityId={centerEntityId}
+                  onNodeClick={handleNodeClick}
+                />
+              ) : (
+                /* Empty state: calm, inviting */
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    gap: 'var(--space-4)',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'var(--text-2xl)',
+                      color: 'var(--text-inverse)',
+                      opacity: 0.2,
+                    }}
+                  >
+                    Knowledge Graph
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      color: 'var(--text-inverse)',
+                      opacity: 0.15,
+                      maxWidth: 300,
+                      textAlign: 'center',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Ask a question or search for an entity to see connections
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <CurateView
+              pipelineStatus={pipelineStatus}
+              graphSummary={graphSummary}
+              onRefreshSource={(src) => {
+                fetch('/steward/refresh', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ source: src }),
+                }).catch(() => {});
+              }}
+            />
+          )}
+
           {/* Collapse/expand toggle for dialogue panel (visible when collapsed) */}
           {dialogueCollapsed && (
             <button
               type="button"
               onClick={() => setDialogueCollapsed(false)}
-              title="Show dialogue"
+              title="Show dialogue (Ctrl+/)"
               aria-label="Show dialogue"
               style={{
                 position: 'absolute',
                 top: 'var(--space-3)',
                 left: 'var(--space-3)',
                 zIndex: 10,
-                width: 32,
-                height: 32,
+                width: 40,
+                height: 40,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'rgba(15, 23, 42, 0.85)',
-                backdropFilter: 'blur(8px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: 'var(--radius-md)',
+                background: 'var(--surface-elevated)',
+                boxShadow: 'var(--shadow-md)',
+                border: 'none',
+                borderRadius: 'var(--radius-full)',
                 cursor: 'pointer',
-                color: 'var(--text-inverse)',
+                color: 'var(--text-secondary)',
                 transition: `background var(--duration-fast) ease`,
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background =
-                  'rgba(15, 23, 42, 0.95)';
+                (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-lg)';
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background =
-                  'rgba(15, 23, 42, 0.85)';
+                (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)';
               }}
             >
               <svg
-                width="14"
-                height="14"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -418,6 +530,7 @@ export default function NewWorkspace() {
                 padding: 'var(--space-1) var(--space-4)',
                 background: 'rgba(15, 23, 42, 0.85)',
                 backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: 'var(--radius-full)',
                 fontSize: 'var(--text-xs)',
@@ -451,63 +564,68 @@ export default function NewWorkspace() {
               Connection issue. Responses may be delayed.
             </div>
           )}
-
-          {graphData && graphData.nodes.length > 0 ? (
-            <ModernGraph
-              nodes={graphData.nodes}
-              edges={graphData.edges}
-              centerEntityId={centerEntityId}
-              onNodeClick={handleNodeClick}
-            />
-          ) : (
-            /* Empty state: calm, inviting */
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: 'var(--space-4)',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 'var(--text-2xl)',
-                  color: 'var(--text-inverse)',
-                  opacity: 0.2,
-                }}
-              >
-                Knowledge Graph
-              </div>
-              <div
-                style={{
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--text-inverse)',
-                  opacity: 0.15,
-                  maxWidth: 300,
-                  textAlign: 'center',
-                  lineHeight: 1.5,
-                }}
-              >
-                Ask a question or search for an entity to see connections
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* Dialogue overlays the left side */}
+        {!dialogueCollapsed && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: 380,
+              background: 'var(--surface-glass)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderRight: '1px solid rgba(0,0,0,0.06)',
+              zIndex: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: 'var(--shadow-lg)',
+              animation: 'slide-in-left var(--duration-normal) var(--ease-out)',
+            }}
+          >
+            <DialoguePanel
+              messages={messages}
+              onSend={handleSend}
+              onEntityClick={handleEntityClick}
+              isLoading={isLoading}
+              collapsed={dialogueCollapsed}
+              onToggle={() => setDialogueCollapsed(true)}
+            />
+          </div>
+        )}
+
+        {/* Inspector overlays the right side */}
         {selectedEntity && (
-          <InspectorPanel
-            entity={selectedEntity}
-            detail={inspectorDetail}
-            isLoading={inspectorLoading}
-            error={inspectorError}
-            onClose={() => setSelectedEntity(null)}
-            onExplore={handleExplore}
-            onEntityClick={handleEntityClick}
-          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 360,
+              background: 'var(--surface-glass)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderLeft: '1px solid rgba(0,0,0,0.06)',
+              zIndex: 10,
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'auto',
+              animation: 'slide-in-right var(--duration-normal) var(--ease-out)',
+            }}
+          >
+            <InspectorPanel
+              entity={selectedEntity}
+              detail={inspectorDetail}
+              isLoading={inspectorLoading}
+              error={inspectorError}
+              onClose={() => setSelectedEntity(null)}
+              onExplore={handleExplore}
+              onEntityClick={handleEntityClick}
+            />
+          </div>
         )}
       </div>
     </div>

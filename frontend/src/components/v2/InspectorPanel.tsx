@@ -9,7 +9,6 @@
  */
 
 import { useState, useCallback } from 'react';
-import Panel from './Panel';
 import EntityDot from './EntityDot';
 import Badge from './Badge';
 import ConfidenceBar from './ConfidenceBar';
@@ -186,7 +185,14 @@ export default function InspectorPanel({
     : [];
 
   return (
-    <Panel side="right" width={320}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+      }}
+    >
       {/* ── Header ──────────────────────────────────────────── */}
       <div
         style={{
@@ -598,6 +604,6 @@ export default function InspectorPanel({
           </Button>
         </div>
       </div>
-    </Panel>
+    </div>
   );
 }

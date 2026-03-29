@@ -2,10 +2,12 @@
  * DialoguePanel — left panel for chat interaction.
  * Scrollable message list + fixed input at bottom.
  * Supports V2Message (rich) and legacy {role, content} formats.
+ *
+ * Phase 5: Renders directly without Panel wrapper — the parent
+ * overlay div handles positioning, backdrop-filter, and width.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import Panel from './Panel';
 import Button from './Button';
 import RichNarrative, { type EntityMentionData } from './RichNarrative';
 
@@ -114,64 +116,15 @@ export default function DialoguePanel({
   }, []);
 
   return (
-    <Panel side="left" width={280} collapsed={collapsed}>
-      {/* Toggle button — visible when collapsed */}
-      {onToggle && (
-        <button
-          type="button"
-          onClick={onToggle}
-          title={collapsed ? 'Show dialogue' : 'Hide dialogue'}
-          aria-label={collapsed ? 'Show dialogue' : 'Hide dialogue'}
-          style={{
-            position: 'absolute',
-            top: 'var(--space-3)',
-            right: collapsed ? 'auto' : 'var(--space-3)',
-            left: collapsed ? 'var(--space-3)' : 'auto',
-            zIndex: 10,
-            width: 24,
-            height: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--surface-secondary)',
-            border: 'none',
-            borderRadius: 'var(--radius-sm)',
-            cursor: 'pointer',
-            color: 'var(--text-tertiary)',
-            fontSize: 'var(--text-xs)',
-            transition: `background var(--duration-fast) ease`,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'var(--surface-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'var(--surface-secondary)';
-          }}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            {collapsed ? (
-              <>
-                <path d="m9 18 6-6-6-6" />
-              </>
-            ) : (
-              <>
-                <path d="m15 18-6-6 6-6" />
-              </>
-            )}
-          </svg>
-        </button>
-      )}
-
-      {/* Header */}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header with collapse toggle */}
       <div
         style={{
           padding: 'var(--space-3) var(--space-4)',
@@ -200,10 +153,52 @@ export default function DialoguePanel({
             fontSize: 'var(--text-sm)',
             fontWeight: 500,
             color: 'var(--text-primary)',
+            flex: 1,
           }}
         >
           Dialogue
         </span>
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            title="Hide dialogue"
+            aria-label="Hide dialogue"
+            style={{
+              width: 24,
+              height: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              color: 'var(--text-tertiary)',
+              flexShrink: 0,
+              transition: `color var(--duration-fast) ease`,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)';
+            }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -464,6 +459,6 @@ export default function DialoguePanel({
           />
         </div>
       </div>
-    </Panel>
+    </div>
   );
 }
