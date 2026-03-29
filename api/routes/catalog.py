@@ -823,9 +823,12 @@ def _browse_generic(
 
     sort_col, direction = _resolve_sort(entity_type, sort, sort_by, sort_dir)
     # Map abstract sort columns to actual table columns for generic types
-    if sort_col == "pipeline_score":
-        sort_col = "quality_score"  # no pipeline_score for generic types
+    has_quality = "quality_score" in meta["display_cols"]
+    if sort_col == "pipeline_score" or sort_col == "quality_score":
+        sort_col = "quality_score" if has_quality else label_expr
     if sort_col == "_label":
+        sort_col = label_expr
+    if sort_col == "retrieved_at" and "retrieved_at" not in meta["display_cols"]:
         sort_col = label_expr
 
     # Legacy sort_dir override (only when using legacy sort_by)
