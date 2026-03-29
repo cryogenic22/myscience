@@ -152,6 +152,24 @@ export default function NewWorkspace() {
     return () => mq.removeEventListener('change', handleChange);
   }, []);
 
+  // Seed graph on mount — show a few entities so the canvas isn't empty
+  useEffect(() => {
+    api.searchSuggest('drug', 6)
+      .then(r => {
+        if (r.suggestions?.length) {
+          const firstEntity = r.suggestions[0];
+          return api.traverse(firstEntity.entity_type, firstEntity.entity_id, 1);
+        }
+        return null;
+      })
+      .then(result => {
+        if (result && result.nodes?.length && !graphData) {
+          setGraphData({ nodes: result.nodes, edges: result.edges });
+        }
+      })
+      .catch(() => {}); // silent — seed graph is optional
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch entity detail when selectedEntity changes
   useEffect(() => {
     if (!selectedEntity) {

@@ -126,14 +126,21 @@ class GraphTraversal:
         entity_id = self._resolve_entity_id(entity_id, entity_type)
 
         rows = self.db.fetch_all(
-            "SELECT * FROM traverse_graph(%s, %s, %s, %s, %s)",
-            [entity_id, hops, link_types, max_nodes, min_confidence],
+            "SELECT * FROM traverse_graph(%s, %s, %s, %s)",
+            [entity_id, hops, link_types, max_nodes],
         )
 
-        # Collect unique entity IDs from edges
+        # Collect unique entity IDs from edges, applying optional filters
         entity_ids = set()
         edges = []
         for row in rows:
+            lt = row["link_type"]
+            conf = float(row.get("confidence") or 1.0)
+            # Apply filters if specified
+            if link_types and lt not in link_types:
+                continue
+            if min_confidence is not None and conf < min_confidence:
+                continue
             src = str(row["source_id"])
             tgt = str(row["target_id"])
             entity_ids.add(src)
@@ -141,8 +148,8 @@ class GraphTraversal:
             edges.append(GraphEdge(
                 source_id=src,
                 target_id=tgt,
-                link_type=row["link_type"],
-                confidence=float(row.get("confidence") or 1.0),
+                link_type=lt,
+                confidence=conf,
                 via=row.get("link_via") or "",
             ))
 

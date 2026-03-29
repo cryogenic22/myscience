@@ -948,7 +948,7 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     }
 
 
-def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "") -> dict:
+def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "", db=None, engine=None) -> dict:
     topic = params.get("topic", "")
     expanded_topic = expand_topic_synonyms(topic) if topic else ""
     segments = metrics_svc.competitive_landscape(
@@ -1064,6 +1064,52 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
         graph_node_count=0, metrics_available=bool(segments),
     )
 
+    # Build graph_context from real graph neighbourhood expansion
+    landscape_gc = {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+    landscape_entity_focus = []
+    if db and engine:
+        all_nodes = {}
+        all_edges = []
+        edge_keys = set()
+        for seg in top[:5]:
+            mech_name = seg.get("mechanism_name", "")
+            if not mech_name:
+                continue
+            try:
+                resolved = resolve_entity(mech_name, "mechanism", db)
+                if resolved and resolved.get("entity_id"):
+                    eid = resolved["entity_id"]
+                    etype = resolved.get("entity_type", "mechanism")
+                    subgraph = engine.graph.neighborhood(eid, etype, hops=1)
+                    for n in subgraph.nodes:
+                        nid = n.entity_id
+                        if nid:
+                            all_nodes[nid] = {
+                                "entity_id": n.entity_id, "entity_type": n.entity_type,
+                                "label": n.label, "properties": n.properties,
+                            }
+                    for e in subgraph.edges:
+                        ekey = f"{e.source_id}-{e.target_id}-{e.link_type}"
+                        if ekey not in edge_keys:
+                            all_edges.append({
+                                "source_id": e.source_id, "target_id": e.target_id,
+                                "link_type": e.link_type, "confidence": e.confidence,
+                                "via": e.via,
+                            })
+                            edge_keys.add(ekey)
+                    landscape_entity_focus.append({
+                        "entity_id": eid, "entity_type": etype,
+                        "label": resolved.get("label", mech_name),
+                    })
+            except Exception as exc:
+                logger.debug("Landscape graph expansion failed for %s: %s", mech_name, exc)
+        landscape_gc = {
+            "nodes": list(all_nodes.values()),
+            "edges": all_edges,
+            "node_count": len(all_nodes),
+            "edge_count": len(all_edges),
+        }
+
     return {
         "narrative": narrative,
         "intent": "landscape",
@@ -1071,9 +1117,9 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
         "data": {
             "question": question,
             "evidence": [],
-            "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
+            "graph_context": landscape_gc,
             "metrics_context": {s.get("mechanism_name", f"seg_{i}"): {"competitive": s} for i, s in enumerate(top)},
-            "entity_focus": [],
+            "entity_focus": landscape_entity_focus,
             "provenance_summary": {"total_evidence_items": len(segments), "by_source": {"metrics": len(segments)}},
         },
         "table_data": landscape_table,
@@ -1153,7 +1199,7 @@ def handle_portfolio(params: dict, db: Database, engine: QueryEngine, metrics_sv
     }
 
 
-def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "") -> dict:
+def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "", db=None, engine=None) -> dict:
     ta = params.get("therapeutic_area", "")
     pipelines = metrics_svc.drug_pipeline_strength(therapeutic_area=ta if ta else None, limit=20)
 
@@ -1237,6 +1283,52 @@ def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesize
         graph_node_count=0, metrics_available=bool(pipelines),
     )
 
+    # Build graph_context from real graph neighbourhood expansion
+    pipeline_gc = {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}
+    pipeline_entity_focus = []
+    if db and engine:
+        all_nodes = {}
+        all_edges = []
+        edge_keys = set()
+        for p in top[:5]:
+            drug_name = p.get("drug_name", "")
+            if not drug_name:
+                continue
+            try:
+                resolved = resolve_entity(drug_name, "drug", db)
+                if resolved and resolved.get("entity_id"):
+                    eid = resolved["entity_id"]
+                    etype = resolved.get("entity_type", "drug")
+                    subgraph = engine.graph.neighborhood(eid, etype, hops=1)
+                    for n in subgraph.nodes:
+                        nid = n.entity_id
+                        if nid:
+                            all_nodes[nid] = {
+                                "entity_id": n.entity_id, "entity_type": n.entity_type,
+                                "label": n.label, "properties": n.properties,
+                            }
+                    for e in subgraph.edges:
+                        ekey = f"{e.source_id}-{e.target_id}-{e.link_type}"
+                        if ekey not in edge_keys:
+                            all_edges.append({
+                                "source_id": e.source_id, "target_id": e.target_id,
+                                "link_type": e.link_type, "confidence": e.confidence,
+                                "via": e.via,
+                            })
+                            edge_keys.add(ekey)
+                    pipeline_entity_focus.append({
+                        "entity_id": eid, "entity_type": etype,
+                        "label": resolved.get("label", drug_name),
+                    })
+            except Exception as exc:
+                logger.debug("Pipeline graph expansion failed for %s: %s", drug_name, exc)
+        pipeline_gc = {
+            "nodes": list(all_nodes.values()),
+            "edges": all_edges,
+            "node_count": len(all_nodes),
+            "edge_count": len(all_edges),
+        }
+
     return {
         "narrative": narrative,
         "intent": "pipeline",
@@ -1244,9 +1336,9 @@ def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesize
         "data": {
             "question": f"Pipeline {'for ' + ta if ta else 'overview'}",
             "evidence": [],
-            "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
+            "graph_context": pipeline_gc,
             "metrics_context": {p.get("drug_name", f"drug_{i}"): {"pipeline": p} for i, p in enumerate(top)},
-            "entity_focus": [],
+            "entity_focus": pipeline_entity_focus,
             "provenance_summary": {"total_evidence_items": len(top), "by_source": {"metrics": len(top)}},
         },
         "table_data": pipeline_table,
@@ -1322,9 +1414,9 @@ def handle_deep_research(
 _INTENT_DISPATCH = {
     Intent.DOSSIER: lambda params, **kw: handle_dossier(params, kw["db"], kw["engine"], kw["llm"], conv_context=kw.get("conv_context", "")),
     Intent.COMPARE: lambda params, **kw: handle_compare(params, kw["db"], kw["engine"], kw["llm"], conv_context=kw.get("conv_context", "")),
-    Intent.LANDSCAPE: lambda params, **kw: handle_landscape(kw.get("question", ""), params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.LANDSCAPE: lambda params, **kw: handle_landscape(kw.get("question", ""), params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", ""), db=kw.get("db"), engine=kw.get("engine")),
     Intent.PORTFOLIO: lambda params, **kw: handle_portfolio(params, kw["db"], kw["engine"], kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
-    Intent.PIPELINE: lambda params, **kw: handle_pipeline(params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", "")),
+    Intent.PIPELINE: lambda params, **kw: handle_pipeline(params, kw["metrics_svc"], kw["llm"], conv_context=kw.get("conv_context", ""), db=kw.get("db"), engine=kw.get("engine")),
     Intent.GENERAL: lambda params, **kw: handle_general(kw.get("question", ""), kw["engine"], kw["db"], kw["llm"], conv_context=kw.get("conv_context", "")),
 }
 
