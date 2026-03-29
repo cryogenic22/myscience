@@ -201,6 +201,23 @@ FIELD_MAPS: dict[SourceType, dict[str, str]] = {
         "chunk_index": "chunk_index",
         "extracted_entities": "extracted_entities",
     },
+    # OpenFDA connectors — identity maps
+    SourceType.OPENFDA_FAERS: {
+        "drug_name": "drug_name",
+        "reaction": "reaction",
+        "reaction_meddra_pt": "reaction_meddra_pt",
+        "outcome": "outcome",
+        "severity": "severity",
+        "report_id": "report_id",
+        "report_date": "report_date",
+    },
+    SourceType.OPENFDA_LABELS: {
+        "drug_name": "drug_name",
+        "set_id": "set_id",
+        "spl_version": "spl_version",
+        "indications": "indications",
+        "manufacturer": "manufacturer",
+    },
     # New connectors — identity maps (data already uses canonical field names)
     SourceType.EMA: {
         "eudract_number": "eudract_number",
