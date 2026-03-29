@@ -75,7 +75,7 @@ def detect_intent(question: str) -> tuple[str, dict]:
     )
     _has_compare_signal = (
         vs_match or diff_match or stack_match or which_or_match
-        or ('compare' in q and 'landscape' not in q)
+        or (q.startswith('compare ') and 'landscape' not in q)
         or 'which is better' in q
     )
     if not _looks_like_title and _has_compare_signal:

@@ -326,10 +326,12 @@ export default function DialoguePanel({
                     marginTop: 'var(--space-2)',
                   }}
                 >
-                  {msg.followupSuggestions.slice(0, 4).map((s, si) => (
+                  {msg.followupSuggestions.slice(0, 4).map((s, si) => {
+                    const cleanSuggestion = s.replace(/^['"""]+|['"""]+$/g, '').trim();
+                    return (
                     <button
                       key={si}
-                      onClick={() => onSend(s)}
+                      onClick={() => onSend(cleanSuggestion)}
                       style={{
                         fontSize: 'var(--text-xs)',
                         padding: 'var(--space-1) var(--space-3)',
@@ -351,9 +353,10 @@ export default function DialoguePanel({
                         (e.target as HTMLElement).style.color = 'var(--text-secondary)';
                       }}
                     >
-                      {s}
+                      {cleanSuggestion}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
           </div>
