@@ -1,34 +1,58 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, ChevronDown, ChevronRight, BookOpen, ExternalLink,
-  FileText, FlaskConical, Users, Tag,
+  FileText, FlaskConical, Users, Tag, Sparkles, Loader,
 } from 'lucide-react';
-import { api, type LiteratureDocument, type LiteratureSection } from '../api';
+import { api, type LiteratureDocument, type LiteratureSection, type SimilarArticle } from '../api';
 
 /* ── Props ── */
 
 interface LiteratureExplorerProps {
   articleId: string;
   onClose: () => void;
+  onNavigate?: (articleId: string) => void;
 }
 
 /* ── Main Component ── */
 
-export function LiteratureExplorer({ articleId, onClose }: LiteratureExplorerProps) {
+export function LiteratureExplorer({ articleId, onClose, onNavigate }: LiteratureExplorerProps) {
   const [doc, setDoc] = useState<LiteratureDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>('');
+  const [similarArticles, setSimilarArticles] = useState<SimilarArticle[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setSimilarArticles([]);
+    setSummary(null);
     api.literatureDocument(articleId)
       .then((d) => { if (!cancelled) { setDoc(d); setActiveSection(d.sections[0]?.id ?? ''); } })
       .catch((e) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    // Fetch similar articles in parallel
+    api.literatureSimilar(articleId, 5)
+      .then((r) => { if (!cancelled) setSimilarArticles(r.similar); })
+      .catch(() => { /* ignore — similar articles are optional */ });
     return () => { cancelled = true; };
+  }, [articleId]);
+
+  const handleNavigate = useCallback((targetId: string) => {
+    if (onNavigate) {
+      onNavigate(targetId);
+    }
+  }, [onNavigate]);
+
+  const generateSummary = useCallback(() => {
+    setSummaryLoading(true);
+    api.literatureSummary(articleId)
+      .then((r) => { setSummary(r.summary); })
+      .catch(() => { setSummary(null); })
+      .finally(() => { setSummaryLoading(false); });
   }, [articleId]);
 
   useEffect(() => {
@@ -115,10 +139,17 @@ export function LiteratureExplorer({ articleId, onClose }: LiteratureExplorerPro
               sections={doc.sections}
               hasFullText={doc.has_full_text}
               onActiveSectionChange={setActiveSection}
+              summary={summary}
+              summaryLoading={summaryLoading}
+              onGenerateSummary={generateSummary}
             />
 
             {/* Right: Context */}
-            <ContextSidebar doc={doc} />
+            <ContextSidebar
+              doc={doc}
+              similarArticles={similarArticles}
+              onNavigate={handleNavigate}
+            />
           </div>
         ) : null}
       </div>
@@ -218,10 +249,16 @@ function ContentArea({
   sections,
   hasFullText,
   onActiveSectionChange,
+  summary,
+  summaryLoading,
+  onGenerateSummary,
 }: {
   sections: LiteratureSection[];
   hasFullText: boolean;
   onActiveSectionChange: (id: string) => void;
+  summary: string | null;
+  summaryLoading: boolean;
+  onGenerateSummary: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -256,6 +293,52 @@ function ContentArea({
         color: 'var(--color-ink)',
       }}
     >
+      {/* AI Summary */}
+      <div style={{ marginBottom: '20px' }}>
+        {!summary && !summaryLoading && (
+          <button
+            type="button"
+            onClick={onGenerateSummary}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '6px 14px', borderRadius: '8px',
+              background: 'var(--color-accent-soft, rgba(28,110,247,0.08))',
+              color: 'var(--color-accent)', border: 'none',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <Sparkles size={13} />
+            Generate Key Findings
+          </button>
+        )}
+        {summaryLoading && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '6px 14px', fontSize: '12px', color: 'var(--color-ink-3)',
+          }}>
+            <Loader size={13} className="animate-spin" />
+            Generating summary...
+          </div>
+        )}
+        {summary && (
+          <div style={{
+            padding: '12px 16px', borderRadius: '10px',
+            background: 'var(--color-accent-soft, rgba(28,110,247,0.06))',
+            borderLeft: '3px solid var(--color-accent)',
+            fontSize: '13px', lineHeight: 1.6, color: 'var(--color-ink-2)',
+            whiteSpace: 'pre-wrap',
+          }}>
+            <div style={{
+              fontSize: '10px', fontWeight: 600, color: 'var(--color-accent)',
+              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px',
+            }}>
+              Key Findings
+            </div>
+            {summary}
+          </div>
+        )}
+      </div>
+
       {!hasFullText && sections.length <= 1 && (
         <div style={{
           padding: '12px 16px', marginBottom: '20px', borderRadius: '8px',
@@ -320,7 +403,15 @@ function renderInline(text: string) {
 
 /* ── Context Sidebar (Right Panel) ── */
 
-function ContextSidebar({ doc }: { doc: LiteratureDocument }) {
+function ContextSidebar({
+  doc,
+  similarArticles,
+  onNavigate,
+}: {
+  doc: LiteratureDocument;
+  similarArticles: SimilarArticle[];
+  onNavigate: (articleId: string) => void;
+}) {
   const [showAllAuthors, setShowAllAuthors] = useState(false);
   const visibleAuthors = showAllAuthors ? doc.authors : doc.authors.slice(0, 5);
   const hasMore = doc.authors.length > 5;
@@ -333,6 +424,50 @@ function ContextSidebar({ doc }: { doc: LiteratureDocument }) {
         padding: '20px 16px', fontSize: '12px',
       }}
     >
+      {/* External links — prominent buttons */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        {doc.external_urls.pubmed && (
+          <a
+            href={doc.external_urls.pubmed}
+            target="_blank" rel="noopener noreferrer"
+            style={{
+              fontSize: '11px', padding: '4px 10px', borderRadius: '6px',
+              background: 'var(--color-surface-2)', color: 'var(--color-accent)',
+              textDecoration: 'none', fontWeight: 500,
+            }}
+          >
+            PubMed &#x2197;
+          </a>
+        )}
+        {doc.external_urls.pmc && (
+          <a
+            href={doc.external_urls.pmc}
+            target="_blank" rel="noopener noreferrer"
+            style={{
+              fontSize: '11px', padding: '4px 10px', borderRadius: '6px',
+              background: 'var(--color-surface-2)', color: 'var(--color-accent)',
+              textDecoration: 'none', fontWeight: 500,
+            }}
+          >
+            PMC &#x2197;
+          </a>
+        )}
+        {doc.external_urls.pdf && (
+          <a
+            href={doc.external_urls.pdf}
+            target="_blank" rel="noopener noreferrer"
+            style={{
+              fontSize: '11px', padding: '4px 10px', borderRadius: '6px',
+              background: 'var(--color-green-soft, rgba(5,150,105,0.08))',
+              color: 'var(--color-green)',
+              textDecoration: 'none', fontWeight: 500,
+            }}
+          >
+            PDF &#x2197;
+          </a>
+        )}
+      </div>
+
       {/* Journal + Date */}
       {doc.journal && (
         <MetaBlock label="Journal">
@@ -417,27 +552,35 @@ function ContextSidebar({ doc }: { doc: LiteratureDocument }) {
         </MetaBlock>
       )}
 
-      {/* External Links */}
-      <MetaBlock label="External Links" icon={<ExternalLink size={12} />}>
-        {doc.external_urls.pubmed && (
-          <a
-            href={doc.external_urls.pubmed}
-            target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', color: 'var(--color-accent)', textDecoration: 'none', lineHeight: 1.8 }}
-          >
-            PubMed →
-          </a>
-        )}
-        {doc.external_urls.pmc && (
-          <a
-            href={doc.external_urls.pmc}
-            target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', color: 'var(--color-accent)', textDecoration: 'none', lineHeight: 1.8 }}
-          >
-            PubMed Central →
-          </a>
-        )}
-      </MetaBlock>
+      {/* Similar Articles */}
+      {similarArticles.length > 0 && (
+        <MetaBlock label="Similar Articles" icon={<BookOpen size={12} />}>
+          {similarArticles.map((a) => (
+            <div
+              key={a.article_id}
+              style={{
+                fontSize: '12px', padding: '6px 0',
+                borderBottom: '1px solid var(--color-line)',
+                cursor: 'pointer',
+              }}
+              onClick={() => onNavigate(a.article_id)}
+            >
+              <div style={{
+                color: 'var(--color-ink)', fontWeight: 500, lineHeight: 1.4,
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}>
+                {a.title}
+              </div>
+              <div style={{ color: 'var(--color-ink-4)', fontSize: '11px', marginTop: '2px' }}>
+                {a.journal ? `${a.journal}` : ''}
+                {a.publication_date ? ` · ${a.publication_date}` : ''}
+                {typeof a.similarity === 'number' ? ` · ${Math.round(a.similarity * 100)}% match` : ''}
+              </div>
+            </div>
+          ))}
+        </MetaBlock>
+      )}
     </aside>
   );
 }

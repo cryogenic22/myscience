@@ -7,6 +7,7 @@ import {
   Dna,
   Target,
   ChevronRight,
+  FileCheck,
 } from 'lucide-react';
 import type { SearchResult } from '../../api';
 import { SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../../brand';
@@ -337,6 +338,18 @@ function SearchResultCard({
                   >
                     {cfg.label}
                   </span>
+                  {result.entity_type === 'literature' && result.metadata?.has_full_text && (
+                    <span style={{
+                      fontSize: '10px', fontWeight: 600, padding: '2px 6px',
+                      borderRadius: '8px',
+                      background: 'var(--color-green-soft, rgba(5,150,105,0.08))',
+                      color: 'var(--color-green)',
+                      display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    }}>
+                      <FileCheck size={10} />
+                      Full Text
+                    </span>
+                  )}
                   <span style={{
                     fontSize: '11px',
                     color: 'var(--color-ink-4)',
@@ -347,6 +360,11 @@ function SearchResultCard({
                   }}>
                     {sourceLabel}
                   </span>
+                  {result.entity_type === 'literature' && Array.isArray(result.metadata?.authors) && (result.metadata.authors as string[]).length > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>
+                      {(result.metadata.authors as string[]).length} author{(result.metadata.authors as string[]).length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                   {typeof influenceScore === 'number' && (
                     <InfluenceIndicator score={influenceScore} />
                   )}
@@ -447,6 +465,19 @@ function SearchResultCard({
             >
               {cfg.label}
             </span>
+            {result.entity_type === 'literature' && result.metadata?.has_full_text && (
+              <span style={{
+                fontSize: '10px', fontWeight: 600, padding: '2px 6px',
+                borderRadius: '8px',
+                background: 'var(--color-green-soft, rgba(5,150,105,0.08))',
+                color: 'var(--color-green)',
+                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                flexShrink: 0,
+              }}>
+                <FileCheck size={10} />
+                Full Text
+              </span>
+            )}
           </div>
 
           {/* Enriched search: connection counts + influence */}
@@ -505,6 +536,11 @@ function SearchResultCard({
             {retrievedAt && (
               <span style={{ color: 'var(--color-ink-4)' }}>
                 {relativeTime(retrievedAt)}
+              </span>
+            )}
+            {result.entity_type === 'literature' && Array.isArray(result.metadata?.authors) && (result.metadata.authors as string[]).length > 0 && (
+              <span style={{ color: 'var(--color-ink-4)' }}>
+                {(result.metadata.authors as string[]).length} author{(result.metadata.authors as string[]).length !== 1 ? 's' : ''}
               </span>
             )}
           </div>

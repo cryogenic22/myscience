@@ -9,10 +9,12 @@ from __future__ import annotations
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.deps import get_db
+from api.deps import get_db, get_search, get_llm
 from db import Database
+from services.search import HybridSearch
+from services.llm import LLMSynthesizer
 from services.literature import parse_sections
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,11 @@ def get_literature_document(article_id: str, db: Database = Depends(get_db)):
 
     # Build response
     pub_date = article.get("publication_date")
+    external_urls: dict = {
+        "pubmed": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else None,
+        "pmc": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_id}/" if pmc_id else None,
+        "pdf": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_id}/pdf/" if pmc_id else None,
+    }
     return {
         "article_id": pa_id,
         "pmid": pmid,
@@ -96,13 +103,116 @@ def get_literature_document(article_id: str, db: Database = Depends(get_db)):
         "is_protocol": bool(pmc and pmc.get("is_protocol")),
         "is_systematic_review": bool(pmc and pmc.get("is_systematic_review")),
         "has_full_text": bool(full_text),
+        "full_text_source": "PMC" if pmc_id else None,
         "sections": sections,
         "cross_links": cross_links,
-        "external_urls": {
-            "pubmed": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else None,
-            "pmc": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_id}/" if pmc_id else None,
-        },
+        "external_urls": external_urls,
     }
+
+
+@router.get("/{article_id}/similar")
+def similar_articles(
+    article_id: str,
+    limit: int = Query(5, ge=1, le=20),
+    db: Database = Depends(get_db),
+    search: HybridSearch = Depends(get_search),
+):
+    """Find articles similar to the given one using embedding similarity."""
+    # Resolve to UUID if needed
+    if _UUID_RE.match(article_id):
+        row = db.fetch_one(
+            "SELECT id::text AS eid, abstract_embedding FROM pubmed_articles WHERE id = %s",
+            [article_id],
+        )
+    else:
+        row = db.fetch_one(
+            "SELECT id::text AS eid, abstract_embedding FROM pubmed_articles WHERE pmid = %s",
+            [article_id],
+        )
+
+    if not row:
+        raise HTTPException(404, f"Article not found: {article_id}")
+
+    resolved_id = row["eid"]
+    embedding = row.get("abstract_embedding")
+    if not embedding:
+        return {"similar": []}
+
+    results = search.find_similar(resolved_id, "literature", limit=limit)
+    similar = []
+    for r in results:
+        pub_date = r.metadata.get("publication_date")
+        if hasattr(pub_date, "isoformat"):
+            pub_date = pub_date.isoformat()
+        similar.append({
+            "article_id": r.entity_id,
+            "pmid": r.metadata.get("pmid") or "",
+            "title": r.title,
+            "journal": r.metadata.get("journal"),
+            "publication_date": str(pub_date) if pub_date else None,
+            "similarity": round(r.similarity, 4),
+        })
+    return {"similar": similar}
+
+
+@router.get("/{article_id}/summary")
+def article_summary(
+    article_id: str,
+    db: Database = Depends(get_db),
+    llm: LLMSynthesizer = Depends(get_llm),
+):
+    """Generate AI-powered key findings summary from article abstract/full text."""
+    # Resolve article
+    if _UUID_RE.match(article_id):
+        article = db.fetch_one(
+            "SELECT id, pmid, title, abstract FROM pubmed_articles WHERE id = %s",
+            [article_id],
+        )
+    else:
+        article = db.fetch_one(
+            "SELECT id, pmid, title, abstract FROM pubmed_articles WHERE pmid = %s",
+            [article_id],
+        )
+
+    if not article:
+        raise HTTPException(404, f"Article not found: {article_id}")
+
+    pa_id = str(article["id"])
+    pmid = article.get("pmid") or ""
+    title = article.get("title") or ""
+    abstract = article.get("abstract") or ""
+
+    # Check for PMC full text
+    pmc = db.fetch_one(
+        "SELECT full_text FROM pmc_articles WHERE pubmed_article_id = %s OR pmid = %s LIMIT 1",
+        [pa_id, pmid],
+    )
+    full_text = pmc["full_text"] if pmc else None
+
+    # Determine best available text
+    text = full_text[:3000] if full_text else abstract
+    if not text or len(text) < 100:
+        return {"summary": None, "generated": False}
+
+    if not llm.enabled():
+        return {"summary": None, "generated": False}
+
+    try:
+        prompt = (
+            "Summarize the key findings of this pharmaceutical research article in 3-4 bullet points.\n"
+            "Focus on: main result, clinical significance, comparison to existing treatments.\n\n"
+            f"Title: {title}\n"
+            f"Text: {text}"
+        )
+        result = llm.synthesize(
+            question=f"Summarize: {title}",
+            evidence=[],
+            system_prompt=prompt,
+        )
+        return {"summary": result.get("narrative") or result if isinstance(result, str) else str(result), "generated": True}
+    except Exception:
+        logger.warning("Failed to generate article summary for %s", article_id, exc_info=True)
+        return {"summary": None, "generated": False}
 
 
 def _get_cross_links(db: Database, article_id: str) -> dict:

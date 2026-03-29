@@ -114,9 +114,19 @@ export interface LiteratureDocument {
   is_protocol: boolean;
   is_systematic_review: boolean;
   has_full_text: boolean;
+  full_text_source: string | null;
   sections: LiteratureSection[];
   cross_links: LiteratureCrossLinks;
-  external_urls: { pubmed: string | null; pmc: string | null };
+  external_urls: { pubmed: string | null; pmc: string | null; pdf: string | null };
+}
+
+export interface SimilarArticle {
+  article_id: string;
+  pmid: string;
+  title: string;
+  journal: string | null;
+  publication_date: string | null;
+  similarity: number;
 }
 
 export interface SearchResult {
@@ -733,6 +743,10 @@ export const api = {
   // Literature Explorer
   literatureDocument: (articleId: string) =>
     get<LiteratureDocument>(`/literature/${encodeURIComponent(articleId)}/document`),
+  literatureSimilar: (articleId: string, limit?: number) =>
+    get<{similar: SimilarArticle[]}>(`/literature/${encodeURIComponent(articleId)}/similar?limit=${limit ?? 5}`),
+  literatureSummary: (articleId: string) =>
+    get<{summary: string | null; generated: boolean}>(`/literature/${encodeURIComponent(articleId)}/summary`),
 
   // Intelligence Feed
   intelligenceFeed: (params?: {limit?: number; offset?: number; severity?: string}) =>
