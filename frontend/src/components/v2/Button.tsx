@@ -1,19 +1,27 @@
 import React, { useState } from 'react';
 
 interface ButtonProps {
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'accent';
   size?: 'sm' | 'md';
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  icon?: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  title?: string;
+  style?: React.CSSProperties;
+  'aria-label'?: string;
 }
 
 export default function Button({
   variant = 'primary',
   size = 'md',
   children,
+  icon,
   onClick,
   disabled = false,
+  title,
+  style: styleProp,
+  'aria-label': ariaLabel,
 }: ButtonProps) {
   const [hovered, setHovered] = useState(false);
   const [active, setActive] = useState(false);
@@ -26,7 +34,7 @@ export default function Button({
   let color: string;
   let border: string;
 
-  if (variant === 'primary') {
+  if (variant === 'primary' || variant === 'accent') {
     bg = disabled
       ? 'var(--text-tertiary)'
       : active
@@ -56,6 +64,8 @@ export default function Button({
       onMouseDown={() => setActive(true)}
       onMouseUp={() => setActive(false)}
       disabled={disabled}
+      title={title}
+      aria-label={ariaLabel}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -74,8 +84,10 @@ export default function Button({
         opacity: disabled ? 0.6 : 1,
         transition: `all var(--duration-fast) var(--ease-out)`,
         outline: 'none',
+        ...styleProp,
       }}
     >
+      {icon}
       {children}
     </button>
   );

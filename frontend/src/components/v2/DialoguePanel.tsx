@@ -1,28 +1,73 @@
 /**
  * DialoguePanel — left panel for chat interaction.
  * Scrollable message list + fixed input at bottom.
+ * Supports V2Message (rich) and legacy {role, content} formats.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Panel from './Panel';
 import Button from './Button';
+import RichNarrative, { type EntityMentionData } from './RichNarrative';
 
-interface Message {
+/* ── V2 message type ───────────────────────────────────── */
+
+export interface V2Message {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
+  timestamp?: Date;
+  loading?: boolean;
+  entityMentions?: EntityMentionData[];
+  followupSuggestions?: string[];
 }
 
 interface DialoguePanelProps {
-  messages: Message[];
+  messages: V2Message[];
   onSend: (message: string) => void;
+  onEntityClick?: (entityId: string, entityType: string) => void;
   isLoading?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
 }
 
+/* ── Helpers ───────────────────────────────────────────── */
+
+function relativeTime(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return date.toLocaleDateString();
+}
+
+interface NormalizedMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  loading?: boolean;
+  entityMentions?: EntityMentionData[];
+  followupSuggestions?: string[];
+}
+
+function normalizeMessages(messages: V2Message[]): NormalizedMessage[] {
+  return messages.map((m, i) => ({
+    id: m.id || `msg-${i}`,
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp || new Date(),
+    loading: m.loading,
+    entityMentions: m.entityMentions,
+    followupSuggestions: m.followupSuggestions,
+  }));
+}
+
+/* ── Component ─────────────────────────────────────────── */
+
 export default function DialoguePanel({
   messages,
   onSend,
+  onEntityClick,
   isLoading,
   collapsed,
   onToggle,
@@ -30,6 +75,8 @@ export default function DialoguePanel({
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const normalized = normalizeMessages(messages);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -86,7 +133,7 @@ export default function DialoguePanel({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'var(--surface-inset)',
+            background: 'var(--surface-secondary)',
             border: 'none',
             borderRadius: 'var(--radius-sm)',
             cursor: 'pointer',
@@ -95,10 +142,10 @@ export default function DialoguePanel({
             transition: `background var(--duration-fast) ease`,
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'var(--border-subtle)';
+            (e.currentTarget as HTMLElement).style.background = 'var(--surface-secondary)';
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'var(--surface-inset)';
+            (e.currentTarget as HTMLElement).style.background = 'var(--surface-secondary)';
           }}
         >
           <svg
@@ -128,7 +175,7 @@ export default function DialoguePanel({
       <div
         style={{
           padding: 'var(--space-3) var(--space-4)',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--surface-secondary)',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-2)',
@@ -170,7 +217,7 @@ export default function DialoguePanel({
           gap: 'var(--space-4)',
         }}
       >
-        {messages.length === 0 && (
+        {normalized.length === 0 && (
           <div
             style={{
               flex: 1,
@@ -186,7 +233,7 @@ export default function DialoguePanel({
             <div
               style={{
                 fontSize: 'var(--text-sm)',
-                color: 'var(--text-quaternary)',
+                color: 'var(--text-tertiary)',
               }}
             >
               Ask a question about pharma data
@@ -194,15 +241,16 @@ export default function DialoguePanel({
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {normalized.map((msg, i) => (
           <div
-            key={i}
+            key={msg.id}
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
             }}
           >
+            {/* Message bubble / narrative */}
             <div
               style={{
                 maxWidth: '90%',
@@ -219,12 +267,105 @@ export default function DialoguePanel({
                 wordBreak: 'break-word',
               }}
             >
-              {msg.content}
+              {/* Loading state */}
+              {msg.loading ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-1)',
+                    padding: 'var(--space-1) 0',
+                  }}
+                >
+                  {[0, 1, 2].map((dot) => (
+                    <span
+                      key={dot}
+                      style={{
+                        display: 'inline-block',
+                        width: 6,
+                        height: 6,
+                        borderRadius: 'var(--radius-full)',
+                        background: 'var(--accent)',
+                        opacity: 0.6,
+                        animation: `pulse-dot 1.4s ease-in-out ${dot * 0.2}s infinite`,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : msg.role === 'assistant' ? (
+                <RichNarrative
+                  text={msg.content}
+                  entityMentions={msg.entityMentions}
+                  onEntityClick={onEntityClick}
+                />
+              ) : (
+                msg.content
+              )}
             </div>
+
+            {/* Timestamp */}
+            <div
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-tertiary)',
+                marginTop: 'var(--space-1)',
+                paddingLeft: msg.role === 'user' ? 0 : 'var(--space-1)',
+                paddingRight: msg.role === 'user' ? 'var(--space-1)' : 0,
+              }}
+            >
+              {relativeTime(msg.timestamp)}
+            </div>
+
+            {/* Follow-up suggestions — shown after last assistant message, not loading */}
+            {msg.role === 'assistant' &&
+              i === normalized.length - 1 &&
+              msg.followupSuggestions &&
+              msg.followupSuggestions.length > 0 &&
+              !isLoading && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-2) 0',
+                    marginTop: 'var(--space-2)',
+                  }}
+                >
+                  {msg.followupSuggestions.slice(0, 4).map((s, si) => (
+                    <button
+                      key={si}
+                      onClick={() => onSend(s)}
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        padding: 'var(--space-1) var(--space-3)',
+                        borderRadius: 'var(--radius-full)',
+                        border: '1px solid var(--text-tertiary)',
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        transition: 'all var(--duration-fast)',
+                        whiteSpace: 'nowrap',
+                        fontFamily: 'var(--font-body)',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.target as HTMLElement).style.borderColor = 'var(--accent)';
+                        (e.target as HTMLElement).style.color = 'var(--accent)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.target as HTMLElement).style.borderColor = 'var(--text-tertiary)';
+                        (e.target as HTMLElement).style.color = 'var(--text-secondary)';
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
           </div>
         ))}
 
-        {isLoading && (
+        {/* Global loading indicator (when no loading message is present) */}
+        {isLoading && !normalized.some((m) => m.loading) && (
           <div
             style={{
               display: 'flex',
@@ -241,7 +382,7 @@ export default function DialoguePanel({
                 width: 6,
                 height: 6,
                 borderRadius: 'var(--radius-full)',
-                background: 'var(--accent-primary)',
+                background: 'var(--accent)',
                 animation: 'pulse-dot 1.4s ease-in-out infinite',
               }}
             />
@@ -256,7 +397,7 @@ export default function DialoguePanel({
       <div
         style={{
           padding: 'var(--space-3)',
-          borderTop: '1px solid var(--border-subtle)',
+          borderTop: '1px solid var(--surface-secondary)',
           flexShrink: 0,
         }}
       >
@@ -265,7 +406,7 @@ export default function DialoguePanel({
             display: 'flex',
             alignItems: 'flex-end',
             gap: 'var(--space-2)',
-            background: 'var(--surface-inset)',
+            background: 'var(--surface-secondary)',
             borderRadius: 'var(--radius-md)',
             padding: 'var(--space-2) var(--space-3)',
           }}

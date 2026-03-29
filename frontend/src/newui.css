@@ -56,6 +56,11 @@
   --duration-fast: 120ms; --duration-normal: 200ms; --duration-slow: 400ms;
 }
 
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 html.dark {
   --surface-primary:    #0f172a;
   --surface-secondary:  #1e293b;
