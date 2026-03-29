@@ -56,14 +56,14 @@ class PubChemConnector(BaseConnector):
                 timeout=10,
             )
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=resp.status_code == 200,
                 response_time_ms=0,
                 message=f"PubChem API: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=False,
                 response_time_ms=0,
                 message=str(e),
@@ -125,7 +125,7 @@ class PubChemConnector(BaseConnector):
                 external_id=f"pubchem_{cid}",
                 source_name="PubChem",
                 provenance=Provenance(
-                    source_type=self.source_type,
+                    source_type=self.source_type(),
                     api_endpoint=f"{PUBCHEM_API_BASE}/compound/name/{drug_name}/property/",
                     query_params={"properties": properties},
                     retrieved_at=datetime.now(timezone.utc),
@@ -179,7 +179,7 @@ class PubChemConnector(BaseConnector):
                 external_id=f"pubchem_syn_{cid}",
                 source_name="PubChem",
                 provenance=Provenance(
-                    source_type=self.source_type,
+                    source_type=self.source_type(),
                     api_endpoint=f"{PUBCHEM_API_BASE}/compound/name/{drug_name}/synonyms/",
                     query_params={},
                     retrieved_at=datetime.now(timezone.utc),

@@ -55,14 +55,14 @@ class EMAConnector(BaseConnector):
         try:
             resp = requests.head("https://www.ema.europa.eu/en/medicines", timeout=10)
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=resp.status_code < 400,
                 response_time_ms=0,
                 message=f"HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=False,
                 response_time_ms=0,
                 message=str(e),
@@ -121,7 +121,7 @@ class EMAConnector(BaseConnector):
                     external_id=eudra_ct,
                     source_name="EU Clinical Trials Register",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=EUCTR_API_URL,
                         query_params=params,
                         retrieved_at=datetime.now(timezone.utc),

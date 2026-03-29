@@ -66,14 +66,14 @@ class PharmaNewsConnector(BaseConnector):
         try:
             resp = requests.get(FDA_PRESS_RSS, timeout=10)
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=resp.status_code == 200,
                 response_time_ms=0,
                 message=f"FDA RSS: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=False,
                 response_time_ms=0,
                 message=str(e),
@@ -132,7 +132,7 @@ class PharmaNewsConnector(BaseConnector):
                     external_id=hashlib.md5(link.encode()).hexdigest()[:16],
                     source_name="FDA Press Releases",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=FDA_PRESS_RSS,
                         query_params={},
                         retrieved_at=datetime.now(timezone.utc),
@@ -184,7 +184,7 @@ class PharmaNewsConnector(BaseConnector):
                     external_id=hashlib.md5(link.encode()).hexdigest()[:16],
                     source_name=f"News: {source}" if source else "Pharma News",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=GOOGLE_NEWS_RSS,
                         query_params=params,
                         retrieved_at=datetime.now(timezone.utc),

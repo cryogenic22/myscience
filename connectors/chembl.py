@@ -61,14 +61,14 @@ class ChEMBLConnector(BaseConnector):
         try:
             resp = requests.get(f"{CHEMBL_API_BASE}/status.json", timeout=10)
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=resp.status_code == 200,
                 response_time_ms=0,
                 message=f"ChEMBL API: HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=False,
                 response_time_ms=0,
                 message=str(e),
@@ -129,7 +129,7 @@ class ChEMBLConnector(BaseConnector):
             external_id=chembl_id,
             source_name="ChEMBL",
             provenance=Provenance(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 api_endpoint=f"{CHEMBL_API_BASE}/molecule/search.json",
                 query_params={"q": drug_name},
                 retrieved_at=datetime.now(timezone.utc),
@@ -178,7 +178,7 @@ class ChEMBLConnector(BaseConnector):
                     external_id=f"{chembl_id}_moa_{target_name}",
                     source_name="ChEMBL",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=f"{CHEMBL_API_BASE}/mechanism.json",
                         query_params={"molecule_chembl_id": chembl_id},
                         retrieved_at=datetime.now(timezone.utc),
@@ -227,7 +227,7 @@ class ChEMBLConnector(BaseConnector):
                     external_id=f"chembl_activity_{activity_id}",
                     source_name="ChEMBL",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=f"{CHEMBL_API_BASE}/activity.json",
                         query_params={"molecule_chembl_id": chembl_id},
                         retrieved_at=datetime.now(timezone.utc),

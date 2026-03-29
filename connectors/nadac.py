@@ -45,14 +45,14 @@ class NadacConnector(BaseConnector):
         try:
             resp = requests.get(NADAC_API_URL, params={"$limit": 1}, timeout=10)
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=resp.status_code == 200,
                 response_time_ms=0,
                 message=f"HTTP {resp.status_code}",
             )
         except Exception as e:
             return HealthCheckResult(
-                source_type=self.source_type,
+                source_type=self.source_type(),
                 healthy=False,
                 response_time_ms=0,
                 message=str(e),
@@ -94,7 +94,7 @@ class NadacConnector(BaseConnector):
                     external_id=parsed["ndc_code"],
                     source_name="CMS NADAC",
                     provenance=Provenance(
-                        source_type=self.source_type,
+                        source_type=self.source_type(),
                         api_endpoint=NADAC_API_URL,
                         query_params=params,
                         retrieved_at=datetime.now(timezone.utc),
