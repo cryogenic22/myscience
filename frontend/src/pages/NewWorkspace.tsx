@@ -160,22 +160,37 @@ export default function NewWorkspace() {
     return () => mq.removeEventListener('change', handleChange);
   }, []);
 
-  // Seed graph on mount — show a few entities so the canvas isn't empty
+  // Seed graph on mount — show a small neighborhood so the canvas isn't empty
+  // Try search suggest first, fall back to a known well-connected mechanism
   useEffect(() => {
-    api.searchSuggest('drug', 6)
-      .then(r => {
+    const loadSeed = async () => {
+      try {
+        // Try typeahead first (works if pg_trgm is available)
+        const r = await api.searchSuggest('semaglutide', 1);
         if (r.suggestions?.length) {
-          const firstEntity = r.suggestions[0];
-          return api.traverse(firstEntity.entity_type, firstEntity.entity_id, 1);
+          const e = r.suggestions[0];
+          const sub = await api.traverse(e.entity_type, e.entity_id, 1);
+          if (sub.nodes?.length && !graphData) {
+            setGraphData(filterGraphData(sub, e.entity_id));
+          }
+          return;
         }
-        return null;
-      })
-      .then(result => {
-        if (result && result.nodes?.length && !graphData) {
-          setGraphData(filterGraphData({ nodes: result.nodes, edges: result.edges }));
+      } catch { /* fall through */ }
+
+      // Fallback: fetch a well-connected mechanism neighborhood
+      // This uses the search endpoint which doesn't depend on pg_trgm
+      try {
+        const sr = await api.search('GLP-1 receptor agonists', ['mechanism'], 1);
+        if (sr.results?.length) {
+          const mech = sr.results[0];
+          const sub = await api.traverse(mech.entity_type, mech.entity_id, 1);
+          if (sub.nodes?.length && !graphData) {
+            setGraphData(filterGraphData(sub, mech.entity_id));
+          }
         }
-      })
-      .catch(() => {}); // silent — seed graph is optional
+      } catch { /* silent — seed graph is optional */ }
+    };
+    loadSeed();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch entity detail when selectedEntity changes
