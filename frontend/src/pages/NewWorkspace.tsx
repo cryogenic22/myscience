@@ -460,12 +460,34 @@ export default function NewWorkspace() {
           {lens === 'explore' ? (
             <>
               {graphData && graphData.nodes.length > 0 ? (
-                <KnowledgeGraph
-                  nodes={graphData.nodes}
-                  edges={graphData.edges}
-                  centerEntityId={centerEntityId}
-                  onNodeClick={handleNodeClick}
-                />
+                <>
+                  <KnowledgeGraph
+                    nodes={graphData.nodes}
+                    edges={graphData.edges}
+                    centerEntityId={centerEntityId}
+                    onNodeClick={handleNodeClick}
+                  />
+                  {/* Node count badge — top right of graph */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'var(--space-3)',
+                      right: 'var(--space-3)',
+                      padding: 'var(--space-1) var(--space-3)',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      backdropFilter: 'blur(6px)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'rgba(226, 232, 240, 0.6)',
+                      fontFamily: 'var(--font-mono)',
+                      zIndex: 10,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {graphData.nodes.length} entities · {graphData.edges.length} connections
+                  </div>
+                </>
               ) : (
                 /* Empty state: calm, inviting */
                 <div
@@ -501,6 +523,42 @@ export default function NewWorkspace() {
                   >
                     Ask a question or search for an entity to see connections
                   </div>
+                </div>
+              )}
+              {/* Loading overlay on graph during API calls */}
+              {isLoading && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'var(--space-3)',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: 'var(--space-2) var(--space-4)',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    backdropFilter: 'blur(6px)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'rgba(226, 232, 240, 0.7)',
+                    fontFamily: 'var(--font-body)',
+                    zIndex: 15,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    pointerEvents: 'none',
+                    animation: 'fade-in var(--duration-normal) var(--ease-out)',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: 'var(--accent)',
+                      animation: 'pulse-dot 1.2s ease-in-out infinite',
+                    }}
+                  />
+                  {queryStatus || 'Loading...'}
                 </div>
               )}
             </>
