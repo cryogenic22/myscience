@@ -113,6 +113,95 @@ ENTITY_TABLES = {
         ],
         "editable_cols": ["record_status"],
     },
+    "literature": {
+        "table": "pubmed_articles",
+        "id_col": "id",
+        "label_col": "title",
+        "search_cols": ["title", "pmid", "journal"],
+        "display_cols": [
+            "id", "pmid", "title", "journal", "publication_date",
+            "authors", "mesh_terms", "drug_id", "doi",
+            "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "event": {
+        "table": "market_events",
+        "id_col": "id",
+        "label_col": "COALESCE(LEFT(description, 80), 'Event')",
+        "search_cols": ["description", "event_type"],
+        "display_cols": [
+            "id", "event_type", "description", "event_date",
+            "source_url", "source_api", "created_at",
+        ],
+        "editable_cols": [],
+    },
+    "investigator": {
+        "table": "investigators",
+        "id_col": "id",
+        "label_col": "name",
+        "search_cols": ["name", "orcid"],
+        "display_cols": [
+            "id", "name", "orcid", "affiliation", "affiliation_country",
+            "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "patent": {
+        "table": "patents",
+        "id_col": "id",
+        "label_col": "patent_number",
+        "search_cols": ["patent_number", "applicant_holder"],
+        "display_cols": [
+            "id", "patent_number", "patent_type", "patent_expiry_date",
+            "applicant_holder", "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "trial_location": {
+        "table": "trial_locations",
+        "id_col": "id",
+        "label_col": "COALESCE(facility_name, city, 'Location')",
+        "search_cols": ["facility_name", "city", "country"],
+        "display_cols": [
+            "id", "facility_name", "city", "country", "status",
+            "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "trial_outcome": {
+        "table": "trial_outcomes",
+        "id_col": "id",
+        "label_col": "COALESCE(measure, outcome_type, 'Outcome')",
+        "search_cols": ["measure", "outcome_type"],
+        "display_cols": [
+            "id", "outcome_type", "measure", "time_frame",
+            "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "adverse_event": {
+        "table": "adverse_events",
+        "id_col": "id",
+        "label_col": "COALESCE(drug_name || ' - ' || reaction, reaction, 'AE')",
+        "search_cols": ["drug_name", "reaction"],
+        "display_cols": [
+            "id", "drug_name", "reaction", "outcome", "severity",
+            "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
+    "biomarker": {
+        "table": "biomarkers",
+        "id_col": "id",
+        "label_col": "name",
+        "search_cols": ["name", "abbreviation"],
+        "display_cols": [
+            "id", "name", "abbreviation", "category", "unit",
+            "clinical_significance", "source_api", "retrieved_at",
+        ],
+        "editable_cols": [],
+    },
 }
 
 

@@ -33,6 +33,33 @@ export interface V2Message {
   chatResponse?: ChatResponse;
 }
 
+/** Priority order for entity types — higher priority types kept first when capping nodes */
+const TYPE_PRIORITY: Record<string, number> = {
+  drug: 10, company: 9, mechanism: 8, therapeutic_area: 7,
+  trial: 6, event: 5, patent: 4, biomarker: 4,
+  investigator: 3, adverse_event: 2, literature: 1,
+  trial_location: 0, trial_outcome: 0,
+};
+
+const MAX_GRAPH_NODES = 40;
+
+/** Filter graph to keep the most meaningful nodes, capped at MAX_GRAPH_NODES */
+function filterGraphData(data: { nodes: GraphNode[]; edges: GraphEdge[] }, centerId?: string) {
+  if (data.nodes.length <= MAX_GRAPH_NODES) return data;
+
+  // Score each node: priority by type + bonus for being the center
+  const scored = data.nodes.map(n => ({
+    node: n,
+    score: (TYPE_PRIORITY[n.entity_type] ?? 1) + (n.entity_id === centerId ? 100 : 0),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  const kept = new Set(scored.slice(0, MAX_GRAPH_NODES).map(s => s.node.entity_id));
+
+  const filteredNodes = data.nodes.filter(n => kept.has(n.entity_id));
+  const filteredEdges = data.edges.filter(e => kept.has(e.source_id) && kept.has(e.target_id));
+  return { nodes: filteredNodes, edges: filteredEdges };
+}
+
 /** Extract entity mentions from a ChatResponse for display in the dialogue */
 function extractEntityMentions(
   response: ChatResponse,
@@ -164,7 +191,7 @@ export default function NewWorkspace() {
       })
       .then(result => {
         if (result && result.nodes?.length && !graphData) {
-          setGraphData({ nodes: result.nodes, edges: result.edges });
+          setGraphData(filterGraphData({ nodes: result.nodes, edges: result.edges }));
         }
       })
       .catch(() => {}); // silent — seed graph is optional
@@ -309,12 +336,14 @@ export default function NewWorkspace() {
         }
 
         if (response) {
-          // Extract graph data from response
+          // Extract graph data from response (filtered to top entities)
           if (response.data?.graph_context) {
-            setGraphData({
+            const raw = {
               nodes: response.data.graph_context.nodes || [],
               edges: response.data.graph_context.edges || [],
-            });
+            };
+            const centerId = response.data?.entity_focus?.[0]?.entity_id;
+            setGraphData(filterGraphData(raw, centerId));
           }
 
           // Update assistant message with final response
@@ -405,7 +434,7 @@ export default function NewWorkspace() {
           setSearchValue('');
           api.traverse(s.entity_type, s.entity_id, 2)
             .then(result => {
-              setGraphData({ nodes: result.nodes, edges: result.edges });
+              setGraphData(filterGraphData({ nodes: result.nodes, edges: result.edges }, s.entity_id));
               const center = result.nodes.find(n => n.entity_id === s.entity_id);
               if (center) setSelectedEntity(center);
             })
