@@ -1,23 +1,25 @@
 /**
- * NewWorkspace — Three-zone workspace shell (SPEC-009 Phase 2).
+ * NewWorkspace — Three-zone workspace shell (SPEC-009 Phase 3).
  *
  * Layout: Toolbar (top 48px) + three-zone body:
  *   Left:   DialoguePanel (280px, collapsible)
  *   Center: Graph canvas (fills remaining space) — ModernGraph
  *   Right:  InspectorPanel (320px, appears on entity selection)
  *
- * Phase 2: Real chat API integration (streaming + fallback),
- *          graph rendering from API response, follow-up suggestions.
+ * Phase 3: Inspector with real data — fetches CatalogEntityDetail
+ *          when an entity is selected, graph neighborhood exploration,
+ *          entity click from chat entity mentions.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import '../newui.css';
 import Toolbar from '../components/v2/Toolbar';
 import DialoguePanel from '../components/v2/DialoguePanel';
 import InspectorPanel from '../components/v2/InspectorPanel';
 import ModernGraph from '../components/ModernGraph';
 import { api } from '../api';
-import type { ChatResponse, GraphNode, GraphEdge } from '../api';
+import type { ChatResponse, GraphNode, GraphEdge, CatalogEntityDetail, SearchSuggestion } from '../api';
+import { useDebounce } from '../hooks/useDebounce';
 
 /** V2 message shape for the new workspace dialogue */
 export interface V2Message {
@@ -51,17 +53,103 @@ export default function NewWorkspace() {
     nodes: GraphNode[];
     edges: GraphEdge[];
   } | null>(null);
-  const [selectedEntity, setSelectedEntity] = useState<{
-    id: string;
-    type: string;
-    name: string;
-    properties?: Record<string, unknown>;
-  } | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<GraphNode | null>(null);
   const [dialogueCollapsed, setDialogueCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [queryStatus, setQueryStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Inspector state
+  const [inspectorDetail, setInspectorDetail] = useState<CatalogEntityDetail | null>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
+  const [inspectorError, setInspectorError] = useState<string | null>(null);
+
+  // Search typeahead state
+  const [searchValue, setSearchValue] = useState('');
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const debouncedSearch = useDebounce(searchValue, 300);
+
+  // Fetch suggestions when debounced search changes
+  useEffect(() => {
+    if (debouncedSearch.length < 2) { setSuggestions([]); return; }
+    setSuggestionsLoading(true);
+    api.searchSuggest(debouncedSearch, 8)
+      .then(r => setSuggestions(r.suggestions))
+      .catch(() => setSuggestions([]))
+      .finally(() => setSuggestionsLoading(false));
+  }, [debouncedSearch]);
+
+  // Cmd+K / Ctrl+K focuses search input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('[data-search-input]')?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Fetch entity detail when selectedEntity changes
+  useEffect(() => {
+    if (!selectedEntity) {
+      setInspectorDetail(null);
+      setInspectorError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setInspectorLoading(true);
+    setInspectorError(null);
+
+    api
+      .catalogEntityDetail(selectedEntity.entity_type, selectedEntity.entity_id)
+      .then((detail) => {
+        if (!controller.signal.aborted) setInspectorDetail(detail);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setInspectorError(String(err));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setInspectorLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedEntity?.entity_id, selectedEntity?.entity_type]);
+
+  // Explore neighborhood: fetch and merge graph data
+  const handleExplore = useCallback(
+    async (entityType: string, entityId: string) => {
+      try {
+        const result = await api.traverse(entityType, entityId, 2);
+        // Merge with existing graph data (deduplicate)
+        setGraphData((prev) => {
+          if (!prev) return { nodes: result.nodes, edges: result.edges };
+          const nodeMap = new Map(prev.nodes.map((n) => [n.entity_id, n]));
+          result.nodes.forEach((n) => nodeMap.set(n.entity_id, n));
+          const edgeSet = new Set(
+            prev.edges.map((e) => `${e.source_id}-${e.target_id}-${e.link_type}`),
+          );
+          const newEdges = result.edges.filter(
+            (e) => !edgeSet.has(`${e.source_id}-${e.target_id}-${e.link_type}`),
+          );
+          return {
+            nodes: Array.from(nodeMap.values()),
+            edges: [...prev.edges, ...newEdges],
+          };
+        });
+        // Center on the explored entity
+        const found = result.nodes.find((n) => n.entity_id === entityId);
+        if (found) setSelectedEntity(found);
+      } catch (err) {
+        console.error('Explore failed:', err);
+      }
+    },
+    [],
+  );
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -203,13 +291,23 @@ export default function NewWorkspace() {
 
   // Handle node click from graph — populate inspector
   const handleNodeClick = useCallback((node: GraphNode) => {
-    setSelectedEntity({
-      id: node.entity_id,
-      type: node.entity_type,
-      name: node.label,
-      properties: node.properties,
-    });
+    setSelectedEntity(node);
   }, []);
+
+  // Handle entity click from chat mentions or inspector relationships
+  const handleEntityClick = useCallback(
+    (entityId: string, entityType: string) => {
+      // Try to find in current graph first
+      const node = graphData?.nodes.find((n) => n.entity_id === entityId);
+      if (node) {
+        setSelectedEntity(node);
+      } else {
+        // Entity not in graph yet — fetch its neighborhood
+        handleExplore(entityType, entityId);
+      }
+    },
+    [graphData, handleExplore],
+  );
 
   return (
     <div
@@ -222,14 +320,30 @@ export default function NewWorkspace() {
         fontFamily: 'var(--font-body)',
       }}
     >
-      <Toolbar onSearch={(q) => handleSend(q)} />
+      <Toolbar
+        onSearch={(q) => handleSend(q)}
+        onSearchChange={setSearchValue}
+        onSearchSelect={(s) => {
+          setSuggestions([]);
+          setSearchValue('');
+          api.traverse(s.entity_type, s.entity_id, 2)
+            .then(result => {
+              setGraphData({ nodes: result.nodes, edges: result.edges });
+              const center = result.nodes.find(n => n.entity_id === s.entity_id);
+              if (center) setSelectedEntity(center);
+            })
+            .catch(err => console.error('Search select failed:', err));
+        }}
+        suggestions={suggestions}
+        suggestionsLoading={suggestionsLoading}
+      />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <DialoguePanel
           messages={messages}
           onSend={handleSend}
+          onEntityClick={handleEntityClick}
           isLoading={isLoading}
-          queryStatus={queryStatus}
           collapsed={dialogueCollapsed}
           onToggle={() => setDialogueCollapsed(!dialogueCollapsed)}
         />
@@ -387,7 +501,12 @@ export default function NewWorkspace() {
         {selectedEntity && (
           <InspectorPanel
             entity={selectedEntity}
+            detail={inspectorDetail}
+            isLoading={inspectorLoading}
+            error={inspectorError}
             onClose={() => setSelectedEntity(null)}
+            onExplore={handleExplore}
+            onEntityClick={handleEntityClick}
           />
         )}
       </div>

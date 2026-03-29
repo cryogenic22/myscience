@@ -1,45 +1,146 @@
 /**
  * Toolbar — 48px top bar for the three-zone workspace.
- * Left: Logo text in Fraunces. Center: Search input. Right: Settings + theme toggle.
+ * Left: Logo text in Fraunces. Center: Search input with typeahead. Right: Settings + theme toggle.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTheme } from '../../hooks/useTheme';
-import Input from './Input';
+import SearchDropdown from './SearchDropdown';
 import Button from './Button';
+
+interface SuggestionItem {
+  entity_id: string;
+  entity_type: string;
+  label: string;
+  similarity: number;
+}
 
 interface ToolbarProps {
   onSearch: (query: string) => void;
+  onSearchChange?: (value: string) => void;
+  onSearchSelect?: (suggestion: { entity_id: string; entity_type: string; label: string }) => void;
+  suggestions?: SuggestionItem[];
+  suggestionsLoading?: boolean;
   lens?: 'explore' | 'curate';
   onLensChange?: (lens: 'explore' | 'curate') => void;
 }
 
-export default function Toolbar({ onSearch, lens, onLensChange }: ToolbarProps) {
+export default function Toolbar({
+  onSearch,
+  onSearchChange,
+  onSearchSelect,
+  suggestions,
+  suggestionsLoading,
+  lens,
+  onLensChange,
+}: ToolbarProps) {
   const { theme, toggleTheme } = useTheme();
   const [searchValue, setSearchValue] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const showDropdown =
+    searchValue.trim().length >= 2 &&
+    (suggestionsLoading || (suggestions && suggestions.length > 0));
+
+  const handleChange = useCallback(
+    (value: string) => {
+      setSearchValue(value);
+      setSelectedIndex(-1);
+      onSearchChange?.(value);
+    },
+    [onSearchChange],
+  );
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      if (
+        selectedIndex >= 0 &&
+        suggestions &&
+        selectedIndex < suggestions.length &&
+        onSearchSelect
+      ) {
+        const s = suggestions[selectedIndex];
+        onSearchSelect({ entity_id: s.entity_id, entity_type: s.entity_type, label: s.label });
+        setSearchValue('');
+        setSelectedIndex(-1);
+        onSearchChange?.('');
+        return;
+      }
       const trimmed = searchValue.trim();
       if (trimmed) {
         onSearch(trimmed);
+        setSearchValue('');
+        setSelectedIndex(-1);
+        onSearchChange?.('');
       }
     },
-    [searchValue, onSearch],
+    [searchValue, onSearch, onSearchChange, onSearchSelect, suggestions, selectedIndex],
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const count = suggestions?.length ?? 0;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1 >= count ? 0 : prev + 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 < 0 ? count - 1 : prev - 1));
+        return;
+      }
+      if (e.key === 'Escape') {
+        setSelectedIndex(-1);
+        onSearchChange?.('');
+        setSearchValue('');
+        inputRef.current?.blur();
+        return;
+      }
       if (e.key === 'Enter') {
-        const trimmed = searchValue.trim();
-        if (trimmed) {
-          onSearch(trimmed);
+        e.preventDefault();
+        if (
+          selectedIndex >= 0 &&
+          suggestions &&
+          selectedIndex < suggestions.length &&
+          onSearchSelect
+        ) {
+          const s = suggestions[selectedIndex];
+          onSearchSelect({ entity_id: s.entity_id, entity_type: s.entity_type, label: s.label });
+          setSearchValue('');
+          setSelectedIndex(-1);
+          onSearchChange?.('');
+        } else {
+          const trimmed = searchValue.trim();
+          if (trimmed) {
+            onSearch(trimmed);
+            setSearchValue('');
+            setSelectedIndex(-1);
+            onSearchChange?.('');
+          }
         }
       }
     },
-    [searchValue, onSearch],
+    [searchValue, suggestions, selectedIndex, onSearch, onSearchChange, onSearchSelect],
   );
+
+  const handleDropdownSelect = useCallback(
+    (suggestion: { entity_id: string; entity_type: string; label: string }) => {
+      onSearchSelect?.(suggestion);
+      setSearchValue('');
+      setSelectedIndex(-1);
+      onSearchChange?.('');
+    },
+    [onSearchSelect, onSearchChange],
+  );
+
+  const handleDropdownClose = useCallback(() => {
+    setSelectedIndex(-1);
+    onSearchChange?.('');
+  }, [onSearchChange]);
 
   return (
     <header
@@ -147,28 +248,71 @@ export default function Toolbar({ onSearch, lens, onLensChange }: ToolbarProps) 
               color: 'var(--text-quaternary)',
               pointerEvents: 'none',
               flexShrink: 0,
+              zIndex: 1,
             }}
           >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
-          <Input
-            variant="search"
+          <input
+            ref={inputRef}
+            data-search-input
+            type="text"
             value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search entities, ask a question..."
+            autoComplete="off"
             style={{
+              width: '100%',
               paddingLeft: 'var(--space-8)',
+              paddingRight: 'var(--space-3)',
               height: 32,
               fontSize: 'var(--text-sm)',
+              fontFamily: 'var(--font-body)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'var(--surface-secondary)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              transition: `border-color var(--duration-fast) ease`,
+            }}
+            onFocus={(e) => {
+              (e.target as HTMLElement).style.borderColor = 'var(--accent)';
+            }}
+            onBlur={(e) => {
+              (e.target as HTMLElement).style.borderColor = 'rgba(0,0,0,0.08)';
             }}
           />
+
+          {/* Typeahead dropdown */}
+          {showDropdown && (
+            <SearchDropdown
+              suggestions={suggestions ?? []}
+              isLoading={suggestionsLoading ?? false}
+              selectedIndex={selectedIndex}
+              onSelect={handleDropdownSelect}
+              onClose={handleDropdownClose}
+            />
+          )}
         </div>
       </form>
 
       {/* Right: Settings + Theme Toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+        {/* Cmd+K hint */}
+        <span
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-tertiary)',
+            fontFamily: 'var(--font-mono)',
+            opacity: 0.6,
+            flexShrink: 0,
+          }}
+        >
+          {navigator.platform?.includes('Mac') ? '\u2318K' : 'Ctrl+K'}
+        </span>
+
         {/* Settings icon */}
         <Button
           variant="ghost"
