@@ -225,9 +225,9 @@ export default function NewWorkspace() {
     async (entityType: string, entityId: string) => {
       try {
         const result = await api.traverse(entityType, entityId, 2);
-        // Merge with existing graph data (deduplicate)
+        // Merge with existing graph data (deduplicate) then filter
         setGraphData((prev) => {
-          if (!prev) return { nodes: result.nodes, edges: result.edges };
+          if (!prev) return filterGraphData({ nodes: result.nodes, edges: result.edges }, entityId);
           const nodeMap = new Map(prev.nodes.map((n) => [n.entity_id, n]));
           result.nodes.forEach((n) => nodeMap.set(n.entity_id, n));
           const edgeSet = new Set(
@@ -236,10 +236,11 @@ export default function NewWorkspace() {
           const newEdges = result.edges.filter(
             (e) => !edgeSet.has(`${e.source_id}-${e.target_id}-${e.link_type}`),
           );
-          return {
+          const merged = {
             nodes: Array.from(nodeMap.values()),
             edges: [...prev.edges, ...newEdges],
           };
+          return filterGraphData(merged, entityId);
         });
         // Center on the explored entity
         const found = result.nodes.find((n) => n.entity_id === entityId);
@@ -399,14 +400,13 @@ export default function NewWorkspace() {
   // Handle entity click from chat mentions or inspector relationships
   const handleEntityClick = useCallback(
     (entityId: string, entityType: string) => {
-      // Try to find in current graph first
       const node = graphData?.nodes.find((n) => n.entity_id === entityId);
       if (node) {
         setSelectedEntity(node);
-      } else {
-        // Entity not in graph yet — fetch its neighborhood
-        handleExplore(entityType, entityId);
       }
+      // Always expand neighborhood — even if entity is already visible,
+      // we want to show its connections (they might not be loaded yet)
+      handleExplore(entityType, entityId);
     },
     [graphData, handleExplore],
   );
