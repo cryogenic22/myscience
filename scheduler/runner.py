@@ -260,8 +260,10 @@ class DataPipelineScheduler:
             else:
                 logger.info("Full mode (no prior successful run found)")
 
-            # Instantiate connector — chunked connectors get batch_index
+            # Instantiate connector — chunked connectors get batch_index,
+            # molecular connectors get dynamic drug list from DB
             chunked_sources = {SourceType.OPENFDA_FAERS, SourceType.OPENFDA_LABELS}
+            molecular_sources = {SourceType.CHEMBL, SourceType.PUBCHEM, SourceType.OPEN_TARGETS}
             target_overrides = None
             if source_type in chunked_sources:
                 batch_key = source_type.value
@@ -269,6 +271,29 @@ class DataPipelineScheduler:
                 target_overrides = {"batch_index": batch_idx}
                 self._batch_counters[batch_key] = batch_idx + 1
                 logger.info("Chunked mode: batch_index=%d for %s", batch_idx, name)
+            elif source_type in molecular_sources:
+                # Fetch top drugs by pipeline_score for molecular enrichment
+                try:
+                    top_drugs = db.fetch_all(
+                        """SELECT d.generic_name, COUNT(el.id) AS link_count
+                           FROM drugs d
+                           JOIN entity_links el ON el.source_entity_id = d.id::text
+                              OR el.target_entity_id = d.id::text
+                           WHERE d.generic_name IS NOT NULL
+                             AND LENGTH(d.generic_name) BETWEEN 4 AND 30
+                             AND d.generic_name ~ %s
+                             AND (d.record_status IS NULL OR d.record_status NOT IN ('excluded', 'merged'))
+                           GROUP BY d.generic_name
+                           ORDER BY link_count DESC
+                           LIMIT 50""",
+                        [r'^[a-zA-Z]'],
+                    )
+                    drug_names = [r["generic_name"] for r in top_drugs if r["generic_name"]]
+                    if drug_names:
+                        target_overrides = {"drugs": drug_names}
+                        logger.info("Dynamic drug list: %d drugs for %s", len(drug_names), name)
+                except Exception:
+                    logger.debug("Could not fetch dynamic drug list for %s", name)
             try:
                 if target_overrides:
                     connector = get_connector(source_type, config=app_config, target_overrides=target_overrides)
