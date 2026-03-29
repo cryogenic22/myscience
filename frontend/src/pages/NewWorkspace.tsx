@@ -16,7 +16,7 @@ import Toolbar from '../components/v2/Toolbar';
 import DialoguePanel from '../components/v2/DialoguePanel';
 import InspectorPanel from '../components/v2/InspectorPanel';
 import CurateView from '../components/v2/CurateView';
-import ModernGraph from '../components/ModernGraph';
+import KnowledgeGraph from '../components/KnowledgeGraph';
 import { api } from '../api';
 import type { ChatResponse, GraphNode, GraphEdge, CatalogEntityDetail, SearchSuggestion } from '../api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -460,7 +460,7 @@ export default function NewWorkspace() {
           {lens === 'explore' ? (
             <>
               {graphData && graphData.nodes.length > 0 ? (
-                <ModernGraph
+                <KnowledgeGraph
                   nodes={graphData.nodes}
                   edges={graphData.edges}
                   centerEntityId={centerEntityId}
