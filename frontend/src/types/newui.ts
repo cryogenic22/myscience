@@ -35,3 +35,20 @@ export interface InspectorState {
 }
 
 export type Lens = 'explore' | 'curate';
+
+export interface PipelineConnector {
+  source_key: string;
+  label: string;
+  schedule: string;
+  last_run: string | null;
+  days_since: number | null;
+  records: number;
+  status: string;
+}
+
+export interface GraphSummary {
+  link_types: Array<{ type: string; count: number }>;
+  total_links: number;
+  total_entities: number;
+  drug_completeness: Record<string, number>;
+}

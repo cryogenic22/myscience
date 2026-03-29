@@ -76,26 +76,7 @@ function extractEntityMentions(
 
 /* ── Lens type ───────────────────────────────────────── */
 
-type Lens = 'explore' | 'curate';
-
-/* ── Pipeline / graph summary types for curate lens ── */
-
-interface PipelineConnector {
-  source_key: string;
-  label: string;
-  schedule: string;
-  last_run: string | null;
-  days_since: number | null;
-  records: number;
-  status: string;
-}
-
-interface GraphSummary {
-  link_types: Array<{ type: string; count: number }>;
-  total_links: number;
-  total_entities: number;
-  drug_completeness: Record<string, number>;
-}
+import type { Lens, PipelineConnector, GraphSummary } from '../types/newui';
 
 export default function NewWorkspace() {
   const [messages, setMessages] = useState<V2Message[]>([]);
