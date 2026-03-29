@@ -40,24 +40,29 @@ function statusVariant(status: string): {
   fg: string;
 } {
   switch (status.toLowerCase()) {
+    case 'fresh':
     case 'live':
+      return { label: 'Live', bg: 'rgba(22,163,74,0.15)', fg: 'var(--confidence-high)' };
     case 'ok':
-      return { label: status, bg: 'rgba(22,163,74,0.15)', fg: 'var(--confidence-high)' };
+      return { label: 'OK', bg: 'rgba(22,163,74,0.10)', fg: 'var(--confidence-high)' };
     case 'stale':
       return { label: 'Stale', bg: 'rgba(217,119,6,0.15)', fg: 'var(--confidence-mid)' };
     case 'error':
     case 'failed':
-      return { label: status, bg: 'rgba(239,68,68,0.15)', fg: 'var(--confidence-low)' };
+      return { label: 'Error', bg: 'rgba(239,68,68,0.15)', fg: 'var(--confidence-low)' };
+    case 'never':
+      return { label: 'Never Run', bg: 'rgba(239,68,68,0.08)', fg: 'var(--confidence-low)' };
     default:
-      return { label: status || 'Awaiting', bg: 'rgba(255,255,255,0.06)', fg: 'var(--text-tertiary)' };
+      return { label: status || 'Unknown', bg: 'rgba(255,255,255,0.06)', fg: 'var(--text-tertiary)' };
   }
 }
 
 function formatLastRun(lastRun: string | null, daysSince: number | null): string {
   if (!lastRun) return 'Never';
-  if (daysSince === 0) return 'Today';
-  if (daysSince === 1) return 'Yesterday';
-  if (daysSince !== null && daysSince < 7) return `${daysSince}d ago`;
+  if (daysSince !== null && daysSince < 1) return 'Today';
+  if (daysSince !== null && daysSince < 2) return 'Yesterday';
+  if (daysSince !== null && daysSince < 7) return `${Math.round(daysSince)}d ago`;
+  if (daysSince !== null && daysSince < 30) return `${Math.round(daysSince)}d ago`;
   return new Date(lastRun).toLocaleDateString();
 }
 
