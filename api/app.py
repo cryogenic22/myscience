@@ -453,6 +453,7 @@ def create_app() -> FastAPI:
         # Frontend routes (workspace, search) → index.html
         @app.get("/workspace")
         @app.get("/search")
+        @app.get("/newui")
         async def serve_frontend_routes():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
