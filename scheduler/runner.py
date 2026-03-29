@@ -22,6 +22,7 @@ from apscheduler.triggers.cron import CronTrigger
 from config import config as app_config
 from connectors import get_connector, CONNECTOR_REGISTRY
 from connectors.base import SourceType
+from connectors.base import SourceType
 from db import Database
 from integration.pipeline import IntegrationPipeline
 from scheduler.config import CONNECTOR_SCHEDULES, RUN_ORDER
@@ -35,6 +36,8 @@ class DataPipelineScheduler:
     def __init__(self):
         self._scheduler = BackgroundScheduler(timezone="UTC")
         self._stop_event = threading.Event()
+        # Batch counters for chunked connectors (persists across runs within one process)
+        self._batch_counters: dict[str, int] = {}
 
     # ── Public API ──
 
@@ -257,9 +260,20 @@ class DataPipelineScheduler:
             else:
                 logger.info("Full mode (no prior successful run found)")
 
-            # Instantiate connector and run pipeline
+            # Instantiate connector — chunked connectors get batch_index
+            chunked_sources = {SourceType.OPENFDA_FAERS, SourceType.OPENFDA_LABELS}
+            target_overrides = None
+            if source_type in chunked_sources:
+                batch_key = source_type.value
+                batch_idx = self._batch_counters.get(batch_key, 0)
+                target_overrides = {"batch_index": batch_idx}
+                self._batch_counters[batch_key] = batch_idx + 1
+                logger.info("Chunked mode: batch_index=%d for %s", batch_idx, name)
             try:
-                connector = get_connector(source_type, config=app_config)
+                if target_overrides:
+                    connector = get_connector(source_type, config=app_config, target_overrides=target_overrides)
+                else:
+                    connector = get_connector(source_type, config=app_config)
             except TypeError:
                 # Some connectors (e.g. MeSH) don't accept config kwarg
                 connector = get_connector(source_type)

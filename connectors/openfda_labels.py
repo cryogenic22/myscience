@@ -73,6 +73,8 @@ class OpenFDALabelsConnector(BaseConnector):
         # Allow dynamic target overrides for TA onboarding
         overrides = target_overrides or {}
         self._drugs = overrides.get("drugs", TARGET_DRUGS)
+        self._batch_size = overrides.get("batch_size", 8)  # 8 drugs per run
+        self._batch_index = overrides.get("batch_index", 0)
 
     def source_type(self) -> SourceType:
         return SourceType.OPENFDA_LABELS
@@ -119,7 +121,15 @@ class OpenFDALabelsConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_set_ids: set[str] = set()
 
-        for drug_name in self._drugs:
+        # Chunk: process batch_size drugs per run
+        start = self._batch_index * self._batch_size
+        batch_drugs = self._drugs[start:start + self._batch_size]
+        if not batch_drugs:
+            batch_drugs = self._drugs[:self._batch_size]
+        logger.info("Labels batch: drugs %d-%d of %d",
+                     start, start + len(batch_drugs), len(self._drugs))
+
+        for drug_name in batch_drugs:
             logger.info("Label search: %s", drug_name)
             try:
                 labels = self._search_labels(drug_name, since)

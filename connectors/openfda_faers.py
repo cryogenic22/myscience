@@ -73,6 +73,12 @@ class OpenFDAFAERSConnector(BaseConnector):
         overrides = target_overrides or {}
         self._drugs = overrides.get("drugs", TARGET_DRUGS)
 
+        # Chunked fetching: process batch_size drugs per run to stay within
+        # Railway's background task timeout (~2 min). The scheduler passes
+        # batch_index to cycle through the full drug list over multiple runs.
+        self._batch_size = overrides.get("batch_size", 6)  # 6 drugs per run
+        self._batch_index = overrides.get("batch_index", 0)
+
     def source_type(self) -> SourceType:
         return SourceType.OPENFDA_FAERS
 
@@ -118,7 +124,17 @@ class OpenFDAFAERSConnector(BaseConnector):
         records: list[RawRecord] = []
         seen_report_ids: set[str] = set()
 
-        for drug_name in self._drugs:
+        # Chunk: only process batch_size drugs starting at batch_index
+        start = self._batch_index * self._batch_size
+        batch_drugs = self._drugs[start:start + self._batch_size]
+        if not batch_drugs:
+            # Wrapped around — restart from beginning
+            batch_drugs = self._drugs[:self._batch_size]
+        logger.info("FAERS batch: drugs %d-%d of %d (%s)",
+                     start, start + len(batch_drugs), len(self._drugs),
+                     ", ".join(batch_drugs))
+
+        for drug_name in batch_drugs:
             logger.info("FAERS search: %s", drug_name)
             try:
                 reports = self._search_reports(drug_name, since)
