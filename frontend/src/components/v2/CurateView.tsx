@@ -287,6 +287,55 @@ export default function CurateView({
         </p>
       </div>
 
+      {/* ── Supply Chain Flow ───────────────────────────────── */}
+      {pipelineStatus && graphSummary && (
+        <section>
+          <h2 style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.4)', margin: '0 0 var(--space-3) 0' }}>
+            Data Flow
+          </h2>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 'var(--space-4)', padding: 'var(--space-4) 0',
+            flexWrap: 'wrap',
+          }}>
+            {/* Sources */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent)' }}>
+                {pipelineStatus.length}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const }}>Sources</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--confidence-high)' }}>
+                {pipelineStatus.filter(c => c.status === 'fresh' || c.status === 'ok').length} active
+              </div>
+            </div>
+            <div style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.2)' }}>→</div>
+            {/* Records */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-inverse)' }}>
+                {formatNumber(pipelineStatus.reduce((sum, c) => sum + c.records, 0))}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const }}>Records</div>
+            </div>
+            <div style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.2)' }}>→</div>
+            {/* Entities */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-inverse)' }}>
+                {formatNumber(graphSummary.total_entities)}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const }}>Entities</div>
+            </div>
+            <div style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.2)' }}>→</div>
+            {/* Links */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--entity-trial)' }}>
+                {formatNumber(graphSummary.total_links)}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const }}>Connections</div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── Pipeline Status Grid ─────────────────────────── */}
       <section>
         <h2
