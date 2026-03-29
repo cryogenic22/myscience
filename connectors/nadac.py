@@ -4,7 +4,9 @@ Fetches Medicaid drug pricing data from the CMS open data portal.
 Promotes scripts/fetch_nadac_pricing.py to a full BaseConnector
 as recommended in the lead assessment.
 
-API: https://data.medicaid.gov/resource/4j6z-xnwq.json
+API: https://data.medicaid.gov/resource/4j6z-xnwq.json (legacy, may be deprecated)
+Note: CMS migrated data platforms in 2025-2026. If the primary URL
+returns 404, the connector gracefully returns empty results.
 """
 
 from __future__ import annotations

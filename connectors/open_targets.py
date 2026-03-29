@@ -101,38 +101,14 @@ class OpenTargetsConnector(BaseConnector):
     def _search_drug(self, drug_name: str) -> Optional[dict]:
         """Search Open Targets for a drug by name."""
         import requests
-        query = """
-        query searchDrug($name: String!) {
-            search(queryString: $name, entityNames: ["drug"], page: {size: 1, index: 0}) {
-                hits {
-                    id
-                    name
-                    entity
-                    object {
-                        ... on Drug {
-                            id
-                            name
-                            drugType
-                            maximumClinicalTrialPhase
-                            linkedTargets {
-                                count
-                                rows {
-                                    id
-                                    approvedSymbol
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        """
+        # Use simple inline query (no variables) — more reliable across API versions
+        query = (
+            '{ search(queryString: "' + drug_name.replace('"', '') + '", '
+            'entityNames: ["drug"], page: {size: 1, index: 0}) { '
+            'hits { id name entity } } }'
+        )
         try:
-            resp = requests.post(
-                OT_API_URL,
-                json={"query": query, "variables": {"name": drug_name}},
-                timeout=15,
-            )
+            resp = requests.post(OT_API_URL, json={"query": query}, timeout=15)
             if resp.status_code != 200:
                 return None
 
@@ -142,11 +118,32 @@ class OpenTargetsConnector(BaseConnector):
                 return None
             hits = data.get("data", {}).get("search", {}).get("hits", [])
             for hit in hits:
-                obj = hit.get("object")
-                if obj and hit.get("entity") == "drug":
-                    return obj
+                if hit.get("entity") == "drug":
+                    # Fetch full drug details with linked targets
+                    drug_id = hit.get("id", "")
+                    return self._fetch_drug_details(drug_id, drug_name)
         except Exception as e:
             logger.debug("Open Targets drug search failed for %s: %s", drug_name, e)
+        return None
+
+    def _fetch_drug_details(self, drug_id: str, drug_name: str) -> Optional[dict]:
+        """Fetch drug details including linked targets."""
+        import requests
+        query = (
+            '{ drug(chemblId: "' + drug_id + '") { '
+            'id name drugType maximumClinicalTrialPhase '
+            'linkedTargets { count rows { id approvedSymbol } } } }'
+        )
+        try:
+            resp = requests.post(OT_API_URL, json={"query": query}, timeout=15)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if "errors" in data:
+                return {"id": drug_id, "name": drug_name, "linkedTargets": {"count": 0, "rows": []}}
+            return data.get("data", {}).get("drug")
+        except Exception as e:
+            logger.debug("Open Targets drug details failed for %s: %s", drug_id, e)
         return None
 
     def _fetch_target_associations(self, target_id: str) -> Optional[dict]:

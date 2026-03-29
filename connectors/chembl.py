@@ -28,6 +28,10 @@ from connectors.base import (
     SourceType,
 )
 
+# Map ChEMBL record types: mechanisms → MOLECULAR_TARGET, activities → BIOACTIVITY
+_MECH_RECORD_TYPE = getattr(RecordType, 'MOLECULAR_TARGET', RecordType.ONTOLOGY_TERM)
+_ACT_RECORD_TYPE = getattr(RecordType, 'BIOACTIVITY', RecordType.ONTOLOGY_TERM)
+
 logger = logging.getLogger(__name__)
 
 CHEMBL_API_BASE = "https://www.ebi.ac.uk/chembl/api/data"
@@ -170,7 +174,7 @@ class ChEMBLConnector(BaseConnector):
             for mech in data.get("mechanisms", []):
                 target_name = mech.get("target_chembl_id", "")
                 records.append(RawRecord(
-                    record_type=RecordType.ONTOLOGY_TERM,
+                    record_type=_MECH_RECORD_TYPE,
                     external_id=f"{chembl_id}_moa_{target_name}",
                     source_name="ChEMBL",
                     provenance=Provenance(
@@ -219,7 +223,7 @@ class ChEMBLConnector(BaseConnector):
             for act in data.get("activities", []):
                 activity_id = act.get("activity_id", "")
                 records.append(RawRecord(
-                    record_type=RecordType.ONTOLOGY_TERM,
+                    record_type=_ACT_RECORD_TYPE,
                     external_id=f"chembl_activity_{activity_id}",
                     source_name="ChEMBL",
                     provenance=Provenance(

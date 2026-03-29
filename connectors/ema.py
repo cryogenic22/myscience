@@ -31,8 +31,9 @@ EMA_API_URL = "https://www.ema.europa.eu/en/medicines/download-medicine-data"
 # Alternative: EMA Open Data Portal
 EMA_OPEN_DATA_URL = "https://data.europa.eu/api/hub/search/datasets/european-medicines-agency-human-medicines"
 
-# EU Clinical Trials Register
-EUCTR_API_URL = "https://www.clinicaltrialsregister.eu/ctr-search/rest/search/basic"
+# EU Clinical Trials Register (legacy REST API deprecated 2025)
+# New system: EU CTIS (Clinical Trials Information System)
+EUCTR_API_URL = "https://euclinicaltrials.eu/ctis-public-api/search"
 
 
 class EMAConnector(BaseConnector):
@@ -87,23 +88,28 @@ class EMAConnector(BaseConnector):
         return records
 
     def _search_euctr(self, drug_name: str, since: Optional[datetime] = None) -> list[RawRecord]:
-        """Search EU Clinical Trials Register for a drug."""
+        """Search EU CTIS (Clinical Trials Information System) for a drug."""
+        import requests as _req
         records = []
-        params = {"query": drug_name, "mode": "basic"}
-        if since:
-            params["dateFrom"] = since.strftime("%Y-%m-%d")
+        body = {
+            "searchCriteria": {"containAll": drug_name},
+            "pagination": {"page": 0, "size": 50},
+        }
 
         try:
-            resp = self._fetch_with_retry(
+            resp = _req.post(
                 EUCTR_API_URL,
-                params=params,
+                json=body,
                 timeout=30,
+                headers={"User-Agent": "MarketZero/1.0 contact@marketzero.com",
+                         "Content-Type": "application/json"},
             )
             if resp.status_code != 200:
+                logger.debug("CTIS API returned %d for %s", resp.status_code, drug_name)
                 return records
 
             data = resp.json() if hasattr(resp, 'json') else {}
-            results = data.get("results", data.get("trials", []))
+            results = data.get("data", [])
 
             for trial in results[:100]:  # cap per drug
                 eudra_ct = trial.get("eudract_number", trial.get("id", ""))
