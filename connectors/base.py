@@ -67,6 +67,8 @@ class RecordType(str, Enum):
     TRIAL_OUTCOME = "trial_outcome"
     TRIAL_LOCATION = "trial_location"
     INVESTIGATOR = "investigator"
+    MOLECULAR_TARGET = "molecular_target"
+    BIOACTIVITY = "bioactivity"
 
 
 class LinkType(str, Enum):
@@ -93,6 +95,9 @@ class LinkType(str, Enum):
     HAS_ADVERSE_EVENT = "HAS_ADVERSE_EVENT"
     HAS_LABEL = "HAS_LABEL"
     HAS_FULL_TEXT = "HAS_FULL_TEXT"
+    BINDS_TO = "BINDS_TO"
+    GENETIC_ASSOCIATION = "GENETIC_ASSOCIATION"
+    TARGET_OF_MECHANISM = "TARGET_OF_MECHANISM"
 
 
 # ============================================================

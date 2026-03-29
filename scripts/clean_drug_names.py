@@ -50,7 +50,17 @@ EXCLUDE_PATTERNS = [
     re.compile(r"\boral\s+tablet\b", re.IGNORECASE),
     re.compile(r"\bfilm-coated\s+tablet\b", re.IGNORECASE),
     re.compile(r"^exendin\s+\d+-\d+\b", re.IGNORECASE),
+    re.compile(r"\b(?:medication|treatment|allocation)\b", re.IGNORECASE),
+    re.compile(r"^co-administration\b", re.IGNORECASE),
+    re.compile(r"^combination\s+of\b", re.IGNORECASE),
+    re.compile(r"\bmanagement\b", re.IGNORECASE),
+    re.compile(r"\bnurse\b", re.IGNORECASE),
+    re.compile(r"^any\s+", re.IGNORECASE),
+    re.compile(r"^beta\s+blocker\b", re.IGNORECASE),
 ]
+
+# Multi-drug intervention arms (contain " or ", " and ", " plus " with >30 chars)
+MULTI_DRUG_PATTERN = re.compile(r"\b(?:or|and|plus)\b", re.IGNORECASE)
 
 # Names > this length are almost always raw intervention strings, not drug names
 MAX_DRUG_NAME_LENGTH = 60
@@ -112,6 +122,9 @@ def _should_exclude(name: str) -> bool:
         return True
     # Multi-drug intervention arms
     if any(p.search(name) for p in MULTI_DRUG_INDICATORS):
+        return True
+    # Multi-drug names with "or"/"and"/"plus" that are > 30 chars
+    if len(name) > 30 and MULTI_DRUG_PATTERN.search(name):
         return True
     return False
 
