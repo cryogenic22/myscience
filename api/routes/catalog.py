@@ -1677,7 +1677,10 @@ def pipeline_status(db: Database = Depends(get_db)):
     # Build freshness data from ALL entity tables (same approach as /catalog/freshness)
     all_tables = ["drugs", "clinical_trials", "pubmed_articles", "companies",
                   "market_events", "therapeutic_areas", "mechanisms_of_action",
-                  "drug_labels", "adverse_events", "patents"]
+                  "drug_labels", "adverse_events", "patents",
+                  "molecular_targets", "bioactivities",
+                  "investigators", "trial_locations", "trial_outcomes",
+                  "pmc_articles"]
     freshness_by_source: dict = {}
     for table in all_tables:
         try:
