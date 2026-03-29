@@ -69,6 +69,9 @@ class KnowledgeStore:
             RecordType.TRIAL_OUTCOME: self._store_trial_outcome,
             RecordType.TRIAL_LOCATION: self._store_trial_location,
             RecordType.INVESTIGATOR: self._store_investigator,
+            RecordType.BIOMARKER: self._store_biomarker,
+            RecordType.MOLECULAR_TARGET: self._store_molecular_target,
+            RecordType.BIOACTIVITY: self._store_bioactivity,
         }
 
         handler = router.get(record_type)
@@ -1198,3 +1201,240 @@ class KnowledgeStore:
                 ],
             )
             return str(new_row["id"]), True
+
+    def _store_biomarker(self, record: EmbeddedRecord, etl_run_id: str) -> tuple[str, bool]:
+        """Store a biomarker entity."""
+        data = record.resolved.normalized.canonical_data
+        prov = record.resolved.normalized.raw.provenance
+
+        name = data.get("name")
+        content_hash = self.compute_content_hash(data)
+
+        row = None
+        if name:
+            row = self.db.fetch_one(
+                "SELECT id FROM biomarkers WHERE LOWER(name) = LOWER(%s)",
+                [name],
+            )
+
+        if row:
+            self.db.execute(
+                """
+                UPDATE biomarkers
+                SET category = COALESCE(%s, category),
+                    abbreviation = COALESCE(%s, abbreviation),
+                    unit = COALESCE(%s, unit),
+                    clinical_significance = COALESCE(%s, clinical_significance),
+                    source_api = %s, source_url = %s, retrieved_at = %s,
+                    content_hash = %s, last_verified_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                [
+                    data.get("category"),
+                    data.get("abbreviation"),
+                    data.get("unit"),
+                    data.get("clinical_significance"),
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                    content_hash,
+                    row["id"],
+                ],
+            )
+            return str(row["id"]), False
+        else:
+            import uuid
+
+            new_id = str(uuid.uuid4())
+            self.db.execute(
+                """
+                INSERT INTO biomarkers
+                    (id, name, category, abbreviation, unit,
+                     clinical_significance, content_hash, last_verified_at,
+                     source_api, source_url, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+                """,
+                [
+                    new_id,
+                    name,
+                    data.get("category"),
+                    data.get("abbreviation"),
+                    data.get("unit"),
+                    data.get("clinical_significance"),
+                    content_hash,
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                ],
+            )
+            return new_id, True
+
+    def _store_molecular_target(self, record: EmbeddedRecord, etl_run_id: str) -> tuple[str, bool]:
+        """Store a molecular target (gene/protein) from ChEMBL or similar sources."""
+        data = record.resolved.normalized.canonical_data
+        prov = record.resolved.normalized.raw.provenance
+
+        chembl_id = data.get("chembl_id")
+        ensembl_id = data.get("ensembl_id")
+        gene_symbol = data.get("gene_symbol")
+
+        row = None
+        if chembl_id:
+            row = self.db.fetch_one(
+                "SELECT id FROM molecular_targets WHERE chembl_id = %s",
+                [chembl_id],
+            )
+        if not row and ensembl_id:
+            row = self.db.fetch_one(
+                "SELECT id FROM molecular_targets WHERE ensembl_id = %s",
+                [ensembl_id],
+            )
+        if not row and gene_symbol:
+            row = self.db.fetch_one(
+                "SELECT id FROM molecular_targets WHERE gene_symbol = %s",
+                [gene_symbol],
+            )
+
+        content_hash = self.compute_content_hash(data)
+
+        if row:
+            self.db.execute(
+                """
+                UPDATE molecular_targets
+                SET gene_symbol = COALESCE(%s, gene_symbol),
+                    target_name = COALESCE(%s, target_name),
+                    organism = COALESCE(%s, organism),
+                    target_type = COALESCE(%s, target_type),
+                    chembl_id = COALESCE(%s, chembl_id),
+                    ensembl_id = COALESCE(%s, ensembl_id),
+                    uniprot_id = COALESCE(%s, uniprot_id),
+                    source_api = %s, source_url = %s, retrieved_at = %s,
+                    content_hash = %s, last_verified_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                [
+                    gene_symbol,
+                    data.get("target_name"),
+                    data.get("organism"),
+                    data.get("target_type"),
+                    chembl_id,
+                    ensembl_id,
+                    data.get("uniprot_id"),
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                    content_hash,
+                    row["id"],
+                ],
+            )
+            return str(row["id"]), False
+        else:
+            import uuid
+
+            new_id = str(uuid.uuid4())
+            self.db.execute(
+                """
+                INSERT INTO molecular_targets
+                    (id, gene_symbol, target_name, organism, target_type,
+                     chembl_id, ensembl_id, uniprot_id,
+                     content_hash, last_verified_at,
+                     source_api, source_url, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+                """,
+                [
+                    new_id,
+                    gene_symbol,
+                    data.get("target_name"),
+                    data.get("organism"),
+                    data.get("target_type"),
+                    chembl_id,
+                    ensembl_id,
+                    data.get("uniprot_id"),
+                    content_hash,
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                ],
+            )
+            return new_id, True
+
+    def _store_bioactivity(self, record: EmbeddedRecord, etl_run_id: str) -> tuple[str, bool]:
+        """Store a bioactivity measurement from ChEMBL or similar sources."""
+        data = record.resolved.normalized.canonical_data
+        prov = record.resolved.normalized.raw.provenance
+
+        chembl_activity_id = data.get(
+            "chembl_activity_id", record.resolved.normalized.raw.external_id
+        )
+        content_hash = self.compute_content_hash(data)
+
+        row = self.db.fetch_one(
+            "SELECT id FROM bioactivities WHERE chembl_activity_id = %s",
+            [chembl_activity_id],
+        )
+
+        if row:
+            self.db.execute(
+                """
+                UPDATE bioactivities
+                SET molecule_chembl_id = COALESCE(%s, molecule_chembl_id),
+                    target_chembl_id = COALESCE(%s, target_chembl_id),
+                    standard_type = COALESCE(%s, standard_type),
+                    standard_value = COALESCE(%s, standard_value),
+                    standard_units = COALESCE(%s, standard_units),
+                    assay_type = COALESCE(%s, assay_type),
+                    pchembl_value = COALESCE(%s, pchembl_value),
+                    source_api = %s, source_url = %s, retrieved_at = %s,
+                    content_hash = %s, last_verified_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                [
+                    data.get("molecule_chembl_id"),
+                    data.get("target_chembl_id"),
+                    data.get("standard_type"),
+                    data.get("standard_value"),
+                    data.get("standard_units"),
+                    data.get("assay_type"),
+                    data.get("pchembl_value"),
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                    content_hash,
+                    row["id"],
+                ],
+            )
+            return str(row["id"]), False
+        else:
+            import uuid
+
+            new_id = str(uuid.uuid4())
+            self.db.execute(
+                """
+                INSERT INTO bioactivities
+                    (id, chembl_activity_id, molecule_chembl_id, target_chembl_id,
+                     standard_type, standard_value, standard_units,
+                     assay_type, pchembl_value,
+                     content_hash, last_verified_at,
+                     source_api, source_url, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+                """,
+                [
+                    new_id,
+                    chembl_activity_id,
+                    data.get("molecule_chembl_id"),
+                    data.get("target_chembl_id"),
+                    data.get("standard_type"),
+                    data.get("standard_value"),
+                    data.get("standard_units"),
+                    data.get("assay_type"),
+                    data.get("pchembl_value"),
+                    content_hash,
+                    prov.source_type.value,
+                    prov.api_endpoint,
+                    prov.retrieved_at,
+                ],
+            )
+            return new_id, True

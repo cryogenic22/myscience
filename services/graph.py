@@ -60,6 +60,12 @@ ENTITY_TABLE_MAP = {
     "event": ("market_events", "id::text", "LEFT(description, 100)", ["event_type", "event_date", "impact_score"]),
     "therapeutic_area": ("therapeutic_areas", "id::text", "name", ["mesh_id"]),
     "mechanism": ("mechanisms_of_action", "id::text", "name", ["mesh_id"]),
+    "investigator": ("investigators", "id::text", "name", ["orcid", "affiliation", "affiliation_country"]),
+    "patent": ("patents", "id::text", "patent_number", ["patent_type", "patent_expiry_date", "applicant_holder"]),
+    "biomarker": ("biomarkers", "id::text", "name", ["abbreviation", "category", "unit", "clinical_significance"]),
+    "adverse_event": ("adverse_events", "id::text", "COALESCE(drug_name, '') || ' - ' || COALESCE(reaction, '')", ["outcome", "severity", "reporter_type"]),
+    "trial_outcome": ("trial_outcomes", "id::text", "COALESCE(outcome_type || ': ', '') || COALESCE(measure, '')", ["time_frame", "description"]),
+    "trial_location": ("trial_locations", "id::text", "COALESCE(facility_name, '') || CASE WHEN city IS NOT NULL THEN ', ' || city ELSE '' END", ["country", "status"]),
 }
 
 
@@ -81,9 +87,18 @@ class GraphTraversal:
         self.db = db
         self.config = config
 
-    def neighborhood(self, entity_id: str, entity_type: str) -> Subgraph:
+    def neighborhood(
+        self,
+        entity_id: str,
+        entity_type: str,
+        link_types: Optional[list[str]] = None,
+        min_confidence: Optional[float] = None,
+    ) -> Subgraph:
         """Get immediate 1-hop connections of an entity."""
-        return self.traverse(entity_id, entity_type, hops=1)
+        return self.traverse(
+            entity_id, entity_type, hops=1,
+            link_types=link_types, min_confidence=min_confidence,
+        )
 
     def traverse(
         self,
@@ -91,6 +106,7 @@ class GraphTraversal:
         entity_type: str,
         hops: int = 2,
         link_types: Optional[list[str]] = None,
+        min_confidence: Optional[float] = None,
         max_nodes: int = 100,
     ) -> Subgraph:
         """N-hop BFS traversal from an entity.
@@ -100,6 +116,7 @@ class GraphTraversal:
             entity_type: Starting entity type.
             hops: Maximum traversal depth (1-4).
             link_types: If provided, only follow these link types.
+            min_confidence: If provided, only include edges with confidence >= this value.
             max_nodes: Cap on total edges returned.
 
         Returns:
@@ -109,8 +126,8 @@ class GraphTraversal:
         entity_id = self._resolve_entity_id(entity_id, entity_type)
 
         rows = self.db.fetch_all(
-            "SELECT * FROM traverse_graph(%s, %s, %s, %s)",
-            [entity_id, hops, link_types, max_nodes],
+            "SELECT * FROM traverse_graph(%s, %s, %s, %s, %s)",
+            [entity_id, hops, link_types, max_nodes, min_confidence],
         )
 
         # Collect unique entity IDs from edges

@@ -12,6 +12,11 @@ export const NODE_COLORS: Record<string, string> = {
   event: '#ef4444',
   investigator: '#06b6d4',
   patent: '#8b5cf6',
+  biomarker: '#0891b2',
+  adverse_event: '#f43f5e',
+  trial_outcome: '#059669',
+  trial_location: '#6366f1',
+  drug_label: '#64748b',
   unknown: '#64748b',
 };
 
@@ -68,6 +73,11 @@ export const NODE_TYPE_LABELS: Record<string, string> = {
   event: 'Event',
   investigator: 'Investigator',
   patent: 'Patent',
+  biomarker: 'Biomarker',
+  adverse_event: 'Adverse Event',
+  trial_outcome: 'Outcome',
+  trial_location: 'Location',
+  drug_label: 'Label',
   unknown: 'Unknown',
 };
 

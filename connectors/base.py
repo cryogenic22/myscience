@@ -67,6 +67,7 @@ class RecordType(str, Enum):
     TRIAL_OUTCOME = "trial_outcome"
     TRIAL_LOCATION = "trial_location"
     INVESTIGATOR = "investigator"
+    BIOMARKER = "biomarker"
     MOLECULAR_TARGET = "molecular_target"
     BIOACTIVITY = "bioactivity"
 

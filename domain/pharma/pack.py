@@ -154,6 +154,64 @@ def get_pharma_pack() -> DomainPack:
         fuzzy_match_fields={},
     )
 
+    biomarker = EntitySchema(
+        name="biomarker",
+        table_name="biomarkers",
+        record_types=["biomarker"],
+        required_fields=["name", "category"],
+        recommended_fields=["abbreviation", "unit", "clinical_significance"],
+        exact_lookup_keys={},
+        fuzzy_match_fields={"biomarker_name": "name"},
+        embedding_column=None,
+    )
+
+    adverse_event = EntitySchema(
+        name="adverse_event",
+        table_name="adverse_events",
+        record_types=["adverse_event"],
+        required_fields=["drug_name", "reaction"],
+        recommended_fields=["outcome", "severity"],
+        exact_lookup_keys={"report_id": "report_id"},
+        fuzzy_match_fields={},
+        embedding_column=None,
+    )
+
+    drug_label = EntitySchema(
+        name="drug_label",
+        table_name="drug_labels",
+        record_types=["drug_label"],
+        required_fields=["drug_name"],
+        recommended_fields=["indications", "manufacturer"],
+        exact_lookup_keys={"set_id": "set_id"},
+        fuzzy_match_fields={},
+        embedding_column=None,
+    )
+
+    molecular_target = EntitySchema(
+        name="molecular_target",
+        table_name="molecular_targets",
+        record_types=["molecular_target"],
+        required_fields=["gene_symbol"],
+        recommended_fields=["target_name", "organism", "target_type"],
+        exact_lookup_keys={
+            "chembl_id": "chembl_id",
+            "ensembl_id": "ensembl_id",
+        },
+        fuzzy_match_fields={"gene_symbol": "gene_symbol"},
+        embedding_column=None,
+    )
+
+    bioactivity = EntitySchema(
+        name="bioactivity",
+        table_name="bioactivities",
+        record_types=["bioactivity"],
+        required_fields=["chembl_activity_id"],
+        recommended_fields=["standard_type", "standard_value", "standard_units"],
+        exact_lookup_keys={"chembl_activity_id": "chembl_activity_id"},
+        fuzzy_match_fields={},
+        embedding_column=None,
+    )
+
     # ── Link Rules ──────────────────────────────────────────────
     # These replace the _link_drug(), _link_trial(), etc. methods
 
@@ -265,6 +323,26 @@ def get_pharma_pack() -> DomainPack:
             link_type="HAS_MILESTONE",
             source_entity="drug",
             target_entity="regulatory_milestone",
+            stored_id_is="target",
+        ),
+
+        # Adverse event → drug
+        LinkRule(
+            record_type="adverse_event",
+            identifier_key="generic_name",
+            link_type="HAS_ADVERSE_EVENT",
+            source_entity="drug",
+            target_entity="adverse_event",
+            stored_id_is="target",
+        ),
+
+        # Drug label → drug
+        LinkRule(
+            record_type="drug_label",
+            identifier_key="generic_name",
+            link_type="HAS_LABEL",
+            source_entity="drug",
+            target_entity="drug_label",
             stored_id_is="target",
         ),
     ]
@@ -582,6 +660,11 @@ def get_pharma_pack() -> DomainPack:
             "mechanism": mechanism,
             "investigator": investigator,
             "patent": patent,
+            "biomarker": biomarker,
+            "adverse_event": adverse_event,
+            "drug_label": drug_label,
+            "molecular_target": molecular_target,
+            "bioactivity": bioactivity,
         },
         link_rules=link_rules,
         field_mappings=field_mappings,

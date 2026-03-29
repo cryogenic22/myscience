@@ -33,10 +33,13 @@ def _subgraph_to_response(sg) -> SubgraphResponse:
 def neighborhood(
     entity_type: str,
     entity_id: str,
+    link_types: Optional[str] = Query(None, description="Comma-separated link types to filter"),
+    min_confidence: Optional[float] = Query(None, ge=0, le=1, description="Minimum edge confidence"),
     svc: GraphTraversal = Depends(get_graph),
 ):
     """1-hop neighborhood of an entity."""
-    sg = svc.neighborhood(entity_id, entity_type)
+    lt = link_types.split(",") if link_types else None
+    sg = svc.neighborhood(entity_id, entity_type, link_types=lt, min_confidence=min_confidence)
     return _subgraph_to_response(sg)
 
 
@@ -46,12 +49,16 @@ def traverse(
     entity_id: str,
     hops: int = Query(2, ge=1, le=4),
     max_nodes: int = Query(100, ge=1, le=500),
-    link_types: Optional[str] = Query(None, description="Comma-separated link types"),
+    link_types: Optional[str] = Query(None, description="Comma-separated link types to filter"),
+    min_confidence: Optional[float] = Query(None, ge=0, le=1, description="Minimum edge confidence"),
     svc: GraphTraversal = Depends(get_graph),
 ):
     """N-hop BFS traversal from an entity."""
     lt = link_types.split(",") if link_types else None
-    sg = svc.traverse(entity_id, entity_type, hops=hops, link_types=lt, max_nodes=max_nodes)
+    sg = svc.traverse(
+        entity_id, entity_type, hops=hops,
+        link_types=lt, min_confidence=min_confidence, max_nodes=max_nodes,
+    )
     return _subgraph_to_response(sg)
 
 

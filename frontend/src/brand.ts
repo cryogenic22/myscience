@@ -76,6 +76,10 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   investigator: 'Investigator',
   patent: 'Patent',
   biomarker: 'Biomarker',
+  adverse_event: 'Adverse Event',
+  trial_outcome: 'Trial Outcome',
+  trial_location: 'Trial Location',
+  drug_label: 'Drug Label',
 };
 
 /** Connectivity descriptors */
