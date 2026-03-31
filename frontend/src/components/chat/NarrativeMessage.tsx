@@ -50,6 +50,14 @@ export default function NarrativeMessage({
                   text={cleanPromptArtifacts(message.content)}
                   evidence={message.data?.evidence as EvidenceItem[] | undefined}
                   onCitationClick={onCitationClick}
+                  entityMentions={
+                    (message.data?.entity_focus as Array<Record<string, unknown>> | undefined)
+                      ?.map(ef => ({
+                        name: String(ef.label || ef.title || ef.generic_name || ef.name || ''),
+                        type: String(ef.entity_type || 'drug'),
+                      }))
+                      .filter(m => m.name.length >= 3)
+                  }
                 />
               </div>
 
@@ -127,8 +135,42 @@ function LoadingDots() {
 /* ── Rich text ── */
 
 interface TextPart {
-  type: 'text' | 'bold' | 'italic' | 'citation';
+  type: 'text' | 'bold' | 'italic' | 'citation' | 'entity';
   text: string;
+  entityType?: string;
+}
+
+// Entity type → color mapping (consistent with graph node colors)
+const ENTITY_COLORS: Record<string, string> = {
+  drug: '#3b82f6', company: '#f59e0b', trial: '#14b8a6',
+  mechanism: '#a78bfa', therapeutic_area: '#f43f5e', literature: '#22c55e',
+};
+
+function highlightEntities(parts: TextPart[], entities: EntityMention[]): TextPart[] {
+  if (!entities.length) return parts;
+  // Sort by name length DESC (longest match first)
+  const sorted = [...entities].sort((a, b) => b.name.length - a.name.length);
+  const result: TextPart[] = [];
+  for (const part of parts) {
+    if (part.type !== 'text') { result.push(part); continue; }
+    let remaining = part.text;
+    let found = false;
+    for (const entity of sorted) {
+      if (entity.name.length < 3) continue;
+      const idx = remaining.toLowerCase().indexOf(entity.name.toLowerCase());
+      if (idx >= 0) {
+        if (idx > 0) result.push({ type: 'text', text: remaining.slice(0, idx) });
+        result.push({ type: 'entity', text: remaining.slice(idx, idx + entity.name.length), entityType: entity.type });
+        remaining = remaining.slice(idx + entity.name.length);
+        found = true;
+        break; // one entity per text part to avoid overlap
+      }
+    }
+    if (!found || remaining.length > 0) {
+      result.push({ type: 'text', text: remaining });
+    }
+  }
+  return result;
 }
 
 function parseRichText(text: string): TextPart[] {
@@ -149,21 +191,33 @@ function parseRichText(text: string): TextPart[] {
   return parts;
 }
 
+interface EntityMention {
+  name: string;
+  type: string;
+}
+
 function RichText({
   text,
   evidence,
   onCitationClick,
+  entityMentions,
 }: {
   text: string;
   evidence?: EvidenceItem[];
   onCitationClick?: (index: number) => void;
+  entityMentions?: EntityMention[];
 }) {
   const paragraphs = text.split(/\n{2,}/);
 
   return (
     <>
       {paragraphs.map((para, pi) => {
-        const parts = parseRichText(para);
+        let parts = parseRichText(para);
+
+        // Highlight entity mentions in text parts
+        if (entityMentions?.length) {
+          parts = highlightEntities(parts, entityMentions);
+        }
 
         // Check for markdown heading
         const headingMatch = para.match(/^(#{1,3})\s+(.+)/);
@@ -205,6 +259,23 @@ function RichText({
               }
               if (part.type === 'italic') {
                 return <em key={i}>{part.text}</em>;
+              }
+              if (part.type === 'entity') {
+                const color = ENTITY_COLORS[part.entityType || ''] || 'var(--color-accent)';
+                return (
+                  <span
+                    key={i}
+                    style={{
+                      color,
+                      fontWeight: 500,
+                      borderBottom: `1.5px solid ${color}40`,
+                      cursor: 'default',
+                    }}
+                    title={`${part.entityType?.replace(/_/g, ' ')} entity`}
+                  >
+                    {part.text}
+                  </span>
+                );
               }
               if (part.type === 'citation') {
                 const idx = parseInt(part.text, 10);
