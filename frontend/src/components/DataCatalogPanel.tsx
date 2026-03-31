@@ -36,7 +36,8 @@ import {
 import { Drawer } from './ui/Drawer';
 import EntityDossier from './EntityDossier';
 import EntityProfileCard from './EntityProfileCard';
-import type { EntityProfileData } from '../api';
+import SourceProfileCard from './SourceProfileCard';
+import type { EntityProfileData, SourceProfileData } from '../api';
 
 interface Props {
   onAskInChat?: (question: string) => void;
@@ -142,8 +143,27 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
   const [dsProfile, setDsProfile] = useState<DatasetProfile | null>(null);
   const [dsProfileLoading, setDsProfileLoading] = useState(false);
 
+  // Source profile (rich source card)
+  const [srcProfile, setSrcProfile] = useState<SourceProfileData | null>(null);
+  const [srcProfileLoading, setSrcProfileLoading] = useState(false);
+  const [srcProfileError, setSrcProfileError] = useState<string | null>(null);
+  const [srcProfileOpen, setSrcProfileOpen] = useState(false);
+  const [srcProfileKey, setSrcProfileKey] = useState<string>('');
+
   const openDatasetProfile = useCallback((sourceKey: string) => {
-    setDsProfileOpen(true);
+    // Open rich source profile instead of legacy drawer
+    setSrcProfileKey(sourceKey);
+    setSrcProfileOpen(true);
+    setSrcProfileLoading(true);
+    setSrcProfileError(null);
+    setSrcProfile(null);
+    api.sourceProfile(sourceKey)
+      .then(setSrcProfile)
+      .catch((err) => setSrcProfileError(String(err)))
+      .finally(() => setSrcProfileLoading(false));
+
+    // Also fetch legacy profile as fallback
+    setDsProfileOpen(false);
     setDsProfileLoading(true);
     setDsProfile(null);
     api.datasetProfile(sourceKey)
@@ -465,7 +485,40 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
         )}
       </Drawer>
 
-      {/* Dataset profile drawer */}
+      {/* Source Profile Card (rich source profile) */}
+      {srcProfileOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 'min(520px, 90vw)',
+            zIndex: 50,
+            background: 'var(--color-surface)',
+            borderLeft: '1px solid var(--color-line)',
+            boxShadow: 'var(--shadow-lg)',
+            overflowY: 'auto',
+            animation: 'slide-in-right 0.2s ease-out',
+          }}
+        >
+          <SourceProfileCard
+            data={srcProfile}
+            isLoading={srcProfileLoading}
+            error={srcProfileError}
+            onClose={() => setSrcProfileOpen(false)}
+            onRefresh={() => {
+              fetch('/steward/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source: srcProfileKey }),
+              }).catch(() => {});
+            }}
+          />
+        </div>
+      )}
+
+      {/* Dataset profile drawer (legacy fallback) */}
       <Drawer
         isOpen={dsProfileOpen}
         onClose={() => setDsProfileOpen(false)}
