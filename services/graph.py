@@ -53,7 +53,7 @@ class Subgraph:
 
 # Entity type -> (table, id_column, label_column, key_properties)
 ENTITY_TABLE_MAP = {
-    "drug": ("drugs", "id::text", "generic_name", ["brand_name", "approval_date", "supply_status"]),
+    "drug": ("drugs", "id::text", "generic_name", ["brand_name", "approval_date", "supply_status", "canonical_smiles", "molecular_formula", "molecular_weight", "pubchem_cid", "mechanism_id"]),
     "company": ("companies", "id::text", "name", ["ticker", "cik", "country"]),
     "trial": ("clinical_trials", "id", "COALESCE(official_title, id)", ["phase", "status", "sponsor_name", "start_date"]),
     "literature": ("pubmed_articles", "id::text", "title", ["pmid", "journal", "publication_date"]),
