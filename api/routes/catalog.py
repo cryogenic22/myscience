@@ -1057,6 +1057,212 @@ def entity_detail(
     }
 
 
+# ── Embedding column mapping per entity type ──
+
+_EMBEDDING_COLS: dict[str, str] = {
+    "drug": "molecule_embedding",
+    "company": "strategy_embedding",
+    "trial": "protocol_embedding",
+    "article": "abstract_embedding",
+    "literature": "abstract_embedding",
+    "therapeutic_area": "scope_note_embedding",
+    "mechanism": "scope_note_embedding",
+}
+
+
+@router.get("/entity-profile/{entity_type}/{entity_id}")
+def entity_profile(
+    entity_type: str,
+    entity_id: str,
+    db: Database = Depends(get_db),
+):
+    """Rich entity profile with FAIR scoring, connections, evidence, provenance."""
+    if entity_type not in ENTITY_TABLES:
+        raise HTTPException(400, f"Unknown entity type: {entity_type}")
+
+    meta = ENTITY_TABLES[entity_type]
+    cols = ", ".join(meta["display_cols"])
+
+    # ── 1. Identity ──
+    row = db.fetch_one(
+        f"SELECT {cols} FROM {meta['table']} WHERE {meta['id_col']} = %s",
+        [entity_id],
+    )
+    if not row:
+        raise HTTPException(404, "Entity not found")
+
+    entity_data = dict(row)
+
+    # ── 2. FAIR Scores (per-entity, computed inline) ──
+
+    # Completeness: count non-null display fields / total display fields
+    recommended = meta["display_cols"]
+    filled = sum(1 for col in recommended if entity_data.get(col) is not None)
+    completeness = filled / max(len(recommended), 1)
+
+    # Link density
+    link_row = db.fetch_one(
+        "SELECT COUNT(*) AS c FROM entity_links WHERE source_entity_id = %s OR target_entity_id = %s",
+        [entity_id, entity_id],
+    )
+    link_count = link_row["c"] if link_row else 0
+    link_density = min(link_count / 10.0, 1.0)
+
+    # Source diversity
+    sources = db.fetch_all(
+        "SELECT DISTINCT source_api FROM entity_links WHERE source_entity_id = %s OR target_entity_id = %s",
+        [entity_id, entity_id],
+    )
+    source_diversity = min(len(sources) / 5.0, 1.0)
+
+    # Freshness
+    retrieved = entity_data.get("retrieved_at")
+    if retrieved:
+        if isinstance(retrieved, str):
+            try:
+                retrieved = datetime.fromisoformat(retrieved)
+            except (ValueError, TypeError):
+                retrieved = None
+        if retrieved:
+            now = datetime.now(timezone.utc)
+            if retrieved.tzinfo is None:
+                retrieved = retrieved.replace(tzinfo=timezone.utc)
+            age_days = (now - retrieved).total_seconds() / 86400
+            freshness = max(0.0, 1.0 - age_days / 90.0)
+        else:
+            freshness = 0.0
+    else:
+        freshness = 0.0
+
+    # Resolution
+    quality = float(entity_data.get("quality_score") or 0.7)
+    resolution = quality
+
+    overall = (completeness + link_density + source_diversity + freshness + resolution) / 5.0
+
+    fair_scores = {
+        "completeness": round(completeness, 4),
+        "link_density": round(link_density, 4),
+        "source_diversity": round(source_diversity, 4),
+        "freshness": round(freshness, 4),
+        "resolution": round(resolution, 4),
+        "overall": round(overall, 4),
+    }
+
+    # ── 3. AI Readiness ──
+    emb_col = _EMBEDDING_COLS.get(entity_type)
+    if emb_col:
+        emb_row = db.fetch_one(
+            f"SELECT ({emb_col} IS NOT NULL) AS has_emb FROM {meta['table']} WHERE {meta['id_col']} = %s",
+            [entity_id],
+        )
+        has_embedding = bool(emb_row and emb_row.get("has_emb"))
+    else:
+        has_embedding = False
+
+    is_linked = link_count > 0
+    is_resolved = entity_data.get("record_status") not in ("unresolved", None) if "record_status" in entity_data else True
+
+    ai_readiness = {
+        "has_embedding": has_embedding,
+        "is_linked": is_linked,
+        "is_resolved": is_resolved,
+    }
+
+    # ── 4. Connections grouped by entity type ──
+    connections = db.fetch_all(
+        """
+        SELECT
+            CASE
+                WHEN el.source_entity_id = %s THEN el.target_entity_type
+                ELSE el.source_entity_type
+            END AS connected_type,
+            COUNT(*) AS cnt,
+            ARRAY_AGG(
+                DISTINCT COALESCE(
+                    CASE WHEN el.source_entity_id = %s THEN vt.label ELSE vs.label END,
+                    CASE WHEN el.source_entity_id = %s THEN el.target_entity_id ELSE el.source_entity_id END
+                )
+            ) AS sample_labels
+        FROM entity_links el
+        LEFT JOIN v_entity_labels vs ON vs.entity_id = el.source_entity_id AND vs.entity_type = el.source_entity_type
+        LEFT JOIN v_entity_labels vt ON vt.entity_id = el.target_entity_id AND vt.entity_type = el.target_entity_type
+        WHERE el.source_entity_id = %s OR el.target_entity_id = %s
+        GROUP BY connected_type
+        ORDER BY cnt DESC
+        """,
+        [entity_id, entity_id, entity_id, entity_id, entity_id],
+    )
+
+    # Trim sample_labels to top 3
+    for conn in connections:
+        labels = conn.get("sample_labels") or []
+        conn["sample_labels"] = labels[:3]
+
+    # ── 5. Evidence trail ──
+    evidence = db.fetch_all(
+        """
+        SELECT
+            COALESCE(vt.label, el.target_entity_id) AS title,
+            el.target_entity_type AS entity_type,
+            el.link_type,
+            el.confidence
+        FROM entity_links el
+        LEFT JOIN v_entity_labels vt ON vt.entity_id = el.target_entity_id AND vt.entity_type = el.target_entity_type
+        WHERE el.source_entity_id = %s
+          AND el.target_entity_type IN ('article', 'literature', 'trial')
+        ORDER BY el.confidence DESC
+        LIMIT 5
+        """,
+        [entity_id],
+    ) if _table_exists(db, "entity_links") else []
+
+    # ── 6. Provenance ──
+    provenance_rows = db.fetch_all(
+        """
+        SELECT DISTINCT el.provenance_source
+        FROM entity_links el
+        WHERE el.source_entity_id = %s OR el.target_entity_id = %s
+        """,
+        [entity_id, entity_id],
+    )
+    provenance = [r["provenance_source"] for r in provenance_rows if r.get("provenance_source")]
+
+    # Also include the entity's own source_api
+    own_source = entity_data.get("source_api")
+    if own_source and own_source not in provenance:
+        provenance.insert(0, own_source)
+
+    # ── 7. Recent changes ──
+    recent_changes = db.fetch_all(
+        """
+        SELECT id, change_type, changed_fields, changed_at
+        FROM data_change_log
+        WHERE entity_type = %s AND entity_id = %s
+        ORDER BY changed_at DESC
+        LIMIT 5
+        """,
+        [entity_type, entity_id],
+    ) if _table_exists(db, "data_change_log") else []
+
+    # ── 8. Stats ──
+    stats = {
+        "total_connections": link_count,
+    }
+
+    return {
+        "entity_type": entity_type,
+        "identity": entity_data,
+        "fair_scores": fair_scores,
+        "ai_readiness": ai_readiness,
+        "connections": connections,
+        "evidence": evidence,
+        "provenance": provenance,
+        "recent_changes": recent_changes,
+        "stats": stats,
+    }
+
+
 @router.patch("/entities/{entity_type}/{entity_id}")
 def update_entity(
     entity_type: str,
