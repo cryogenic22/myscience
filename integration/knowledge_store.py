@@ -172,7 +172,12 @@ class KnowledgeStore:
             )
         if not row and gname:
             row = self.db.fetch_one(
-                "SELECT id FROM drugs WHERE LOWER(generic_name) = LOWER(%s)", [gname]
+                """SELECT id FROM drugs
+                   WHERE LOWER(generic_name) = LOWER(%s)
+                     AND (record_status IS NULL OR record_status NOT IN ('excluded', 'merged'))
+                   ORDER BY quality_score DESC NULLS LAST
+                   LIMIT 1""",
+                [gname],
             )
 
         content_hash = self.compute_content_hash(data)
