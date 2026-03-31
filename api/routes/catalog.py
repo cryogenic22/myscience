@@ -1953,6 +1953,229 @@ def pipeline_status(db: Database = Depends(get_db)):
     return {"connectors": result}
 
 
+# ── Source-level mapping: which entity tables each source populates ──
+
+_SOURCE_ENTITY_TABLES: dict[str, list[tuple[str, str]]] = {
+    "clinical_trials_gov": [("clinical_trials", "trial"), ("investigators", "investigator")],
+    "pubmed": [("pubmed_articles", "literature")],
+    "fda_orange_book": [("drugs", "drug"), ("patents", "patent")],
+    "openfda_faers": [("adverse_events", "adverse_event")],
+    "openfda_labels": [("drugs", "drug")],
+    "fda_shortages": [("drugs", "drug"), ("market_events", "event")],
+    "sec_edgar": [("companies", "company")],
+    "mesh_ontology": [("therapeutic_areas", "therapeutic_area"), ("mechanisms_of_action", "mechanism")],
+    "pmc": [("pubmed_articles", "literature")],
+    "ema": [("clinical_trials", "trial"), ("drugs", "drug")],
+    "nadac": [("drugs", "drug")],
+    "pharma_news": [("market_events", "event")],
+    "chembl": [("drugs", "drug")],
+    "pubchem": [("drugs", "drug")],
+    "open_targets": [("drugs", "drug")],
+    "backfill": [("drugs", "drug"), ("companies", "company")],
+}
+
+
+def _describe_schedule(cron: dict) -> str:
+    """Convert a CONNECTOR_SCHEDULES cron dict to a human-readable string."""
+    if "day" in cron:
+        return f"Monthly on day {cron['day']} at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+    if "day_of_week" in cron:
+        return f"Weekly ({cron['day_of_week']}) at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+    return f"Daily at {cron.get('hour', 0):02d}:{cron.get('minute', 0):02d} UTC"
+
+
+@router.get("/source-profile/{source_key}")
+def source_profile(source_key: str, db: Database = Depends(get_db)):
+    """Rich source/connector profile with health, schema, quality, steward activity."""
+    from scheduler.config import CONNECTOR_SCHEDULES
+    from connectors.base import SourceType
+
+    # Validate source_key against known sources
+    valid_keys = {st.value for st in SourceType}
+    # Also include "backfill" which is not a SourceType but is in DATASET_PROFILES
+    valid_keys.add("backfill")
+    if source_key not in valid_keys:
+        raise HTTPException(404, f"Unknown source: {source_key}. Known: {sorted(valid_keys)}")
+
+    # ── Label + schedule from CONNECTOR_SCHEDULES ──
+    label = source_key
+    schedule = "On-demand"
+    for st, sched in CONNECTOR_SCHEDULES.items():
+        if st.value == source_key:
+            label = sched["label"]
+            schedule = _describe_schedule(sched["cron"])
+            break
+
+    # Fall back to DATASET_PROFILES for label if not in schedules
+    if source_key in DATASET_PROFILES and label == source_key:
+        label = DATASET_PROFILES[source_key]["display_name"]
+
+    # ── Freshness: total records, last_run across all tables ──
+    total_records = 0
+    last_run_dt = None
+    source_tables = _SOURCE_ENTITY_TABLES.get(source_key, [])
+
+    for table, _etype in source_tables:
+        try:
+            row = db.fetch_one(
+                f"SELECT COUNT(*) AS total_records, MAX(retrieved_at) AS latest FROM {table} WHERE source_api = %s",
+                [source_key],
+            )
+            if row:
+                total_records += row.get("total_records") or 0
+                latest = row.get("latest")
+                if latest and (last_run_dt is None or latest > last_run_dt):
+                    last_run_dt = latest
+        except Exception:
+            pass
+
+    # Compute status + days_since
+    now = datetime.now(timezone.utc)
+    days_since = None
+    status = "never"
+    last_run = None
+    if last_run_dt is not None:
+        try:
+            if hasattr(last_run_dt, "isoformat"):
+                last_run = last_run_dt.isoformat()
+            if hasattr(last_run_dt, "tzinfo") and last_run_dt.tzinfo is None:
+                last_run_dt = last_run_dt.replace(tzinfo=timezone.utc)
+            days_since = round((now - last_run_dt).total_seconds() / 86400, 1)
+            status = "fresh" if days_since <= 2 else "ok" if days_since <= 7 else "stale"
+        except Exception:
+            pass
+
+    # ── Entity breakdown: records per entity type ──
+    entity_breakdown = []
+    for table, etype in source_tables:
+        try:
+            row = db.fetch_one(
+                f"SELECT COUNT(*) AS cnt FROM {table} WHERE source_api = %s",
+                [source_key],
+            )
+            if row and row.get("cnt"):
+                entity_breakdown.append({"entity_type": etype, "count": row["cnt"]})
+        except Exception:
+            pass
+
+    # Also try a grouped query for any tables not in the static mapping
+    if not entity_breakdown:
+        try:
+            rows = db.fetch_all(
+                """SELECT entity_type, COUNT(*) AS count
+                   FROM v_entity_labels
+                   WHERE source_api = %s
+                   GROUP BY entity_type
+                   ORDER BY count DESC""",
+                [source_key],
+            )
+            entity_breakdown = [{"entity_type": r["entity_type"], "count": r["count"]} for r in rows]
+        except Exception:
+            pass
+
+    # ── Field completeness for the primary entity type ──
+    field_completeness = []
+    primary_etype = source_tables[0][1] if source_tables else None
+    primary_table = source_tables[0][0] if source_tables else None
+    if primary_etype and primary_table and primary_etype in ENTITY_TABLES:
+        meta = ENTITY_TABLES[primary_etype]
+        display_cols = meta.get("display_cols", [])
+        # Skip non-data columns
+        skip_cols = {"id", "source_api", "retrieved_at", "content_hash", "record_status",
+                     "quality_score", "last_verified_at", "created_at", "source_url"}
+        check_cols = [c for c in display_cols if c not in skip_cols and not c.startswith("COALESCE")]
+
+        try:
+            total_row = db.fetch_one(
+                f"SELECT COUNT(*) AS total FROM {primary_table} WHERE source_api = %s",
+                [source_key],
+            )
+            total_count = total_row["total"] if total_row else 0
+
+            if total_count > 0:
+                for col in check_cols:
+                    try:
+                        fill_row = db.fetch_one(
+                            f"SELECT COUNT(*) AS filled FROM {primary_table} WHERE source_api = %s AND {col} IS NOT NULL",
+                            [source_key],
+                        )
+                        filled = fill_row["filled"] if fill_row else 0
+                        pct = round(filled / total_count * 100, 1) if total_count > 0 else 0.0
+                        field_completeness.append({
+                            "field": col,
+                            "filled": filled,
+                            "total": total_count,
+                            "pct": pct,
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # ── Recent steward actions for this source ──
+    steward_actions = []
+    try:
+        rows = db.fetch_all(
+            """SELECT action_type, status, created_at, entity_name
+               FROM steward_actions
+               WHERE signal_source ILIKE %s OR entity_name ILIKE %s
+               ORDER BY created_at DESC
+               LIMIT 10""",
+            [f"%{source_key}%", f"%{source_key}%"],
+        )
+        steward_actions = [
+            {
+                "action": r.get("action_type", ""),
+                "status": r.get("status", ""),
+                "timestamp": r["created_at"].isoformat() if r.get("created_at") and hasattr(r["created_at"], "isoformat") else str(r.get("created_at", "")),
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    # ── Cross-source links ──
+    cross_source_links = []
+    try:
+        rows = db.fetch_all(
+            """SELECT
+                   CASE WHEN el.source_entity_type IN (
+                       SELECT entity_type FROM v_entity_labels WHERE source_api = %s LIMIT 1
+                   ) THEN te.source_api ELSE se.source_api END AS target_source,
+                   el.link_type,
+                   COUNT(*) AS count
+               FROM entity_links el
+               LEFT JOIN v_entity_labels se ON se.entity_id = el.source_entity_id AND se.entity_type = el.source_entity_type
+               LEFT JOIN v_entity_labels te ON te.entity_id = el.target_entity_id AND te.entity_type = el.target_entity_type
+               WHERE se.source_api = %s OR te.source_api = %s
+               GROUP BY target_source, el.link_type
+               HAVING target_source IS NOT NULL AND target_source != %s
+               ORDER BY count DESC
+               LIMIT 20""",
+            [source_key, source_key, source_key, source_key],
+        )
+        cross_source_links = [
+            {"target_source": r["target_source"], "link_type": r["link_type"], "count": r["count"]}
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    return {
+        "source_key": source_key,
+        "label": label,
+        "schedule": schedule,
+        "status": status,
+        "last_run": last_run,
+        "days_since": days_since,
+        "total_records": total_records,
+        "entity_breakdown": entity_breakdown,
+        "field_completeness": field_completeness,
+        "steward_actions": steward_actions,
+        "cross_source_links": cross_source_links,
+    }
+
+
 @router.post("/pipeline-run")
 def trigger_pipeline_run(
     body: dict,

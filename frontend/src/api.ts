@@ -481,6 +481,22 @@ export interface FeedSummary {
   since_hours: number;
 }
 
+// ── Source Profile types ──
+
+export interface SourceProfileData {
+  source_key: string;
+  label: string;
+  schedule: string;
+  status: string;
+  last_run: string | null;
+  days_since: number | null;
+  total_records: number;
+  entity_breakdown: Array<{ entity_type: string; count: number }>;
+  field_completeness: Array<{ field: string; filled: number; total: number; pct: number }>;
+  steward_actions: Array<{ action: string; status: string; timestamp: string }>;
+  cross_source_links: Array<{ target_source: string; link_type: string; count: number }>;
+}
+
 // ── Entity Profile types ──
 
 export interface EntityProfileData {
@@ -785,6 +801,10 @@ export const api = {
   // Entity Profile
   entityProfile: (entityType: string, entityId: string) =>
     get<EntityProfileData>(`/catalog/entity-profile/${entityType}/${encodeURIComponent(entityId)}`),
+
+  // Source Profile
+  sourceProfile: (sourceKey: string) =>
+    get<SourceProfileData>(`/catalog/source-profile/${encodeURIComponent(sourceKey)}`),
 
   // Literature Explorer
   literatureDocument: (articleId: string) =>
