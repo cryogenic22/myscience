@@ -1468,9 +1468,20 @@ function BrowseTab({ browseType, onTypeChange, search, onSearch, data, loading, 
                           {contextParts.length > 0 || trialCount != null ? ' · ' : ''}{fmt(enrollment)} enrolled
                         </span>
                       )}
-                      {/* Quality indicator — right-aligned */}
+                      {/* Quality bar + indicator — right-aligned */}
                       {q != null && (
-                        <span style={{ marginLeft: 'auto' }}>
+                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{
+                            width: '40px', height: '3px', borderRadius: '2px',
+                            background: 'var(--color-line)',
+                            overflow: 'hidden', display: 'inline-block',
+                          }}>
+                            <span style={{
+                              display: 'block', height: '100%', borderRadius: '2px',
+                              width: `${Math.min(q * 100, 100)}%`,
+                              background: q >= 0.7 ? 'var(--color-green)' : q >= 0.4 ? 'var(--color-amber)' : 'var(--color-red)',
+                            }} />
+                          </span>
                           <QualityIndicator score={q} />
                         </span>
                       )}
