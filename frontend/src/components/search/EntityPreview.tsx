@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import type { SearchResult, GraphNode, GraphEdge } from '../../api';
 import { SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../../brand';
-import GraphMini from '../GraphMini';
+import KnowledgeGraph from '../KnowledgeGraph';
 import {
   type GraphFocus,
   TYPE_CONFIG,
@@ -790,12 +790,13 @@ export default function EntityPreview({
                 border: '1px solid var(--color-line)',
                 background: 'var(--color-bg)',
               }}>
-                <GraphMini
+                <KnowledgeGraph
                   nodes={linkedGraphNodes}
                   edges={linkedGraphEdges}
                   centerEntityId={graphFocus?.id ?? result.entity_id}
                   height={200}
                   onNodeClick={onGraphNodeSelect}
+                  compact
                 />
               </div>
 
