@@ -521,6 +521,45 @@ function OverviewTab({ health, stats, datasets, onBrowse, onOpenProfile, visible
         </div>
       )}
 
+      {/* Supply chain flow strip */}
+      {pipelineStatus && graphSummary && (
+        <div
+          className="rounded-2xl"
+          style={{
+            padding: '20px 24px',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-line)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '24px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {[
+            { value: String(pipelineStatus.length), label: 'Sources', sub: `${pipelineStatus.filter(c => c.status === 'fresh' || c.status === 'ok').length} active`, color: 'var(--color-accent)' },
+            { value: fmt(pipelineStatus.reduce((s, c) => s + c.records, 0)), label: 'Records', color: 'var(--color-ink)' },
+            { value: fmt(graphSummary.total_entities), label: 'Entities', color: 'var(--color-ink)' },
+            { value: fmt(graphSummary.total_links), label: 'Connections', color: 'var(--color-green)' },
+          ].map((stage, i) => (
+            <div key={stage.label} style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+              {i > 0 && <span style={{ color: 'var(--color-ink-4)', fontSize: '16px' }}>→</span>}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 300, fontFamily: 'var(--font-display)', color: stage.color, letterSpacing: '-0.02em' }}>
+                  {stage.value}
+                </div>
+                <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {stage.label}
+                </div>
+                {stage.sub && (
+                  <div style={{ fontSize: '10px', color: 'var(--color-green)', marginTop: '2px' }}>{stage.sub}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Stat row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
