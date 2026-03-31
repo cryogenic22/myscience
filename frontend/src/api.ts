@@ -481,6 +481,48 @@ export interface FeedSummary {
   since_hours: number;
 }
 
+// ── Entity Profile types ──
+
+export interface EntityProfileData {
+  identity: Record<string, unknown>;
+  entity_type: string;
+  fair_scores: {
+    completeness: number;
+    link_density: number;
+    source_diversity: number;
+    freshness: number;
+    resolution: number;
+    overall: number;
+  };
+  ai_readiness: {
+    has_embedding: boolean;
+    is_linked: boolean;
+    is_resolved: boolean;
+  };
+  connections: Array<{
+    entity_type: string;
+    count: number;
+    sample_labels: string[];
+  }>;
+  evidence: Array<{
+    title: string;
+    type: string;
+    date: string | null;
+    entity_id: string;
+  }>;
+  provenance: string[];
+  recent_changes: Array<{
+    field: string;
+    old_value: string | null;
+    new_value: string | null;
+    changed_at: string;
+  }>;
+  stats: {
+    total_connections: number;
+    influence_score: number | null;
+  };
+}
+
 // ── API Calls ──
 
 async function get<T>(path: string): Promise<T> {
@@ -739,6 +781,10 @@ export const api = {
     post<{ ok: boolean; results: Record<string, unknown> }>('/catalog/run-enrichment', {
       entity_type: entityType ?? 'drug', max_entities: maxEntities ?? 50,
     }),
+
+  // Entity Profile
+  entityProfile: (entityType: string, entityId: string) =>
+    get<EntityProfileData>(`/catalog/entity-profile/${entityType}/${encodeURIComponent(entityId)}`),
 
   // Literature Explorer
   literatureDocument: (articleId: string) =>
