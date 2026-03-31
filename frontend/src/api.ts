@@ -806,6 +806,12 @@ export const api = {
   sourceProfile: (sourceKey: string) =>
     get<SourceProfileData>(`/catalog/source-profile/${encodeURIComponent(sourceKey)}`),
 
+  // Steward
+  stewardStatus: () =>
+    get<{ total_actions: number; last_7_days: { completed: number }; last_completed_run: string | null }>('/steward/status'),
+  stewardActions: (params?: { limit?: number }) =>
+    get<{ actions: Array<{ action_type: string; entity_type: string; details: string; completed_at: string }> }>(`/steward/actions?${qs(params)}`),
+
   // Literature Explorer
   literatureDocument: (articleId: string) =>
     get<LiteratureDocument>(`/literature/${encodeURIComponent(articleId)}/document`),

@@ -1672,8 +1672,81 @@ function CurationTab({ items, onResolve }: {
     return byType;
   }, [items]);
 
+  // Steward status
+  const [stewardStatus, setStewardStatus] = useState<{ total_actions: number; last_completed_run: string | null } | null>(null);
+  const [stewardActions, setStewardActions] = useState<Array<{ action_type: string; entity_type: string; details: string; completed_at: string }>>([]);
+  useEffect(() => {
+    api.stewardStatus().then(setStewardStatus).catch(() => {});
+    api.stewardActions({ limit: 8 }).then(r => setStewardActions(r.actions || [])).catch(() => {});
+  }, []);
+
   return (
     <div className="space-y-4">
+      {/* Steward Agent Status */}
+      <div
+        className="rounded-2xl"
+        style={{ padding: '16px 20px', background: 'var(--color-surface)', border: '1px solid var(--color-line)' }}
+      >
+        <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-ink)', margin: 0 }}>
+            Data Steward Agent
+          </h3>
+          {stewardStatus && (
+            <span style={{ fontSize: '11px', color: 'var(--color-green)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+              {stewardStatus.total_actions} actions this week
+            </span>
+          )}
+        </div>
+        {stewardStatus?.last_completed_run && (
+          <div style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginBottom: '12px' }}>
+            Last run: {new Date(stewardStatus.last_completed_run).toLocaleString()}
+          </div>
+        )}
+        {/* Recent agent actions */}
+        {stewardActions.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {stewardActions.slice(0, 5).map((a, i) => (
+              <div key={i} className="flex items-center gap-2" style={{ fontSize: '12px' }}>
+                <span style={{
+                  width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '10px',
+                  background: a.action_type === 'completed' ? 'var(--color-green-soft)' : 'var(--color-amber-soft)',
+                  color: a.action_type === 'completed' ? 'var(--color-green)' : 'var(--color-amber)',
+                }}>
+                  {a.action_type === 'completed' ? '✓' : '⚠'}
+                </span>
+                <span style={{ flex: 1, color: 'var(--color-ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.details || `${a.action_type} on ${a.entity_type}`}
+                </span>
+                <span style={{ fontSize: '10px', color: 'var(--color-ink-4)', flexShrink: 0 }}>
+                  {shortDate(a.completed_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={() => { fetch('/steward/run', { method: 'POST' }).catch(() => {}); }}
+            className="btn btn-xs btn-secondary"
+            style={{ borderRadius: '6px' }}
+          >
+            Run Steward Now
+          </button>
+          <button
+            type="button"
+            onClick={() => { fetch('/steward/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); }}
+            className="btn btn-xs btn-secondary"
+            style={{ borderRadius: '6px' }}
+          >
+            Refresh All Sources
+          </button>
+        </div>
+      </div>
+
       {/* Queue metrics */}
       <div className="flex flex-wrap gap-3">
         {Object.entries(queueStats).map(([type, count]) => (
