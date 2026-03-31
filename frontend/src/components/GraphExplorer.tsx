@@ -28,7 +28,7 @@ import {
   type GraphPathResponse,
 } from '../api';
 import { displayName, LINK_TYPE_LABELS, SOURCE_LABELS, isUUID } from '../brand';
-import ModernGraph from './ModernGraph';
+import KnowledgeGraph from './KnowledgeGraph';
 import { NODE_COLORS } from './graph/graph-constants';
 import { Drawer } from './ui/Drawer';
 
@@ -980,7 +980,7 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
           </div>
         ) : filteredGraphData && filteredGraphData.nodes.length > 0 ? (
           <>
-            <ModernGraph
+            <KnowledgeGraph
               nodes={filteredGraphData.nodes}
               edges={filteredGraphData.edges}
               centerEntityId={selectedEntity?.id}
