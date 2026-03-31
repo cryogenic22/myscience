@@ -48,6 +48,8 @@ ENTITY_TABLES = {
             "patent_expiry_date", "supply_status", "source_authority",
             "source_api", "record_status", "quality_score",
             "content_hash", "last_verified_at", "retrieved_at",
+            "pubchem_cid", "canonical_smiles", "inchi_key",
+            "molecular_formula", "molecular_weight", "xlogp", "tpsa",
         ],
         "editable_cols": ["brand_name", "supply_status", "record_status"],
     },
