@@ -35,6 +35,8 @@ import {
 } from '../api';
 import { Drawer } from './ui/Drawer';
 import EntityDossier from './EntityDossier';
+import EntityProfileCard from './EntityProfileCard';
+import type { EntityProfileData } from '../api';
 
 interface Props {
   onAskInChat?: (question: string) => void;
@@ -125,6 +127,12 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [litExplorerArticleId, setLitExplorerArticleId] = useState<string | null>(null);
 
+  // Entity profile (rich profile card)
+  const [entityProfile, setEntityProfile] = useState<EntityProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+
   const [changes, setChanges] = useState<ChangeLogEntry[]>([]);
   const [hitlItems, setHitlItems] = useState<HITLItem[]>([]);
 
@@ -210,7 +218,19 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
       return;
     }
     setSelectedEntity({ type, id });
-    setDrawerOpen(true);
+
+    // Fetch rich entity profile (new endpoint)
+    setProfileOpen(true);
+    setProfileLoading(true);
+    setProfileError(null);
+    setEntityProfile(null);
+    api.entityProfile(type, id)
+      .then(setEntityProfile)
+      .catch((err) => setProfileError(String(err)))
+      .finally(() => setProfileLoading(false));
+
+    // Also fetch detail for the legacy drawer (fallback)
+    setDrawerOpen(false);
     setDetailLoading(true);
     setEntityDetail(null);
     api.catalogEntityDetail(type, id)
@@ -387,6 +407,34 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
       </div>
 
       {/* Entity drawer */}
+      {/* Entity Profile Card (new rich profile) */}
+      {profileOpen && selectedEntity && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 'min(520px, 90vw)',
+            zIndex: 50,
+            background: 'var(--color-surface)',
+            borderLeft: '1px solid var(--color-line)',
+            boxShadow: 'var(--shadow-lg)',
+            overflowY: 'auto',
+            animation: 'slide-in-right 0.2s ease-out',
+          }}
+        >
+          <EntityProfileCard
+            data={entityProfile}
+            isLoading={profileLoading}
+            error={profileError}
+            onClose={() => { setProfileOpen(false); setSelectedEntity(null); }}
+            onAskInChat={(name) => { setProfileOpen(false); onAskInChat?.(`Tell me about ${name}`); }}
+            onExploreGraph={(type, id) => { setProfileOpen(false); /* would switch to graph tab */ }}
+          />
+        </div>
+      )}
+
       <Drawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
