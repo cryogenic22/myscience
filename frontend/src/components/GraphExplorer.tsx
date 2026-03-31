@@ -975,8 +975,18 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
 
       <div className="relative min-h-[52vh] flex-1 border-t border-slate-200/60 lg:min-h-0 lg:border-t-0">
         {isLoading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/45">
-            <Loader2 className="animate-spin text-blue-600" size={32} />
+          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
+              padding: '20px 32px', borderRadius: '12px',
+              background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <Loader2 className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
+              <span style={{ fontSize: '13px', color: 'rgba(226, 232, 240, 0.7)', fontFamily: 'var(--font-body, sans-serif)' }}>
+                Loading graph...
+              </span>
+            </div>
           </div>
         ) : filteredGraphData && filteredGraphData.nodes.length > 0 ? (
           <>
@@ -986,6 +996,26 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
               centerEntityId={selectedEntity?.id}
               onNodeClick={handleNodeClick}
             />
+            {/* Node count badge */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                padding: '4px 12px',
+                borderRadius: '999px',
+                background: 'rgba(15, 23, 42, 0.8)',
+                backdropFilter: 'blur(6px)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                fontSize: '11px',
+                color: 'rgba(226, 232, 240, 0.6)',
+                fontFamily: 'var(--font-mono, monospace)',
+                zIndex: 10,
+                pointerEvents: 'none',
+              }}
+            >
+              {filteredGraphData.nodes.length} entities · {filteredGraphData.edges.length} connections
+            </div>
             {showDemoBanner && !initialEntity && (
               <div
                 className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl"
