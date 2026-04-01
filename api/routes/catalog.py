@@ -1135,7 +1135,10 @@ def entity_profile(
         freshness = 0.0
 
     # Resolution
-    quality = float(entity_data.get("quality_score") or 0.7)
+    try:
+        quality = float(entity_data.get("quality_score") or 0.7)
+    except (TypeError, ValueError):
+        quality = 0.7
     resolution = quality
 
     overall = (completeness + link_density + source_diversity + freshness + resolution) / 5.0
@@ -1151,14 +1154,20 @@ def entity_profile(
 
     # ── 3. AI Readiness ──
     emb_col = _EMBEDDING_COLS.get(entity_type)
+    has_embedding = False
     if emb_col:
-        emb_row = db.fetch_one(
-            f"SELECT ({emb_col} IS NOT NULL) AS has_emb FROM {meta['table']} WHERE {meta['id_col']} = %s",
-            [entity_id],
-        )
-        has_embedding = bool(emb_row and emb_row.get("has_emb"))
-    else:
-        has_embedding = False
+        try:
+            emb_row = db.fetch_one(
+                f"SELECT ({emb_col} IS NOT NULL) AS has_emb FROM {meta['table']} WHERE {meta['id_col']} = %s",
+                [entity_id],
+            )
+            has_embedding = bool(emb_row and emb_row.get("has_emb"))
+        except Exception:
+            # Column may not exist for this entity type
+            try:
+                db.conn.rollback()
+            except Exception:
+                pass
 
     is_linked = link_count > 0
     is_resolved = entity_data.get("record_status") not in ("unresolved", None) if "record_status" in entity_data else True
@@ -1170,52 +1179,56 @@ def entity_profile(
     }
 
     # ── 4. Connections grouped by entity type ──
-    connections = db.fetch_all(
-        """
-        SELECT
-            CASE
-                WHEN el.source_entity_id = %s THEN el.target_entity_type
-                ELSE el.source_entity_type
-            END AS connected_type,
-            COUNT(*) AS cnt,
-            ARRAY_AGG(
-                DISTINCT COALESCE(
-                    CASE WHEN el.source_entity_id = %s THEN vt.label ELSE vs.label END,
-                    CASE WHEN el.source_entity_id = %s THEN el.target_entity_id ELSE el.source_entity_id END
-                )
-            ) AS sample_labels
-        FROM entity_links el
-        LEFT JOIN v_entity_labels vs ON vs.entity_id = el.source_entity_id AND vs.entity_type = el.source_entity_type
-        LEFT JOIN v_entity_labels vt ON vt.entity_id = el.target_entity_id AND vt.entity_type = el.target_entity_type
-        WHERE el.source_entity_id = %s OR el.target_entity_id = %s
-        GROUP BY connected_type
-        ORDER BY cnt DESC
-        """,
-        [entity_id, entity_id, entity_id, entity_id, entity_id],
-    )
+    try:
+        connections = db.fetch_all(
+            """
+            SELECT
+                CASE
+                    WHEN source_entity_id = %s THEN target_entity_type
+                    ELSE source_entity_type
+                END AS connected_type,
+                COUNT(*) AS cnt
+            FROM entity_links
+            WHERE source_entity_id = %s OR target_entity_id = %s
+            GROUP BY connected_type
+            ORDER BY cnt DESC
+            """,
+            [entity_id, entity_id, entity_id],
+        )
+    except Exception:
+        connections = []
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
 
-    # Trim sample_labels to top 3
+    # Add empty sample_labels (removed heavy v_entity_labels join for performance)
     for conn in connections:
-        labels = conn.get("sample_labels") or []
-        conn["sample_labels"] = labels[:3]
+        conn["sample_labels"] = []
 
     # ── 5. Evidence trail ──
-    evidence = db.fetch_all(
-        """
-        SELECT
-            COALESCE(vt.label, el.target_entity_id) AS title,
-            el.target_entity_type AS entity_type,
-            el.link_type,
-            el.confidence
-        FROM entity_links el
-        LEFT JOIN v_entity_labels vt ON vt.entity_id = el.target_entity_id AND vt.entity_type = el.target_entity_type
-        WHERE el.source_entity_id = %s
-          AND el.target_entity_type IN ('article', 'literature', 'trial')
-        ORDER BY el.confidence DESC
-        LIMIT 5
-        """,
-        [entity_id],
-    ) if _table_exists(db, "entity_links") else []
+    try:
+        evidence = db.fetch_all(
+            """
+            SELECT
+                el.target_entity_id AS entity_id,
+                el.target_entity_type AS entity_type,
+                el.link_type,
+                el.confidence
+            FROM entity_links el
+            WHERE el.source_entity_id = %s
+              AND el.target_entity_type IN ('article', 'literature', 'trial')
+            ORDER BY el.confidence DESC
+            LIMIT 5
+            """,
+            [entity_id],
+        )
+    except Exception:
+        evidence = []
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
 
     # ── 6. Provenance ──
     provenance_rows = db.fetch_all(
