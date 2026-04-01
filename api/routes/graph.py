@@ -55,11 +55,24 @@ def traverse(
 ):
     """N-hop BFS traversal from an entity."""
     lt = link_types.split(",") if link_types else None
-    sg = svc.traverse(
-        entity_id, entity_type, hops=hops,
-        link_types=lt, min_confidence=min_confidence, max_nodes=max_nodes,
-    )
-    return _subgraph_to_response(sg)
+    try:
+        sg = svc.traverse(
+            entity_id, entity_type, hops=hops,
+            link_types=lt, min_confidence=min_confidence, max_nodes=max_nodes,
+        )
+        return _subgraph_to_response(sg)
+    except Exception as e:
+        # If 2-hop fails (timeout on high-connectivity nodes), retry with 1 hop
+        if hops > 1:
+            try:
+                sg = svc.traverse(
+                    entity_id, entity_type, hops=1,
+                    link_types=lt, min_confidence=min_confidence, max_nodes=min(max_nodes, 30),
+                )
+                return _subgraph_to_response(sg)
+            except Exception:
+                pass
+        raise HTTPException(500, f"Graph traversal failed: {type(e).__name__}")
 
 
 @router.get("/summary/{entity_type}/{entity_id}", response_model=EntitySummaryResponse)

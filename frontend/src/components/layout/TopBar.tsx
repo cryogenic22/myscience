@@ -18,7 +18,7 @@ const TABS = [
   { key: 'feed' as const, label: 'Feed', icon: Bell },
   { key: 'search' as const, label: 'Search', icon: Search },
   { key: 'graph' as const, label: 'Graph', icon: Network },
-  { key: 'catalog' as const, label: 'Data', icon: Database },
+  { key: 'catalog' as const, label: 'Entity Library', icon: Database },
 ];
 
 export default function TopBar({ onBack, onSearch, activeTab, onTabChange, breadcrumb }: TopBarProps) {
