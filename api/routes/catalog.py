@@ -1078,7 +1078,19 @@ def entity_profile(
 ):
     """Rich entity profile with FAIR scoring, connections, evidence, provenance."""
     if entity_type not in ENTITY_TABLES:
-        raise HTTPException(400, f"Unknown entity type: {entity_type}")
+        raise HTTPException(400, f"Unknown entity type: {entity_type}. Valid: {list(ENTITY_TABLES.keys())}")
+
+    try:
+        return _build_entity_profile(entity_type, entity_id, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Entity profile failed for %s/%s", entity_type, entity_id)
+        raise HTTPException(500, f"Profile generation failed: {type(e).__name__}: {str(e)[:200]}")
+
+
+def _build_entity_profile(entity_type: str, entity_id: str, db) -> dict:
+    """Internal implementation — extracted so we can catch all errors."""
 
     meta = ENTITY_TABLES[entity_type]
     cols = ", ".join(meta["display_cols"])
@@ -1231,15 +1243,22 @@ def entity_profile(
             pass
 
     # ── 6. Provenance ──
-    provenance_rows = db.fetch_all(
-        """
-        SELECT DISTINCT el.provenance_source
-        FROM entity_links el
-        WHERE el.source_entity_id = %s OR el.target_entity_id = %s
-        """,
-        [entity_id, entity_id],
-    )
-    provenance = [r["provenance_source"] for r in provenance_rows if r.get("provenance_source")]
+    try:
+        provenance_rows = db.fetch_all(
+            """
+            SELECT DISTINCT el.provenance_source
+            FROM entity_links el
+            WHERE el.source_entity_id = %s OR el.target_entity_id = %s
+            """,
+            [entity_id, entity_id],
+        )
+        provenance = [r["provenance_source"] for r in provenance_rows if r.get("provenance_source")]
+    except Exception:
+        provenance = []
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
 
     # Also include the entity's own source_api
     own_source = entity_data.get("source_api")
@@ -1247,16 +1266,23 @@ def entity_profile(
         provenance.insert(0, own_source)
 
     # ── 7. Recent changes ──
-    recent_changes = db.fetch_all(
-        """
-        SELECT id, change_type, changed_fields, changed_at
-        FROM data_change_log
-        WHERE entity_type = %s AND entity_id = %s
-        ORDER BY changed_at DESC
-        LIMIT 5
-        """,
-        [entity_type, entity_id],
-    ) if _table_exists(db, "data_change_log") else []
+    try:
+        recent_changes = db.fetch_all(
+            """
+            SELECT id, change_type, changed_fields, changed_at
+            FROM data_change_log
+            WHERE entity_type = %s AND entity_id = %s
+            ORDER BY changed_at DESC
+            LIMIT 5
+            """,
+            [entity_type, entity_id],
+        ) if _table_exists(db, "data_change_log") else []
+    except Exception:
+        recent_changes = []
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
 
     # ── 8. Stats ──
     stats = {
