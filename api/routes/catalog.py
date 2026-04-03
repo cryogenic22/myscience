@@ -1121,10 +1121,17 @@ def _build_entity_profile(entity_type: str, entity_id: str, db) -> dict:
     link_density = min(link_count / 10.0, 1.0)
 
     # Source diversity
-    sources = db.fetch_all(
-        "SELECT DISTINCT source_api FROM entity_links WHERE source_entity_id = %s OR target_entity_id = %s",
-        [entity_id, entity_id],
-    )
+    try:
+        sources = db.fetch_all(
+            "SELECT DISTINCT provenance_source FROM entity_links WHERE source_entity_id = %s OR target_entity_id = %s",
+            [entity_id, entity_id],
+        )
+    except Exception:
+        sources = []
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
     source_diversity = min(len(sources) / 5.0, 1.0)
 
     # Freshness
