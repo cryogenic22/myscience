@@ -2377,6 +2377,154 @@ def catalog_stats(db: Database = Depends(get_db)):
     }
 
 
+# ── Entity Activity Feed ──
+
+
+@router.get("/entity-events/{entity_type}/{entity_id}")
+def entity_events(
+    entity_type: str,
+    entity_id: str,
+    limit: int = Query(10, ge=1, le=50),
+    db: Database = Depends(get_db),
+):
+    """Unified activity feed for an entity — recent changes, steward actions,
+    market events, and new connections ordered by timestamp DESC."""
+    if entity_type not in ENTITY_TABLES:
+        raise HTTPException(400, f"Unknown entity type: {entity_type}. Valid: {list(ENTITY_TABLES.keys())}")
+
+    events: list[dict] = []
+
+    # ── 1. Field changes from entity_changelog / data_change_log ──
+    try:
+        if _table_exists(db, "data_change_log"):
+            changelog_rows = db.fetch_all(
+                """
+                SELECT change_type, changed_fields, changed_at
+                FROM data_change_log
+                WHERE entity_type = %s AND entity_id = %s
+                ORDER BY changed_at DESC
+                LIMIT %s
+                """,
+                [entity_type, entity_id, limit],
+            )
+            for row in changelog_rows:
+                fields = row.get("changed_fields") or []
+                if isinstance(fields, str):
+                    fields = [fields]
+                desc = f"{row.get('change_type', 'update')}: {', '.join(fields)}" if fields else str(row.get("change_type", "update"))
+                events.append({
+                    "event_type": "field_change",
+                    "description": desc,
+                    "source": row.get("change_type", "unknown"),
+                    "timestamp": _iso(row.get("changed_at")),
+                    "details": {"changed_fields": fields},
+                })
+    except Exception:
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
+
+    # ── 2. Steward actions ──
+    try:
+        if _table_exists(db, "steward_actions"):
+            steward_rows = db.fetch_all(
+                """
+                SELECT action_type, details, status, completed_at
+                FROM steward_actions
+                WHERE entity_type = %s AND entity_id = %s
+                ORDER BY completed_at DESC NULLS LAST
+                LIMIT %s
+                """,
+                [entity_type, entity_id, limit],
+            )
+            for row in steward_rows:
+                events.append({
+                    "event_type": "steward_action",
+                    "description": f"{row.get('action_type', 'action')}: {(row.get('details') or '')[:120]}",
+                    "source": "data_steward",
+                    "timestamp": _iso(row.get("completed_at")),
+                    "details": {"status": row.get("status")},
+                })
+    except Exception:
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
+
+    # ── 3. Market events where primary_entity matches ──
+    try:
+        if _table_exists(db, "market_events"):
+            event_rows = db.fetch_all(
+                """
+                SELECT event_type, description, source_url, event_date, created_at
+                FROM market_events
+                WHERE primary_entity_id = %s
+                ORDER BY COALESCE(event_date, created_at) DESC
+                LIMIT %s
+                """,
+                [entity_id, limit],
+            )
+            for row in event_rows:
+                events.append({
+                    "event_type": "market_event",
+                    "description": (row.get("description") or "Market event")[:200],
+                    "source": row.get("event_type", "market"),
+                    "timestamp": _iso(row.get("event_date") or row.get("created_at")),
+                    "details": {"source_url": row.get("source_url")},
+                })
+    except Exception:
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
+
+    # ── 4. Recent new connections ──
+    try:
+        link_rows = db.fetch_all(
+            """
+            SELECT link_type, target_entity_type, target_entity_id,
+                   source_entity_type, source_entity_id,
+                   provenance_source, created_at
+            FROM entity_links
+            WHERE (source_entity_id = %s OR target_entity_id = %s)
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            [entity_id, entity_id, limit],
+        )
+        for row in link_rows:
+            other_type = row.get("target_entity_type") if row.get("source_entity_id") == entity_id else row.get("source_entity_type")
+            events.append({
+                "event_type": "new_connection",
+                "description": f"New {row.get('link_type', 'link')} connection to {other_type}",
+                "source": row.get("provenance_source", "unknown"),
+                "timestamp": _iso(row.get("created_at")),
+                "details": {"link_type": row.get("link_type"), "connected_type": other_type},
+            })
+    except Exception:
+        try:
+            db.conn.rollback()
+        except Exception:
+            pass
+
+    # Sort all events by timestamp DESC and apply limit
+    events.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
+    total = len(events)
+    events = events[:limit]
+
+    return {"events": events, "total": total}
+
+
+def _iso(val) -> str:
+    """Convert a datetime (or string) to ISO-8601 string, or empty string."""
+    if val is None:
+        return ""
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)
+
+
 # ── Helpers ──
 
 

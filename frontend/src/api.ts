@@ -802,6 +802,12 @@ export const api = {
   entityProfile: (entityType: string, entityId: string) =>
     get<EntityProfileData>(`/catalog/entity-profile/${entityType}/${encodeURIComponent(entityId)}`),
 
+  // Entity Activity Feed
+  entityEvents: (entityType: string, entityId: string, limit?: number) =>
+    get<{events: Array<{event_type: string; description: string; source: string; timestamp: string; details: Record<string, unknown>}>; total: number}>(
+      `/catalog/entity-events/${entityType}/${encodeURIComponent(entityId)}?limit=${limit ?? 10}`
+    ),
+
   // Source Profile
   sourceProfile: (sourceKey: string) =>
     get<SourceProfileData>(`/catalog/source-profile/${encodeURIComponent(sourceKey)}`),

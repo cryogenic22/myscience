@@ -692,3 +692,138 @@ class TestBrowseRejectsUnknownType:
                 limit=50, offset=0, db=db,
             )
         assert exc_info.value.status_code == 400
+
+
+# ── Test entity-events endpoint ──
+
+
+class EventsMockDB:
+    """MockDB that supports the UNION-style entity-events queries."""
+
+    def __init__(self):
+        self._table_results: dict[str, list[dict]] = {}
+        self._table_exists: set[str] = set()
+        self.queries: list[str] = []
+
+    class conn:
+        """Fake conn for rollback calls."""
+        @staticmethod
+        def rollback():
+            pass
+
+    def add_table(self, table_name: str, rows: list[dict] | None = None):
+        self._table_exists.add(table_name)
+        if rows is not None:
+            self._table_results[table_name] = rows
+
+    def fetch_one(self, sql: str, params=None) -> dict | None:
+        self.queries.append(sql)
+        sql_lower = sql.lower()
+        if "information_schema" in sql_lower:
+            # Check if table exists
+            for tbl in self._table_exists:
+                if tbl in str(params):
+                    return {"exists_": True}
+            return {"exists_": False}
+        return None
+
+    def fetch_all(self, sql: str, params=None) -> list[dict]:
+        self.queries.append(sql)
+        sql_lower = sql.lower()
+        for table_name, rows in self._table_results.items():
+            if table_name in sql_lower:
+                return list(rows)
+        return []
+
+
+class TestEntityEvents:
+    """GET /catalog/entity-events/{entity_type}/{entity_id} tests."""
+
+    def test_returns_events_for_known_entity(self):
+        """Endpoint should return events from multiple sources."""
+        from api.routes.catalog import entity_events
+        from datetime import datetime, timezone
+
+        db = EventsMockDB()
+        now = datetime.now(timezone.utc)
+
+        db.add_table("data_change_log", [
+            {"change_type": "manual_edit", "changed_fields": ["brand_name"],
+             "changed_at": now},
+        ])
+        db.add_table("steward_actions", [
+            {"action_type": "enrich", "details": "Added brand name",
+             "status": "completed", "completed_at": now},
+        ])
+        db.add_table("market_events", [
+            {"event_type": "approval", "description": "FDA approval granted",
+             "source_url": "https://fda.gov", "event_date": now, "created_at": now},
+        ])
+        # entity_links always queried (no _table_exists check)
+        db._table_results["entity_links"] = [
+            {"link_type": "TREATS", "target_entity_type": "therapeutic_area",
+             "target_entity_id": "ta1", "source_entity_type": "drug",
+             "source_entity_id": "d1", "provenance_source": "cross_linker",
+             "created_at": now},
+        ]
+
+        result = entity_events(entity_type="drug", entity_id="d1", limit=10, db=db)
+
+        assert "events" in result
+        assert "total" in result
+        assert result["total"] >= 1
+        event_types = {e["event_type"] for e in result["events"]}
+        # Should have at least field_change and new_connection
+        assert "field_change" in event_types
+        assert "new_connection" in event_types
+
+    def test_empty_events_for_entity_with_no_activity(self):
+        """Endpoint should return empty list for entity with no events."""
+        from api.routes.catalog import entity_events
+
+        db = EventsMockDB()
+        # Tables exist but return no rows
+        db.add_table("data_change_log", [])
+        db.add_table("steward_actions", [])
+        db.add_table("market_events", [])
+
+        result = entity_events(entity_type="drug", entity_id="d-none", limit=10, db=db)
+
+        assert result["events"] == []
+        assert result["total"] == 0
+
+    def test_respects_limit_parameter(self):
+        """Limit should cap the number of returned events."""
+        from api.routes.catalog import entity_events
+        from datetime import datetime, timezone, timedelta
+
+        db = EventsMockDB()
+        now = datetime.now(timezone.utc)
+
+        # Provide many entity_links results
+        db.add_table("data_change_log", [])
+        db.add_table("steward_actions", [])
+        db.add_table("market_events", [])
+        db._table_results["entity_links"] = [
+            {"link_type": "TREATS", "target_entity_type": "therapeutic_area",
+             "target_entity_id": f"ta{i}", "source_entity_type": "drug",
+             "source_entity_id": "d1", "provenance_source": "cross_linker",
+             "created_at": now - timedelta(hours=i)}
+            for i in range(20)
+        ]
+
+        result = entity_events(entity_type="drug", entity_id="d1", limit=3, db=db)
+
+        assert len(result["events"]) <= 3
+        assert result["total"] >= 3
+
+    def test_rejects_unknown_entity_type(self):
+        """Unknown entity type should raise 400."""
+        from api.routes.catalog import entity_events
+        from fastapi import HTTPException
+
+        db = EventsMockDB()
+
+        with pytest.raises(HTTPException) as exc_info:
+            entity_events(entity_type="bogus_type", entity_id="x", limit=10, db=db)
+        assert exc_info.value.status_code == 400
