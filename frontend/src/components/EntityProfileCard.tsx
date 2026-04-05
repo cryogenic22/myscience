@@ -1,14 +1,20 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
+  CheckCircle,
   ChevronDown,
   ChevronRight,
+  Clock,
+  Edit3,
   ExternalLink,
   FileText,
+  Link,
   MessageSquare,
   Network,
   RefreshCw,
   X,
+  Zap,
 } from 'lucide-react';
+import { api } from '../api';
 import type { EntityProfileData } from '../api';
 import {
   displayName,
@@ -340,6 +346,28 @@ export default function EntityProfileCard({
   const entityId = String(data.identity.id ?? '');
   const typeLabel = ENTITY_TYPE_LABELS[data.entity_type] ?? displayName(data.entity_type);
   const overallPct = Math.round(data.fair_scores.overall * 100);
+
+  /* ── Activity feed state ── */
+  const [activityEvents, setActivityEvents] = useState<
+    Array<{event_type: string; description: string; source: string; timestamp: string; details: Record<string, unknown>}>
+  >([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+
+  useEffect(() => {
+    if (!entityId || !data.entity_type) return;
+    let cancelled = false;
+    api.entityEvents(data.entity_type, entityId, 10)
+      .then((res) => {
+        if (!cancelled) {
+          setActivityEvents(res.events);
+          setActivityTotal(res.total);
+        }
+      })
+      .catch(() => {
+        /* graceful degradation — section simply stays empty */
+      });
+    return () => { cancelled = true; };
+  }, [data.entity_type, entityId]);
 
   /* ── Identity fields (filter internal) ── */
   const identityEntries = Object.entries(data.identity)
@@ -697,6 +725,103 @@ export default function EntityProfileCard({
           </Section>
         )}
 
+        {/* ── Recent Activity ── */}
+        <Section
+          title="Recent Activity"
+          badge={
+            activityTotal > 0 ? (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 500,
+                color: 'var(--color-ink-4)',
+                background: 'var(--color-surface-2)',
+                padding: '2px 8px',
+                borderRadius: '8px',
+              }}>
+                {activityTotal} total
+              </span>
+            ) : undefined
+          }
+        >
+          {activityEvents.length === 0 ? (
+            <div style={{
+              fontSize: '12px',
+              color: 'var(--color-ink-4)',
+              padding: '8px 0',
+              fontStyle: 'italic',
+            }}>
+              No recent activity
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0',
+              borderLeft: '2px solid var(--color-line)',
+              marginLeft: '6px',
+              paddingLeft: '14px',
+            }}>
+              {activityEvents.map((evt, i) => (
+                <div
+                  key={`activity-${evt.event_type}-${i}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '6px 0',
+                    position: 'relative',
+                  }}
+                >
+                  {/* Timeline dot */}
+                  <span style={{
+                    position: 'absolute',
+                    left: '-20px',
+                    top: '9px',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    background: 'var(--color-surface)',
+                    border: '2px solid var(--color-line)',
+                    flexShrink: 0,
+                  }} />
+                  <ActivityIcon eventType={evt.event_type} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '12px',
+                      color: 'var(--color-ink)',
+                      fontWeight: 500,
+                      lineHeight: 1.4,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {evt.description}
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center',
+                      marginTop: '2px',
+                    }}>
+                      <span style={{
+                        fontSize: '10px',
+                        color: 'var(--color-ink-4)',
+                      }}>
+                        {evt.source}
+                      </span>
+                      {evt.timestamp && (
+                        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}>
+                          {relativeTime(evt.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
         {/* ── Actions ── */}
         <div style={{
           display: 'flex',
@@ -731,6 +856,23 @@ export default function EntityProfileCard({
 }
 
 /* ── Sub-components ── */
+
+function ActivityIcon({ eventType }: { eventType: string }) {
+  const iconStyle = { color: 'var(--color-ink-4)', marginTop: '1px', flexShrink: 0 } as const;
+  const size = 13;
+  switch (eventType) {
+    case 'field_change':
+      return <Edit3 size={size} style={iconStyle} />;
+    case 'steward_action':
+      return <CheckCircle size={size} style={iconStyle} />;
+    case 'market_event':
+      return <Zap size={size} style={iconStyle} />;
+    case 'new_connection':
+      return <Link size={size} style={iconStyle} />;
+    default:
+      return <Clock size={size} style={iconStyle} />;
+  }
+}
 
 function AiReadinessBadge({ label, ready }: { label: string; ready: boolean }) {
   return (

@@ -1,7 +1,23 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import EntityProfileCard from '../EntityProfileCard';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EntityProfileData } from '../../api';
+
+const { mockEntityEvents } = vi.hoisted(() => ({
+  mockEntityEvents: vi.fn(),
+}));
+
+vi.mock('../../api', async () => {
+  const actual = await vi.importActual<typeof import('../../api')>('../../api');
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      entityEvents: mockEntityEvents,
+    },
+  };
+});
+
+import EntityProfileCard from '../EntityProfileCard';
 
 function makeProfileData(overrides: Partial<EntityProfileData> = {}): EntityProfileData {
   return {
@@ -51,6 +67,12 @@ const defaultProps = {
 };
 
 describe('EntityProfileCard', () => {
+  beforeEach(() => {
+    mockEntityEvents.mockReset();
+    // Default: return empty events
+    mockEntityEvents.mockResolvedValue({ events: [], total: 0 });
+  });
+
   it('renders FAIR score dimension labels', () => {
     render(
       <EntityProfileCard
@@ -95,5 +117,66 @@ describe('EntityProfileCard', () => {
     // Loading state renders Skeleton components with skeleton-pulse animation
     const skeletons = container.querySelectorAll('[style*="skeleton-pulse"]');
     expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it('renders activity section when events present', async () => {
+    mockEntityEvents.mockResolvedValue({
+      events: [
+        {
+          event_type: 'field_change',
+          description: 'Brand name updated to Tarceva',
+          source: 'auto_curate',
+          timestamp: new Date().toISOString(),
+          details: { changed_fields: ['brand_name'] },
+        },
+        {
+          event_type: 'new_connection',
+          description: 'New TREATS connection to therapeutic_area',
+          source: 'cross_linker',
+          timestamp: new Date().toISOString(),
+          details: { link_type: 'TREATS' },
+        },
+      ],
+      total: 2,
+    });
+
+    render(
+      <EntityProfileCard
+        data={makeProfileData()}
+        isLoading={false}
+        error={null}
+        {...defaultProps}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Recent Activity')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Brand name updated to Tarceva')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "No recent activity" when empty', async () => {
+    mockEntityEvents.mockResolvedValue({
+      events: [],
+      total: 0,
+    });
+
+    render(
+      <EntityProfileCard
+        data={makeProfileData()}
+        isLoading={false}
+        error={null}
+        {...defaultProps}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Recent Activity')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText('No recent activity')).toBeInTheDocument();
+    });
   });
 });
