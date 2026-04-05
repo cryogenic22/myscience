@@ -73,9 +73,11 @@ type ObjectiveId = typeof OBJECTIVES[number]['id'];
 interface GraphExplorerProps {
   /** Pre-load this entity on mount (from cross-module navigation) */
   initialEntity?: { id: string; type: string; label: string } | null;
+  /** Pre-seed graph with nodes/edges from chat response */
+  seedGraph?: { nodes: GraphNode[]; edges: GraphEdge[] } | null;
 }
 
-export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}) {
+export default function GraphExplorer({ initialEntity, seedGraph }: GraphExplorerProps = {}) {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [objective, setObjective] = useState<ObjectiveId>('adjacency');
   const [entityLookupQuery, setEntityLookupQuery] = useState('');
@@ -112,6 +114,20 @@ export default function GraphExplorer({ initialEntity }: GraphExplorerProps = {}
   const pathToTimeoutRef = useRef<number>(0);
 
   const autoLoadedRef = useRef(false);
+
+  // Seed graph from chat response (overrides other init modes)
+  useEffect(() => {
+    if (!seedGraph || seedGraph.nodes.length === 0) return;
+    setGraphData({ nodes: seedGraph.nodes, edges: seedGraph.edges });
+    setShowDemoBanner(false);
+    setGraphError(null);
+    // Select the first node as the focal entity
+    const focal = seedGraph.nodes[0];
+    if (focal) {
+      setSelectedEntity({ id: focal.entity_id, type: focal.entity_type, label: focal.label });
+    }
+    autoLoadedRef.current = true;
+  }, [seedGraph]);
 
   // Auto-load: initialEntity prop (cross-module nav) or semaglutide demo on first visit
   useEffect(() => {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import NarrativeMessage from '../chat/NarrativeMessage';
 import type { Message } from '../ChatMessage';
-import type { EvidenceItem } from '../../api';
+import type { EvidenceItem, GraphNode, GraphEdge } from '../../api';
 
 // Framer-motion minimal mock — renders children without animation
 vi.mock('framer-motion', () => ({
@@ -162,5 +162,96 @@ describe('NarrativeMessage citation chips', () => {
     const link = card.querySelector('a');
     expect(link).toBeTruthy();
     expect(link!.href).toContain('pubmed.ncbi.nlm.nih.gov');
+  });
+});
+
+/* ── View in Graph button ── */
+
+const sampleNodes: GraphNode[] = [
+  { entity_id: 'drug-1', entity_type: 'drug', label: 'semaglutide', properties: {} },
+  { entity_id: 'company-1', entity_type: 'company', label: 'Novo Nordisk', properties: {} },
+];
+
+const sampleEdges: GraphEdge[] = [
+  { source_id: 'drug-1', target_id: 'company-1', link_type: 'MANUFACTURED_BY', confidence: 0.95, via: 'pipeline' },
+];
+
+function makeGraphMessage(hasGraph: boolean): Message {
+  return {
+    id: 'msg-graph',
+    role: 'assistant',
+    content: 'Semaglutide is manufactured by Novo Nordisk.',
+    timestamp: new Date(),
+    data: {
+      question: 'test',
+      evidence: [],
+      graph_context: hasGraph
+        ? { nodes: sampleNodes, edges: sampleEdges, node_count: 2, edge_count: 1 }
+        : { nodes: [], edges: [], node_count: 0, edge_count: 0 },
+      metrics_context: {},
+      entity_focus: [],
+      provenance_summary: {},
+    },
+  };
+}
+
+describe('NarrativeMessage "View in Graph" button', () => {
+  it('renders "View in Graph" button when graph_context has nodes', () => {
+    const msg = makeGraphMessage(true);
+    const onViewInGraph = vi.fn();
+    render(<NarrativeMessage message={msg} isUser={false} onViewInGraph={onViewInGraph} />);
+
+    const btn = screen.getByTestId('view-in-graph-btn');
+    expect(btn).toBeInTheDocument();
+    expect(btn.textContent).toContain('View in Graph');
+  });
+
+  it('does not show button when graph_context has no nodes', () => {
+    const msg = makeGraphMessage(false);
+    const onViewInGraph = vi.fn();
+    render(<NarrativeMessage message={msg} isUser={false} onViewInGraph={onViewInGraph} />);
+
+    expect(screen.queryByTestId('view-in-graph-btn')).toBeNull();
+  });
+
+  it('does not show button when no onViewInGraph callback provided', () => {
+    const msg = makeGraphMessage(true);
+    render(<NarrativeMessage message={msg} isUser={false} />);
+
+    expect(screen.queryByTestId('view-in-graph-btn')).toBeNull();
+  });
+
+  it('does not show button when message has no data', () => {
+    const msg: Message = {
+      id: 'msg-no-data',
+      role: 'assistant',
+      content: 'A plain response.',
+      timestamp: new Date(),
+    };
+    const onViewInGraph = vi.fn();
+    render(<NarrativeMessage message={msg} isUser={false} onViewInGraph={onViewInGraph} />);
+
+    expect(screen.queryByTestId('view-in-graph-btn')).toBeNull();
+  });
+
+  it('calls onViewInGraph with correct nodes and edges when clicked', () => {
+    const msg = makeGraphMessage(true);
+    const onViewInGraph = vi.fn();
+    render(<NarrativeMessage message={msg} isUser={false} onViewInGraph={onViewInGraph} />);
+
+    const btn = screen.getByTestId('view-in-graph-btn');
+    fireEvent.click(btn);
+
+    expect(onViewInGraph).toHaveBeenCalledTimes(1);
+    expect(onViewInGraph).toHaveBeenCalledWith(sampleNodes, sampleEdges);
+  });
+
+  it('does not show button for user messages', () => {
+    const msg = makeGraphMessage(true);
+    msg.role = 'user';
+    const onViewInGraph = vi.fn();
+    render(<NarrativeMessage message={msg} isUser={true} onViewInGraph={onViewInGraph} />);
+
+    expect(screen.queryByTestId('view-in-graph-btn')).toBeNull();
   });
 });

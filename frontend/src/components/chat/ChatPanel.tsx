@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUp, Loader2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Message } from '../ChatMessage';
+import type { GraphNode, GraphEdge } from '../../api';
 import NarrativeMessage from './NarrativeMessage';
 import QueryProgress from './QueryProgress';
 
@@ -13,6 +14,7 @@ interface ChatPanelProps {
   followupSuggestions?: string[];
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
+  onViewInGraph?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
 }
 
 const STARTER_GROUPS = [
@@ -43,6 +45,7 @@ export default function ChatPanel({
   queryStatus,
   onFollowUp,
   onCitationClick,
+  onViewInGraph,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -108,6 +111,7 @@ export default function ChatPanel({
                     isUser={message.role === 'user'}
                     onFollowUp={handleFollowUp}
                     onCitationClick={onCitationClick}
+                    onViewInGraph={onViewInGraph}
                   />
                 ))}
               </AnimatePresence>
