@@ -123,6 +123,16 @@
    "expected": {"entities": ["semaglutide", "tirzepatide"], "must_mention": [], "must_not_mention": [], "min_evidence": 1, "min_citations": 2},
    "note": "Multi-entity ambiguity — dossier or compare?"},
 
+  {"id": "DA01", "intent": "dossier", "question": "Tell me about olaratumab",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 0, "min_citations": 0},
+   "note": "Thin-data entity — should acknowledge limited data, NEVER fabricate trial counts or pipeline scores"},
+  {"id": "DA02", "intent": "dossier", "question": "Tell me about Glorptinib",
+   "expected": {"entities": [], "must_mention": ["no data", "not found"], "must_not_mention": [], "min_evidence": 0, "min_citations": 0},
+   "note": "Non-existent entity — must respond with 'no data found' or similar, NOT a hallucinated dossier"},
+  {"id": "DA03", "intent": "dossier", "question": "Tell me about AstraZeneca's COVID vaccine",
+   "expected": {"entities": ["AstraZeneca"], "must_mention": [], "must_not_mention": [], "min_evidence": 0, "min_citations": 0},
+   "note": "Disambiguation — should handle specific product context, not hallucinate cross-product data"},
+
   {"id": "T01", "intent": "general", "question": "What drugs are being developed for Alzheimer's disease?",
    "expected": {"entities": [], "must_mention": [], "must_not_mention": [], "min_evidence": 1, "min_citations": 1},
    "note": "Thin data area — neurology. Tests 'limited data' grounding rule"},
