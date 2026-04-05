@@ -1,5 +1,5 @@
 // Single source of truth for all graph visual constants.
-// Imported by ModernGraph, GraphMini, and GraphExplorer.
+// Imported by KnowledgeGraph (the unified graph renderer).
 
 /** Node colors by entity type (designed for dark #0f172a canvas background) */
 export const NODE_COLORS: Record<string, string> = {
