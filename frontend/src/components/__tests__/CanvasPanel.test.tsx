@@ -1,0 +1,200 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import CanvasPanel from '../canvas/CanvasPanel';
+import type { QueryResponse, TableData, VisualizationSpec, PersonaAnalysis } from '../../api';
+
+// Mock framer-motion to render plain divs
+vi.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => {
+      const { initial, animate, transition, ...rest } = props;
+      return <div {...rest}>{children}</div>;
+    },
+  },
+  AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
+}));
+
+// Mock recharts
+vi.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  BarChart: () => <div data-testid="bar-chart" />,
+  Bar: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  CartesianGrid: () => null,
+  Tooltip: () => null,
+  Legend: () => null,
+  PieChart: () => <div data-testid="pie-chart" />,
+  Pie: () => null,
+  Cell: () => null,
+}));
+
+// Mock DataTable sub-component
+vi.mock('../ui/DataTable', () => ({
+  DataTable: ({ rows }: { rows: unknown[] }) => (
+    <table data-testid="data-table">
+      <tbody>
+        {(rows as Record<string, unknown>[]).map((r, i) => (
+          <tr key={i}>
+            <td>{String(r.name ?? '')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ),
+}));
+
+function makeTableData(overrides: Partial<TableData> = {}): TableData {
+  return {
+    title: 'Test Table',
+    columns: [
+      { key: 'name', label: 'Name', type: 'string' },
+      { key: 'score', label: 'Score', type: 'number' },
+    ],
+    rows: [
+      { name: 'Erlotinib', score: 85 },
+      { name: 'Gefitinib', score: 72 },
+    ],
+    ...overrides,
+  };
+}
+
+function makeViz(): VisualizationSpec[] {
+  return [{
+    id: 'viz-1',
+    type: 'bar',
+    title: 'Pipeline Strength',
+    data: [{ label: 'Phase I', value: 10 }, { label: 'Phase II', value: 5 }],
+  }];
+}
+
+function makeQueryResponse(overrides: Partial<QueryResponse> = {}): QueryResponse {
+  return {
+    question: 'test query',
+    narrative: 'Test narrative',
+    evidence: [
+      { source: 'pubmed', entity_type: 'literature', entity_id: 'e1', content: 'Evidence text', relevance: 0.9, provenance: {} },
+    ],
+    graph_context: { nodes: [], edges: [], node_count: 0, edge_count: 0 },
+    metrics_context: {},
+    entity_focus: [
+      { entity_id: 'drug-1', entity_type: 'drug', title: 'Semaglutide', total_connections: 42 },
+      { entity_id: 'drug-2', entity_type: 'drug', title: 'Tirzepatide', total_connections: 28 },
+    ],
+    provenance_summary: {},
+    ...overrides,
+  } as QueryResponse;
+}
+
+describe('CanvasPanel', () => {
+  it('renders tab buttons when content is available', () => {
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={makeTableData()}
+        visualizations={makeViz()}
+        confidence={0.85}
+        loading={false}
+      />
+    );
+    expect(screen.getByText('Summary')).toBeInTheDocument();
+    // "Data" appears as both tab button and section label, so use getAllByText
+    expect(screen.getAllByText('Data').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Entities')).toBeInTheDocument();
+  });
+
+  it('shows empty state when no content is provided', () => {
+    render(
+      <CanvasPanel
+        intent={null}
+        data={null}
+        tableData={null}
+        visualizations={null}
+        loading={false}
+      />
+    );
+    expect(screen.getByText('Data Canvas')).toBeInTheDocument();
+    expect(screen.getByText(/Tables, charts, and entities will appear here/)).toBeInTheDocument();
+  });
+
+  it('shows loading skeleton when loading=true', () => {
+    const { container } = render(
+      <CanvasPanel
+        intent="landscape"
+        data={null}
+        tableData={null}
+        visualizations={null}
+        loading={true}
+      />
+    );
+    // Loading state renders animated skeleton bars
+    const skeletons = container.querySelectorAll('[style*="pulse-dot"]');
+    expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it('renders entity list in summary tab when entities data provided', () => {
+    render(
+      <CanvasPanel
+        intent="dossier"
+        data={makeQueryResponse()}
+        tableData={null}
+        visualizations={null}
+        loading={false}
+      />
+    );
+    expect(screen.getByText('Semaglutide')).toBeInTheDocument();
+    expect(screen.getByText('Tirzepatide')).toBeInTheDocument();
+  });
+
+  it('renders confidence badge', () => {
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={makeTableData()}
+        visualizations={null}
+        confidence={0.85}
+        loading={false}
+      />
+    );
+    expect(screen.getByText('85% confidence')).toBeInTheDocument();
+  });
+
+  it('renders intent label in header', () => {
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={makeTableData()}
+        visualizations={null}
+        loading={false}
+      />
+    );
+    expect(screen.getByText('Competitive Landscape')).toBeInTheDocument();
+  });
+
+  it('renders context tab with persona analyses', () => {
+    const personas: PersonaAnalysis[] = [
+      {
+        persona: 'analyst',
+        display_name: 'Market Analyst',
+        confidence: 0.82,
+        key_findings: ['Strong pipeline', 'Growing market share'],
+        narrative: 'Test narrative',
+      },
+    ];
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={makeTableData()}
+        visualizations={null}
+        loading={false}
+        personaAnalyses={personas}
+      />
+    );
+    // Context tab should be visible
+    expect(screen.getByText('Context')).toBeInTheDocument();
+  });
+});
