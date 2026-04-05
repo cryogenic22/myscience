@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink } from 'lucide-react';
+import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink, Network } from 'lucide-react';
 import type { Message } from '../ChatMessage';
-import type { EvidenceItem, EntitySummary } from '../../api';
+import type { EvidenceItem, EntitySummary, GraphNode, GraphEdge } from '../../api';
 import { api } from '../../api';
 import { SOURCE_LABELS, ENTITY_TYPE_LABELS, LINK_TYPE_LABELS } from '../../brand';
 
@@ -18,6 +18,7 @@ interface NarrativeMessageProps {
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
   onEntityClick?: (entityId: string, entityType: string) => void;
+  onViewInGraph?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
 }
 
 export default function NarrativeMessage({
@@ -26,7 +27,11 @@ export default function NarrativeMessage({
   onFollowUp,
   onCitationClick,
   onEntityClick,
+  onViewInGraph,
 }: NarrativeMessageProps) {
+  const graphNodes = message.data?.graph_context?.nodes;
+  const graphEdges = message.data?.graph_context?.edges;
+  const hasGraphContext = Array.isArray(graphNodes) && graphNodes.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -82,6 +87,39 @@ export default function NarrativeMessage({
                   <span>⚠</span>
                   <span>Some details may be approximate — verify specifics in the data canvas.</span>
                 </div>
+              )}
+
+              {/* View in Graph button */}
+              {onViewInGraph && hasGraphContext && (
+                <button
+                  type="button"
+                  data-testid="view-in-graph-btn"
+                  onClick={() => onViewInGraph(graphNodes!, graphEdges ?? [])}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    marginTop: '12px',
+                    padding: '0',
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: 'var(--color-accent)',
+                    fontFamily: 'var(--font-body, "DM Sans", sans-serif)',
+                    fontWeight: 500,
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.textDecoration = 'underline';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.textDecoration = 'none';
+                  }}
+                >
+                  <Network size={13} />
+                  <span>View in Graph</span>
+                  <span style={{ fontSize: '11px' }}>&rarr;</span>
+                </button>
               )}
 
               {/* Follow-up suggestions */}

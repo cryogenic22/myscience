@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { Message } from '../components/ChatMessage';
-import type { ChatResponse, QueryResponse, TableData, VisualizationSpec, PersonaAnalysis } from '../api';
+import type { ChatResponse, QueryResponse, TableData, VisualizationSpec, PersonaAnalysis, GraphNode, GraphEdge } from '../api';
 import { api } from '../api';
 import TopBar from '../components/layout/TopBar';
 import WorkspaceLayout from '../components/layout/WorkspaceLayout';
@@ -51,6 +51,7 @@ export default function WorkspacePage({
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvas, setCanvas] = useState<CanvasState>(EMPTY_CANVAS);
   const [graphEntity, setGraphEntity] = useState<{ id: string; type: string; label: string } | null>(null);
+  const [seedGraph, setSeedGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [litExplorerArticleId, setLitExplorerArticleId] = useState<string | null>(null);
   const seededQuestionRef = useRef<string | null>(null);
 
@@ -222,7 +223,7 @@ export default function WorkspacePage({
       {activeTab === 'graph' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '0 16px' }}>
           <ErrorBoundary onRetry={() => setActiveTab('graph')}>
-            <GraphExplorer initialEntity={graphEntity} />
+            <GraphExplorer initialEntity={graphEntity} seedGraph={seedGraph} />
           </ErrorBoundary>
         </div>
       ) : activeTab === 'catalog' ? (
@@ -251,6 +252,11 @@ export default function WorkspacePage({
                 onSend={sendQuery}
                 isLoading={isLoading}
                 onFollowUp={q => void sendQuery(q)}
+                onViewInGraph={(nodes, edges) => {
+                  setSeedGraph({ nodes, edges });
+                  setGraphEntity(null);
+                  setActiveTab('graph');
+                }}
               />
             </ErrorBoundary>
           }

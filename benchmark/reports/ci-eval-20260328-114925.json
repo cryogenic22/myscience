@@ -1,0 +1,24 @@
+{
+  "passed": false,
+  "overall": 0.875,
+  "baseline": 0.5,
+  "regressions": [
+    {
+      "dimension": "factual",
+      "baseline": 0.999,
+      "current": 0.5,
+      "drop_pct": 49.9
+    }
+  ],
+  "report_path": "C:\\Users\\kapil\\Documents\\market_zero\\benchmark\\reports\\eval-20260328-114925.json",
+  "by_dimension": {
+    "intent": 1.0,
+    "grounding": 1.0,
+    "factual": 0.5,
+    "completeness": 1.0,
+    "citation": 1.0
+  },
+  "total_queries": 3,
+  "failures": 0,
+  "timestamp": "2026-03-28T11:49:25.995328+00:00"
+}
