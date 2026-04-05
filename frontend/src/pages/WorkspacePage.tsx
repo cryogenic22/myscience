@@ -144,6 +144,7 @@ export default function WorkspacePage({
                   ...m,
                   content: response!.narrative,
                   data: response!.data ?? undefined,
+                  intent: response!.intent ?? undefined,
                   report: response!.report,
                   webResults: response!.web_results,
                   visualizations: response!.visualizations,

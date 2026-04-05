@@ -24,6 +24,11 @@ vi.mock('../EntityCard', () => ({ default: () => <div data-testid="entity-card" 
 vi.mock('../MetricCard', () => ({ default: () => <div data-testid="metric-card" /> }));
 vi.mock('../EvidenceCard', () => ({ default: () => <div data-testid="evidence-card" /> }));
 vi.mock('../GraphMini', () => ({ default: () => <div data-testid="graph-mini" /> }));
+vi.mock('../KnowledgeGraph', () => ({
+  default: (props: Record<string, unknown>) => (
+    <div data-testid="knowledge-graph" data-compact={String(props.compact)} data-height={String(props.height)} />
+  ),
+}));
 
 // Mock recharts to avoid rendering canvas/SVG in jsdom
 vi.mock('recharts', () => ({
@@ -91,5 +96,121 @@ describe('ChatMessage', () => {
     render(<ChatMessage message={msg} />);
     expect(screen.getByText('[1]')).toBeInTheDocument();
     expect(screen.getByText('[2]')).toBeInTheDocument();
+  });
+
+  it('renders inline mini-graph for landscape intent with sufficient graph nodes', () => {
+    const msg = makeMessage({
+      role: 'assistant',
+      content: 'Here is the competitive landscape.',
+      intent: 'landscape',
+      data: {
+        question: 'test',
+        evidence: [],
+        graph_context: {
+          nodes: [
+            { entity_id: 'n1', entity_type: 'drug', label: 'Drug A', properties: {} },
+            { entity_id: 'n2', entity_type: 'company', label: 'Company B', properties: {} },
+            { entity_id: 'n3', entity_type: 'mechanism', label: 'Mech C', properties: {} },
+          ],
+          edges: [
+            { source_id: 'n1', target_id: 'n2', link_type: 'OWNS', confidence: 0.9, via: 'resolver' },
+          ],
+          node_count: 3,
+          edge_count: 1,
+        },
+        metrics_context: {},
+        entity_focus: [{ entity_id: 'n1', entity_type: 'drug', title: 'Drug A' }],
+        provenance_summary: {},
+      },
+    });
+    render(<ChatMessage message={msg} />);
+    expect(screen.getByTestId('inline-mini-graph')).toBeInTheDocument();
+    const graph = screen.getByTestId('knowledge-graph');
+    expect(graph).toBeInTheDocument();
+    expect(graph.getAttribute('data-compact')).toBe('true');
+    expect(graph.getAttribute('data-height')).toBe('200');
+  });
+
+  it('does not render inline mini-graph for dossier intent', () => {
+    const msg = makeMessage({
+      role: 'assistant',
+      content: 'Here is the entity dossier.',
+      intent: 'dossier',
+      data: {
+        question: 'test',
+        evidence: [],
+        graph_context: {
+          nodes: [
+            { entity_id: 'n1', entity_type: 'drug', label: 'Drug A', properties: {} },
+            { entity_id: 'n2', entity_type: 'company', label: 'Company B', properties: {} },
+          ],
+          edges: [],
+          node_count: 2,
+          edge_count: 0,
+        },
+        metrics_context: {},
+        entity_focus: [],
+        provenance_summary: {},
+      },
+    });
+    render(<ChatMessage message={msg} />);
+    expect(screen.queryByTestId('inline-mini-graph')).not.toBeInTheDocument();
+  });
+
+  it('does not render inline mini-graph when graph has fewer than 2 nodes', () => {
+    const msg = makeMessage({
+      role: 'assistant',
+      content: 'Landscape with sparse data.',
+      intent: 'landscape',
+      data: {
+        question: 'test',
+        evidence: [],
+        graph_context: {
+          nodes: [
+            { entity_id: 'n1', entity_type: 'drug', label: 'Drug A', properties: {} },
+          ],
+          edges: [],
+          node_count: 1,
+          edge_count: 0,
+        },
+        metrics_context: {},
+        entity_focus: [],
+        provenance_summary: {},
+      },
+    });
+    render(<ChatMessage message={msg} />);
+    expect(screen.queryByTestId('inline-mini-graph')).not.toBeInTheDocument();
+  });
+
+  it('renders inline mini-graph for compare and pipeline intents', () => {
+    for (const intent of ['compare', 'pipeline']) {
+      const { unmount } = render(
+        <ChatMessage
+          message={makeMessage({
+            role: 'assistant',
+            content: `Results for ${intent}.`,
+            intent,
+            data: {
+              question: 'test',
+              evidence: [],
+              graph_context: {
+                nodes: [
+                  { entity_id: 'a', entity_type: 'drug', label: 'X', properties: {} },
+                  { entity_id: 'b', entity_type: 'drug', label: 'Y', properties: {} },
+                ],
+                edges: [],
+                node_count: 2,
+                edge_count: 0,
+              },
+              metrics_context: {},
+              entity_focus: [],
+              provenance_summary: {},
+            },
+          })}
+        />,
+      );
+      expect(screen.getByTestId('inline-mini-graph')).toBeInTheDocument();
+      unmount();
+    }
   });
 });
