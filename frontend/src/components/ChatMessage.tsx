@@ -19,7 +19,7 @@ import { api } from '../api';
 import EntityCard from './EntityCard';
 import MetricCard from './MetricCard';
 import EvidenceCard from './EvidenceCard';
-import GraphMini from './GraphMini';
+import KnowledgeGraph from './KnowledgeGraph';
 
 export interface Message {
   id: string;
@@ -380,10 +380,11 @@ function ResponseCards({
             )}
           </button>
           {showGraph && (
-            <GraphMini
+            <KnowledgeGraph
               nodes={data.graph_context.nodes}
               edges={data.graph_context.edges}
               centerEntityId={data.entity_focus?.[0]?.entity_id as string | undefined}
+              compact
             />
           )}
         </div>

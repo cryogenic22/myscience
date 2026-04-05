@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -11,6 +11,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+const FEEDBACK_URL = (import.meta.env.DEV ? '/api' : '') + '/feedback';
+
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -19,6 +21,26 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Fire-and-forget — log crash to /feedback endpoint
+    fetch(FEEDBACK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: 'bug',
+        title: `UI crash: ${error.message?.slice(0, 120) ?? 'Unknown error'}`,
+        description: error.stack ?? String(error),
+        priority: 'high',
+        page_url: typeof window !== 'undefined' ? window.location.href : undefined,
+        diagnostic_context: {
+          componentStack: info.componentStack ?? null,
+        },
+      }),
+    }).catch(() => {
+      // Silently ignore network failures — we must not block rendering
+    });
   }
 
   private handleRetry = () => {
@@ -67,7 +89,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             lineHeight: 1.5,
           }}
         >
-          This section encountered an error
+          Something went wrong. Refresh to continue.
         </div>
         <button
           type="button"
