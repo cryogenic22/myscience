@@ -1,0 +1,35 @@
+{
+  "run_id": "eval-20260405-231059",
+  "timestamp": "2026-04-05T23:10:59.882235+00:00",
+  "total_queries": 3,
+  "overall_score": 0.467,
+  "by_intent": {
+    "dossier": 0.175,
+    "landscape": 0.575,
+    "portfolio": 0.65
+  },
+  "by_dimension": {
+    "intent": 0.0,
+    "grounding": 0.467,
+    "factual": 0.5,
+    "completeness": 0.5,
+    "citation": 0.667
+  },
+  "failures": [
+    {
+      "id": "CI01",
+      "question": "Tell me about semaglutide",
+      "score": 0.175,
+      "error": null,
+      "scores": {
+        "intent": 0.0,
+        "grounding": 0.2,
+        "factual": 0.5,
+        "completeness": 0.0,
+        "citation": 0.0
+      }
+    }
+  ],
+  "latency_p50": 0,
+  "latency_p95": 0
+}
