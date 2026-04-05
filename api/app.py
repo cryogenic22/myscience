@@ -308,27 +308,29 @@ def create_app() -> FastAPI:
                 cycle += 1
                 logger.info("=== Background agent cycle %d starting ===", cycle)
 
-                # 4a. Data Steward — signal-driven curation
+                # 4a. Data Steward — signal-driven curation (routed through harness)
                 try:
-                    from services.steward_signals import StewardSignalCollector
-                    from services.data_steward import DataSteward, StewardConfig
-                    from config import config as _cfg
+                    from api.deps import get_harness
 
-                    sdb = Database(_cfg.db.dsn)
-                    sdb.connect()
-                    try:
-                        collector = StewardSignalCollector(sdb)
-                        steward = DataSteward(
-                            sdb, collector,
-                            StewardConfig(max_iterations=20, skip_ai=True),
-                        )
-                        summary = steward.run_loop()
-                        logger.info(
-                            "Data Steward [cycle %d]: %d completed, %d feedback",
-                            cycle, summary.completed, summary.feedback_resolved,
-                        )
-                    finally:
-                        sdb.close()
+                    harness = get_harness()
+                    harness_result = harness.run(
+                        agent_type="data_steward",
+                        goal=f"Periodic curation cycle {cycle}",
+                        steps=[
+                            ("steward_curate", {"max_iterations": 20, "skip_ai": True}),
+                        ],
+                    )
+                    step_out = (
+                        harness_result.step_results[0].output
+                        if harness_result.step_results
+                        else {}
+                    )
+                    logger.info(
+                        "Data Steward [cycle %d] via harness: %s (session=%s)",
+                        cycle,
+                        {k: step_out.get(k) for k in ("completed", "failed", "feedback_resolved") if k in (step_out or {})},
+                        harness_result.session_id,
+                    )
                 except Exception:
                     logger.exception("Data Steward error [cycle %d]", cycle)
 

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Optional
 
-from api.deps import get_query_graph, get_team_eval_graph
+from api.deps import get_query_graph, get_team_eval_graph, get_harness
 from api.utils import normalize_provenance
 from db import Database
 from services.llm import LLMSynthesizer
@@ -486,7 +486,11 @@ def handle_structured_query(
     llm: LLMSynthesizer,
     conversation_history: list[dict] | None = None,
 ) -> dict:
-    """Route to the LangGraph query agent for SQL-computed answers."""
+    """Route to the LangGraph query agent for SQL-computed answers.
+
+    When the agent harness is available, the graph invocation is wrapped
+    through the harness for session tracking and event telemetry.
+    """
     graph = get_query_graph()
     if graph is None:
         logger.info("Query graph not available, falling back to general handler")
@@ -494,20 +498,40 @@ def handle_structured_query(
 
     conversation_context = build_conversation_context(conversation_history or [])
 
+    state = {
+        "messages": [],
+        "question": question,
+        "conversation_context": conversation_context,
+        "intent": "",
+        "plan": {},
+        "tool_results": {},
+        "presentation": {},
+        "table_data": None,
+        "visualizations": [],
+        "narrative": "",
+        "error": None,
+    }
+
     try:
-        result = graph.invoke({
-            "messages": [],
-            "question": question,
-            "conversation_context": conversation_context,
-            "intent": "",
-            "plan": {},
-            "tool_results": {},
-            "presentation": {},
-            "table_data": None,
-            "visualizations": [],
-            "narrative": "",
-            "error": None,
-        })
+        harness = get_harness()
+    except Exception:
+        harness = None
+
+    try:
+        if harness:
+            harness_result = harness.run(
+                agent_type="query",
+                goal=f"Answer: {question[:200]}",
+                steps=[("sql_query", {"question": question})],
+                executor=lambda args: graph.invoke(state),
+            )
+            # Extract the graph result from the harness step output
+            if harness_result.step_results and harness_result.step_results[0].output:
+                result = harness_result.step_results[0].output
+            else:
+                result = graph.invoke(state)
+        else:
+            result = graph.invoke(state)
         return _format_agent_response(result, Intent.STRUCTURED_QUERY)
     except Exception as exc:
         logger.warning("Query graph failed: %s, falling back", exc)
@@ -520,26 +544,49 @@ def handle_team_eval(
     db: Database,
     llm: LLMSynthesizer,
 ) -> dict:
-    """Route to the LangGraph team eval agent for multi-persona analysis."""
+    """Route to the LangGraph team eval agent for multi-persona analysis.
+
+    When the agent harness is available, the graph invocation is wrapped
+    through the harness for session tracking and event telemetry.
+    """
     graph = get_team_eval_graph()
     if graph is None:
         logger.info("Team eval graph not available, falling back to general handler")
         return handle_general(question, engine, db, llm)
 
+    state = {
+        "messages": [],
+        "question": question,
+        "extracted_entities": {},
+        "active_personas": [],
+        "persona_analyses": [],
+        "tool_results": {},
+        "combined_narrative": "",
+        "confidence_assessment": {},
+        "presentation": {},
+        "table_data": None,
+        "visualizations": [],
+    }
+
     try:
-        result = graph.invoke({
-            "messages": [],
-            "question": question,
-            "extracted_entities": {},
-            "active_personas": [],
-            "persona_analyses": [],
-            "tool_results": {},
-            "combined_narrative": "",
-            "confidence_assessment": {},
-            "presentation": {},
-            "table_data": None,
-            "visualizations": [],
-        })
+        harness = get_harness()
+    except Exception:
+        harness = None
+
+    try:
+        if harness:
+            harness_result = harness.run(
+                agent_type="team_eval",
+                goal=f"Evaluate: {question[:200]}",
+                steps=[("rag_search", {"question": question})],
+                executor=lambda args: graph.invoke(state),
+            )
+            if harness_result.step_results and harness_result.step_results[0].output:
+                result = harness_result.step_results[0].output
+            else:
+                result = graph.invoke(state)
+        else:
+            result = graph.invoke(state)
         return _format_team_eval_response(result)
     except Exception as exc:
         logger.warning("Team eval graph failed: %s, falling back", exc)

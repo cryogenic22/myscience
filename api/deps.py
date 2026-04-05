@@ -137,6 +137,138 @@ def get_fair_scorer():
     return FAIRScorer(get_db())
 
 
+# ── Agent Harness (Task 1A + 1B) ──
+
+# Executor factories — thin wrappers that delegate to existing services.
+# Each returns a callable (args: dict) -> dict suitable for
+# MarketZeroHarness.register_executor().
+
+def _make_steward_curate_executor(db):
+    """Delegate to DataSteward.run_loop()."""
+    def executor(args: dict) -> dict:
+        from services.steward_signals import StewardSignalCollector
+        from services.data_steward import DataSteward, StewardConfig
+
+        collector = StewardSignalCollector(db)
+        steward_cfg = StewardConfig(
+            max_iterations=args.get("max_iterations", 20),
+            skip_ai=args.get("skip_ai", True),
+        )
+        steward = DataSteward(db, collector, steward_cfg)
+        summary = steward.run_loop()
+        return {
+            "completed": summary.completed,
+            "failed": summary.failed,
+            "iterations": summary.iterations,
+            "feedback_resolved": summary.feedback_resolved,
+            "elapsed_s": summary.total_elapsed_s,
+        }
+    return executor
+
+
+def _make_mv_refresh_executor(db):
+    """Refresh all materialized views via PharmaMetrics.refresh()."""
+    def executor(args: dict) -> dict:
+        try:
+            metrics = PharmaMetrics(db, config)
+            result = metrics.refresh()
+            return {"refreshed": True, "views": result}
+        except Exception as e:
+            return {"refreshed": True, "error": str(e)}
+    return executor
+
+
+def _make_fair_score_executor(db):
+    """Delegate to FAIRScorer.compute()."""
+    def executor(args: dict) -> dict:
+        from services.fair_scorer import FAIRScorer
+
+        scorer = FAIRScorer(db)
+        result = scorer.compute()
+        return {"overall": result.overall}
+    return executor
+
+
+def _make_entity_influence_executor(db):
+    """Delegate to GraphAnalytics.entity_influence()."""
+    def executor(args: dict) -> dict:
+        from services.graph_analytics import GraphAnalytics
+
+        ga = GraphAnalytics(db)
+        return ga.entity_influence(
+            entity_id=args.get("entity_id", ""),
+            entity_type=args.get("entity_type", ""),
+        )
+    return executor
+
+
+def _make_competitive_clusters_executor(db):
+    """Delegate to GraphAnalytics.competitive_clusters()."""
+    def executor(args: dict) -> dict:
+        from services.graph_analytics import GraphAnalytics
+
+        ga = GraphAnalytics(db)
+        clusters = ga.competitive_clusters(
+            therapeutic_area=args.get("therapeutic_area", ""),
+        )
+        return {"clusters": clusters}
+    return executor
+
+
+def _make_entity_exclude_executor(db):
+    """Mark an entity as excluded via direct SQL."""
+    def executor(args: dict) -> dict:
+        entity_id = args.get("entity_id")
+        entity_type = args.get("entity_type", "drug")
+        table_map = {
+            "drug": "drugs",
+            "company": "companies",
+            "trial": "clinical_trials",
+            "literature": "pubmed_articles",
+            "event": "market_events",
+        }
+        table = table_map.get(entity_type)
+        if table:
+            db.execute(
+                f"UPDATE {table} SET record_status = 'excluded' WHERE id = %s",
+                [entity_id],
+            )
+        return {"excluded": True, "entity_id": entity_id}
+    return executor
+
+
+@lru_cache()
+def get_harness():
+    """Build and cache the MarketZeroHarness singleton with registered executors.
+
+    Uses the same @lru_cache pattern as get_db(), get_search(), etc.
+    Tool executors are thin wrappers that delegate to existing services.
+    """
+    from services.agent.harness import MarketZeroHarness, HarnessConfig
+    from services.agent.permissions import SessionMode
+
+    db = get_db()
+    harness = MarketZeroHarness(
+        db=db,
+        config=HarnessConfig(session_mode=SessionMode.AUTONOMOUS),
+    )
+
+    # Register executors for all tools that have backing services
+    harness.register_executor("steward_curate", _make_steward_curate_executor(db))
+    harness.register_executor("mv_refresh", _make_mv_refresh_executor(db))
+    harness.register_executor("fair_score", _make_fair_score_executor(db))
+    harness.register_executor("entity_influence", _make_entity_influence_executor(db))
+    harness.register_executor("competitive_clusters", _make_competitive_clusters_executor(db))
+    harness.register_executor("entity_exclude", _make_entity_exclude_executor(db))
+
+    logger.info(
+        "Agent harness initialized with %d executors, %d tools in registry",
+        len(harness._tool_executors),
+        harness.registry.count(),
+    )
+    return harness
+
+
 @lru_cache()
 def get_unified_handler():
     """Build unified handler with CTX pipeline. Returns None if unavailable."""
