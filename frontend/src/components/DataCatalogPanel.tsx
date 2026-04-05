@@ -234,7 +234,7 @@ function EntityCard({ entity, entityType, onOpen, featured }: {
           background: 'var(--color-surface-2)', color: 'var(--color-ink-4)',
           flexShrink: 0, textTransform: 'capitalize',
         }}>
-          {ENTITY_TYPE_LABELS[entityType] || entityType.replace(/_/g, ' ')}
+          {ENTITY_TYPE_LABELS[entityType] || (entityType || 'entity').replace(/_/g, ' ')}
         </span>
       </div>
 
@@ -1174,7 +1174,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                       {featured.map(entity => {
                         const id = String(entity.id ?? entity._label ?? '');
                         // Determine the type — for "all" view, featured may have __type property
-                        const eType = (entity as Record<string, unknown>).__type
+                        const eType = ((entity as Record<string, unknown>).__type as string) || browseType || 'drug'
                           ? String((entity as Record<string, unknown>).__type)
                           : featuredEntityType;
                         return (
