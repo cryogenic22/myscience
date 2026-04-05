@@ -27,6 +27,8 @@ export interface Message {
   content: string;
   timestamp: Date;
   data?: QueryResponse;
+  /** Response intent from the chat handler (landscape, compare, pipeline, dossier, etc.) */
+  intent?: string;
   report?: string;
   webResults?: Array<{
     title: string;
@@ -156,8 +158,22 @@ function RichText({ text, evidence }: { text: string; evidence?: EvidenceItem[] 
   );
 }
 
+/** Intents that benefit from an inline mini-graph between narrative and data cards */
+const MINI_GRAPH_INTENTS = new Set(['landscape', 'compare', 'pipeline']);
+
 export default function ChatMessage({ message, onEntityClick, onFollowUp }: Props) {
   const isUser = message.role === 'user';
+  const [miniGraphExpanded, setMiniGraphExpanded] = useState(false);
+
+  // Determine if we should show inline mini-graph
+  const graphNodes = message.data?.graph_context?.nodes;
+  const graphEdges = message.data?.graph_context?.edges;
+  const showInlineMiniGraph =
+    !isUser &&
+    !message.loading &&
+    MINI_GRAPH_INTENTS.has(message.intent ?? '') &&
+    Array.isArray(graphNodes) &&
+    graphNodes.length >= 2;
 
   return (
     <motion.div
@@ -181,6 +197,29 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
                 <div className="text-[14px] leading-relaxed text-slate-700" style={{ padding: '0 4px' }}>
                   <RichText text={message.content} evidence={message.data?.evidence} />
                 </div>
+
+                {/* Inline mini-graph for landscape/compare/pipeline intents */}
+                {showInlineMiniGraph && graphNodes && graphEdges && (
+                  <div
+                    data-testid="inline-mini-graph"
+                    onClick={() => setMiniGraphExpanded((prev) => !prev)}
+                    style={{
+                      borderRadius: 12,
+                      border: '1px solid var(--color-line, #e2e8f0)',
+                      overflow: 'hidden',
+                      margin: '12px 0',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <KnowledgeGraph
+                      nodes={graphNodes}
+                      edges={graphEdges}
+                      centerEntityId={message.data?.entity_focus?.[0]?.entity_id as string | undefined}
+                      height={miniGraphExpanded ? 400 : 200}
+                      compact
+                    />
+                  </div>
+                )}
 
                 {/* Rich data cards */}
                 {(message.data || message.report || (message.visualizations?.length ?? 0) > 0 || message.tableData || message.personaAnalyses) && (
