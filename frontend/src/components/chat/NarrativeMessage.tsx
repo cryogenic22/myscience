@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink } from 'lucide-react';
 import type { Message } from '../ChatMessage';
-import type { EvidenceItem } from '../../api';
-import { SOURCE_LABELS } from '../../brand';
+import type { EvidenceItem, EntitySummary } from '../../api';
+import { api } from '../../api';
+import { SOURCE_LABELS, ENTITY_TYPE_LABELS, LINK_TYPE_LABELS } from '../../brand';
 
 const PROMPT_ARTIFACT_RE = /\[(metrics|data|evidence|context|sources?|analysis|summary)\]/gi;
 
@@ -16,6 +17,7 @@ interface NarrativeMessageProps {
   isUser: boolean;
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
+  onEntityClick?: (entityId: string, entityType: string) => void;
 }
 
 export default function NarrativeMessage({
@@ -23,6 +25,7 @@ export default function NarrativeMessage({
   isUser,
   onFollowUp,
   onCitationClick,
+  onEntityClick,
 }: NarrativeMessageProps) {
   return (
     <motion.div
@@ -52,11 +55,13 @@ export default function NarrativeMessage({
                   text={cleanPromptArtifacts(message.content)}
                   evidence={message.data?.evidence as EvidenceItem[] | undefined}
                   onCitationClick={onCitationClick}
+                  onEntityClick={onEntityClick}
                   entityMentions={
                     (message.data?.entity_focus as Array<Record<string, unknown>> | undefined)
                       ?.map(ef => ({
                         name: String(ef.label || ef.title || ef.generic_name || ef.name || ''),
                         type: String(ef.entity_type || 'drug'),
+                        entityId: ef.entity_id ? String(ef.entity_id) : undefined,
                       }))
                       .filter(m => m.name.length >= 3)
                   }
@@ -140,6 +145,7 @@ interface TextPart {
   type: 'text' | 'bold' | 'italic' | 'citation' | 'entity';
   text: string;
   entityType?: string;
+  entityId?: string;
 }
 
 // Entity type → color mapping (consistent with graph node colors)
@@ -162,7 +168,7 @@ function highlightEntities(parts: TextPart[], entities: EntityMention[]): TextPa
       const idx = remaining.toLowerCase().indexOf(entity.name.toLowerCase());
       if (idx >= 0) {
         if (idx > 0) result.push({ type: 'text', text: remaining.slice(0, idx) });
-        result.push({ type: 'entity', text: remaining.slice(idx, idx + entity.name.length), entityType: entity.type });
+        result.push({ type: 'entity', text: remaining.slice(idx, idx + entity.name.length), entityType: entity.type, entityId: entity.entityId });
         remaining = remaining.slice(idx + entity.name.length);
         found = true;
         break; // one entity per text part to avoid overlap
@@ -196,17 +202,262 @@ function parseRichText(text: string): TextPart[] {
 interface EntityMention {
   name: string;
   type: string;
+  entityId?: string;
+}
+
+/* ── Entity popover cache ── */
+const entitySummaryCache: Record<string, EntitySummary> = {};
+
+function EntityPopover({
+  entityType,
+  entityId,
+  entityName,
+  onEntityClick,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  onEntityClick?: (entityId: string, entityType: string) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const [summary, setSummary] = useState<EntitySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const cacheKey = `${entityType}:${entityId}`;
+    if (entitySummaryCache[cacheKey]) {
+      setSummary(entitySummaryCache[cacheKey]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    api.entitySummary(entityType, entityId).then((data) => {
+      if (!cancelled) {
+        entitySummaryCache[cacheKey] = data;
+        setSummary(data);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [entityType, entityId]);
+
+  const color = ENTITY_COLORS[entityType] || 'var(--color-accent)';
+  const typeLabel = ENTITY_TYPE_LABELS[entityType] || entityType.replace(/_/g, ' ');
+
+  // Top 3 connections by count
+  const topConnections = summary
+    ? Object.entries(summary.connections_by_type)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+    : [];
+
+  return (
+    <div
+      data-testid="entity-popover"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        position: 'absolute',
+        bottom: 'calc(100% + 8px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-line)',
+        borderRadius: '12px',
+        padding: '12px 16px',
+        maxWidth: '280px',
+        minWidth: '200px',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)',
+        zIndex: 50,
+        opacity: 1,
+        transition: 'opacity 150ms ease',
+        fontFamily: 'var(--font-body, "DM Sans", sans-serif)',
+        fontSize: '12px',
+        lineHeight: 1.5,
+        color: 'var(--color-ink-2)',
+      }}
+    >
+      {/* Entity type + label */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+        <span
+          data-testid="entity-popover-dot"
+          style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: color,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: '10px', color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+          {typeLabel}
+        </span>
+      </div>
+
+      {/* Entity name */}
+      <div
+        data-testid="entity-popover-name"
+        style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-ink)', marginBottom: '8px' }}
+      >
+        {entityName}
+      </div>
+
+      {loading ? (
+        <div style={{ color: 'var(--color-ink-4)', fontSize: '11px' }}>Loading...</div>
+      ) : summary ? (
+        <>
+          {/* Connections */}
+          {topConnections.length > 0 && (
+            <div style={{ marginBottom: '8px' }}>
+              {topConnections.map(([linkType, count]) => (
+                <div
+                  key={linkType}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '2px 0',
+                    fontSize: '11px',
+                  }}
+                >
+                  <span style={{ color: 'var(--color-ink-3)' }}>
+                    {LINK_TYPE_LABELS[linkType] || linkType.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginLeft: '12px' }}>{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Total connections */}
+          <div style={{ fontSize: '10px', color: 'var(--color-ink-4)', marginBottom: onEntityClick ? '8px' : 0 }}>
+            {summary.total_connections} total connection{summary.total_connections !== 1 ? 's' : ''}
+          </div>
+
+          {/* View Profile button */}
+          {onEntityClick && (
+            <button
+              data-testid="entity-popover-view-profile"
+              type="button"
+              onClick={() => onEntityClick(entityId, entityType)}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '6px 0',
+                background: 'none',
+                border: '1px solid var(--color-line)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--color-accent)',
+                textAlign: 'center',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-surface-2)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+            >
+              View Profile
+            </button>
+          )}
+        </>
+      ) : (
+        <div style={{ color: 'var(--color-ink-4)', fontSize: '11px' }}>No summary available</div>
+      )}
+    </div>
+  );
+}
+
+function EntityMentionSpan({
+  text,
+  entityType,
+  entityId,
+  onEntityClick,
+}: {
+  text: string;
+  entityType: string;
+  entityId?: string;
+  onEntityClick?: (entityId: string, entityType: string) => void;
+}) {
+  const color = ENTITY_COLORS[entityType] || 'var(--color-accent)';
+  const [showPopover, setShowPopover] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startHover = useCallback(() => {
+    if (!entityId) return;
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+    hoverTimerRef.current = setTimeout(() => {
+      setShowPopover(true);
+    }, 300);
+  }, [entityId]);
+
+  const startDismiss = useCallback(() => {
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+    dismissTimerRef.current = setTimeout(() => {
+      setShowPopover(false);
+    }, 200);
+  }, []);
+
+  const cancelDismiss = useCallback(() => {
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+  }, []);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
+
+  return (
+    <span
+      data-testid={entityId ? `entity-mention-${entityId}` : undefined}
+      style={{
+        position: 'relative',
+        display: 'inline',
+        color,
+        fontWeight: 500,
+        borderBottom: `1.5px solid ${color}40`,
+        cursor: entityId ? 'pointer' : 'default',
+      }}
+      title={`${entityType.replace(/_/g, ' ')} entity`}
+      onMouseEnter={startHover}
+      onMouseLeave={startDismiss}
+    >
+      {text}
+      {showPopover && entityId && (
+        <EntityPopover
+          entityType={entityType}
+          entityId={entityId}
+          entityName={text}
+          onEntityClick={onEntityClick}
+          onMouseEnter={cancelDismiss}
+          onMouseLeave={startDismiss}
+        />
+      )}
+    </span>
+  );
 }
 
 function RichText({
   text,
   evidence,
   onCitationClick,
+  onEntityClick,
   entityMentions,
 }: {
   text: string;
   evidence?: EvidenceItem[];
   onCitationClick?: (index: number) => void;
+  onEntityClick?: (entityId: string, entityType: string) => void;
   entityMentions?: EntityMention[];
 }) {
   const paragraphs = text.split(/\n{2,}/);
@@ -263,20 +514,14 @@ function RichText({
                 return <em key={i}>{part.text}</em>;
               }
               if (part.type === 'entity') {
-                const color = ENTITY_COLORS[part.entityType || ''] || 'var(--color-accent)';
                 return (
-                  <span
+                  <EntityMentionSpan
                     key={i}
-                    style={{
-                      color,
-                      fontWeight: 500,
-                      borderBottom: `1.5px solid ${color}40`,
-                      cursor: 'default',
-                    }}
-                    title={`${part.entityType?.replace(/_/g, ' ')} entity`}
-                  >
-                    {part.text}
-                  </span>
+                    text={part.text}
+                    entityType={part.entityType || 'drug'}
+                    entityId={part.entityId}
+                    onEntityClick={onEntityClick}
+                  />
                 );
               }
               if (part.type === 'citation') {
