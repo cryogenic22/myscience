@@ -384,6 +384,7 @@ function ResponseCards({
               nodes={data.graph_context.nodes}
               edges={data.graph_context.edges}
               centerEntityId={data.entity_focus?.[0]?.entity_id as string | undefined}
+              height={260}
               compact
             />
           )}

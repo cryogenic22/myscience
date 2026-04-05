@@ -649,7 +649,7 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
                           background: 'var(--color-amber-soft)', color: 'var(--color-amber)',
                           textTransform: 'capitalize',
                         }}>
-                          {item.review_type.replace(/_/g, ' ')}
+                          {(item.review_type ?? '').replace(/_/g, ' ')}
                         </span>
                         <span style={{ fontSize: '11px', color: 'var(--color-ink-4)' }}>{item.entity_type}</span>
                       </div>

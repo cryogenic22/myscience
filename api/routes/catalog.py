@@ -764,30 +764,31 @@ def _browse_drugs(
             params,
         )
     except Exception:
-        # Fallback: mv_drug_pipeline_strength may not exist
+        # Fallback: mv_drug_pipeline_strength may not exist or entity_links subqueries too slow
         logger.debug("browse_drugs: rich query failed, falling back to simple join")
         fallback_sort = "d.quality_score" if sort_col == "pipeline_score" else sort_col
         if fallback_sort == "_label":
             fallback_sort = "d.generic_name"
-        rows = db.fetch_all(
-            f"""
-            SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
-                   d.supply_status, d.quality_score, d.record_status,
-                   {mechanism_fallback},
-                   {company_fallback},
-                   {ta_fallback},
-                   (SELECT COUNT(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) AS trial_count,
-                   0 AS pipeline_score
-            FROM drugs d
-            LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
-            LEFT JOIN companies c ON d.company_id = c.id
-            LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
-            {where}
-            ORDER BY {fallback_sort} {direction} NULLS LAST
-            LIMIT %s OFFSET %s
-            """,
-            params,
-        )
+        try:
+            rows = db.fetch_all(
+                f"""
+                SELECT d.id, d.generic_name AS _label, d.brand_name, d.approval_date,
+                       d.supply_status, d.quality_score, d.record_status,
+                       m.name AS mechanism_name, c.name AS company_name, ta.name AS therapeutic_area,
+                       0 AS trial_count, 0 AS pipeline_score
+                FROM drugs d
+                LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
+                LEFT JOIN companies c ON d.company_id = c.id
+                LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
+                {where}
+                ORDER BY {fallback_sort} {direction} NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                params,
+            )
+        except Exception:
+            logger.warning("browse_drugs: even simple fallback failed")
+            rows = []
 
     return {
         "entity_type": "drug",
@@ -857,22 +858,22 @@ def _browse_companies(
         fallback_sort = "c.quality_score" if sort_col == "pipeline_score" else sort_col
         if fallback_sort == "_label":
             fallback_sort = "c.name"
-        rows = db.fetch_all(
-            f"""
-            SELECT c.id, c.name AS _label, c.ticker, c.cik, c.country,
-                   c.quality_score, c.record_status,
-                   (SELECT COUNT(*) FROM drugs d WHERE d.company_id = c.id) AS drug_count,
-                   (SELECT COUNT(*) FROM entity_links el
-                    WHERE el.source_entity_id = c.id::text
-                      AND el.link_type = 'SPONSORS') AS trial_count,
-                   0 AS pipeline_score
-            FROM companies c
-            {where}
-            ORDER BY {fallback_sort} {direction} NULLS LAST
-            LIMIT %s OFFSET %s
-            """,
-            params,
-        )
+        try:
+            rows = db.fetch_all(
+                f"""
+                SELECT c.id, c.name AS _label, c.ticker, c.cik, c.country,
+                       c.quality_score, c.record_status,
+                       0 AS drug_count, 0 AS trial_count, 0 AS pipeline_score
+                FROM companies c
+                {where}
+                ORDER BY {fallback_sort} {direction} NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                params,
+            )
+        except Exception:
+            logger.warning("browse_companies: even simple fallback failed")
+            rows = []
 
     return {
         "entity_type": "company",
@@ -933,16 +934,20 @@ def _browse_generic(
     total = count_row["total"] if count_row else 0
 
     params.extend([limit_val, offset_val])
-    rows = db.fetch_all(
-        f"""
-        SELECT {cols}, {label_expr} AS _label
-        FROM {meta['table']}
-        {where}
-        ORDER BY {sort_col} {direction} NULLS LAST
-        LIMIT %s OFFSET %s
-        """,
-        params,
-    )
+    try:
+        rows = db.fetch_all(
+            f"""
+            SELECT {cols}, {label_expr} AS _label
+            FROM {meta['table']}
+            {where}
+            ORDER BY {sort_col} {direction} NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        )
+    except Exception:
+        logger.warning("browse_generic(%s): query failed, returning empty", entity_type)
+        rows = []
 
     return {
         "entity_type": entity_type,
@@ -1843,9 +1848,12 @@ def source_freshness(db: Database = Depends(get_db)):
 @router.get("/graph-summary")
 def graph_summary(db: Database = Depends(get_db)):
     """Knowledge graph connectivity summary — link types, entity coverage, density."""
-    link_types = db.fetch_all(
-        "SELECT link_type, COUNT(*) AS cnt FROM entity_links GROUP BY link_type ORDER BY cnt DESC"
-    )
+    try:
+        link_types = db.fetch_all(
+            "SELECT link_type, COUNT(*) AS cnt FROM entity_links GROUP BY link_type ORDER BY cnt DESC"
+        )
+    except Exception:
+        link_types = []
 
     # Entity linking completeness for drugs
     drug_stats = {}
@@ -1875,15 +1883,30 @@ def graph_summary(db: Database = Depends(get_db)):
     except Exception:
         pass
 
-    total_links = db.fetch_one("SELECT COUNT(*) AS cnt FROM entity_links")
-    total_entities = db.fetch_one(
-        "SELECT COUNT(*) AS cnt FROM v_entity_labels WHERE entity_type IN ('drug','company','trial','literature','mechanism','therapeutic_area')"
-    )
+    total_links_row = db.fetch_one("SELECT COUNT(*) AS cnt FROM entity_links")
+    total_entities_count = 0
+    try:
+        total_entities_row = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM v_entity_labels WHERE entity_type IN ('drug','company','trial','literature','mechanism','therapeutic_area')"
+        )
+        total_entities_count = total_entities_row["cnt"] if total_entities_row else 0
+    except Exception:
+        # v_entity_labels view may not exist — sum from individual tables
+        try:
+            fallback = db.fetch_one("""
+                SELECT (SELECT COUNT(*) FROM drugs) + (SELECT COUNT(*) FROM companies) +
+                       (SELECT COUNT(*) FROM clinical_trials) + (SELECT COUNT(*) FROM pubmed_articles) +
+                       (SELECT COUNT(*) FROM mechanisms_of_action) + (SELECT COUNT(*) FROM therapeutic_areas)
+                       AS cnt
+            """)
+            total_entities_count = fallback["cnt"] if fallback else 0
+        except Exception:
+            pass
 
     return {
         "link_types": [{"type": r["link_type"], "count": r["cnt"]} for r in link_types],
-        "total_links": total_links["cnt"] if total_links else 0,
-        "total_entities": total_entities["cnt"] if total_entities else 0,
+        "total_links": total_links_row["cnt"] if total_links_row else 0,
+        "total_entities": total_entities_count,
         "drug_completeness": drug_stats,
     }
 

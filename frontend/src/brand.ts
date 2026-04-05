@@ -159,7 +159,8 @@ export const FIELD_LABELS: Record<string, string> = {
 };
 
 /** Generic display name resolver — tries all maps, falls back to title-casing */
-export function displayName(key: string): string {
+export function displayName(key: string | undefined | null): string {
+  if (!key) return '';
   return (
     FIELD_LABELS[key] ??
     LINK_TYPE_LABELS[key] ??
