@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 from services.concept_registry import Concept, ConceptRegistry
 
@@ -206,3 +207,177 @@ class TestConceptActivation:
         assert weights == sorted(weights, reverse=True)
         # At least 2 concepts should match a landscape + drug query
         assert len(activated) >= 2
+
+
+# ── TestConceptRegistryDBBacked ──
+
+
+class _MockDB:
+    """Minimal mock database for ConceptRegistry DB tests."""
+
+    def __init__(self):
+        self._rows: list[dict] = []
+        self._executed: list[tuple] = []
+
+    def seed(self, rows: list[dict]) -> None:
+        """Seed the mock with rows that fetch_all will return."""
+        self._rows = list(rows)
+
+    def fetch_all(self, query: str, params=None) -> list[dict]:
+        return self._rows
+
+    def execute(self, query: str, params=None) -> None:
+        self._executed.append((query, params))
+
+    @property
+    def executed_queries(self) -> list[tuple]:
+        return self._executed
+
+
+def _make_db_row(
+    name: str = "test_concept",
+    description: str = "A test concept",
+    computation_path: str = "services.test.method",
+    intents: list[str] | None = None,
+    entity_types: list[str] | None = None,
+    staleness_days: int = 7,
+    weight: float = 0.5,
+) -> dict:
+    return {
+        "name": name,
+        "description": description,
+        "computation_path": computation_path,
+        "intents": intents or ["general"],
+        "entity_types": entity_types or ["drug"],
+        "staleness_days": staleness_days,
+        "weight": weight,
+    }
+
+
+class TestConceptRegistryDBBacked:
+    """Verify DB-backed loading, cache invalidation, sync, and weight updates."""
+
+    def test_db_backed_load_concepts(self):
+        """Concepts loaded from DB should populate the registry cache."""
+        db = _MockDB()
+        db.seed([
+            _make_db_row(name="pipeline_strength", weight=0.95),
+            _make_db_row(name="evidence_density", weight=0.80),
+        ])
+        reg = ConceptRegistry(auto_register=True, db=db)
+        assert reg.get("pipeline_strength") is not None
+        assert reg.get("evidence_density") is not None
+        assert reg.get("pipeline_strength").weight == 0.95
+
+    def test_db_backed_empty_falls_back_to_hardcoded(self):
+        """If DB returns no rows, fall back to the 15 hardcoded concepts."""
+        db = _MockDB()
+        db.seed([])  # empty table
+        reg = ConceptRegistry(auto_register=True, db=db)
+        # Should still have the 15 hardcoded concepts
+        assert reg.get("pipeline_strength") is not None
+        assert reg.get("competitive_landscape") is not None
+        assert len(reg.list_for_intent("landscape")) >= 2
+
+    def test_db_exception_falls_back_to_hardcoded(self):
+        """If DB raises an exception, fall back to hardcoded concepts."""
+        db = MagicMock()
+        db.fetch_all.side_effect = Exception("connection refused")
+        reg = ConceptRegistry(auto_register=True, db=db)
+        assert reg.get("pipeline_strength") is not None
+        assert reg.get("competitive_landscape") is not None
+
+    def test_cache_invalidation_via_reload(self):
+        """After reload_from_db(), new concepts from DB should appear."""
+        db = _MockDB()
+        # Start with one concept
+        db.seed([_make_db_row(name="alpha", weight=0.9)])
+        reg = ConceptRegistry(auto_register=True, db=db)
+        assert reg.get("alpha") is not None
+        assert reg.get("beta") is None
+
+        # Simulate a new concept added to DB
+        db.seed([
+            _make_db_row(name="alpha", weight=0.9),
+            _make_db_row(name="beta", weight=0.7),
+        ])
+        count = reg.reload_from_db()
+        assert count == 2
+        assert reg.get("alpha") is not None
+        assert reg.get("beta") is not None
+
+    def test_reload_empty_db_falls_back(self):
+        """reload_from_db with empty DB falls back to hardcoded."""
+        db = _MockDB()
+        db.seed([_make_db_row(name="alpha")])
+        reg = ConceptRegistry(auto_register=True, db=db)
+        assert reg.get("alpha") is not None
+
+        db.seed([])  # DB now empty
+        count = reg.reload_from_db()
+        assert count == 15  # fell back to hardcoded
+        assert reg.get("pipeline_strength") is not None
+        assert reg.get("alpha") is None
+
+    def test_reload_without_db_returns_zero(self):
+        """reload_from_db with no DB returns 0."""
+        reg = ConceptRegistry(auto_register=True)
+        assert reg.reload_from_db() == 0
+
+    def test_update_weight_in_cache_and_db(self):
+        """update_weight should change the in-memory weight and write to DB."""
+        db = _MockDB()
+        db.seed([_make_db_row(name="pipeline_strength", weight=0.95)])
+        reg = ConceptRegistry(auto_register=True, db=db)
+
+        result = reg.update_weight("pipeline_strength", 0.99)
+        assert result is True
+        assert reg.get("pipeline_strength").weight == 0.99
+        # Should have issued an UPDATE query
+        assert any("UPDATE concepts" in q[0] for q in db.executed_queries)
+
+    def test_update_weight_unknown_concept(self):
+        """update_weight on a nonexistent concept returns False."""
+        db = _MockDB()
+        db.seed([_make_db_row(name="alpha")])
+        reg = ConceptRegistry(auto_register=True, db=db)
+        assert reg.update_weight("nonexistent", 0.5) is False
+
+    def test_update_weight_without_db(self):
+        """update_weight without DB still updates cache."""
+        reg = ConceptRegistry(auto_register=True)
+        old_weight = reg.get("pipeline_strength").weight
+        reg.update_weight("pipeline_strength", 0.99)
+        assert reg.get("pipeline_strength").weight == 0.99
+
+    def test_sync_to_db_writes_all_concepts(self):
+        """sync_to_db should upsert all in-memory concepts to DB."""
+        db = _MockDB()
+        db.seed([])
+        reg = ConceptRegistry(auto_register=True, db=db)
+        # Registry has 15 hardcoded concepts (DB was empty, so fell back)
+        count = reg.sync_to_db()
+        assert count == 15
+        # Each concept triggers one INSERT ... ON CONFLICT
+        insert_queries = [q for q in db.executed_queries if "INSERT INTO concepts" in q[0]]
+        assert len(insert_queries) == 15
+
+    def test_sync_to_db_without_db_returns_zero(self):
+        """sync_to_db with no DB returns 0."""
+        reg = ConceptRegistry(auto_register=True)
+        assert reg.sync_to_db() == 0
+
+    def test_backward_compat_no_db(self):
+        """ConceptRegistry() with no db still works exactly as before."""
+        reg = ConceptRegistry(auto_register=True)
+        assert reg.get("pipeline_strength") is not None
+        assert reg.get("competitive_landscape") is not None
+        assert len(reg.list_for_intent("landscape")) >= 2
+        activated = reg.activate("dossier", ["drug"])
+        assert len(activated) >= 3
+
+    def test_backward_compat_no_auto_register(self):
+        """ConceptRegistry(auto_register=False) still gives empty registry."""
+        reg = ConceptRegistry(auto_register=False)
+        assert reg.get("pipeline_strength") is None
+        assert len(reg.list_for_intent("landscape")) == 0

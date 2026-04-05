@@ -22,6 +22,7 @@ from services.llm import LLMSynthesizer
 from services.web_research import WebResearchService
 from services.conversation_memory import ConversationMemory
 from services.workspace import ChatWorkspaceService
+from services.concept_registry import ConceptRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,16 @@ def get_workspace() -> ChatWorkspaceService:
 def get_fair_scorer():
     from services.fair_scorer import FAIRScorer
     return FAIRScorer(get_db())
+
+
+@lru_cache()
+def get_concept_registry() -> ConceptRegistry:
+    """Build and cache a DB-backed ConceptRegistry singleton.
+
+    Loads concepts from the ``concepts`` table on first access.
+    Falls back to hardcoded pharma concepts if the table doesn't exist.
+    """
+    return ConceptRegistry(db=get_db())
 
 
 # ── Agent Harness (Task 1A + 1B) ──

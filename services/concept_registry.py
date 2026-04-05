@@ -12,6 +12,11 @@ Usage:
     registry = ConceptRegistry()                        # auto-loads 15 pharma concepts
     concepts = registry.activate("landscape", ["drug"]) # ranked list for this query
     concept = registry.get("pipeline_strength")         # look up by name
+
+    # DB-backed mode (persistent, with in-memory cache):
+    registry = ConceptRegistry(db=db)                   # loads from DB, falls back to hardcoded
+    registry.update_weight("pipeline_strength", 0.99)   # persists to DB
+    registry.reload_from_db()                           # refresh cache from DB
 """
 
 from __future__ import annotations
@@ -19,6 +24,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +70,23 @@ class ConceptRegistry:
     Args:
         auto_register: When True (default), pre-loads the pharma domain concepts.
                        Set False for unit tests that need an empty registry.
+        db:            Optional Database instance. When provided, concepts are loaded
+                       from the ``concepts`` table into the in-memory cache. Falls
+                       back to hardcoded concepts if the table doesn't exist yet.
     """
 
-    def __init__(self, auto_register: bool = True) -> None:
+    def __init__(self, auto_register: bool = True, db: "Database | None" = None) -> None:
         self._concepts: dict[str, Concept] = {}
+        self._db = db
+
         if auto_register:
-            self._register_pharma_concepts()
+            if db is not None:
+                # Try loading from DB first; fall back to hardcoded
+                loaded = self._load_from_db()
+                if not loaded:
+                    self._register_pharma_concepts()
+            else:
+                self._register_pharma_concepts()
 
     def register(self, concept: Concept) -> None:
         """Register a concept. Overwrites if name already exists."""
@@ -109,6 +129,113 @@ class ConceptRegistry:
             and entity_set.intersection(c.entity_types)
         ]
         return sorted(matched, key=lambda c: c.weight, reverse=True)
+
+    # ── DB-backed methods ──────────────────────────────────────
+
+    def _load_from_db(self) -> bool:
+        """Load concepts from the DB ``concepts`` table into the in-memory cache.
+
+        Returns True if concepts were loaded, False if the table doesn't
+        exist or the query failed.
+        """
+        if self._db is None:
+            return False
+        try:
+            rows = self._db.fetch_all(
+                "SELECT name, description, computation_path, intents, entity_types, "
+                "staleness_days, weight FROM concepts WHERE active = true"
+            )
+            if not rows:
+                return False
+            for row in rows:
+                concept = Concept(
+                    name=row["name"],
+                    description=row["description"],
+                    computation=row["computation_path"],
+                    intents=list(row.get("intents") or []),
+                    entity_types=list(row.get("entity_types") or []),
+                    staleness_days=row.get("staleness_days", 7),
+                    weight=row.get("weight", 0.5),
+                )
+                self._concepts[concept.name] = concept
+            logger.debug("Loaded %d concepts from database", len(rows))
+            return True
+        except Exception as exc:
+            logger.debug("Could not load concepts from DB (table may not exist): %s", exc)
+            return False
+
+    def reload_from_db(self) -> int:
+        """Refresh the in-memory cache from the database.
+
+        Clears the existing cache and reloads. Returns the number of
+        concepts loaded, or 0 if DB is not available.
+        """
+        if self._db is None:
+            return 0
+        self._concepts.clear()
+        loaded = self._load_from_db()
+        if not loaded:
+            # Fall back to hardcoded if DB load fails
+            self._register_pharma_concepts()
+        return len(self._concepts)
+
+    def sync_to_db(self) -> int:
+        """Write all in-memory concepts to the database.
+
+        Uses INSERT ... ON CONFLICT to upsert. Returns the number of
+        concepts written, or 0 if DB is not available.
+        """
+        if self._db is None:
+            return 0
+        count = 0
+        for concept in self._concepts.values():
+            try:
+                self._db.execute(
+                    """INSERT INTO concepts (name, description, computation_path, intents,
+                                            entity_types, staleness_days, weight, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                       ON CONFLICT (name)
+                       DO UPDATE SET description = EXCLUDED.description,
+                                     computation_path = EXCLUDED.computation_path,
+                                     intents = EXCLUDED.intents,
+                                     entity_types = EXCLUDED.entity_types,
+                                     staleness_days = EXCLUDED.staleness_days,
+                                     weight = EXCLUDED.weight,
+                                     updated_at = NOW()""",
+                    [
+                        concept.name,
+                        concept.description,
+                        concept.computation,
+                        concept.intents,
+                        concept.entity_types,
+                        concept.staleness_days,
+                        concept.weight,
+                    ],
+                )
+                count += 1
+            except Exception as exc:
+                logger.warning("Failed to sync concept %s to DB: %s", concept.name, exc)
+        logger.debug("Synced %d concepts to database", count)
+        return count
+
+    def update_weight(self, name: str, new_weight: float) -> bool:
+        """Update a concept's weight in both cache and DB.
+
+        Returns True if the concept was found and updated, False otherwise.
+        """
+        concept = self._concepts.get(name)
+        if concept is None:
+            return False
+        concept.weight = new_weight
+        if self._db is not None:
+            try:
+                self._db.execute(
+                    "UPDATE concepts SET weight = %s, updated_at = NOW() WHERE name = %s",
+                    [new_weight, name],
+                )
+            except Exception as exc:
+                logger.warning("Failed to persist weight update for %s: %s", name, exc)
+        return True
 
     # ── Pharma Domain Concepts ──────────────────────────────────
 
