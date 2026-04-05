@@ -1174,9 +1174,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                       {featured.map(entity => {
                         const id = String(entity.id ?? entity._label ?? '');
                         // Determine the type — for "all" view, featured may have __type property
-                        const eType = ((entity as Record<string, unknown>).__type as string) || browseType || 'drug'
-                          ? String((entity as Record<string, unknown>).__type)
-                          : featuredEntityType;
+                        const eType = String((entity as Record<string, unknown>).__type || activeFilter || 'drug');
                         return (
                           <EntityCard
                             key={id}
