@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink } from 'lucide-react';
 import type { Message } from '../ChatMessage';
 import type { EvidenceItem } from '../../api';
+import { SOURCE_LABELS } from '../../brand';
 
 const PROMPT_ARTIFACT_RE = /\[(metrics|data|evidence|context|sources?|analysis|summary)\]/gi;
 
@@ -306,6 +308,30 @@ function RichText({
   );
 }
 
+/* ── Source icon mapping ── */
+
+const SOURCE_ICON_MAP: Record<string, React.ReactNode> = {
+  pubmed: <FlaskConical size={10} />,
+  pmc: <FlaskConical size={10} />,
+  clinical_trials_gov: <Shield size={10} />,
+  openfda_faers: <Flag size={10} />,
+  openfda_labels: <Flag size={10} />,
+  fda_orange_book: <Flag size={10} />,
+  fda_shortages: <Flag size={10} />,
+  sec_edgar: <Building2 size={10} />,
+};
+
+function getSourceIcon(source: string): React.ReactNode {
+  const key = source.toLowerCase().replace(/\s+/g, '_');
+  return SOURCE_ICON_MAP[key] ?? <FileText size={10} />;
+}
+
+function confidenceDotColor(relevance: number): string {
+  if (relevance >= 0.8) return '#22c55e'; // green
+  if (relevance >= 0.5) return '#f59e0b'; // amber
+  return '#ef4444'; // red
+}
+
 function CitationRef({
   index,
   evidence,
@@ -315,14 +341,21 @@ function CitationRef({
   evidence?: EvidenceItem;
   onClick?: () => void;
 }) {
-  const [show, setShow] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  return (
-    <span className="relative inline-block">
+  const handleClick = () => {
+    if (onClick) onClick();
+    if (evidence) setExpanded(prev => !prev);
+  };
+
+  // Fallback: no evidence data — render plain superscript
+  if (!evidence) {
+    return (
       <span
+        data-testid={`citation-chip-${index}`}
         role="button"
         tabIndex={0}
-        className="rounded cursor-pointer select-none"
+        className="rounded cursor-default select-none"
         style={{
           padding: '2px 4px',
           fontSize: '10px',
@@ -331,36 +364,117 @@ function CitationRef({
           color: 'var(--color-accent)',
           verticalAlign: 'super',
         }}
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        onClick={onClick}
       >
         [{index}]
       </span>
+    );
+  }
 
-      {show && evidence && (
-        <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 rounded-xl text-left"
+  const sourceApi = (evidence.provenance?.source_api as string) ?? evidence.source;
+  const sourceLabel = SOURCE_LABELS[sourceApi] ?? sourceApi.replace(/_/g, ' ');
+  const sourceUrl = evidence.provenance?.source_url as string | undefined;
+  const dotColor = confidenceDotColor(evidence.relevance);
+
+  return (
+    <span className="inline" data-testid={`citation-chip-${index}`}>
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleClick(); }}
+        className="rounded-lg cursor-pointer select-none"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '3px',
+          padding: '1px 6px',
+          fontSize: '12px',
+          fontWeight: 500,
+          fontFamily: 'var(--font-body, "DM Sans", sans-serif)',
+          background: 'var(--color-surface-2)',
+          border: '1px solid var(--color-line)',
+          borderRadius: '10px',
+          color: 'var(--color-ink-3)',
+          verticalAlign: 'baseline',
+          lineHeight: '18px',
+          transition: 'background 0.15s, border-color 0.15s',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLSpanElement).style.background = 'var(--color-surface-3)';
+          (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--color-ink-4)';
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLSpanElement).style.background = 'var(--color-surface-2)';
+          (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--color-line)';
+        }}
+      >
+        <span style={{ display: 'inline-flex', opacity: 0.7 }} data-testid={`citation-icon-${index}`}>
+          {getSourceIcon(sourceApi)}
+        </span>
+        <span>{index}</span>
+        <span
+          data-testid={`citation-dot-${index}`}
           style={{
-            padding: '12px',
-            width: '260px',
-            transform: 'translateX(-50%)',
+            display: 'inline-block',
+            width: '5px',
+            height: '5px',
+            borderRadius: '50%',
+            background: dotColor,
+            flexShrink: 0,
+          }}
+        />
+      </span>
+
+      {/* Expanded evidence card — inline beneath text */}
+      {expanded && (
+        <span
+          data-testid={`citation-evidence-${index}`}
+          className="block rounded-xl"
+          style={{
+            marginTop: '8px',
+            marginBottom: '8px',
+            padding: '12px 14px',
             background: 'var(--color-surface)',
             border: '1px solid var(--color-line)',
-            boxShadow: 'var(--shadow-lg)',
-            fontSize: '11px',
-            lineHeight: 1.5,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            fontSize: '12px',
+            lineHeight: 1.6,
             color: 'var(--color-ink-3)',
           }}
         >
-          <div
-            className="font-medium mb-1 line-clamp-3"
-            style={{ color: 'var(--color-ink)' }}
-          >
-            {evidence.content}
-          </div>
-          <div style={{ color: 'var(--color-ink-4)' }}>{evidence.source}</div>
-        </div>
+          <span className="flex items-center gap-2" style={{ marginBottom: '6px' }}>
+            <span style={{ display: 'inline-flex', color: 'var(--color-ink-4)' }}>
+              {getSourceIcon(sourceApi)}
+            </span>
+            <span style={{ fontWeight: 600, color: 'var(--color-ink)', fontSize: '11px' }}>
+              {sourceLabel}
+            </span>
+            <span style={{ color: 'var(--color-ink-4)', fontSize: '10px', textTransform: 'capitalize' }}>
+              {evidence.entity_type.replace(/_/g, ' ')}
+            </span>
+            <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 500, color: 'var(--color-ink-4)' }}>
+              {(evidence.relevance * 100).toFixed(0)}% relevant
+            </span>
+          </span>
+          <span className="block" style={{ color: 'var(--color-ink-2)' }}>
+            {evidence.content.length > 200 ? evidence.content.slice(0, 198) + '..' : evidence.content}
+          </span>
+          {sourceUrl && (
+            <span className="flex items-center gap-1" style={{ marginTop: '6px', fontSize: '10px', color: 'var(--color-ink-4)' }}>
+              <ExternalLink size={10} />
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--color-accent)', textDecoration: 'none' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'underline'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'none'; }}
+              >
+                {sourceUrl.length > 60 ? sourceUrl.slice(0, 58) + '..' : sourceUrl}
+              </a>
+            </span>
+          )}
+        </span>
       )}
     </span>
   );
