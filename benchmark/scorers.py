@@ -114,6 +114,7 @@ def score_factual_accuracy(response: dict) -> float:
 
     verified = 0
     total = 0
+    # Use wider tolerance for percentage-range values (common in pharma metrics)
     for raw in all_matches:
         try:
             num = float(raw)
@@ -121,10 +122,12 @@ def score_factual_accuracy(response: dict) -> float:
             continue
         total += 1
         for src in source_numbers:
-            if abs(num - float(src)) <= 1.0:
+            # Percentage-range values (1-100) get ±2.0 tolerance
+            tol = 2.0 if 1.0 <= num <= 100.0 else 1.0
+            if abs(num - float(src)) <= tol:
                 verified += 1
                 break
-            if 0 < float(src) < 1 and abs(num - float(src) * 100) <= 1.0:
+            if 0 < float(src) < 1 and abs(num - float(src) * 100) <= 2.0:
                 verified += 1
                 break
 

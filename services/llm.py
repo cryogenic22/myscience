@@ -202,6 +202,10 @@ Rules:
 - Lead with what the entity is and its significance.
 - Key metrics in bold: pipeline score, trial count, phase distribution.
 - Note any recent developments or notable trial activity.
+- EVERY numeric claim MUST have a citation [N] or [metrics] tag immediately after it.
+- If data is missing or limited, say "data is limited" — NEVER invent numbers.
+- Name connected entities (company, mechanism, therapeutic area) when available.
+- Include competitive context if mechanism or therapeutic area peers exist in the data.
 - 2-4 paragraphs maximum.
 {_BASE_RULES}""",
 

@@ -80,6 +80,88 @@ EXEMPLARS: dict[str, list[FewShotExemplar]] = {
             ),
             entity_type="drug",
         ),
+        FewShotExemplar(
+            intent="dossier",
+            question="Tell me about GLP-1 receptor agonists",
+            answer=(
+                "**GLP-1 receptor agonists** are a mechanism class targeting the "
+                "glucagon-like peptide-1 receptor, primarily used in **type 2 "
+                "diabetes** and **obesity** [1]. The class includes **8 distinct "
+                "molecules** with a combined **181 trials** and an aggregate pipeline "
+                "score of **142.3** [metrics]. Key drugs include **semaglutide** "
+                "(Novo Nordisk) and **tirzepatide** (Eli Lilly), which together "
+                "account for **75 trials** [2].\n\n"
+                "Development activity is concentrated in metabolic indications, "
+                "but cardiovascular outcomes and NASH represent expanding frontiers "
+                "with **18 dedicated trials** [3]. Trial success rates for the class "
+                "average **74%** [metrics], above the all-indication benchmark."
+            ),
+            entity_type="mechanism",
+        ),
+        FewShotExemplar(
+            intent="dossier",
+            question="Brief me on the oncology landscape",
+            answer=(
+                "**Oncology** is the largest therapeutic area by trial volume, with "
+                "**1,247 active trials** and a combined pipeline score of **342.7** "
+                "[metrics]. The space is dominated by **immuno-oncology** approaches, "
+                "particularly **PD-1/PD-L1 inhibitors** which account for **393 "
+                "trials** across **18 tumor types** [1][2].\n\n"
+                "Late-stage programs (Phase 3+) number **127** with a success rate "
+                "of **54%** [metrics]. **Non-small cell lung cancer** and **melanoma** "
+                "remain the most contested indications, while **hepatocellular "
+                "carcinoma** and **gastric cancer** show accelerating enrollment [3]."
+            ),
+            entity_type="therapeutic_area",
+        ),
+        FewShotExemplar(
+            intent="dossier",
+            question="What do we know about Regeneron?",
+            answer=(
+                "**Regeneron** is a biotechnology company with data available on "
+                "**14 trials** and a pipeline score of **11.2** [metrics]. The "
+                "company is linked to the **immunology** and **oncology** therapeutic "
+                "areas [1]. Data on specific pipeline composition is limited; "
+                "additional enrichment may improve coverage.\n\n"
+                "Available evidence shows activity in **monoclonal antibody** "
+                "development [2], but detailed phase distribution and competitive "
+                "positioning data is limited in the current dataset [metrics]."
+            ),
+            entity_type="company",
+        ),
+        FewShotExemplar(
+            intent="dossier",
+            question="Tell me about empagliflozin",
+            answer=(
+                "**Empagliflozin** is an **SGLT2 inhibitor** developed by "
+                "**Boehringer Ingelheim** in partnership with **Eli Lilly** [1]. "
+                "It has **34 trials** with a pipeline score of **22.7** [metrics]. "
+                "The drug has established efficacy in **type 2 diabetes** and "
+                "**heart failure**, with **8 Phase 4 post-marketing studies** [2].\n\n"
+                "Within the SGLT2 class, empagliflozin competes directly with "
+                "**dapagliflozin** (AstraZeneca), which has **41 trials** [metrics]. "
+                "Empagliflozin's cardiovascular evidence base gives it a "
+                "differentiated position in the heart failure segment [3]."
+            ),
+            entity_type="drug",
+        ),
+        FewShotExemplar(
+            intent="dossier",
+            question="Brief me on metformin safety profile",
+            answer=(
+                "**Metformin** is a biguanide and the most widely prescribed "
+                "first-line therapy for **type 2 diabetes** [1]. With **156 trials** "
+                "and a pipeline score of **18.4** [metrics], it has one of the "
+                "deepest evidence bases of any diabetes drug. The majority of trials "
+                "are **Phase 4** post-marketing studies (**112 of 156**) [2].\n\n"
+                "Safety data from **FAERS** reports indicates a well-established "
+                "adverse event profile, with **lactic acidosis** as the primary "
+                "labeled risk [3]. Long-term safety is supported by decades of "
+                "clinical use, and recent trials explore potential benefits in "
+                "**oncology** and **aging** indications [metrics]."
+            ),
+            entity_type="drug",
+        ),
     ],
     "compare": [
         FewShotExemplar(
