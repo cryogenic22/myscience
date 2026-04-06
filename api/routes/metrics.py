@@ -120,6 +120,20 @@ def safety_signals(
     }
 
 
+@router.get("/mv-health")
+def mv_health(
+    hours: int = Query(24, ge=1, le=168),
+    db: Database = Depends(get_db),
+):
+    """Materialized view health -- fallback frequency and freshness.
+
+    Returns per-view fallback counts, last fallback time, and alerts
+    for any view with fallback_pct > 20% in the given window.
+    """
+    from services.telemetry import get_mv_health
+    return get_mv_health(db, hours=hours)
+
+
 @router.get("/ctx-telemetry")
 def ctx_telemetry(db: Database = Depends(get_db)):
     """CTX context-building telemetry: compression ratios, token savings, build times."""

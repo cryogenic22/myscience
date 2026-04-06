@@ -128,3 +128,93 @@ def log_query_event(
         )
     except Exception:
         logger.debug("query_telemetry insert failed (table may not exist yet)", exc_info=True)
+
+
+# ── Materialized View Fallback Telemetry ────────────────────────────
+
+
+def log_mv_fallback(
+    db,
+    method_name: str,
+    mv_name: str,
+    reason: str = "insufficient_data",
+    row_count: int = 0,
+) -> None:
+    """Log when a materialized view fallback fires. Never raises.
+
+    Reasons:
+    - 'insufficient_data': MV returned too few rows, fell back to realtime
+    - 'mv_error': MV query raised an exception
+    - 'empty_result': MV returned zero rows (error path)
+    """
+    try:
+        db.execute(
+            """INSERT INTO mv_fallback_events
+               (method_name, mv_name, reason, row_count)
+               VALUES (%s, %s, %s, %s)""",
+            [method_name, mv_name, reason, row_count],
+        )
+    except Exception:
+        logger.debug("mv_fallback_events insert failed (table may not exist yet)", exc_info=True)
+
+
+def get_mv_health(db, hours: int = 24) -> dict:
+    """Compute MV health summary: fallback frequency per view.
+
+    Returns dict keyed by mv_name with fallback_count, last_fallback,
+    total_queries (estimated from method calls), and fallback_pct.
+    Includes an 'alerts' list for any MV with fallback_pct > 20%.
+    """
+    try:
+        rows = db.fetch_all(
+            """SELECT mv_name,
+                      COUNT(*) AS fallback_count,
+                      MAX(created_at) AS last_fallback,
+                      COUNT(DISTINCT method_name) AS methods_affected
+               FROM mv_fallback_events
+               WHERE created_at >= NOW() - INTERVAL '%s hours'
+               GROUP BY mv_name
+               ORDER BY fallback_count DESC""",
+            [hours],
+        )
+    except Exception:
+        # Table may not exist yet
+        return {"views": {}, "alerts": [], "period_hours": hours}
+
+    # Also get total query counts from query_telemetry in the same window
+    # to estimate fallback percentage
+    try:
+        total_row = db.fetch_one(
+            """SELECT COUNT(*) AS total
+               FROM query_telemetry
+               WHERE created_at >= NOW() - INTERVAL '%s hours'""",
+            [hours],
+        )
+        total_queries = (total_row or {}).get("total", 0) or 0
+    except Exception:
+        total_queries = 0
+
+    views = {}
+    alerts = []
+    for row in rows:
+        mv = row["mv_name"]
+        fc = row["fallback_count"]
+        # Use total_queries as denominator; if 0, pct is 100% (all are fallbacks)
+        pct = round((fc / total_queries) * 100, 1) if total_queries > 0 else 100.0
+        entry = {
+            "fallback_count": fc,
+            "last_fallback": str(row["last_fallback"]) if row.get("last_fallback") else None,
+            "methods_affected": row["methods_affected"],
+            "total_queries": total_queries,
+            "fallback_pct": pct,
+        }
+        views[mv] = entry
+        if pct > 20:
+            alerts.append({
+                "mv_name": mv,
+                "fallback_pct": pct,
+                "fallback_count": fc,
+                "severity": "high" if pct > 50 else "medium",
+            })
+
+    return {"views": views, "alerts": alerts, "period_hours": hours}
