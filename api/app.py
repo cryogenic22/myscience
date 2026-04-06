@@ -360,7 +360,25 @@ def create_app() -> FastAPI:
                     except Exception:
                         logger.exception("FAIR scoring error [cycle %d]", cycle)
 
-                # 4d. Stale connector catch-up every 3rd cycle (~6 hours)
+                # 4d. Concept weight adjustment every 12th cycle (~24 hours)
+                if cycle % 12 == 0:
+                    try:
+                        from services.concept_weight_adjuster import ConceptWeightAdjuster
+                        from api.deps import get_concept_registry
+
+                        cw_db = get_db()
+                        cw_registry = get_concept_registry()
+                        adjuster = ConceptWeightAdjuster(cw_db, cw_registry)
+                        adj_report = adjuster.analyze_and_adjust(lookback_days=7)
+                        logger.info(
+                            "Concept weight adjustment [cycle %d]: %d queries analyzed, "
+                            "%d concepts adjusted",
+                            cycle, adj_report.analyzed_queries, adj_report.concepts_adjusted,
+                        )
+                    except Exception:
+                        logger.exception("Concept weight adjustment error [cycle %d]", cycle)
+
+                # 4e. Stale connector catch-up every 3rd cycle (~6 hours)
                 if cycle % 3 == 0:
                     try:
                         _run_stale_connectors()
@@ -368,7 +386,7 @@ def create_app() -> FastAPI:
                     except Exception:
                         logger.exception("Stale connector catch-up error [cycle %d]", cycle)
 
-                # 4e. Intelligence event collection every cycle
+                # 4f. Intelligence event collection every cycle
                 try:
                     from services.event_collector import EventCollector
                     edb = Database(_cfg.db.dsn)
