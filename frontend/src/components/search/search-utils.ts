@@ -1,6 +1,6 @@
 import type { SearchResult } from '../../api';
 
-export type SearchViewMode = 'cards' | 'grid' | 'list';
+export type SearchViewMode = 'cards' | 'grid' | 'list' | 'graph';
 export type SortMode = 'relevance' | 'quality' | 'recent';
 export type GraphFocus = { id: string; type: string; label: string };
 
@@ -25,6 +25,7 @@ export const VIEW_OPTIONS: Array<{ value: SearchViewMode; label: string }> = [
   { value: 'cards', label: 'Cards' },
   { value: 'grid', label: 'Grid' },
   { value: 'list', label: 'List' },
+  { value: 'graph', label: 'Graph' },
 ];
 
 export const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [

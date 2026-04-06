@@ -674,9 +674,11 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
 
                 <div
                   className={`grid grid-cols-1 gap-6 ${
-                    viewMode === 'list'
-                      ? 'xl:grid-cols-[minmax(0,0.92fr)_minmax(640px,1.08fr)] 2xl:grid-cols-[minmax(0,0.95fr)_minmax(700px,1.05fr)]'
-                      : 'xl:grid-cols-[minmax(0,1.08fr)_minmax(600px,0.92fr)] 2xl:grid-cols-[minmax(0,1.12fr)_minmax(660px,0.98fr)]'
+                    viewMode === 'graph'
+                      ? ''
+                      : viewMode === 'list'
+                        ? 'xl:grid-cols-[minmax(0,0.92fr)_minmax(640px,1.08fr)] 2xl:grid-cols-[minmax(0,0.95fr)_minmax(700px,1.05fr)]'
+                        : 'xl:grid-cols-[minmax(0,1.08fr)_minmax(600px,0.92fr)] 2xl:grid-cols-[minmax(0,1.12fr)_minmax(660px,0.98fr)]'
                   }`}
                 >
                   <SearchResults
@@ -690,7 +692,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                     totalResults={totalResults}
                     visibleCount={visibleResults.length}
                   />
-                  <EntityPreview
+                  {viewMode !== 'graph' && <EntityPreview
                     result={activeResult}
                     activeResultIndex={activeVisibleIndex}
                     totalVisibleResults={visibleResults.length}
@@ -718,7 +720,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                       })
                     }
                     onOpenFocusedNodeInSearch={openFocusedNodeInSearch}
-                  />
+                  />}
                 </div>
               </div>
             )}
