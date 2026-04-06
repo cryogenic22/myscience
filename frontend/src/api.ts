@@ -497,6 +497,38 @@ export interface SourceProfileData {
   cross_source_links: Array<{ target_source: string; link_type: string; count: number }>;
 }
 
+// ── Source Explorer types ──
+
+export interface SourceRecordColumn {
+  name: string;
+  type: string;
+}
+
+export interface SourceRecordsResponse {
+  source_key: string;
+  entity_type: string;
+  table: string;
+  columns: SourceRecordColumn[];
+  records: Record<string, unknown>[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SourceConnection {
+  target_source: string;
+  link_type: string;
+  count: number;
+  sample_entities?: string[];
+}
+
+export interface SourceConnectionsResponse {
+  source_key: string;
+  connections: SourceConnection[];
+  total_outgoing: number;
+  total_incoming: number;
+}
+
 // ── Entity Profile types ──
 
 export interface EntityProfileData {
@@ -811,6 +843,16 @@ export const api = {
   // Source Profile
   sourceProfile: (sourceKey: string) =>
     get<SourceProfileData>(`/catalog/source-profile/${encodeURIComponent(sourceKey)}`),
+
+  // Source Explorer — records + connections
+  sourceRecords: (sourceKey: string, params?: { entity_type?: string; limit?: number; offset?: number }) =>
+    get<SourceRecordsResponse>(
+      `/catalog/sources/${encodeURIComponent(sourceKey)}/records?${qs(params)}`
+    ),
+  sourceConnections: (sourceKey: string) =>
+    get<SourceConnectionsResponse>(
+      `/catalog/sources/${encodeURIComponent(sourceKey)}/connections`
+    ),
 
   // Steward
   stewardStatus: () =>
