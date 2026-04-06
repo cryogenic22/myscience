@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Search,
   Pill,
@@ -9,8 +10,9 @@ import {
   ChevronRight,
   FileCheck,
 } from 'lucide-react';
-import type { SearchResult } from '../../api';
+import type { SearchResult, GraphNode, GraphEdge } from '../../api';
 import { SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../../brand';
+import KnowledgeGraph from '../KnowledgeGraph';
 import {
   TYPE_CONFIG,
   type SearchViewMode,
@@ -210,6 +212,15 @@ export default function SearchResults({
     return null;
   }
 
+  if (viewMode === 'graph') {
+    return (
+      <SearchGraphView
+        results={results}
+        onEntityClick={onEntityClick}
+      />
+    );
+  }
+
   const containerClass =
     viewMode === 'grid'
       ? 'grid grid-cols-1 gap-3 md:grid-cols-2'
@@ -236,6 +247,74 @@ export default function SearchResults({
           mode={viewMode}
         />
       ))}
+    </div>
+  );
+}
+
+/* ── Graph view: convert SearchResult[] → GraphNode[] ─── */
+
+export function resultsToGraphNodes(results: SearchResult[]): GraphNode[] {
+  return results.map((r) => ({
+    entity_id: r.entity_id,
+    entity_type: r.entity_type,
+    label: r.title,
+    properties: {
+      ...r.metadata,
+      similarity: r.similarity,
+      influence_score: r.influence_score,
+    },
+  }));
+}
+
+function SearchGraphView({
+  results,
+  onEntityClick,
+}: {
+  results: SearchResult[];
+  onEntityClick: (result: SearchResult) => void;
+}) {
+  const graphNodes = useMemo(() => resultsToGraphNodes(results), [results]);
+  const graphEdges = useMemo<GraphEdge[]>(() => [], []);
+  const resultMap = useMemo(
+    () => new Map(results.map((r) => [r.entity_id, r])),
+    [results],
+  );
+
+  const handleNodeClick = useMemo(
+    () => (node: GraphNode) => {
+      const result = resultMap.get(node.entity_id);
+      if (result) onEntityClick(result);
+    },
+    [resultMap, onEntityClick],
+  );
+
+  return (
+    <div data-testid="search-graph-view">
+      <div
+        style={{
+          height: '500px',
+          border: '1px solid var(--color-line)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+        }}
+      >
+        <KnowledgeGraph
+          nodes={graphNodes}
+          edges={graphEdges}
+          height={500}
+          onNodeClick={handleNodeClick}
+        />
+      </div>
+      <p
+        style={{
+          marginTop: '8px',
+          fontSize: '12px',
+          color: 'var(--color-ink-3)',
+          textAlign: 'center',
+        }}
+      >
+        Results shown as a graph. Click a node to explore.
+      </p>
     </div>
   );
 }
