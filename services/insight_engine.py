@@ -64,6 +64,7 @@ class InsightEngine:
         insights.extend(self._detect_safety_signals())
         insights.extend(self._detect_pipeline_milestones(since_days))
         insights.extend(self._detect_competitive_shifts())
+        insights.extend(self._detect_resolution_queue_overflow())
         return sorted(insights, key=lambda x: _severity_rank(x.severity), reverse=True)
 
     # ── Safety signals ────────────────────────────────────────────
@@ -308,6 +309,41 @@ class InsightEngine:
             logger.debug("Failed to detect HHI shifts", exc_info=True)
 
         return insights
+
+    # ── Resolution queue overflow ────────────────────────────────
+
+    def _detect_resolution_queue_overflow(self) -> list[Insight]:
+        """Check the HITL review queue for pending unresolved entities.
+
+        Fires a signal when the pending count exceeds 50 items,
+        indicating the entity resolution pipeline needs attention.
+        """
+        try:
+            row = self.db.fetch_one(
+                "SELECT COUNT(*) AS cnt FROM hitl_reviews WHERE status = 'pending'"
+            )
+            count = row["cnt"] if row else 0
+
+            if count <= 50:
+                return []
+
+            severity = "high" if count > 100 else "medium"
+
+            return [Insight(
+                type="resolution_queue_overflow",
+                severity=severity,
+                title=f"Entity resolution queue has {count} pending items",
+                description=(
+                    f"Entity resolution queue has {count} pending items — review needed. "
+                    f"Visit /catalog/hitl to triage unresolved entities."
+                ),
+                entity_name=None,
+                entity_type=None,
+                metric_value=float(count),
+            )]
+        except Exception:
+            logger.debug("Failed to detect resolution queue overflow", exc_info=True)
+            return []
 
 
 # ── Helpers ───────────────────────────────────────────────────────

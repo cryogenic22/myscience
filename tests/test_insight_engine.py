@@ -26,6 +26,7 @@ _KEY_SAFETY = "mv_safety_signals"
 _KEY_PIPELINE = "make_interval"
 _KEY_NEW_ENTRANTS = "INTERVAL '30 days'"
 _KEY_HHI = "segment_counts"
+_KEY_HITL = "hitl_reviews"
 
 
 def _mock_db(
@@ -33,6 +34,7 @@ def _mock_db(
     pipeline_rows=None,
     new_entrant_rows=None,
     hhi_rows=None,
+    hitl_pending=0,
 ):
     """Build a MagicMock DB that dispatches fetch_all based on SQL content.
 
@@ -56,8 +58,13 @@ def _mock_db(
             return pipeline
         return []
 
+    def _fetch_one(query, params=None):
+        if _KEY_HITL in query:
+            return {"cnt": hitl_pending}
+        return None
+
     db.fetch_all = MagicMock(side_effect=_fetch_all)
-    db.fetch_one = MagicMock(return_value=None)
+    db.fetch_one = MagicMock(side_effect=_fetch_one)
     return db
 
 
@@ -351,4 +358,84 @@ class TestInsightEngine:
 
         engine = InsightEngine(db)
         insights = engine.scan(since_days=7)
+        assert insights == []
+
+
+# ── Resolution Queue Overflow ──
+
+
+class TestResolutionQueueOverflow:
+    """Verify detection of HITL queue overflow signals."""
+
+    def test_fires_when_count_exceeds_50(self):
+        """Queue with > 50 pending items generates a resolution_queue_overflow signal."""
+        from services.insight_engine import InsightEngine
+
+        db = _mock_db(hitl_pending=75)
+        engine = InsightEngine(db)
+        insights = engine._detect_resolution_queue_overflow()
+
+        assert len(insights) == 1
+        signal = insights[0]
+        assert signal.type == "resolution_queue_overflow"
+        assert signal.severity == "medium"
+        assert signal.metric_value == 75.0
+        assert "75" in signal.description
+        assert "/catalog/hitl" in signal.description
+
+    def test_high_severity_when_count_exceeds_100(self):
+        """Queue with > 100 pending items has severity 'high'."""
+        from services.insight_engine import InsightEngine
+
+        db = _mock_db(hitl_pending=150)
+        engine = InsightEngine(db)
+        insights = engine._detect_resolution_queue_overflow()
+
+        assert len(insights) == 1
+        assert insights[0].severity == "high"
+        assert insights[0].metric_value == 150.0
+
+    def test_no_signal_when_count_at_or_below_50(self):
+        """Queue with <= 50 pending items does not generate a signal."""
+        from services.insight_engine import InsightEngine
+
+        db = _mock_db(hitl_pending=50)
+        engine = InsightEngine(db)
+        insights = engine._detect_resolution_queue_overflow()
+
+        assert len(insights) == 0
+
+    def test_no_signal_when_queue_empty(self):
+        """Empty queue does not generate a signal."""
+        from services.insight_engine import InsightEngine
+
+        db = _mock_db(hitl_pending=0)
+        engine = InsightEngine(db)
+        insights = engine._detect_resolution_queue_overflow()
+
+        assert len(insights) == 0
+
+    def test_included_in_scan_results(self):
+        """Resolution queue overflow appears in combined scan() output."""
+        from services.insight_engine import InsightEngine
+
+        db = _mock_db(hitl_pending=120)
+        engine = InsightEngine(db)
+        insights = engine.scan(since_days=7)
+
+        overflow_signals = [i for i in insights if i.type == "resolution_queue_overflow"]
+        assert len(overflow_signals) == 1
+        assert overflow_signals[0].severity == "high"
+
+    def test_graceful_on_db_error(self):
+        """DB error in HITL query returns empty list, no exception."""
+        from services.insight_engine import InsightEngine
+
+        db = MagicMock()
+        db.fetch_one = MagicMock(side_effect=Exception("DB error"))
+        db.fetch_all = MagicMock(return_value=[])
+
+        engine = InsightEngine(db)
+        insights = engine._detect_resolution_queue_overflow()
+
         assert insights == []
