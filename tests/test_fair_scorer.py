@@ -227,6 +227,129 @@ class TestFreshness:
         assert freshness == 0.0
 
 
+# ── Test: entity-type-specific freshness thresholds ──
+
+
+class TestFreshnessThresholds:
+    """Verify entity-type-specific freshness thresholds."""
+
+    def test_trial_stale_after_7_days(self):
+        """Trials use a 7-day threshold — records older than 7 days are stale."""
+        from services.fair_scorer import FRESHNESS_THRESHOLDS, get_freshness_threshold
+
+        assert get_freshness_threshold("trial") == 7
+        assert FRESHNESS_THRESHOLDS["trial"] == 7
+
+    def test_drug_fresh_within_60_days(self):
+        """Drugs have a 60-day freshness window — much slower to change."""
+        from services.fair_scorer import get_freshness_threshold
+
+        assert get_freshness_threshold("drug") == 60
+
+    def test_different_entity_types_use_different_thresholds(self):
+        """Each entity type should have its own threshold tuned to its update frequency."""
+        from services.fair_scorer import FRESHNESS_THRESHOLDS
+
+        # Fast-changing types
+        assert FRESHNESS_THRESHOLDS["trial"] == 7
+        assert FRESHNESS_THRESHOLDS["event"] == 7
+        assert FRESHNESS_THRESHOLDS["literature"] == 14
+        # Medium types
+        assert FRESHNESS_THRESHOLDS["company"] == 30
+        assert FRESHNESS_THRESHOLDS["drug"] == 60
+        assert FRESHNESS_THRESHOLDS["investigator"] == 60
+        # Slow-changing types
+        assert FRESHNESS_THRESHOLDS["mechanism"] == 90
+        assert FRESHNESS_THRESHOLDS["therapeutic_area"] == 90
+        assert FRESHNESS_THRESHOLDS["patent"] == 90
+
+    def test_unknown_entity_type_falls_back_to_30_day_default(self):
+        """Unknown entity types should use DEFAULT_FRESHNESS_THRESHOLD (30 days)."""
+        from services.fair_scorer import DEFAULT_FRESHNESS_THRESHOLD, get_freshness_threshold
+
+        assert get_freshness_threshold("unknown_type") == 30
+        assert get_freshness_threshold("foo_bar") == DEFAULT_FRESHNESS_THRESHOLD
+
+    def test_freshness_by_type_uses_per_type_thresholds(self):
+        """_freshness_by_type() queries each table with its own INTERVAL threshold."""
+        from services.fair_scorer import FAIRScorer
+
+        queries_seen = []
+
+        class SpyDB(MockDB):
+            def fetch_one(self, sql, params=None):
+                sql_lower = sql.lower()
+                if "interval" in sql_lower:
+                    queries_seen.append(sql)
+                    return {"recent": 50, "total": 100}
+                return {"cnt": 100}
+
+        s = FAIRScorer(SpyDB())
+        by_type = s._freshness_by_type()
+
+        # Should have queried each entity table
+        assert len(queries_seen) == 4
+
+        # Each query should use its entity type's threshold
+        assert any("60 days" in q for q in queries_seen), (
+            "Expected drug table query with 60-day threshold"
+        )
+        assert any("30 days" in q for q in queries_seen), (
+            "Expected company table query with 30-day threshold"
+        )
+        assert any("7 days" in q for q in queries_seen), (
+            "Expected trial table query with 7-day threshold"
+        )
+        assert any("14 days" in q for q in queries_seen), (
+            "Expected literature table query with 14-day threshold"
+        )
+
+        # Each type should have score, threshold_days, total, recent
+        for etype, data in by_type.items():
+            assert "score" in data
+            assert "threshold_days" in data
+            assert "total" in data
+            assert "recent" in data
+            assert data["score"] == 0.5  # 50/100
+
+    def test_aggregate_freshness_is_weighted_across_types(self):
+        """Aggregate freshness should be record-count-weighted across entity types."""
+        from services.fair_scorer import FAIRScorer
+
+        class WeightedDB(MockDB):
+            """Drugs: 100 total / 80 recent (60-day), Trials: 1000 total / 200 recent (7-day)."""
+
+            def fetch_one(self, sql, params=None):
+                sql_lower = sql.lower()
+                if "interval" in sql_lower and "drugs" in sql_lower:
+                    return {"recent": 80, "total": 100}
+                elif "interval" in sql_lower and "clinical_trials" in sql_lower:
+                    return {"recent": 200, "total": 1000}
+                elif "interval" in sql_lower:
+                    return {"recent": 0, "total": 0}
+                return {"cnt": 0}
+
+        s = FAIRScorer(WeightedDB())
+        freshness = s._freshness()
+
+        # Expected: (80 + 200) / (100 + 1000) = 280 / 1100 = 0.2545...
+        assert abs(freshness - 0.2545) < 0.01
+
+    def test_compute_includes_freshness_by_type(self):
+        """compute() snapshot should include freshness_by_type breakdown."""
+        from services.fair_scorer import FAIRScorer
+
+        class MinimalDB(MockDB):
+            def fetch_one(self, sql, params=None):
+                return {"cnt": 0, "filled": 0, "recent": 0, "total": 0, "multi": 0}
+
+        s = FAIRScorer(MinimalDB())
+        snapshot = s.compute()
+
+        assert "freshness_by_type" in snapshot
+        assert isinstance(snapshot["freshness_by_type"], dict)
+
+
 # ── Test: source diversity ──
 
 
