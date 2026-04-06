@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from services.telemetry import log_mv_fallback
+
 logger = logging.getLogger(__name__)
 
 # Materialized views this service reads from
@@ -101,6 +103,13 @@ class PharmaMetrics:
         # Fallback: if MV returns sparse results for a TA query, try realtime
         if len(rows) <= 2 and therapeutic_area:
             logger.info("Pipeline MV returned %d rows for '%s', trying realtime", len(rows), therapeutic_area)
+            log_mv_fallback(
+                self.db,
+                method_name="drug_pipeline_strength",
+                mv_name="mv_drug_pipeline_strength",
+                reason="insufficient_data",
+                row_count=len(rows),
+            )
             rt_rows = realtime_pipeline_strength(self.db, therapeutic_area, limit=limit)
             if len(rt_rows) > len(rows):
                 return rt_rows
@@ -245,6 +254,13 @@ class PharmaMetrics:
             # Fallback: if MV returns sparse results, try real-time query
             if len(rows) <= 2 and topic:
                 logger.info("MV returned %d rows for '%s', trying realtime fallback", len(rows), topic)
+                log_mv_fallback(
+                    self.db,
+                    method_name="competitive_landscape",
+                    mv_name="mv_competitive_landscape",
+                    reason="insufficient_data",
+                    row_count=len(rows),
+                )
                 # Try expanded topic first
                 rt_rows = realtime_competitive_landscape(self.db, topic, limit=limit)
                 # If original_topic differs from expanded topic, also try the short form
@@ -259,6 +275,13 @@ class PharmaMetrics:
             return rows
         except Exception as exc:
             logger.warning("competitive_landscape unavailable: %s", exc)
+            log_mv_fallback(
+                self.db,
+                method_name="competitive_landscape",
+                mv_name="mv_competitive_landscape",
+                reason="mv_error",
+                row_count=0,
+            )
             # Fallback to realtime on MV failure
             if topic:
                 logger.info("MV failed, trying realtime fallback for '%s'", topic)
@@ -303,6 +326,13 @@ class PharmaMetrics:
             )
         except Exception as exc:
             logger.warning("company_portfolio unavailable: %s", exc)
+            log_mv_fallback(
+                self.db,
+                method_name="company_portfolio",
+                mv_name="mv_company_portfolio",
+                reason="mv_error",
+                row_count=0,
+            )
             return []
 
     def refresh(self) -> dict:
