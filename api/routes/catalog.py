@@ -1814,9 +1814,12 @@ def bulk_resolve_hitl(
 
 @router.get("/freshness")
 def source_freshness(db: Database = Depends(get_db)):
-    """Per-source freshness report."""
+    """Per-source freshness report with entity-type-specific thresholds."""
+    from services.fair_scorer import FRESHNESS_THRESHOLDS, get_freshness_threshold
+
     freshness = {}
     for etype, meta in ENTITY_TABLES.items():
+        threshold = get_freshness_threshold(etype)
         try:
             rows = db.fetch_all(
                 f"""
@@ -1832,17 +1835,19 @@ def source_freshness(db: Database = Depends(get_db)):
             )
             for row in rows:
                 source = row["source_api"]
+                days_since = float(row["days_since"]) if row.get("days_since") else None
                 freshness[source] = {
                     "entity_type": etype,
                     "records": row["records"],
                     "latest": row["latest"].isoformat() if row.get("latest") and hasattr(row["latest"], "isoformat") else None,
-                    "days_since": round(float(row["days_since"]), 1) if row.get("days_since") else None,
-                    "stale": float(row["days_since"]) > 30 if row.get("days_since") else True,
+                    "days_since": round(days_since, 1) if days_since is not None else None,
+                    "stale": days_since > threshold if days_since is not None else True,
+                    "threshold_days": threshold,
                 }
         except Exception:
             continue
 
-    return {"freshness": freshness}
+    return {"freshness": freshness, "thresholds": FRESHNESS_THRESHOLDS}
 
 
 @router.get("/graph-summary")
