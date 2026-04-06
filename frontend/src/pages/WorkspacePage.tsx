@@ -53,6 +53,8 @@ export default function WorkspacePage({
   const [graphEntity, setGraphEntity] = useState<{ id: string; type: string; label: string } | null>(null);
   const [seedGraph, setSeedGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [litExplorerArticleId, setLitExplorerArticleId] = useState<string | null>(null);
+  const [chatExternalInput, setChatExternalInput] = useState<{ text: string; seq: number } | null>(null);
+  const chatExternalSeqRef = useRef(0);
   const seededQuestionRef = useRef<string | null>(null);
 
   useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
@@ -188,6 +190,12 @@ export default function WorkspacePage({
     [isLoading, buildHistory],
   );
 
+  const handleAskInChat = useCallback((question: string) => {
+    chatExternalSeqRef.current += 1;
+    setChatExternalInput({ text: question, seq: chatExternalSeqRef.current });
+    setActiveTab('chat');
+  }, []);
+
   const breadcrumb = (() => {
     if (!canvas.data?.entity_focus?.length) return undefined;
     const names = (canvas.data.entity_focus as Array<Record<string, unknown>>)
@@ -223,7 +231,7 @@ export default function WorkspacePage({
       {activeTab === 'graph' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '0 16px' }}>
           <ErrorBoundary onRetry={() => setActiveTab('graph')}>
-            <GraphExplorer initialEntity={graphEntity} seedGraph={seedGraph} />
+            <GraphExplorer initialEntity={graphEntity} seedGraph={seedGraph} onAskInChat={handleAskInChat} />
           </ErrorBoundary>
         </div>
       ) : activeTab === 'catalog' ? (
@@ -257,6 +265,7 @@ export default function WorkspacePage({
                   setGraphEntity(null);
                   setActiveTab('graph');
                 }}
+                externalInput={chatExternalInput}
               />
             </ErrorBoundary>
           }

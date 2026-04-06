@@ -29,6 +29,7 @@ import {
 } from '../api';
 import { displayName, LINK_TYPE_LABELS, SOURCE_LABELS, isUUID } from '../brand';
 import KnowledgeGraph from './KnowledgeGraph';
+import GraphContextMenu from './graph/GraphContextMenu';
 import { NODE_COLORS } from './graph/graph-constants';
 import { Drawer } from './ui/Drawer';
 
@@ -75,9 +76,11 @@ interface GraphExplorerProps {
   initialEntity?: { id: string; type: string; label: string } | null;
   /** Pre-seed graph with nodes/edges from chat response */
   seedGraph?: { nodes: GraphNode[]; edges: GraphEdge[] } | null;
+  /** Callback to inject a question into the chat input */
+  onAskInChat?: (question: string) => void;
 }
 
-export default function GraphExplorer({ initialEntity, seedGraph }: GraphExplorerProps = {}) {
+export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }: GraphExplorerProps = {}) {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [objective, setObjective] = useState<ObjectiveId>('adjacency');
   const [entityLookupQuery, setEntityLookupQuery] = useState('');
@@ -95,6 +98,10 @@ export default function GraphExplorer({ initialEntity, seedGraph }: GraphExplore
   const [graphError, setGraphError] = useState<string | null>(null);
   const [quickNodeInsight, setQuickNodeInsight] = useState<NodeInsight | null>(null);
   const [showDemoBanner, setShowDemoBanner] = useState(!initialEntity);
+  const [contextMenu, setContextMenu] = useState<{
+    node: GraphNode;
+    position: { x: number; y: number };
+  } | null>(null);
   const suggestTimeoutRef = useRef<number>(0);
 
   // Path-finding mode state
@@ -231,11 +238,20 @@ export default function GraphExplorer({ initialEntity, seedGraph }: GraphExplore
   }, [hops]);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
+    setContextMenu(null);
     if (graphData) {
       setQuickNodeInsight(buildNodeInsight(node, graphData));
     }
     void loadGraph(node.entity_id, node.entity_type, node.label, hops);
   }, [graphData, hops, loadGraph]);
+
+  const handleNodeContextMenu = useCallback((node: GraphNode, position: { x: number; y: number }) => {
+    setContextMenu({ node, position });
+  }, []);
+
+  const handleContextMenuClose = useCallback(() => {
+    setContextMenu(null);
+  }, []);
 
   // -- Path-finding helpers --
 
@@ -1011,7 +1027,17 @@ export default function GraphExplorer({ initialEntity, seedGraph }: GraphExplore
               edges={filteredGraphData.edges}
               centerEntityId={selectedEntity?.id}
               onNodeClick={handleNodeClick}
+              onNodeContextMenu={onAskInChat ? handleNodeContextMenu : undefined}
             />
+            {/* Right-click context menu */}
+            {contextMenu && onAskInChat && (
+              <GraphContextMenu
+                node={contextMenu.node}
+                position={contextMenu.position}
+                onAskInChat={onAskInChat}
+                onClose={handleContextMenuClose}
+              />
+            )}
             {/* Node count badge */}
             <div
               style={{

@@ -15,6 +15,9 @@ interface ChatPanelProps {
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
   onViewInGraph?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  /** External input to pre-fill (e.g. from graph right-click menu).
+   *  Use an object with a seq key to force re-application even for identical text. */
+  externalInput?: { text: string; seq: number } | string | null;
 }
 
 const STARTER_GROUPS = [
@@ -46,17 +49,31 @@ export default function ChatPanel({
   onFollowUp,
   onCitationClick,
   onViewInGraph,
+  externalInput,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isEmpty = messages.length === 0;
+  const lastExternalSeqRef = useRef<number>(-1);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Accept external input (e.g. from graph context menu)
+  useEffect(() => {
+    if (externalInput == null) return;
+    const text = typeof externalInput === 'string' ? externalInput : externalInput.text;
+    const seq = typeof externalInput === 'string' ? 0 : externalInput.seq;
+    if (seq === lastExternalSeqRef.current) return;
+    lastExternalSeqRef.current = seq;
+    setInput(text);
+    // Focus the textarea so user can edit or hit Enter
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [externalInput]);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();

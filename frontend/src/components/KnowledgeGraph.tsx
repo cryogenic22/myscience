@@ -45,6 +45,8 @@ export interface KnowledgeGraphProps {
   highlightPath?: Set<string>;
   height?: number;
   onNodeClick?: (node: GraphNode) => void;
+  /** Right-click context menu on a node — receives the node and screen position */
+  onNodeContextMenu?: (node: GraphNode, position: { x: number; y: number }) => void;
   /** Compact mode hides the edge legend and instruction hint */
   compact?: boolean;
   className?: string;
@@ -108,6 +110,7 @@ export default function KnowledgeGraph({
   highlightPath,
   height = 400,
   onNodeClick,
+  onNodeContextMenu,
   compact = false,
   className = '',
 }: KnowledgeGraphProps) {
@@ -227,6 +230,21 @@ export default function KnowledgeGraph({
       if (hit) onNodeClick(hit.node);
     },
     [onNodeClick, pickHitNode],
+  );
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!onNodeContextMenu) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const hit = pickHitNode(event.clientX - rect.left, event.clientY - rect.top);
+      if (hit) {
+        event.preventDefault();
+        onNodeContextMenu(hit.node, { x: event.clientX, y: event.clientY });
+      }
+    },
+    [onNodeContextMenu, pickHitNode],
   );
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -599,6 +617,7 @@ export default function KnowledgeGraph({
         ref={canvasRef}
         tabIndex={0}
         onClick={handleCanvasClick}
+        onContextMenu={handleContextMenu}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
