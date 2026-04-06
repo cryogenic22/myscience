@@ -236,6 +236,33 @@ def ctx_value_report(db: Database = Depends(get_db)):
     }
 
 
+@router.get("/unresolved-count")
+def unresolved_count(db: Database = Depends(get_db)):
+    """Count of pending unresolved entities in the HITL queue."""
+    try:
+        row = db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM hitl_reviews WHERE status = 'pending'"
+        )
+        pending = row["cnt"] if row else 0
+    except Exception:
+        pending = 0
+
+    try:
+        by_type = db.fetch_all(
+            "SELECT entity_type, COUNT(*) AS cnt FROM hitl_reviews "
+            "WHERE status = 'pending' GROUP BY entity_type ORDER BY cnt DESC"
+        )
+    except Exception:
+        by_type = []
+
+    return {
+        "total_pending": pending,
+        "by_entity_type": {r["entity_type"]: r["cnt"] for r in by_type},
+        "threshold": 50,
+        "alert": pending > 50,
+    }
+
+
 @router.post("/fair-score/compute")
 def compute_fair_score(scorer: FAIRScorer = Depends(get_fair_scorer)):
     """Compute a fresh FAIR score, persist it, and return the snapshot.
