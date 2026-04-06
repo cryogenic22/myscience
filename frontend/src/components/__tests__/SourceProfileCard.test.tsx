@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import SourceProfileCard from '../SourceProfileCard';
 import type { SourceProfileData } from '../../api';
@@ -9,11 +9,45 @@ vi.mock('../../brand', () => ({
   SOURCE_LABELS: {
     clinical_trials_gov: 'ClinicalTrials.gov',
     pubmed: 'PubMed',
+    mesh_ontology: 'MeSH Ontology',
   },
   ENTITY_TYPE_LABELS: {
     drug: 'Drug',
     company: 'Company',
     trial: 'Trial',
+    therapeutic_area: 'Therapeutic Area',
+  },
+}));
+
+// Mock api module — factory must not reference top-level variables
+vi.mock('../../api', () => ({
+  api: {
+    sourceRecords: vi.fn().mockResolvedValue({
+      source_key: 'clinical_trials_gov',
+      entity_type: 'trial',
+      table: 'clinical_trials',
+      columns: [
+        { name: 'id', type: 'uuid' },
+        { name: 'official_title', type: 'text' },
+        { name: 'phase', type: 'text' },
+      ],
+      records: [
+        { id: 'abc12345-1234-1234-1234-abcdef123456', official_title: 'A Phase 3 Study of Semaglutide', phase: 'Phase 3' },
+        { id: 'def12345-1234-1234-1234-abcdef123456', official_title: 'A Phase 2 Study of Tirzepatide', phase: 'Phase 2' },
+      ],
+      total: 12000,
+      limit: 20,
+      offset: 0,
+    }),
+    sourceConnections: vi.fn().mockResolvedValue({
+      source_key: 'clinical_trials_gov',
+      connections: [
+        { target_source: 'mesh_ontology', link_type: 'IN_THERAPEUTIC_AREA', count: 8200, sample_entities: ['Diabetes', 'Oncology'] },
+        { target_source: 'pubmed', link_type: 'EVIDENCE_FOR', count: 5300 },
+      ],
+      total_outgoing: 13500,
+      total_incoming: 9200,
+    }),
   },
 }));
 
@@ -86,5 +120,59 @@ describe('SourceProfileCard', () => {
     );
     // Records are shown as "Records: 15,000" in meta row
     expect(screen.getByText(/15,000/)).toBeInTheDocument();
+  });
+
+  it('renders Sample Records section header', () => {
+    render(
+      <SourceProfileCard data={makeProfileData()} isLoading={false} error={null} {...defaultProps} />
+    );
+    expect(screen.getByText('Sample Records')).toBeInTheDocument();
+  });
+
+  it('renders Cross-Source Connections section header', () => {
+    render(
+      <SourceProfileCard data={makeProfileData()} isLoading={false} error={null} {...defaultProps} />
+    );
+    expect(screen.getByText('Cross-Source Connections')).toBeInTheDocument();
+  });
+
+  it('sample records table renders with data after expand', async () => {
+    render(
+      <SourceProfileCard data={makeProfileData()} isLoading={false} error={null} {...defaultProps} />
+    );
+
+    // Click the "Sample Records" section to expand it
+    const sampleBtn = screen.getByText('Sample Records');
+    sampleBtn.click();
+
+    // Wait for async records fetch to complete
+    await waitFor(() => {
+      expect(screen.getByText(/Phase/i)).toBeInTheDocument();
+    });
+
+    // Should show records table with column headers
+    await waitFor(() => {
+      expect(screen.getByText('A Phase 3 Study of Semaglutide')).toBeInTheDocument();
+    });
+  });
+
+  it('connection flow renders source-target pairs after expand', async () => {
+    render(
+      <SourceProfileCard data={makeProfileData()} isLoading={false} error={null} {...defaultProps} />
+    );
+
+    // Click "Cross-Source Connections" section to expand it
+    const connBtn = screen.getByText('Cross-Source Connections');
+    connBtn.click();
+
+    // Wait for async connections fetch
+    await waitFor(() => {
+      expect(screen.getByText('MeSH Ontology')).toBeInTheDocument();
+    });
+
+    // Should show counts
+    await waitFor(() => {
+      expect(screen.getByText('8,200')).toBeInTheDocument();
+    });
   });
 });

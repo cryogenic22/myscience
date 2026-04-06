@@ -1,11 +1,17 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   RefreshCw,
   X,
 } from 'lucide-react';
-import type { SourceProfileData } from '../api';
+import { api } from '../api';
+import type {
+  SourceProfileData,
+  SourceRecordsResponse,
+  SourceConnectionsResponse,
+} from '../api';
 import { displayName, SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../brand';
 
 /* ── Helpers ── */
@@ -202,6 +208,430 @@ function EntityDot({ type, size = 10 }: { type: string; size?: number }) {
         flexShrink: 0,
       }}
     />
+  );
+}
+
+/* ── Cell rendering utilities ── */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '\u2014';
+  if (typeof value === 'string') {
+    if (UUID_RE.test(value)) return value.slice(0, 8) + '\u2026';
+    // ISO date detection
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return value.slice(0, 10);
+    }
+    if (value.length > 80) return value.slice(0, 77) + '\u2026';
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '\u2014';
+    const shown = value.slice(0, 3).join(', ');
+    return value.length > 3 ? `${shown} (+${value.length - 3})` : shown;
+  }
+  if (typeof value === 'number') return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function cellTitle(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.length > 80) return value;
+  if (typeof value === 'string' && UUID_RE.test(value)) return value;
+  return undefined;
+}
+
+/* ── Sample Records Table ── */
+
+function SampleRecordsSection({
+  sourceKey,
+  entityBreakdown,
+}: {
+  sourceKey: string;
+  entityBreakdown: Array<{ entity_type: string; count: number }>;
+}) {
+  const [data, setData] = useState<SourceRecordsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const pageSize = 20;
+
+  const fetchRecords = useCallback((entityType?: string, offset = 0) => {
+    setLoading(true);
+    setError(null);
+    api.sourceRecords(sourceKey, {
+      entity_type: entityType,
+      limit: pageSize,
+      offset,
+    })
+      .then((res) => {
+        setData(res);
+        setCurrentOffset(offset);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [sourceKey]);
+
+  useEffect(() => {
+    fetchRecords(selectedType, 0);
+  }, [fetchRecords, selectedType]);
+
+  const hasMultipleTypes = entityBreakdown.length > 1;
+  const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
+  const currentPage = Math.floor(currentOffset / pageSize) + 1;
+
+  return (
+    <div>
+      {/* Entity type selector */}
+      {hasMultipleTypes && (
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          marginBottom: '10px',
+          flexWrap: 'wrap',
+        }}>
+          {entityBreakdown.map((eb) => (
+            <button
+              key={eb.entity_type}
+              type="button"
+              onClick={() => { setSelectedType(eb.entity_type); setCurrentOffset(0); }}
+              style={{
+                padding: '3px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--color-line)',
+                background: (selectedType ?? entityBreakdown[0]?.entity_type) === eb.entity_type
+                  ? 'var(--color-accent)'
+                  : 'var(--color-surface-2)',
+                color: (selectedType ?? entityBreakdown[0]?.entity_type) === eb.entity_type
+                  ? 'var(--color-surface)'
+                  : 'var(--color-ink-2)',
+                fontSize: '11px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              {ENTITY_TYPE_LABELS[eb.entity_type] ?? displayName(eb.entity_type)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Loading / Error */}
+      {loading && (
+        <div style={{ padding: '16px 0', color: 'var(--color-ink-3)', fontSize: '12px' }}>
+          Loading records...
+        </div>
+      )}
+      {error && (
+        <div style={{
+          padding: '8px 12px',
+          borderRadius: '8px',
+          background: 'var(--color-red-soft)',
+          color: 'var(--color-red)',
+          fontSize: '12px',
+          marginBottom: '8px',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Records table */}
+      {!loading && data && data.records.length > 0 && (
+        <>
+          <div style={{
+            overflowX: 'auto',
+            borderRadius: '8px',
+            border: '1px solid var(--color-line)',
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '12px',
+              fontFamily: 'var(--font-body)',
+            }}>
+              <thead>
+                <tr>
+                  {data.columns.map((col) => (
+                    <th
+                      key={col.name}
+                      style={{
+                        padding: '6px 10px',
+                        textAlign: 'left',
+                        fontWeight: 600,
+                        fontSize: '10px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        color: 'var(--color-ink-3)',
+                        background: 'var(--color-surface-2)',
+                        borderBottom: '1px solid var(--color-line)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {displayName(col.name)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.records.map((record, rowIdx) => (
+                  <tr
+                    key={rowIdx}
+                    style={{
+                      background: rowIdx % 2 === 0 ? 'var(--color-surface)' : 'var(--color-surface-2)',
+                    }}
+                  >
+                    {data.columns.map((col) => (
+                      <td
+                        key={col.name}
+                        title={cellTitle(record[col.name])}
+                        style={{
+                          padding: '5px 10px',
+                          color: record[col.name] == null ? 'var(--color-ink-4)' : 'var(--color-ink-2)',
+                          borderBottom: '1px solid var(--color-line)',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '200px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {formatCellValue(record[col.name])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: '8px',
+            fontSize: '11px',
+            color: 'var(--color-ink-3)',
+          }}>
+            <span>
+              Showing {currentOffset + 1}\u2013{Math.min(currentOffset + pageSize, data.total)} of {formatNumber(data.total)}
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                disabled={currentOffset === 0}
+                onClick={() => fetchRecords(selectedType, Math.max(0, currentOffset - pageSize))}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--color-line)',
+                  background: 'var(--color-surface-2)',
+                  color: currentOffset === 0 ? 'var(--color-ink-4)' : 'var(--color-ink-2)',
+                  cursor: currentOffset === 0 ? 'default' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  fontSize: '11px',
+                  opacity: currentOffset === 0 ? 0.5 : 1,
+                }}
+              >
+                <ChevronLeft size={11} /> Prev
+              </button>
+              <span style={{ padding: '3px 8px', fontSize: '11px' }}>
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentOffset + pageSize >= data.total}
+                onClick={() => fetchRecords(selectedType, currentOffset + pageSize)}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--color-line)',
+                  background: 'var(--color-surface-2)',
+                  color: currentOffset + pageSize >= data.total ? 'var(--color-ink-4)' : 'var(--color-ink-2)',
+                  cursor: currentOffset + pageSize >= data.total ? 'default' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  fontSize: '11px',
+                  opacity: currentOffset + pageSize >= data.total ? 0.5 : 1,
+                }}
+              >
+                Next <ChevronRight size={11} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* No records */}
+      {!loading && data && data.records.length === 0 && (
+        <div style={{ padding: '12px 0', color: 'var(--color-ink-4)', fontSize: '12px' }}>
+          No records found for this source.
+        </div>
+      )}
+
+      {/* Schema info */}
+      {!loading && data && data.columns.length > 0 && (
+        <div style={{
+          marginTop: '10px',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          background: 'var(--color-surface-2)',
+          fontSize: '11px',
+          color: 'var(--color-ink-3)',
+        }}>
+          Table: <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{data.table}</span>
+          {' \u00B7 '}
+          {data.columns.length} columns
+          {' \u00B7 '}
+          {formatNumber(data.total)} rows
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Cross-Source Connections (Enhanced) ── */
+
+function ConnectionsFlowSection({ sourceKey }: { sourceKey: string }) {
+  const [data, setData] = useState<SourceConnectionsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    api.sourceConnections(sourceKey)
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [sourceKey]);
+
+  if (loading) {
+    return <div style={{ padding: '12px 0', color: 'var(--color-ink-3)', fontSize: '12px' }}>Loading connections...</div>;
+  }
+  if (error) {
+    return (
+      <div style={{
+        padding: '8px 12px', borderRadius: '8px',
+        background: 'var(--color-red-soft)', color: 'var(--color-red)', fontSize: '12px',
+      }}>
+        {error}
+      </div>
+    );
+  }
+  if (!data || data.connections.length === 0) {
+    return <div style={{ padding: '12px 0', color: 'var(--color-ink-4)', fontSize: '12px' }}>No cross-source connections found.</div>;
+  }
+
+  return (
+    <div>
+      {/* Summary stats */}
+      <div style={{
+        display: 'flex', gap: '16px', marginBottom: '12px',
+        padding: '8px 12px', borderRadius: '8px', background: 'var(--color-surface-2)',
+      }}>
+        <div style={{ fontSize: '11px', color: 'var(--color-ink-3)' }}>
+          Outgoing: <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{formatNumber(data.total_outgoing)}</span>
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--color-ink-3)' }}>
+          Incoming: <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{formatNumber(data.total_incoming)}</span>
+        </div>
+      </div>
+
+      {/* Connection rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {data.connections.map((conn, i) => (
+          <div
+            key={`${conn.target_source}-${conn.link_type}-${i}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 0',
+              fontSize: '12px',
+            }}
+          >
+            {/* Source indicator */}
+            <span style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '2px',
+              background: 'var(--color-accent)',
+              flexShrink: 0,
+            }} />
+
+            {/* Arrow */}
+            <span style={{ color: 'var(--color-ink-4)', flexShrink: 0 }}>{'\u2192'}</span>
+
+            {/* Target source name */}
+            <span style={{
+              fontWeight: 500,
+              color: 'var(--color-ink)',
+              minWidth: '100px',
+            }}>
+              {SOURCE_LABELS[conn.target_source] ?? displayName(conn.target_source)}
+            </span>
+
+            {/* Link type pill */}
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              color: 'var(--color-ink-4)',
+              background: 'var(--color-surface-3)',
+              padding: '2px 8px',
+              borderRadius: '6px',
+              whiteSpace: 'nowrap',
+            }}>
+              {displayName(conn.link_type)}
+            </span>
+
+            {/* Count badge */}
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-accent)',
+              marginLeft: 'auto',
+              flexShrink: 0,
+            }}>
+              {formatNumber(conn.count)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Sample entities chips for connections that have them */}
+      {data.connections.some((c) => c.sample_entities?.length) && (
+        <div style={{
+          marginTop: '10px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '4px',
+        }}>
+          {data.connections
+            .flatMap((c) => c.sample_entities ?? [])
+            .filter((v, i, arr) => arr.indexOf(v) === i)
+            .slice(0, 10)
+            .map((name) => (
+              <span
+                key={name}
+                style={{
+                  fontSize: '10px',
+                  color: 'var(--color-ink-3)',
+                  background: 'var(--color-surface-3)',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                }}
+              >
+                {name}
+              </span>
+            ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -616,57 +1046,18 @@ export default function SourceProfileCard({
           </Section>
         )}
 
-        {/* ── Cross-Source Connections ── */}
-        {data.cross_source_links.length > 0 && (
-          <Section title="Cross-Source Connections" defaultOpen={false}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {data.cross_source_links.map((link, i) => (
-                <div
-                  key={`${link.target_source}-${link.link_type}-${i}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '4px 0',
-                    fontSize: '12px',
-                  }}
-                >
-                  <span style={{
-                    color: 'var(--color-accent)',
-                    fontWeight: 500,
-                    flexShrink: 0,
-                  }}>
-                    {'\u2192'}
-                  </span>
-                  <span style={{
-                    fontWeight: 500,
-                    color: 'var(--color-ink)',
-                  }}>
-                    {SOURCE_LABELS[link.target_source] ?? displayName(link.target_source)}
-                  </span>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    color: 'var(--color-ink-4)',
-                    background: 'var(--color-surface-3)',
-                    padding: '1px 6px',
-                    borderRadius: '6px',
-                  }}>
-                    {displayName(link.link_type)}
-                  </span>
-                  <span style={{
-                    fontSize: '11px',
-                    color: 'var(--color-ink-3)',
-                    marginLeft: 'auto',
-                    flexShrink: 0,
-                  }}>
-                    {formatNumber(link.count)} links
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
+        {/* ── Sample Records (Data Explorer) ── */}
+        <Section title="Sample Records" defaultOpen={false}>
+          <SampleRecordsSection
+            sourceKey={data.source_key}
+            entityBreakdown={data.entity_breakdown}
+          />
+        </Section>
+
+        {/* ── Cross-Source Connections (Enhanced) ── */}
+        <Section title="Cross-Source Connections" defaultOpen={false}>
+          <ConnectionsFlowSection sourceKey={data.source_key} />
+        </Section>
 
         {/* ── Actions ── */}
         <div style={{

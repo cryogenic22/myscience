@@ -677,6 +677,203 @@ class TestFeaturedEntities:
         assert result["featured"]["companies"] == []
 
 
+# ── Test source records endpoint ──
+
+class SourceRecordsMockDB:
+    """MockDB for source_records endpoint."""
+
+    def __init__(self):
+        self._col_rows: list[dict] = []
+        self._count: int = 0
+        self._records: list[dict] = []
+
+    def fetch_all(self, sql: str, params=None) -> list[dict]:
+        sql_lower = sql.lower()
+        if "information_schema.columns" in sql_lower:
+            return self._col_rows
+        if "source_api" in sql_lower and "limit" in sql_lower:
+            return self._records
+        return []
+
+    def fetch_one(self, sql: str, params=None) -> dict | None:
+        sql_lower = sql.lower()
+        if "count(*)" in sql_lower:
+            return {"total": self._count}
+        return None
+
+
+class TestSourceRecords:
+    """GET /catalog/sources/{source_key}/records tests."""
+
+    def test_returns_records_for_known_source(self):
+        from api.routes.catalog import source_records
+
+        db = SourceRecordsMockDB()
+        db._col_rows = [
+            {"column_name": "id", "data_type": "uuid"},
+            {"column_name": "generic_name", "data_type": "text"},
+            {"column_name": "brand_name", "data_type": "text"},
+        ]
+        db._count = 500
+        db._records = [
+            {"id": "d1", "generic_name": "semaglutide", "brand_name": "Ozempic"},
+            {"id": "d2", "generic_name": "tirzepatide", "brand_name": "Mounjaro"},
+        ]
+
+        result = source_records(source_key="fda_orange_book", entity_type=None, limit=20, offset=0, db=db)
+
+        assert result["source_key"] == "fda_orange_book"
+        assert result["entity_type"] == "drug"
+        assert result["table"] == "drugs"
+        assert len(result["columns"]) == 3
+        assert len(result["records"]) == 2
+        assert result["total"] == 500
+        assert result["limit"] == 20
+        assert result["offset"] == 0
+
+    def test_respects_limit_offset(self):
+        from api.routes.catalog import source_records
+
+        db = SourceRecordsMockDB()
+        db._col_rows = [{"column_name": "id", "data_type": "uuid"}]
+        db._count = 100
+        db._records = [{"id": "d1"}]
+
+        result = source_records(source_key="fda_orange_book", entity_type=None, limit=5, offset=10, db=db)
+
+        assert result["limit"] == 5
+        assert result["offset"] == 10
+        assert result["total"] == 100
+
+    def test_returns_404_for_unknown_source(self):
+        from api.routes.catalog import source_records
+        from fastapi import HTTPException
+
+        db = SourceRecordsMockDB()
+
+        with pytest.raises(HTTPException) as exc_info:
+            source_records(source_key="bogus_source", entity_type=None, limit=20, offset=0, db=db)
+        assert exc_info.value.status_code == 404
+
+    def test_filters_hidden_columns(self):
+        from api.routes.catalog import source_records
+
+        db = SourceRecordsMockDB()
+        db._col_rows = [
+            {"column_name": "id", "data_type": "uuid"},
+            {"column_name": "generic_name", "data_type": "text"},
+            {"column_name": "content_hash", "data_type": "text"},
+            {"column_name": "molecule_embedding", "data_type": "vector"},
+        ]
+        db._count = 1
+        db._records = [{"id": "d1", "generic_name": "test"}]
+
+        result = source_records(source_key="fda_orange_book", entity_type=None, limit=20, offset=0, db=db)
+
+        col_names = [c["name"] for c in result["columns"]]
+        assert "id" in col_names
+        assert "generic_name" in col_names
+        assert "content_hash" not in col_names
+        assert "molecule_embedding" not in col_names
+
+    def test_selects_entity_type(self):
+        from api.routes.catalog import source_records
+
+        db = SourceRecordsMockDB()
+        db._col_rows = [
+            {"column_name": "id", "data_type": "uuid"},
+            {"column_name": "patent_number", "data_type": "text"},
+        ]
+        db._count = 50
+        db._records = [{"id": "p1", "patent_number": "US123456"}]
+
+        result = source_records(source_key="fda_orange_book", entity_type="patent", limit=20, offset=0, db=db)
+
+        assert result["entity_type"] == "patent"
+        assert result["table"] == "patents"
+
+    def test_rejects_invalid_entity_type(self):
+        from api.routes.catalog import source_records
+        from fastapi import HTTPException
+
+        db = SourceRecordsMockDB()
+
+        with pytest.raises(HTTPException) as exc_info:
+            source_records(source_key="fda_orange_book", entity_type="bogus", limit=20, offset=0, db=db)
+        assert exc_info.value.status_code == 400
+
+
+# ── Test source connections endpoint ──
+
+class SourceConnectionsMockDB:
+    """MockDB for source_connections endpoint."""
+
+    def __init__(self):
+        self._out_rows: list[dict] = []
+        self._in_rows: list[dict] = []
+        self._sample_rows: list[dict] = []
+        self._call_count = 0
+
+    def fetch_all(self, sql: str, params=None) -> list[dict]:
+        sql_lower = sql.lower()
+        if "v_entity_labels" in sql_lower:
+            return self._sample_rows
+        if "group by" in sql_lower:
+            # The implementation calls outgoing first, then incoming
+            self._call_count += 1
+            if self._call_count == 1:
+                return self._out_rows
+            return self._in_rows
+        return []
+
+    def fetch_one(self, sql: str, params=None) -> dict | None:
+        return None
+
+
+class TestSourceConnections:
+    """GET /catalog/sources/{source_key}/connections tests."""
+
+    def test_returns_connections_for_known_source(self):
+        from api.routes.catalog import source_connections
+
+        db = SourceConnectionsMockDB()
+        db._out_rows = [
+            {"target_entity_type": "therapeutic_area", "link_type": "TREATS", "count": 500},
+            {"target_entity_type": "company", "link_type": "OWNS", "count": 200},
+        ]
+        db._in_rows = [
+            {"source_entity_type": "literature", "link_type": "EVIDENCE_FOR", "count": 1000},
+        ]
+
+        result = source_connections(source_key="fda_orange_book", db=db)
+
+        assert result["source_key"] == "fda_orange_book"
+        assert result["total_outgoing"] == 700
+        assert result["total_incoming"] == 1000
+        assert len(result["connections"]) >= 1
+
+    def test_returns_404_for_unknown_source(self):
+        from api.routes.catalog import source_connections
+        from fastapi import HTTPException
+
+        db = SourceConnectionsMockDB()
+
+        with pytest.raises(HTTPException) as exc_info:
+            source_connections(source_key="bogus_source", db=db)
+        assert exc_info.value.status_code == 404
+
+    def test_returns_empty_connections_for_source_with_no_links(self):
+        from api.routes.catalog import source_connections
+
+        db = SourceConnectionsMockDB()
+
+        result = source_connections(source_key="fda_orange_book", db=db)
+
+        assert result["connections"] == []
+        assert result["total_outgoing"] == 0
+        assert result["total_incoming"] == 0
+
+
 class TestBrowseRejectsUnknownType:
     """browse_entities should 400 for unknown entity types."""
 

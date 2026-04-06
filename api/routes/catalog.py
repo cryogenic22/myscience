@@ -2250,6 +2250,256 @@ def source_profile(source_key: str, db: Database = Depends(get_db)):
     }
 
 
+# ── Columns to exclude from source_records responses ──
+
+_HIDDEN_RECORD_COLUMNS = {
+    "content_hash", "molecule_embedding", "strategy_embedding",
+    "protocol_embedding", "abstract_embedding", "scope_note_embedding",
+    "embedding",
+}
+
+
+@router.get("/sources/{source_key}/records")
+def source_records(
+    source_key: str,
+    entity_type: str = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Database = Depends(get_db),
+):
+    """Browse sample records from a specific data source."""
+    from connectors.base import SourceType
+
+    # Validate source_key
+    valid_keys = {st.value for st in SourceType}
+    valid_keys.add("backfill")
+    if source_key not in valid_keys:
+        raise HTTPException(404, f"Unknown source: {source_key}")
+
+    source_tables = _SOURCE_ENTITY_TABLES.get(source_key, [])
+    if not source_tables:
+        raise HTTPException(404, f"No tables mapped for source: {source_key}")
+
+    # Resolve which table/entity_type to query
+    selected_table = None
+    selected_etype = None
+    if entity_type:
+        for tbl, etype in source_tables:
+            if etype == entity_type:
+                selected_table = tbl
+                selected_etype = etype
+                break
+        if not selected_table:
+            raise HTTPException(
+                400,
+                f"Entity type '{entity_type}' not available for source '{source_key}'. "
+                f"Available: {[et for _, et in source_tables]}",
+            )
+    else:
+        selected_table = source_tables[0][0]
+        selected_etype = source_tables[0][1]
+
+    try:
+        # Get column names and types from information_schema
+        col_rows = db.fetch_all(
+            """SELECT column_name, data_type
+               FROM information_schema.columns
+               WHERE table_name = %s
+               ORDER BY ordinal_position""",
+            [selected_table],
+        )
+
+        if not col_rows:
+            raise HTTPException(404, f"Table '{selected_table}' not found in schema")
+
+        # Filter out hidden/sensitive columns
+        columns = []
+        select_cols = []
+        for cr in col_rows:
+            col_name = cr["column_name"]
+            if col_name in _HIDDEN_RECORD_COLUMNS:
+                continue
+            columns.append({"name": col_name, "type": cr["data_type"]})
+            select_cols.append(col_name)
+
+        col_list = ", ".join(f'"{c}"' for c in select_cols)
+
+        # Get total count
+        count_row = db.fetch_one(
+            f"SELECT COUNT(*) AS total FROM {selected_table} WHERE source_api = %s",
+            [source_key],
+        )
+        total = count_row["total"] if count_row else 0
+
+        # Get records
+        records = []
+        if total > 0:
+            rows = db.fetch_all(
+                f"SELECT {col_list} FROM {selected_table} WHERE source_api = %s "
+                f"ORDER BY retrieved_at DESC NULLS LAST LIMIT %s OFFSET %s",
+                [source_key, limit, offset],
+            )
+            # Serialize values (datetimes, UUIDs, etc.)
+            for row in rows:
+                record = {}
+                for key, val in row.items():
+                    if val is None:
+                        record[key] = None
+                    elif hasattr(val, "isoformat"):
+                        record[key] = val.isoformat()
+                    elif isinstance(val, uuid.UUID):
+                        record[key] = str(val)
+                    else:
+                        record[key] = val
+                records.append(record)
+
+        return {
+            "source_key": source_key,
+            "entity_type": selected_etype,
+            "table": selected_table,
+            "columns": columns,
+            "records": records,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error fetching source records for %s", source_key)
+        raise HTTPException(500, f"Failed to fetch records: {e}")
+
+
+@router.get("/sources/{source_key}/connections")
+def source_connections(
+    source_key: str,
+    db: Database = Depends(get_db),
+):
+    """Show how entities from this source connect to entities from other sources."""
+    from connectors.base import SourceType
+
+    # Validate source_key
+    valid_keys = {st.value for st in SourceType}
+    valid_keys.add("backfill")
+    if source_key not in valid_keys:
+        raise HTTPException(404, f"Unknown source: {source_key}")
+
+    source_tables = _SOURCE_ENTITY_TABLES.get(source_key, [])
+
+    connections = []
+    total_outgoing = 0
+    total_incoming = 0
+
+    try:
+        # Get entity types for this source
+        source_etypes = [etype for _, etype in source_tables]
+
+        if source_etypes:
+            # Outgoing connections: links FROM this source's entities TO other entities
+            out_rows = db.fetch_all(
+                """SELECT
+                       el.target_entity_type,
+                       el.link_type,
+                       COUNT(*) AS count
+                   FROM entity_links el
+                   WHERE el.source_entity_type = ANY(%s)
+                     AND el.provenance_source IS NOT NULL
+                   GROUP BY el.target_entity_type, el.link_type
+                   ORDER BY count DESC
+                   LIMIT 30""",
+                [source_etypes],
+            )
+
+            # Incoming connections: links TO this source's entities FROM other entities
+            in_rows = db.fetch_all(
+                """SELECT
+                       el.source_entity_type,
+                       el.link_type,
+                       COUNT(*) AS count
+                   FROM entity_links el
+                   WHERE el.target_entity_type = ANY(%s)
+                     AND el.provenance_source IS NOT NULL
+                   GROUP BY el.source_entity_type, el.link_type
+                   ORDER BY count DESC
+                   LIMIT 30""",
+                [source_etypes],
+            )
+
+            # Aggregate outgoing
+            seen = set()
+            for row in out_rows:
+                target_type = row["target_entity_type"]
+                link_type = row["link_type"]
+                cnt = row["count"]
+                total_outgoing += cnt
+
+                # Map entity type to source via _SOURCE_ENTITY_TABLES reverse lookup
+                target_source = _entity_type_to_source(target_type)
+                if target_source and target_source != source_key:
+                    key = (target_source, link_type)
+                    if key not in seen:
+                        connections.append({
+                            "target_source": target_source,
+                            "link_type": link_type,
+                            "count": cnt,
+                        })
+                        seen.add(key)
+
+            # Count incoming
+            for row in in_rows:
+                total_incoming += row["count"]
+
+        # Sort by count descending
+        connections.sort(key=lambda c: c["count"], reverse=True)
+
+        # Add sample entities for top connections (limit to top 10)
+        for conn in connections[:10]:
+            try:
+                target_etypes = _source_to_entity_types(conn["target_source"])
+                if target_etypes:
+                    sample_rows = db.fetch_all(
+                        """SELECT DISTINCT vel.label
+                           FROM entity_links el
+                           JOIN v_entity_labels vel
+                             ON vel.entity_id = el.target_entity_id
+                            AND vel.entity_type = el.target_entity_type
+                           WHERE el.link_type = %s
+                             AND el.target_entity_type = ANY(%s)
+                           LIMIT 3""",
+                        [conn["link_type"], target_etypes],
+                    )
+                    conn["sample_entities"] = [r["label"] for r in sample_rows if r.get("label")]
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.exception("Error fetching source connections for %s", source_key)
+        raise HTTPException(500, f"Failed to fetch connections: {e}")
+
+    return {
+        "source_key": source_key,
+        "connections": connections,
+        "total_outgoing": total_outgoing,
+        "total_incoming": total_incoming,
+    }
+
+
+def _entity_type_to_source(entity_type: str) -> str | None:
+    """Reverse lookup: find the primary source for an entity type."""
+    for src_key, tables in _SOURCE_ENTITY_TABLES.items():
+        for _tbl, etype in tables:
+            if etype == entity_type:
+                return src_key
+    return None
+
+
+def _source_to_entity_types(source_key: str) -> list[str]:
+    """Get all entity types for a source key."""
+    tables = _SOURCE_ENTITY_TABLES.get(source_key, [])
+    return [etype for _, etype in tables]
+
+
 @router.post("/pipeline-run")
 def trigger_pipeline_run(
     body: dict,
