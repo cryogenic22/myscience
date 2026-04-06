@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell } from 'lucide-react';
 import type { IntelligenceFeedItem } from '../../api';
 import { api } from '../../api';
-import { EventCard } from './EventCard';
+import { EventCard, DigestCard, groupEventsForDigest } from './EventCard';
 import { EventDetailDrawer } from './EventDetailDrawer';
 
 const SEVERITY_OPTIONS = ['all', 'critical', 'high', 'medium', 'low'] as const;
+type ViewMode = 'all' | 'digest';
 
-export function IntelligenceFeed() {
+export interface IntelligenceFeedProps {
+  onAskInChat?: (question: string) => void;
+}
+
+export function IntelligenceFeed({ onAskInChat }: IntelligenceFeedProps) {
   const [items, setItems] = useState<IntelligenceFeedItem[]>([]);
   const [total, setTotal] = useState(0);
   const [severity, setSeverity] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<IntelligenceFeedItem | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
@@ -42,6 +48,24 @@ export function IntelligenceFeed() {
       // Ignore dismiss failures
     }
   }, []);
+
+  // Digest grouping
+  const digestGroups = useMemo(() => groupEventsForDigest(items), [items]);
+  const digestGroupedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of digestGroups) {
+      for (const item of group.items) {
+        ids.add(item.event_id);
+      }
+    }
+    return ids;
+  }, [digestGroups]);
+
+  // Items that are NOT part of any digest group (singletons or older than 24h)
+  const ungroupedItems = useMemo(() => {
+    if (viewMode === 'all') return items;
+    return items.filter(i => !digestGroupedIds.has(i.event_id));
+  }, [items, digestGroupedIds, viewMode]);
 
   return (
     <div
@@ -77,30 +101,56 @@ export function IntelligenceFeed() {
           </span>
         </div>
 
-        {/* Severity filter */}
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {SEVERITY_OPTIONS.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setSeverity(opt)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                fontSize: '12px',
-                fontWeight: severity === opt ? 600 : 400,
-                fontFamily: 'var(--font-body)',
-                cursor: 'pointer',
-                background: severity === opt ? 'var(--color-accent-soft)' : 'transparent',
-                color: severity === opt ? 'var(--color-accent)' : 'var(--color-ink-3)',
-                textTransform: 'capitalize',
-                transition: 'all 0.15s',
-              }}
-            >
-              {opt}
-            </button>
-          ))}
+        {/* Severity filter + view mode toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {SEVERITY_OPTIONS.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setSeverity(opt)}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: severity === opt ? 600 : 400,
+                  fontFamily: 'var(--font-body)',
+                  cursor: 'pointer',
+                  background: severity === opt ? 'var(--color-accent-soft)' : 'transparent',
+                  color: severity === opt ? 'var(--color-accent)' : 'var(--color-ink-3)',
+                  textTransform: 'capitalize',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '2px' }}>
+            {(['all', 'digest'] as const).map(mode => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '11px',
+                  fontWeight: viewMode === mode ? 600 : 400,
+                  fontFamily: 'var(--font-body)',
+                  cursor: 'pointer',
+                  background: viewMode === mode ? 'var(--color-accent-soft)' : 'transparent',
+                  color: viewMode === mode ? 'var(--color-accent)' : 'var(--color-ink-3)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {mode === 'all' ? 'All events' : 'Digest'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -128,12 +178,25 @@ export function IntelligenceFeed() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '4px' }}>
-            {items.map(item => (
+            {/* Digest groups (only in digest mode) */}
+            {viewMode === 'digest' && digestGroups.map(group => (
+              <DigestCard
+                key={group.key}
+                group={group}
+                onClick={setSelectedEvent}
+                onDismiss={handleDismiss}
+                onAskInChat={onAskInChat}
+              />
+            ))}
+
+            {/* Individual cards */}
+            {(viewMode === 'all' ? items : ungroupedItems).map(item => (
               <EventCard
                 key={item.event_id}
                 item={item}
                 onClick={setSelectedEvent}
                 onDismiss={handleDismiss}
+                onAskInChat={onAskInChat}
               />
             ))}
           </div>

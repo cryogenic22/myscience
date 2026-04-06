@@ -534,6 +534,11 @@ html.dark .topbar {
   50% { opacity: 0.4; }
 }
 
+@keyframes severity-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--pulse-color, rgba(192,57,43,0.4)); }
+  50% { box-shadow: 0 0 0 4px var(--pulse-color, rgba(192,57,43,0.3)); }
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @keyframes skeleton-pulse {

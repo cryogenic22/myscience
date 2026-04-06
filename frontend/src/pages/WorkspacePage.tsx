@@ -248,7 +248,7 @@ export default function WorkspacePage({
       ) : activeTab === 'feed' ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <ErrorBoundary onRetry={() => setActiveTab('feed')}>
-            <IntelligenceFeed />
+            <IntelligenceFeed onAskInChat={handleAskInChat} />
           </ErrorBoundary>
         </div>
       ) : (
