@@ -588,7 +588,7 @@ function VizCard({ spec }: { spec: VisualizationSpec }) {
         {spec.title}
       </p>
       <div style={{ height: '220px' }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           {spec.type === 'donut' ? (
             <PieChart>
               <Pie

@@ -790,7 +790,7 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
     <div style={{ padding: '4px' }}>
       <div className="mb-2 text-[11px] font-medium text-slate-600">{spec.title}</div>
       <div className="w-full" style={{ minHeight: 220, height: 'clamp(220px, 24vw, 300px)' }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           {spec.type === 'donut' ? (
             <PieChart>
               <Pie
