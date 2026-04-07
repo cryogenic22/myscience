@@ -32,6 +32,29 @@ def _is_uuid(value: str) -> bool:
     return bool(_UUID_RE.match(value))
 
 
+def _source_api_filter(db: Database, table: str, source_key: str) -> tuple[str, list]:
+    """Build WHERE clause for source_api matching.
+
+    Tries exact match first, then LIKE, then no filter (for source-exclusive tables
+    like pubmed_articles where ALL rows belong to one source).
+    Returns (where_clause, params) — clause includes 'WHERE' or is empty string.
+    """
+    try:
+        row = db.fetch_one(
+            f"SELECT COUNT(*) AS cnt FROM {table} WHERE source_api = %s", [source_key],
+        )
+        if row and (row["cnt"] or 0) > 0:
+            return "WHERE source_api = %s", [source_key]
+        row = db.fetch_one(
+            f"SELECT COUNT(*) AS cnt FROM {table} WHERE source_api LIKE %s", [f"%{source_key}%"],
+        )
+        if row and (row["cnt"] or 0) > 0:
+            return "WHERE source_api LIKE %s", [f"%{source_key}%"]
+    except Exception:
+        pass
+    return "", []
+
+
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 # ── Table metadata for entity browsing ──
@@ -511,9 +534,10 @@ def dataset_profile(
 
     for table, etype in source_tables.get(source_key, []):
         try:
+            where, params = _source_api_filter(db, table, source_key)
             row = db.fetch_one(
-                f"SELECT COUNT(*) AS cnt, MAX(retrieved_at) AS latest FROM {table} WHERE source_api = %s",
-                [source_key],
+                f"SELECT COUNT(*) AS cnt, MAX(retrieved_at) AS latest FROM {table} {where}",
+                params,
             )
             if row:
                 records += row["cnt"] or 0
@@ -2091,10 +2115,21 @@ def source_profile(source_key: str, db: Database = Depends(get_db)):
 
     for table, _etype in source_tables:
         try:
+            # Try exact match, then LIKE, then unfiltered (for source-exclusive tables)
             row = db.fetch_one(
                 f"SELECT COUNT(*) AS total_records, MAX(retrieved_at) AS latest FROM {table} WHERE source_api = %s",
                 [source_key],
             )
+            if row and (row.get("total_records") or 0) == 0:
+                row = db.fetch_one(
+                    f"SELECT COUNT(*) AS total_records, MAX(retrieved_at) AS latest FROM {table} WHERE source_api LIKE %s",
+                    [f"%{source_key}%"],
+                )
+            if row and (row.get("total_records") or 0) == 0:
+                # Table is exclusively this source (e.g., pubmed_articles = pubmed)
+                row = db.fetch_one(
+                    f"SELECT COUNT(*) AS total_records, MAX(retrieved_at) AS latest FROM {table}",
+                )
             if row:
                 total_records += row.get("total_records") or 0
                 latest = row.get("latest")
@@ -2123,27 +2158,12 @@ def source_profile(source_key: str, db: Database = Depends(get_db)):
     entity_breakdown = []
     for table, etype in source_tables:
         try:
+            where, params = _source_api_filter(db, table, source_key)
             row = db.fetch_one(
-                f"SELECT COUNT(*) AS cnt FROM {table} WHERE source_api = %s",
-                [source_key],
+                f"SELECT COUNT(*) AS cnt FROM {table} {where}", params,
             )
             if row and row.get("cnt"):
                 entity_breakdown.append({"entity_type": etype, "count": row["cnt"]})
-        except Exception:
-            pass
-
-    # Also try a grouped query for any tables not in the static mapping
-    if not entity_breakdown:
-        try:
-            rows = db.fetch_all(
-                """SELECT entity_type, COUNT(*) AS count
-                   FROM v_entity_labels
-                   WHERE source_api = %s
-                   GROUP BY entity_type
-                   ORDER BY count DESC""",
-                [source_key],
-            )
-            entity_breakdown = [{"entity_type": r["entity_type"], "count": r["count"]} for r in rows]
         except Exception:
             pass
 
@@ -2160,9 +2180,9 @@ def source_profile(source_key: str, db: Database = Depends(get_db)):
         check_cols = [c for c in display_cols if c not in skip_cols and not c.startswith("COALESCE")]
 
         try:
+            where, params = _source_api_filter(db, primary_table, source_key)
             total_row = db.fetch_one(
-                f"SELECT COUNT(*) AS total FROM {primary_table} WHERE source_api = %s",
-                [source_key],
+                f"SELECT COUNT(*) AS total FROM {primary_table} {where}", params,
             )
             total_count = total_row["total"] if total_row else 0
 
@@ -2170,8 +2190,8 @@ def source_profile(source_key: str, db: Database = Depends(get_db)):
                 for col in check_cols:
                     try:
                         fill_row = db.fetch_one(
-                            f"SELECT COUNT(*) AS filled FROM {primary_table} WHERE source_api = %s AND {col} IS NOT NULL",
-                            [source_key],
+                            f"SELECT COUNT(*) AS filled FROM {primary_table} {where}{' AND ' if where else 'WHERE '}{col} IS NOT NULL",
+                            params,
                         )
                         filled = fill_row["filled"] if fill_row else 0
                         pct = round(filled / total_count * 100, 1) if total_count > 0 else 0.0
@@ -2324,20 +2344,30 @@ def source_records(
 
         col_list = ", ".join(f'"{c}"' for c in select_cols)
 
-        # Get total count
+        # Smart source_api filter: exact → LIKE → unfiltered (for source-exclusive tables)
+        source_filter, source_params = _source_api_filter(db, selected_table, source_key)
+
+        # Exclude merged/excluded if column exists
+        if "record_status" in select_cols:
+            if source_filter:
+                source_filter += " AND (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+            else:
+                source_filter = "WHERE (record_status IS NULL OR record_status NOT IN ('excluded','merged'))"
+
         count_row = db.fetch_one(
-            f"SELECT COUNT(*) AS total FROM {selected_table} WHERE source_api = %s",
-            [source_key],
+            f"SELECT COUNT(*) AS total FROM {selected_table} {source_filter}",
+            source_params,
         )
         total = count_row["total"] if count_row else 0
 
         # Get records
         records = []
         if total > 0:
+            order_col = "retrieved_at" if "retrieved_at" in select_cols else "id"
             rows = db.fetch_all(
-                f"SELECT {col_list} FROM {selected_table} WHERE source_api = %s "
-                f"ORDER BY retrieved_at DESC NULLS LAST LIMIT %s OFFSET %s",
-                [source_key, limit, offset],
+                f"SELECT {col_list} FROM {selected_table} {source_filter} "
+                f"ORDER BY {order_col} DESC NULLS LAST LIMIT %s OFFSET %s",
+                source_params + [limit, offset],
             )
             # Serialize values (datetimes, UUIDs, etc.)
             for row in rows:

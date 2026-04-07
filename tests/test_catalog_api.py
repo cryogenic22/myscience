@@ -698,7 +698,7 @@ class SourceRecordsMockDB:
     def fetch_one(self, sql: str, params=None) -> dict | None:
         sql_lower = sql.lower()
         if "count(*)" in sql_lower:
-            return {"total": self._count}
+            return {"total": self._count, "cnt": self._count}
         return None
 
 
