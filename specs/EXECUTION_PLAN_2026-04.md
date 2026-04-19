@@ -45,21 +45,37 @@ Net: gap audit is mostly accurate but had 1 false positive. Trust but verify eac
 | SPEC_013 (Link Confidence) | Not started | GAP-04 alias; consider GAP-04 acceptance criteria as additions |
 | SPEC_014 (Document Upload + NER) | Not started | GAP-02 alias |
 
-## Phase Sequence (REVISED)
+## Phase Sequence (REVISED again — SPEC_016 architecture pivot)
+
+After lead's architectural review (lead_notes_4_dev.md, 19 Apr) + intelligent_enterprise CTX analysis, the sprint pivots: **route all intents through the existing query_graph (Track 1), in parallel with adopting IE-pattern grounding (Track 2)**. SPEC_015 WS-2 is **reframed**, WS-3 is **merged into Track 1 Phase 2**.
+
+Smoke test (tests/test_query_graph_smoke.py) confirmed: drug-pipeline queries today misclassify as `knowledge_search` and route to RAG instead of SQL. Phase 1 (intent_hint) is the correct fix.
 
 | Phase | Spec / WS | Description | Effort | Status |
 |-------|-----------|-------------|--------|--------|
-| 1 | SPEC_010 | Schema drift cleanup | 0.5d | ✅ Shipped (commits f23352f, 561302d) |
-| 2 | SPEC_011 | CTX default + A/B rollout | 1d | ✅ Shipped (commit c593b62), monitoring 48h |
-| **3** | **SPEC_015 WS-1** | **Entity Canonicalisation (brand→INN)** | **5-7d** | **NEXT — start now** |
-| 4 | SPEC_015 WS-2 | Intent & NLU Layer (slot validation, meta intent) | 3-4d | After WS-1 |
-| 5 | SPEC_015 WS-6 | Follow-Up Generation (validate before template) | 1-2d | After WS-2 |
-| 6 | SPEC_015 WS-4 | Provenance & Citations (source IDs in evidence) | 3-4d | After WS-1 |
-| 7 | SPEC_015 WS-5 | Numeric Guardrails + Cross-Turn Consistency | 3-4d | After WS-1 |
-| 8 | SPEC_015 WS-3 | Coverage Diagnostics | 3-4d | After WS-1, WS-4 |
-| 9 | SPEC_015 WS-7 | Eval Harness Overhaul | 4-5d | Last — tests everything |
+| 1 | SPEC_010 | Schema drift cleanup | 0.5d | ✅ Shipped |
+| 2 | SPEC_011 | CTX default + A/B rollout | 1d | ✅ Shipped, monitoring |
+| 3 | SPEC_015 WS-1 | Entity canonicalisation (brand→INN) | 5-7d | ✅ Shipped, awaiting migration 033 + smoke |
+| **3.5** | **Pipeline-intent hotfix** | **handle_pipeline accepts drug_id** | **2h** | **NEXT (immediate user value)** |
+| **4** | **SPEC_016 Track 2 Priority 1** | **Sandwich grounding + click-through citations + L3 directory** | **2-3d** | After 3.5 — quick wins, both architectures benefit |
+| 5 | SPEC_016 Track 1 Phase 1 | Route all intents through query_graph + intent_hint param | 1-2 weeks | After 4 |
+| 6 | SPEC_016 Track 2 Priority 2 | Guard retry loop + catalog-wide queries + title-ID mismatch | 3d | After 5 |
+| 7 | SPEC_016 Track 1 Phase 2 | Sufficiency check loop (merges WS-3 coverage) | 1-2 weeks | After 5 |
+| 8 | SPEC_015 WS-5 | Numeric guardrails + cross-turn consistency | 3-4d | After 7 |
+| 9 | SPEC_015 WS-6 | Follow-up generation hardening | 1-2d | Parallel-safe with 5+ |
+| 10 | SPEC_016 Track 1 Phase 3 | Retire legacy handlers (delete ~900 lines) | 2-3 weeks | After 7 stable for 1 week |
+| 11 | SPEC_015 WS-7 | Eval harness overhaul | 4-5d | LAST — tests both tracks |
 
-**Total remediation effort: 22-30 days (single dev) / 12-16 days (parallel).**
+**Total: ~6-8 weeks for full migration. First user-visible improvement: ~2 days.**
+
+## What Changed and Why
+
+| Before (SPEC_015 plan) | Now (SPEC_016 plan) | Reason |
+|------------------------|---------------------|--------|
+| WS-2: regex slot validation + meta intents | Track 1 Phase 1: route all intents through query_graph | Lead: "the regex cascade is the wrong foundation to build on" |
+| WS-3: standalone CoverageDiagnostic service | Track 1 Phase 2: sufficiency check graph node | Same logic, better placement (inside the agent loop) |
+| (no equivalent) | Track 2 Priority 1: IE-pattern grounding | Demonstrably works in `intelligent_enterprise` for similar use case |
+| (no equivalent) | Track 2 Priority 2: ContextGuard retry loop | IE pattern; existing guard suppresses but doesn't retry |
 
 ## DEFERRED (re-prioritized)
 
