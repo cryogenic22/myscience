@@ -140,19 +140,27 @@ def test_upload_endpoint_registered():
 
 
 def _make_test_client():
-    """Build a TestClient with DB and LLM dependencies mocked.
+    """Build a TestClient with DB, LLM, and auth dependencies stubbed.
 
-    The /upload endpoint takes Depends(get_db) + Depends(get_llm) but doesn't
-    actually USE them yet (v1 just returns the extraction summary). We override
-    them with stubs so tests can run without a live Postgres / Anthropic key.
+    These tests focus on upload extraction/NER, not auth. We override
+    get_current_user to return a fake uploader user — that satisfies the
+    require_role('uploader') gate downstream. Auth itself is exercised in
+    tests/test_role_gates.py.
     """
     from fastapi.testclient import TestClient
     from api.app import create_app
-    from api.deps import get_db, get_llm
+    from api.deps import get_db, get_llm, get_current_user
 
     app = create_app()
     app.dependency_overrides[get_db] = lambda: MagicMock(name="MockDB")
-    app.dependency_overrides[get_llm] = lambda: None  # NER returns [] without LLM
+    app.dependency_overrides[get_llm] = lambda: None
+    fake_user = {
+        "id": "test-uploader",
+        "email": "test-uploader@example.io",
+        "role": "uploader",
+        "is_active": True,
+    }
+    app.dependency_overrides[get_current_user] = lambda: fake_user
     return TestClient(app)
 
 

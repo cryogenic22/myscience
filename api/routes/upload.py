@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from api.deps import get_db, get_llm
+from api.deps import get_db, get_llm, require_role
 from connectors.user_document import UserDocumentConnector
 from services.document_extractor import UnsupportedFormatError
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_role("uploader"))])
 async def upload_document(
     file: UploadFile = File(...),
     llm = Depends(get_llm),

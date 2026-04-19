@@ -11,6 +11,8 @@ import os
 from functools import lru_cache
 from typing import Optional
 
+from fastapi import Depends, Header, HTTPException
+
 from db import Database
 from config import config
 from services.search import HybridSearch
@@ -408,3 +410,80 @@ def get_team_eval_graph() -> Optional[object]:
     except Exception as exc:
         logger.warning("Failed to build team eval graph: %s", exc)
         return None
+
+
+# ── SPEC_018: Auth dependencies ────────────────────────────────────
+
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Database = Depends(get_db),
+) -> Optional[dict]:
+    """Resolve current user from Bearer token. Returns None for anonymous.
+
+    Returns the DB user row (id, email, role) when token is valid AND user is
+    active. Returns None when:
+      - No Authorization header (anonymous)
+      - Header is malformed
+      - Token is invalid / expired / signed with wrong secret
+      - User row missing or inactive
+
+    Returning None instead of raising lets routes opt into "anonymous OK"
+    behavior. Routes that REQUIRE auth use require_role() instead.
+    """
+    from services.auth import AuthError, decode_token
+
+    if not authorization:
+        return None
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    token = parts[1]
+    try:
+        payload = decode_token(token)
+    except AuthError:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    try:
+        row = db.fetch_one(
+            "SELECT id::text AS id, email, role, is_active "
+            "FROM users WHERE id::text = %s LIMIT 1",
+            [user_id],
+        )
+    except Exception:
+        # DB unavailable — treat as anonymous rather than 500
+        logger.exception("get_current_user: DB lookup failed")
+        return None
+
+    if not row or not row.get("is_active"):
+        return None
+    return row
+
+
+def require_role(min_role: str):
+    """Build a FastAPI dependency that enforces a minimum role.
+
+    - 401 if anonymous (no valid token)
+    - 403 if authenticated but role insufficient
+    - returns the user dict otherwise
+
+    Usage:
+        @router.post("/upload", dependencies=[Depends(require_role("uploader"))])
+        def upload(...): ...
+    """
+    from services.auth import role_satisfies
+
+    def _dep(user: Optional[dict] = Depends(get_current_user)) -> dict:
+        if user is None:
+            raise HTTPException(status_code=401, detail="authentication required")
+        if not role_satisfies(user.get("role"), min_role):
+            raise HTTPException(
+                status_code=403,
+                detail=f"role '{user.get('role')}' insufficient (need '{min_role}' or higher)",
+            )
+        return user
+
+    return _dep
