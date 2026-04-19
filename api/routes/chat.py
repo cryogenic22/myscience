@@ -14,6 +14,7 @@ Handler logic lives in services/chat_handlers/. This file is a thin router.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 
@@ -67,6 +68,68 @@ from services.chat_handlers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── SPEC-011: A/B routing for unified handler ──
+
+def _should_use_unified_handler(session_id: str) -> bool:
+    """Decide whether this session uses the CTX UnifiedChatHandler or legacy.
+
+    Honors two env-driven knobs:
+      - MZ_UNIFIED_HANDLER (bool, default true): hard kill switch
+      - MZ_UNIFIED_HANDLER_ROLLOUT (float 0.0-1.0, default 1.0): traffic share
+
+    Routing is deterministic per session_id: hash(session_id) mod 256 bucket
+    means the same user always sees the same handler across messages.
+    """
+    if not config.agent.use_unified_handler:
+        return False
+    rollout = config.agent.unified_handler_rollout
+    if rollout >= 1.0:
+        return True
+    if rollout <= 0.0:
+        return False
+    bucket = hashlib.md5(session_id.encode("utf-8")).digest()[0]
+    return bucket < (rollout * 256)
+
+
+def _log_chat_routing(
+    handler: str,
+    session_id: str,
+    intent: str,
+    fallback: bool = False,
+    error: str | None = None,
+    extra: dict | None = None,
+) -> None:
+    """Fire-and-forget telemetry for the A/B comparison.
+
+    Logs as `chat_routing` event so the SQL: `... WHERE event_type = 'chat_routing'`
+    can group by metadata.handler for unified-vs-legacy comparison.
+    """
+    try:
+        from services.telemetry import log_ctx_event
+        bucket = hashlib.md5(session_id.encode("utf-8")).digest()[0]
+        metadata = {
+            "handler": handler,
+            "bucket": bucket,
+            "intent": intent,
+            "fallback_triggered": fallback,
+        }
+        if error:
+            metadata["error"] = error[:200]
+        if extra:
+            metadata.update(extra)
+        log_ctx_event(
+            db=get_db(),
+            question="",  # deliberately empty — handler attribution is what matters
+            intent=intent,
+            event_type="chat_routing",
+            metadata=metadata,
+        )
+    except Exception:
+        # Telemetry must never break the main chat flow
+        pass
+
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -175,8 +238,9 @@ def chat(
         intent, params = Intent.TEAM_EVAL, {}
     logger.info("Chat intent: %s, params: %s", intent, params)
 
-    # Unified handler (CTX pipeline) — opt-in via MZ_UNIFIED_HANDLER=true
-    if config.agent.use_unified_handler:
+    # SPEC-011: Unified handler (CTX pipeline) — A/B routed by session
+    use_unified = _should_use_unified_handler(session_id)
+    if use_unified:
         unified = get_unified_handler()
         if unified:
             try:
@@ -189,11 +253,18 @@ def chat(
                     payload["followup_suggestions"] = payload.get("followup_suggestions") or generate_followups(
                         question, payload.get("intent", "general"), payload.get("narrative", ""), params,
                     )
+                    payload["metadata"] = {**payload.get("metadata", {}), "handler": "unified"}
+                    _log_chat_routing("unified", session_id, str(intent.value if hasattr(intent, "value") else intent))
                     memory.add_exchange(question, payload.get("narrative", ""))
                     save_conversation_memory(session_id, memory, db)
                     return payload
             except Exception as e:
                 logger.warning("Unified handler error, falling back to legacy: %s", e)
+                _log_chat_routing(
+                    "unified", session_id,
+                    str(intent.value if hasattr(intent, "value") else intent),
+                    fallback=True, error=str(e),
+                )
 
     # Compound intent detection: "Show Pfizer portfolio and compare their top 3 drugs"
     if intent not in (Intent.DEEP_RESEARCH, Intent.TEAM_EVAL):
@@ -271,6 +342,9 @@ def chat(
         payload["followup_suggestions"] = generate_followups(
             question, intent, payload.get("narrative", ""), params,
         )
+        # SPEC-011: tag handler attribution for A/B comparison
+        payload["metadata"] = {**payload.get("metadata", {}), "handler": "legacy"}
+        _log_chat_routing("legacy", session_id, str(intent.value if hasattr(intent, "value") else intent))
         memory.add_exchange(question, payload.get("narrative", ""))
         save_conversation_memory(session_id, memory, db)
 
