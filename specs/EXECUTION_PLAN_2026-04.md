@@ -1,8 +1,14 @@
-# Execution Plan — April 2026
+# Execution Plan — April 2026 (REVISED)
 
-*Date: 19 April 2026*
-*Reconciles: `SPRINT_PLAN_2026-04.md` (5 SPECs) + `market_zero_spec_gap_instructions.md` (12 gaps)*
-*Source of truth for sequencing across the next 3-4 weeks*
+*Date: 19 April 2026 (revised after intelligence remediation spec received)*
+*Reconciles: `SPRINT_PLAN_2026-04.md` (5 SPECs) + gap audit + production transcript review + `SPEC_015_intelligence_remediation.md` (7 workstreams)*
+*Source of truth for sequencing across the next 4-6 weeks*
+
+## REVISION NOTE — 19 April 2026
+
+After SPEC_010 (schema drift) and SPEC_011 (CTX default + A/B) shipped to production, a domain-expert review of a live system transcript revealed **fundamental intelligence-layer failures** (brand→generic resolution missing, intent slot validation absent, no provenance, internal contradictions, low-coverage verdicts). A code-cited remediation spec was produced (`SPEC_015_intelligence_remediation.md`) with 7 implementation-ready workstreams.
+
+**Decision: defer SPEC_012 (OpenAlex), SPEC_013 (link confidence), SPEC_014 (document upload) until after the 7 remediation workstreams ship.** Rationale: feature/data improvements have negative ROI when the underlying chatbot is structurally broken on the most common user query pattern (brand-name lookups).
 
 ---
 
@@ -39,9 +45,46 @@ Net: gap audit is mostly accurate but had 1 false positive. Trust but verify eac
 | SPEC_013 (Link Confidence) | Not started | GAP-04 alias; consider GAP-04 acceptance criteria as additions |
 | SPEC_014 (Document Upload + NER) | Not started | GAP-02 alias |
 
-## Phase Sequence (Updated)
+## Phase Sequence (REVISED)
 
-The original sprint plan (010 → 011 → 013 → 012 → 014) holds, with 4 new sub-tasks woven in.
+| Phase | Spec / WS | Description | Effort | Status |
+|-------|-----------|-------------|--------|--------|
+| 1 | SPEC_010 | Schema drift cleanup | 0.5d | ✅ Shipped (commits f23352f, 561302d) |
+| 2 | SPEC_011 | CTX default + A/B rollout | 1d | ✅ Shipped (commit c593b62), monitoring 48h |
+| **3** | **SPEC_015 WS-1** | **Entity Canonicalisation (brand→INN)** | **5-7d** | **NEXT — start now** |
+| 4 | SPEC_015 WS-2 | Intent & NLU Layer (slot validation, meta intent) | 3-4d | After WS-1 |
+| 5 | SPEC_015 WS-6 | Follow-Up Generation (validate before template) | 1-2d | After WS-2 |
+| 6 | SPEC_015 WS-4 | Provenance & Citations (source IDs in evidence) | 3-4d | After WS-1 |
+| 7 | SPEC_015 WS-5 | Numeric Guardrails + Cross-Turn Consistency | 3-4d | After WS-1 |
+| 8 | SPEC_015 WS-3 | Coverage Diagnostics | 3-4d | After WS-1, WS-4 |
+| 9 | SPEC_015 WS-7 | Eval Harness Overhaul | 4-5d | Last — tests everything |
+
+**Total remediation effort: 22-30 days (single dev) / 12-16 days (parallel).**
+
+## DEFERRED (re-prioritized)
+
+| Spec | Original Phase | Why Deferred |
+|------|---------------|---------------|
+| SPEC_012 OpenAlex | Phase 6 | Adds data; doesn't fix retrieval bugs |
+| SPEC_013 Link Confidence | Phase 4 | Partial overlap with WS-4 provenance; do as follow-on |
+| SPEC_014 Document Upload + NER | Phase 7 | Feature work; non-blocking |
+| GAP-07 CTX corpus refresh | Phase 3 (was) | Useful but not user-blocking |
+| GAP-05 Feedback auto-trigger | Phase 5 (was) | Steward already runs; auto-trigger is nice-to-have |
+| GAP-06 Frontend test coverage | Parallel | Continues as background work |
+| GAP-08 Code splitting | Parallel | 30-min change, do anytime |
+
+## Migration Numbering (Authoritative)
+
+| # | Phase | Purpose | Status |
+|---|-------|---------|--------|
+| 032 | Phase 1 | `market_events.primary_entity_id` | ✅ Created |
+| 033 | Phase 3 (WS-1) | Seed `entity_aliases` from `drugs.brand_name` | Next |
+| 034 | Phase 6 (WS-4) | Source ID columns on EvidenceItem (if needed) | Pending |
+| 035 | TBD | Reserved | — |
+
+## Original Phase Sequence (KEPT FOR REFERENCE)
+
+The original sprint plan (010 → 011 → 013 → 012 → 014) shipped Phases 1-2.
 
 ### Phase 1 — Foundation (SPEC_010 + GAP-03 cleanup)
 **Status: COMPLETE locally, pending prod deploy**

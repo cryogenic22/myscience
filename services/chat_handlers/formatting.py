@@ -70,26 +70,38 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     """Resolve a name or UUID to entity_id + metadata + match_score.
 
     match_score: 1.0 for UUID/exact match, 0.7 for fuzzy LIKE match.
+
+    SPEC_015 §3.3.4: drugs may be looked up via either generic_name (primary)
+    or brand_name (secondary). When matched via brand_name, the returned label
+    is the canonical generic_name from the same row.
     """
     import re as _re
 
-    table_map = {
-        "drug": ("drugs", "generic_name"),
-        "company": ("companies", "name"),
-        "therapeutic_area": ("therapeutic_areas", "name"),
-        "mechanism": ("mechanisms_of_action", "name"),
-        "literature": ("pubmed_articles", "title"),
+    # table_map values: list of (table, search_column, label_column).
+    # search_column is what we filter WHERE against; label_column is what we
+    # return as the canonical "label". For drugs, brand searches still return
+    # generic_name as the label.
+    table_map: dict[str, list[tuple[str, str, str]]] = {
+        "drug": [
+            ("drugs", "generic_name", "generic_name"),  # primary
+            ("drugs", "brand_name",   "generic_name"),  # secondary — returns generic
+        ],
+        "company": [("companies", "name", "name")],
+        "therapeutic_area": [("therapeutic_areas", "name", "name")],
+        "mechanism": [("mechanisms_of_action", "name", "name")],
+        "literature": [("pubmed_articles", "title", "title")],
     }
 
     # Check if it's a UUID (or contains one)
     uuid_match = _re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', name.lower())
     if uuid_match:
         uuid_val = uuid_match.group(0)
-        for etype, (table, col) in table_map.items():
+        for etype, columns in table_map.items():
             if entity_type and entity_type != etype:
                 continue
+            table, _search_col, label_col = columns[0]
             row = db.fetch_one(
-                f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE id::text = %s LIMIT 1",
+                f"SELECT id::text AS entity_id, {label_col} AS label FROM {table} WHERE id::text = %s LIMIT 1",
                 [uuid_val],
             )
             if row:
@@ -102,24 +114,27 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     if not clean_name or len(clean_name) < 2:
         return None
 
-    for etype, (table, col) in table_map.items():
+    for etype, columns in table_map.items():
         if entity_type and entity_type != etype:
             continue
-        # Exact match first (score 1.0)
-        row = db.fetch_one(
-            f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) = LOWER(%s) LIMIT 1",
-            [clean_name],
-        )
-        if row:
-            return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 1.0}
-        # Fuzzy match (score 0.7) — require at least 3 chars to prevent wildcard catch-all
-        if len(clean_name) >= 3:
+        for table, search_col, label_col in columns:
+            # Exact match first (score 1.0)
             row = db.fetch_one(
-                f"SELECT id::text AS entity_id, {col} AS label FROM {table} WHERE LOWER({col}) LIKE LOWER(%s) LIMIT 1",
-                [f"%{clean_name}%"],
+                f"SELECT id::text AS entity_id, {label_col} AS label FROM {table} "
+                f"WHERE LOWER({search_col}) = LOWER(%s) LIMIT 1",
+                [clean_name],
             )
             if row:
-                return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 0.7}
+                return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 1.0}
+            # Fuzzy match (score 0.7) — require at least 3 chars to prevent wildcard catch-all
+            if len(clean_name) >= 3:
+                row = db.fetch_one(
+                    f"SELECT id::text AS entity_id, {label_col} AS label FROM {table} "
+                    f"WHERE LOWER({search_col}) LIKE LOWER(%s) LIMIT 1",
+                    [f"%{clean_name}%"],
+                )
+                if row:
+                    return {"entity_id": row["entity_id"], "label": row["label"], "entity_type": etype, "match_score": 0.7}
 
     return None
 

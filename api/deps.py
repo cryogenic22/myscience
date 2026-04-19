@@ -118,6 +118,13 @@ def get_query_engine() -> QueryEngine:
 
 
 @lru_cache()
+def get_entity_canonicalizer():
+    """Build and cache the EntityCanonicalizer singleton (SPEC_015 WS-1)."""
+    from services.entity_canonicalizer import EntityCanonicalizer
+    return EntityCanonicalizer(get_db())
+
+
+@lru_cache()
 def get_llm() -> LLMSynthesizer:
     return LLMSynthesizer(config)
 

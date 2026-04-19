@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -24,6 +25,7 @@ from fastapi.responses import Response, StreamingResponse
 from api.deps import (
     get_conversation_memory,
     get_db,
+    get_entity_canonicalizer,
     get_llm,
     get_metrics,
     get_query_engine,
@@ -131,6 +133,74 @@ def _log_chat_routing(
         pass
 
 
+# ── SPEC_015 WS-1: brand→generic canonicalisation ──
+
+# Tokens that indicate the surrounding text isn't an entity name.
+_NON_ENTITY_TOKENS = {
+    "the", "a", "an", "of", "for", "in", "on", "and", "or", "to",
+    "vs", "vs.", "versus", "compare", "show", "tell", "what", "which",
+    "is", "are", "does", "do", "side", "effects", "pipeline", "trial",
+    "trials", "phase", "compared", "mechanism", "study", "studies",
+    "drug", "company", "this", "that", "with", "without", "between",
+}
+
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9\-]+")
+
+
+def _canonicalize_question(question: str, canonicalizer) -> tuple[str, dict]:
+    """Replace high-confidence brand-name mentions with their generic name.
+
+    Strategy: tokenise the question, attempt canonicalisation on each candidate
+    token (and 2-token windows for compound names like "novo nordisk"). Replace
+    only matches with confidence >= 0.7 (catches exact + alias, leaves fuzzy
+    matches alone since they could be wrong).
+
+    Returns (canonical_question, {original_token: CanonicalResult, ...}).
+    """
+    if not question or not canonicalizer:
+        return question, {}
+
+    tokens = _TOKEN_RE.findall(question)
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for tok in tokens:
+        low = tok.lower()
+        if low in _NON_ENTITY_TOKENS or len(tok) < 3 or low in seen:
+            continue
+        seen.add(low)
+        candidates.append(tok)
+
+    if not candidates:
+        return question, {}
+
+    try:
+        results = canonicalizer.canonicalize_batch(candidates, hint_type="drug")
+    except Exception:
+        logger.exception("entity canonicalisation failed; using original question")
+        return question, {}
+
+    canonical_question = question
+    canon_map: dict = {}
+    for original, result in results.items():
+        if result is None or result.confidence < 0.7:
+            continue
+        # Only replace when the canonical name actually differs (case-insensitive)
+        if original.lower() == result.canonical_name.lower():
+            continue
+        # Word-boundary replacement — preserves surrounding punctuation
+        pattern = re.compile(r"\b" + re.escape(original) + r"\b", re.IGNORECASE)
+        canonical_question = pattern.sub(result.canonical_name, canonical_question)
+        canon_map[original] = result
+
+    if canon_map:
+        logger.info(
+            "Canonicalised %d term(s): %s",
+            len(canon_map),
+            {k: v.canonical_name for k, v in canon_map.items()},
+        )
+    return canonical_question, canon_map
+
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -230,6 +300,11 @@ def chat(
     resolved_question = memory.resolve_reference(question) if memory.get_context() else resolve_followup_question(question, conversation_history)
     if resolved_question != question:
         logger.info("Follow-up resolved: %r → %r", question, resolved_question)
+
+    # SPEC_015 WS-1: canonicalise brand names before intent detection
+    # so "Show pipeline for Ozempic" routes the same as "...for semaglutide"
+    canonicalizer = get_entity_canonicalizer()
+    resolved_question, canon_map = _canonicalize_question(resolved_question, canonicalizer)
 
     intent, params = detect_intent(resolved_question)
     if deep_research:

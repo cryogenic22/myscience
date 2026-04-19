@@ -105,6 +105,7 @@ FUZZY_MATCH_FIELDS: dict[str, tuple[str, str, str]] = {
     # identifier_key: (table, name_column, entity_type)
     "company_name": ("companies", "name", "company"),
     "generic_name": ("drugs", "generic_name", "drug"),
+    "brand_name": ("drugs", "brand_name", "drug"),  # WS-1: brand fallback
     "sponsor_name": ("companies", "name", "company"),
     "investigator_name": ("investigators", "name", "investigator"),
 }

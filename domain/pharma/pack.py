@@ -49,6 +49,7 @@ def get_pharma_pack() -> DomainPack:
         },
         fuzzy_match_fields={
             "generic_name": "generic_name",
+            "brand_name": "brand_name",  # WS-1: brand-name fuzzy fallback
         },
         embedding_column="molecule_embedding",
         skip_terms=DRUG_SKIP_TERMS,
