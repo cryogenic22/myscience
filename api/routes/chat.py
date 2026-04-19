@@ -399,7 +399,13 @@ def chat(
             payload = handle_portfolio(params, db, engine, metrics_svc, llm, conv_context=conv_context)
 
         elif intent == Intent.PIPELINE:
-            payload = handle_pipeline(params, metrics_svc, llm, conv_context=conv_context)
+            # SPEC_016 Phase 3.5: pass canonicalizer so handler can classify
+            # the entity_name as drug (use drug_id) vs therapeutic_area.
+            payload = handle_pipeline(
+                params, metrics_svc, llm,
+                conv_context=conv_context,
+                canonicalizer=canonicalizer,
+            )
 
         else:
             payload = handle_general(
@@ -470,6 +476,7 @@ def chat_stream(
     engine: QueryEngine = Depends(get_query_engine),
     metrics_svc: PharmaMetrics = Depends(get_metrics),
     llm: LLMSynthesizer = Depends(get_llm),
+    canonicalizer = Depends(get_entity_canonicalizer),
 ):
     """Streaming chat endpoint. Returns SSE events:
     - event: status — progress messages during tool execution
@@ -505,7 +512,10 @@ def chat_stream(
             elif intent == Intent.PORTFOLIO:
                 payload = handle_portfolio(params, db, engine, metrics_svc, llm)
             elif intent == Intent.PIPELINE:
-                payload = handle_pipeline(params, metrics_svc, llm)
+                payload = handle_pipeline(
+                    params, metrics_svc, llm,
+                    canonicalizer=canonicalizer,
+                )
             elif intent == Intent.STRUCTURED_QUERY:
                 payload = handle_structured_query(question, engine, db, llm, conversation_history)
             else:

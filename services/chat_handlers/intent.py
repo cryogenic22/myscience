@@ -131,18 +131,28 @@ def detect_intent(question: str) -> tuple[str, dict]:
     # "phase 3 trials", "clinical trials for X", "drugs in development", "in clinical trials"
     _clinical_trials_match = re.search(r'clinical\s+trials?\s+for\s+(.+?)(?:\?|$)', q)
     _phase_trials_match = re.search(r'phase\s+[1234]\s+trials?(?:\s+(?:for|in)\s+(.+?))?(?:\?|$)', q)
+    # SPEC_016 Phase 3.5: "pipeline for X" / "pipeline of X" form must be checked
+    # BEFORE the "X pipeline" form, since the user-typed entity follows "for/of"
+    # (the prefix would otherwise be wrongly captured as the entity).
+    _pipeline_for_match = re.search(r'pipeline\s+(?:for|of)\s+(.+?)(?:\?|$)', q)
     if 'pipeline' in q or _clinical_trials_match or _phase_trials_match or 'drugs in development' in q or 'in clinical trials' in q:
-        ta = ""
+        entity = ""
         if _clinical_trials_match:
-            ta = _clinical_trials_match.group(1).strip()
+            entity = _clinical_trials_match.group(1).strip()
         elif _phase_trials_match and _phase_trials_match.group(1):
-            ta = _phase_trials_match.group(1).strip()
+            entity = _phase_trials_match.group(1).strip()
+        elif _pipeline_for_match:
+            # "pipeline for X" — entity follows "for/of"
+            entity = _pipeline_for_match.group(1).strip()
         elif 'pipeline' in q:
+            # "X pipeline" form — TA prefix before "pipeline"
             ta_match = re.search(r'(.+?)\s+pipeline', q)
-            ta = ta_match.group(1).strip() if ta_match else ""
+            entity = ta_match.group(1).strip() if ta_match else ""
         # Strip leading filler words
-        ta = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+|drug\s+)', '', ta).strip()
-        return Intent.PIPELINE, {"therapeutic_area": ta}
+        entity = re.sub(r'^(?:show\s+me\s+(?:the\s+)?|what\s+is\s+(?:the\s+)?|the\s+full\s+|the\s+|drug\s+)', '', entity).strip()
+        # Surface as `entity_name` so downstream handlers can classify as drug vs TA.
+        # Keep `therapeutic_area` for backwards compatibility.
+        return Intent.PIPELINE, {"entity_name": entity, "therapeutic_area": entity}
 
     # Structured query: signals that need SQL-computed answers
     try:

@@ -1246,12 +1246,60 @@ def handle_portfolio(params: dict, db: Database, engine: QueryEngine, metrics_sv
     }
 
 
-def handle_pipeline(params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "", db=None, engine=None) -> dict:
-    ta = params.get("therapeutic_area", "")
-    pipelines = metrics_svc.drug_pipeline_strength(therapeutic_area=ta if ta else None, limit=20)
+def handle_pipeline(
+    params: dict,
+    metrics_svc: PharmaMetrics,
+    llm: LLMSynthesizer,
+    conv_context: str = "",
+    db=None,
+    engine=None,
+    canonicalizer=None,
+) -> dict:
+    """Pipeline intent — supports BOTH drug-specific and therapeutic-area queries.
+
+    SPEC_016 Phase 3.5: when the user asks "Show pipeline for X", X may be a
+    drug (semaglutide) or a therapeutic area (diabetes). We canonicalize the
+    extracted entity_name and route to the appropriate metric filter.
+    """
+    entity_name = params.get("entity_name") or params.get("therapeutic_area") or ""
+    drug_id = params.get("drug_id")  # may already be set by the chat route
+
+    pipelines: list[dict] = []
+    label_for_template = entity_name
+
+    if drug_id:
+        # Caller already resolved the entity to a drug
+        pipelines = metrics_svc.drug_pipeline_strength(drug_id=drug_id, limit=20)
+    elif entity_name and canonicalizer is not None:
+        # Try drug canonicalization first; fall back to TA filter on miss
+        result = canonicalizer.canonicalize(entity_name, hint_type="drug")
+        if result and result.confidence >= 0.7:
+            pipelines = metrics_svc.drug_pipeline_strength(drug_id=result.entity_id, limit=20)
+            label_for_template = result.canonical_name
+        else:
+            pipelines = metrics_svc.drug_pipeline_strength(therapeutic_area=entity_name, limit=20)
+    else:
+        # No canonicalizer or no entity — TA filter (or top-N when entity empty)
+        ta = entity_name
+        pipelines = metrics_svc.drug_pipeline_strength(
+            therapeutic_area=ta if ta else None, limit=20
+        )
 
     if not pipelines:
-        return {"narrative": "No pipeline data available for this query.", "intent": "pipeline", "data": None}
+        return {
+            "narrative": (
+                f"No pipeline data available for **{label_for_template}**."
+                if label_for_template
+                else "No pipeline data available for this query."
+            ),
+            "intent": "pipeline",
+            "data": None,
+        }
+
+    # `ta` retained for downstream template / extra_context strings (used to
+    # say "in **{ta}**"). After SPEC_016 Phase 3.5 it holds the canonical
+    # drug name OR the original TA, depending on what the entity resolved to.
+    ta = label_for_template
 
     top = sorted(pipelines, key=lambda x: x.get("pipeline_score", 0), reverse=True)[:10]
 
