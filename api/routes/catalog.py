@@ -2715,7 +2715,7 @@ def entity_events(
         if _table_exists(db, "steward_actions"):
             steward_rows = db.fetch_all(
                 """
-                SELECT action_type, details, status, completed_at
+                SELECT action_type, action_details AS details, status, completed_at
                 FROM steward_actions
                 WHERE entity_type = %s AND entity_id = %s
                 ORDER BY completed_at DESC NULLS LAST

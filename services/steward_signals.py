@@ -203,10 +203,10 @@ class StewardSignalCollector:
             # Stale sources: last ETL run > 14 days ago
             rows = self.db.fetch_all(
                 """
-                SELECT source_type, MAX(finished_at) AS last_run
+                SELECT source_name, MAX(finished_at) AS last_run
                 FROM etl_runs
                 WHERE status = 'completed'
-                GROUP BY source_type
+                GROUP BY source_name
                 HAVING MAX(finished_at) < NOW() - INTERVAL '14 days'
                 """
             )
@@ -218,13 +218,13 @@ class StewardSignalCollector:
                 )
                 signals.append(StewardSignal(
                     source="quality_scorecard",
-                    source_id=f"stale-{row['source_type']}",
+                    source_id=f"stale-{row['source_name']}",
                     entity_type=None,
                     entity_id=None,
                     entity_name=None,
                     gap_type="stale_data",
                     priority_score=score,
-                    details={"source_type": row["source_type"], "last_run": str(row["last_run"])},
+                    details={"source_name": row["source_name"], "last_run": str(row["last_run"])},
                 ))
         except Exception:
             logger.debug("Failed to collect quality signals", exc_info=True)

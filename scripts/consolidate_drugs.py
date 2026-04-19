@@ -231,20 +231,19 @@ def consolidate_drugs(db: Database, dry_run: bool = False) -> dict:
         try:
             dedup_result = db.fetch_one(
                 """
-                WITH dupes AS (
-                    SELECT MIN(id) AS keep_id, source_entity_id, target_entity_id, link_type
+                WITH keepers AS (
+                    SELECT DISTINCT ON (source_entity_id, target_entity_id, link_type)
+                        id AS keep_id,
+                        source_entity_id, target_entity_id, link_type
                     FROM entity_links
-                    GROUP BY source_entity_id, target_entity_id, link_type
-                    HAVING COUNT(*) > 1
+                    ORDER BY source_entity_id, target_entity_id, link_type, created_at ASC
                 )
-                DELETE FROM entity_links
-                WHERE id IN (
-                    SELECT el.id FROM entity_links el
-                    JOIN dupes d ON el.source_entity_id = d.source_entity_id
-                        AND el.target_entity_id = d.target_entity_id
-                        AND el.link_type = d.link_type
-                        AND el.id != d.keep_id
-                )
+                DELETE FROM entity_links el
+                USING keepers k
+                WHERE el.source_entity_id = k.source_entity_id
+                  AND el.target_entity_id = k.target_entity_id
+                  AND el.link_type = k.link_type
+                  AND el.id != k.keep_id
                 """
             )
         except Exception as e:
