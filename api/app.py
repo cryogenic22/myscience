@@ -26,6 +26,15 @@ except Exception as _e:
     logger.error("Failed to import new routers (feedback/steward/literature/intelligence/agent): %s", _e)
     _NEW_ROUTERS_OK = False
 
+# SPEC_014 upload router — separate try block so other routers stay live if
+# document deps (pdfplumber/python-docx) are missing in some envs.
+try:
+    from api.routes import upload as upload_route
+    _UPLOAD_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import upload router (SPEC_014): %s", _e)
+    _UPLOAD_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -64,6 +73,8 @@ def create_app() -> FastAPI:
     ]
     if _NEW_ROUTERS_OK:
         all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router, agent.router])
+    if _UPLOAD_ROUTER_OK:
+        all_routers.append(upload_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
