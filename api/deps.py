@@ -412,6 +412,19 @@ def get_team_eval_graph() -> Optional[object]:
         return None
 
 
+# ── SPEC_014 follow-up: integration pipeline for /upload ───────────
+
+@lru_cache()
+def get_integration_pipeline():
+    """Build and cache the IntegrationPipeline singleton.
+
+    Used by POST /upload to feed UserDocumentConnector records through the
+    full normalize → resolve → embed → store → cross-link flow.
+    """
+    from integration.pipeline import IntegrationPipeline
+    return IntegrationPipeline(get_db(), config)
+
+
 # ── SPEC_018: Auth dependencies ────────────────────────────────────
 
 def get_current_user(

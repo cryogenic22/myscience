@@ -68,15 +68,27 @@ def _make_demo_db():
 
 
 def _client_with_demo_db():
-    """TestClient with DB dep overridden to demo users + LLM stubbed."""
+    """TestClient with DB dep overridden to demo users + LLM + pipeline stubbed."""
     from fastapi.testclient import TestClient
     from api.app import create_app
-    from api.deps import get_db, get_llm
+    from api.deps import get_db, get_llm, get_integration_pipeline
 
     app = create_app()
     db = _make_demo_db()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_llm] = lambda: None
+    # Stub pipeline so /upload doesn't try to reach a real DB through it
+    pipeline_mock = MagicMock()
+    pipeline_mock.run.return_value = MagicMock(
+        summary=lambda: {
+            "etl_run_id": "test-run", "source": "user_document",
+            "processed": 1, "inserted": 1, "updated": 0,
+            "unchanged": 0, "skipped": 0, "failed": 0,
+            "links_created": 0, "hitl_items": 0,
+            "avg_quality": None, "errors": [], "duration_seconds": 0.01,
+        },
+    )
+    app.dependency_overrides[get_integration_pipeline] = lambda: pipeline_mock
     return TestClient(app), db
 
 

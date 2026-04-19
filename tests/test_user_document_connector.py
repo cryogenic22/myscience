@@ -140,16 +140,16 @@ def test_upload_endpoint_registered():
 
 
 def _make_test_client():
-    """Build a TestClient with DB, LLM, and auth dependencies stubbed.
+    """Build a TestClient with DB, LLM, auth, and pipeline dependencies stubbed.
 
-    These tests focus on upload extraction/NER, not auth. We override
-    get_current_user to return a fake uploader user — that satisfies the
-    require_role('uploader') gate downstream. Auth itself is exercised in
-    tests/test_role_gates.py.
+    These tests focus on the upload route's extraction + response shape, not on
+    persistence (covered by tests/test_upload_persistence.py) or auth (covered
+    by tests/test_role_gates.py). Mock the integration pipeline to a no-op so
+    these tests exercise just the format detection / NER / response building.
     """
     from fastapi.testclient import TestClient
     from api.app import create_app
-    from api.deps import get_db, get_llm, get_current_user
+    from api.deps import get_db, get_llm, get_current_user, get_integration_pipeline
 
     app = create_app()
     app.dependency_overrides[get_db] = lambda: MagicMock(name="MockDB")
@@ -161,6 +161,21 @@ def _make_test_client():
         "is_active": True,
     }
     app.dependency_overrides[get_current_user] = lambda: fake_user
+
+    # Mock pipeline so /upload doesn't try to talk to a real DB
+    pipeline_mock = MagicMock()
+    pipeline_mock.run.return_value = MagicMock(
+        summary=lambda: {
+            "etl_run_id": "test-run",
+            "source": "user_document",
+            "processed": 1, "inserted": 1, "updated": 0,
+            "unchanged": 0, "skipped": 0, "failed": 0,
+            "links_created": 0, "hitl_items": 0,
+            "avg_quality": None, "errors": [], "duration_seconds": 0.01,
+        },
+    )
+    app.dependency_overrides[get_integration_pipeline] = lambda: pipeline_mock
+
     return TestClient(app)
 
 
