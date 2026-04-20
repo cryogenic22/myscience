@@ -27,14 +27,30 @@ logger = logging.getLogger(__name__)
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
-def validate_citations(narrative: str, evidence_count: int) -> dict:
-    """Validate citation markers [N] in narrative against evidence count.
+_ENTITY_LINK_RE = re.compile(
+    r"\[([^\]]+?)\]\(/entity/(drug|company|trial|mechanism|therapeutic_area|investigator)/([^)]+?)\)"
+)
 
-    Strips invalid citations (N > evidence_count or N == 0).
-    Returns: {"narrative": cleaned_text, "valid": int, "stripped": int}
+
+def validate_citations(narrative: str, evidence_count: int) -> dict:
+    """Validate citation markers in narrative.
+
+    Three kinds of citations are counted:
+      [N]          — evidence index (must be 1 <= N <= evidence_count)
+      [Name](/entity/{type}/{id}) — click-through entity link (SPEC_016 §1B)
+
+    Strips invalid [N] markers. Does NOT strip entity links — they trace to
+    the DB and can be separately validated by the ContextGuard.
+
+    Returns: {
+      "narrative": cleaned_text,
+      "valid": int,             # valid [N] count
+      "stripped": int,          # [N] markers that were removed
+      "entity_links": int,      # click-through [Name](/entity/...) count
+    }
     """
     if not narrative:
-        return {"narrative": "", "valid": 0, "stripped": 0}
+        return {"narrative": "", "valid": 0, "stripped": 0, "entity_links": 0}
 
     valid = 0
     stripped = 0
@@ -53,7 +69,16 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
     # Clean up double spaces from removed citations
     cleaned = re.sub(r"  +", " ", cleaned)
 
-    return {"narrative": cleaned, "valid": valid, "stripped": stripped}
+    # Count click-through entity links (don't mutate — they stay in the text
+    # and render as clickable in the UI).
+    entity_links = len(_ENTITY_LINK_RE.findall(cleaned))
+
+    return {
+        "narrative": cleaned,
+        "valid": valid,
+        "stripped": stripped,
+        "entity_links": entity_links,
+    }
 
 
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
@@ -232,11 +257,33 @@ Rules:
 SYSTEM_PROMPT = SYSTEM_PROMPTS["default"]
 
 
+_CITATION_PROTOCOL = """
+CITATION PROTOCOL (SPEC_016):
+- Every factual claim MUST cite evidence. Use [N] markers where N is a
+  1-based index into the evidence list in the context.
+- When you mention an entity (drug, company, trial, mechanism, investigator)
+  write it as a clickable markdown link:
+      [Entity Name](/entity/{type}/{id})
+  Example: [Semaglutide](/entity/drug/abc-123) or
+           [Novo Nordisk](/entity/company/c-456).
+  The id MUST come verbatim from the context. If no id is available,
+  name the entity without a link rather than inventing an id.
+- Never invent numbers. Every percentage / count / score must come from
+  the data above.
+"""
+
+
 def _get_system_prompt(intent: str, format_hint: str | None = None) -> str:
-    """Select the best system prompt based on intent and format hint."""
+    """Select the best system prompt based on intent and format hint.
+
+    SPEC_016 §1B: appends the citation protocol (click-through entity links)
+    to every prompt regardless of intent so the response layer is consistent.
+    """
     if format_hint == "table":
-        return SYSTEM_PROMPTS["tabular"]
-    return SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
+        base = SYSTEM_PROMPTS["tabular"]
+    else:
+        base = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
+    return base + "\n\n" + _CITATION_PROTOCOL
 
 RESEARCH_SYSTEM_PROMPT = """You are preparing a decision-support research brief for a pharmaceutical leadership team.
 
@@ -374,6 +421,39 @@ def _build_context_block(
             context += "\n\n" + _few_shot_lib.format_context(exemplars)
     except Exception as e:
         logger.debug("Few-shot library unavailable: %s", e)
+
+    # Step 4 (SPEC_016 §1C): L3 universe summary at the HEAD of context so the
+    # LLM knows the world is finite before reading evidence. Cheap (cached 5min).
+    try:
+        from services.ctx_corpus import get_l3_summary
+        from api.deps import get_db
+        l3 = get_l3_summary(get_db())
+        if l3:
+            context = f"{l3}\n\n{context}"
+    except Exception as exc:
+        logger.debug("L3 summary unavailable: %s", exc)
+
+    # Step 5 (SPEC_016 §1A): Sandwich grounding — tail reminder AFTER evidence.
+    # Mirrors intelligent_enterprise/app/api/chat/route.ts:148-153. LLMs are
+    # known to forget head instructions by the time they finish reading a
+    # long context; repeating the constraint at the tail catches mid-generation
+    # drift.
+    context += (
+        "\n\n---\n"
+        "BEFORE YOU RESPOND — GROUNDING CHECK:\n"
+        "1. Every factual claim must appear in the context above. "
+        "If you cannot find support for a statement, say so explicitly "
+        "rather than filling in from general knowledge.\n"
+        "2. Every entity you name (drug, company, trial, mechanism) "
+        "must appear in the data above. Use ONLY the names shown — do "
+        "not invent brand/generic/trade names that aren't in the context.\n"
+        "3. When you mention an entity, write it as a markdown link: "
+        "[Entity Name](/entity/{type}/{id}) — e.g. "
+        "[Semaglutide](/entity/drug/abc-123). Copy the id exactly from "
+        "the data. If no id is available, omit the link.\n"
+        "4. Do not invent numeric values, percentages, or industry benchmarks. "
+        "Every number must trace to the data above or be omitted."
+    )
 
     return context
 

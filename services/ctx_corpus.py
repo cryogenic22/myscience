@@ -8,6 +8,10 @@ Usage:
     result = builder.pack("/path/to/output")
     # result.document → L2 CTXDocument
     # result.l3_document → L3 directory index
+
+Also exposes get_l3_summary(db) — a short universe-bounding summary
+("Universe: N drugs, M companies...") injected into every chat system
+prompt per SPEC_016 §1C so the LLM knows the world is finite.
 """
 
 from __future__ import annotations
@@ -16,10 +20,74 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ── L3 directory summary (SPEC_016 Track 2 §1C) ────────────────────
+
+# Cache counts for 5 minutes — these are small numbers that change slowly
+# and we'd rather serve a slightly-stale count than hammer the DB per chat.
+_L3_CACHE_TTL_SECONDS = 300
+_l3_cache: dict = {"summary": "", "built_at": 0.0}
+
+
+def get_l3_summary(db) -> str:
+    """Return a short universe-bounding summary for every chat system prompt.
+
+    Example output:
+        "Universe: 1,247 drugs, 412 companies, 8,103 trials, 89 mechanisms.
+        Full data hydrated per query; do NOT cite entities outside this set."
+
+    Defensive: returns empty string on any DB error. Cached 5 min.
+
+    Per intelligent_enterprise pattern (lib/ctx/catalog-context.ts::generateL3Index)
+    — give the LLM a finite world model at the top of every prompt so it
+    can't hallucinate counts like "~300 trials typical for this class".
+    """
+    now = time.time()
+    if _l3_cache["summary"] and (now - _l3_cache["built_at"]) < _L3_CACHE_TTL_SECONDS:
+        return _l3_cache["summary"]
+
+    try:
+        parts = []
+        for display_name, sql in (
+            ("drugs", "SELECT COUNT(*) AS n FROM drugs"),
+            ("companies", "SELECT COUNT(*) AS n FROM companies"),
+            ("trials", "SELECT COUNT(*) AS n FROM clinical_trials"),
+            ("mechanisms", "SELECT COUNT(*) AS n FROM mechanisms_of_action"),
+        ):
+            try:
+                row = db.fetch_one(sql)
+                n = int(row.get("n", 0)) if row else 0
+                if n > 0:
+                    parts.append(f"{n:,} {display_name}")
+            except Exception:
+                # Per-count failure shouldn't kill the whole summary
+                continue
+
+        if not parts:
+            return ""
+        summary = (
+            "Universe: " + ", ".join(parts) + ". "
+            "Full data hydrated per query below; "
+            "do NOT cite entities outside this set."
+        )
+        _l3_cache["summary"] = summary
+        _l3_cache["built_at"] = now
+        return summary
+    except Exception as exc:
+        logger.debug("get_l3_summary failed: %s", exc)
+        return ""
+
+
+def _clear_l3_cache() -> None:
+    """For tests — force next get_l3_summary() to re-query the DB."""
+    _l3_cache["summary"] = ""
+    _l3_cache["built_at"] = 0.0
 
 # Add ctxpack to path if not installed
 
