@@ -113,39 +113,33 @@ class EntityCanonicalizer:
     # ── Strategies ──────────────────────────────────────────────
 
     def _exact_generic(self, name: str) -> Optional[CanonicalResult]:
+        # WS-1B: ORDER BY canonical_molecule_id NULLS FIRST so canonical
+        # molecule rows win over formulation rows when multiple match.
+        # Tie-break by length(generic_name) ASC — shorter = more canonical
+        # (e.g. "Semaglutide" beats "Semaglutide Auto-Injector").
         row = self._db.fetch_one(
-            "SELECT id, generic_name FROM drugs "
-            "WHERE LOWER(generic_name) = LOWER(%s) LIMIT 1",
+            "SELECT id, generic_name, canonical_molecule_id FROM drugs "
+            "WHERE LOWER(generic_name) = LOWER(%s) "
+            "ORDER BY canonical_molecule_id NULLS FIRST, length(generic_name) ASC "
+            "LIMIT 1",
             [name],
         )
         if not row:
             return None
-        return CanonicalResult(
-            entity_id=str(row["id"]),
-            canonical_name=row["generic_name"],
-            entity_type="drug",
-            confidence=1.0,
-            method="exact_generic",
-            original_input=name,
-        )
+        return self._build_result(row, name, method="exact_generic", confidence=1.0)
 
     def _exact_brand(self, name: str) -> Optional[CanonicalResult]:
         row = self._db.fetch_one(
-            "SELECT id, generic_name FROM drugs "
+            "SELECT id, generic_name, canonical_molecule_id FROM drugs "
             "WHERE brand_name IS NOT NULL "
-            "AND LOWER(brand_name) = LOWER(%s) LIMIT 1",
+            "AND LOWER(brand_name) = LOWER(%s) "
+            "ORDER BY canonical_molecule_id NULLS FIRST, length(generic_name) ASC "
+            "LIMIT 1",
             [name],
         )
         if not row:
             return None
-        return CanonicalResult(
-            entity_id=str(row["id"]),
-            canonical_name=row["generic_name"],
-            entity_type="drug",
-            confidence=1.0,
-            method="exact_brand",
-            original_input=name,
-        )
+        return self._build_result(row, name, method="exact_brand", confidence=1.0)
 
     def _alias_lookup(self, name: str) -> Optional[CanonicalResult]:
         row = self._db.fetch_one(
@@ -214,6 +208,47 @@ class EntityCanonicalizer:
         )
 
     # ── Internal ────────────────────────────────────────────────
+
+    def _build_result(
+        self,
+        row: dict,
+        original_input: str,
+        method: str,
+        confidence: float,
+    ) -> CanonicalResult:
+        """WS-1B: if the matched row IS a formulation (has a non-null
+        canonical_molecule_id), follow the link to the canonical molecule.
+        Otherwise return the matched row as canonical.
+
+        Defensive: if the column is missing (pre-migration env), `.get()`
+        returns None and we treat the row as canonical — preserves WS-1
+        behaviour without requiring the column.
+        """
+        parent_id = row.get("canonical_molecule_id") if isinstance(row, dict) else None
+        if parent_id:
+            parent = self._db.fetch_one(
+                "SELECT id, generic_name FROM drugs "
+                "WHERE id::text = %s LIMIT 1",
+                [str(parent_id)],
+            )
+            if parent:
+                return CanonicalResult(
+                    entity_id=str(parent["id"]),
+                    canonical_name=parent["generic_name"],
+                    entity_type="drug",
+                    confidence=confidence,
+                    method=method,
+                    original_input=original_input,
+                )
+            # Parent missing — fall through to using the matched row
+        return CanonicalResult(
+            entity_id=str(row["id"]),
+            canonical_name=row["generic_name"],
+            entity_type="drug",
+            confidence=confidence,
+            method=method,
+            original_input=original_input,
+        )
 
     def _store(
         self,
