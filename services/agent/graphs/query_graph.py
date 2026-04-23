@@ -59,6 +59,70 @@ _INTENT_HINT_MAP: dict[str, str] = {
 }
 
 
+# SPEC_016 Track 1 Phase 1b: per-intent planning guidance injected into
+# the LLM planner's system prompt. Steers the planner toward the correct
+# materialized views / join patterns / entity-scoping strategies without
+# hardcoding them (the LLM still writes the SQL, but with better bias).
+_INTENT_PLANNING_HINTS: dict[str, str] = {
+    "pipeline": (
+        "INTENT-SPECIFIC GUIDANCE (pipeline):\n"
+        "- Prefer the materialized view mv_drug_pipeline_strength as the main source.\n"
+        "- Columns: drug_id, drug_name, p1_count, p2_count, p3_count, p4_count, "
+        "total_trials, active_trials, pipeline_score, active_pipeline_score.\n"
+        "- When a specific drug is named, filter by drug_id "
+        "(join drugs ON drugs.generic_name ILIKE the drug name).\n"
+        "- When a therapeutic area is named, filter by therapeutic_area_id.\n"
+        "- ORDER BY pipeline_score DESC for ranking queries."
+    ),
+    "landscape": (
+        "INTENT-SPECIFIC GUIDANCE (landscape):\n"
+        "- Prefer the materialized view mv_competitive_landscape.\n"
+        "- Columns: mechanism_id, mechanism_name, therapeutic_area_id, therapeutic_area, "
+        "drug_count, trial_count, active_trial_count, top_drug, total_pipeline_score.\n"
+        "- Group by mechanism × therapeutic_area to surface competitive clusters.\n"
+        "- Filter by therapeutic_area when the question scopes to a disease area."
+    ),
+    "portfolio": (
+        "INTENT-SPECIFIC GUIDANCE (portfolio):\n"
+        "- Aggregate by company_id. Join drugs TO companies ON drugs.company_id.\n"
+        "- Count distinct drugs, total trials, active trials per company.\n"
+        "- For a specific company query, filter by companies.name or companies.cik.\n"
+        "- When available, prefer mv_company_portfolio over raw aggregation."
+    ),
+    "dossier": (
+        "INTENT-SPECIFIC GUIDANCE (dossier — single-entity profile):\n"
+        "- This is an entity-scoped query: the user wants core facts about ONE entity.\n"
+        "- Use LEFT JOINs to pull: the entity itself, its company, mechanism, therapeutic "
+        "area, key trials (ORDER BY start_date DESC LIMIT 10), and related literature.\n"
+        "- Resolve entity name to id with a subquery or CTE first, then JOIN on id.\n"
+        "- Do NOT count or aggregate — this is a narrative profile, not a metric."
+    ),
+    "compare": (
+        "INTENT-SPECIFIC GUIDANCE (compare — multi-entity side-by-side):\n"
+        "- For a 2-way comparison, issue parallel metric lookups for EACH entity.\n"
+        "- Use UNION ALL when the same SELECT shape applies to both (e.g. pipeline counts).\n"
+        "- Preserve entity identity in the output (entity_name column) so the presenter\n"
+        "  can align them in a side-by-side table."
+    ),
+    "deep_research": (
+        "INTENT-SPECIFIC GUIDANCE (deep research):\n"
+        "- Favor breadth. Include adjacent entities: mechanism-class peers, "
+        "recent trials in the same therapeutic area, cited literature.\n"
+        "- Time-bound: prefer recent items (trial.start_date, publication_date) "
+        "when a recency signal is implied.\n"
+        "- Return richer row counts (up to 50) so the synthesizer has material."
+    ),
+}
+
+
+def _intent_planning_hint(state) -> str:
+    """Return a newline-prefixed hint for the current state's intent, or ''."""
+    hint_key = (state.get("intent_hint") or "").strip().lower() if isinstance(state, dict) else ""
+    if hint_key in _INTENT_PLANNING_HINTS:
+        return "\n\n" + _INTENT_PLANNING_HINTS[hint_key] + "\n"
+    return ""
+
+
 # ── State ──
 
 class QueryAgentState(TypedDict):
@@ -160,12 +224,16 @@ def _plan_sql(state: QueryAgentState, *, llm, schema_text: str) -> dict:
             "If the user references prior results, use the prior SQL's WHERE clause as a guide.\n\n"
         )
 
+    # SPEC_016 Phase 1b: inject per-intent planning guidance
+    intent_block = _intent_planning_hint(state)
+
     try:
         resp = llm.invoke([
             SystemMessage(content=(
                 "You are a SQL query planner for a pharmaceutical intelligence database.\n\n"
                 f"DATABASE SCHEMA:\n{schema_text}\n\n"
                 f"{context_block}"
+                f"{intent_block}"
                 "RULES:\n"
                 "- Generate a single SELECT query that answers the user's question.\n"
                 "- Use parameterized queries where possible (use %s placeholders).\n"
