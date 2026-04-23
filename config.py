@@ -167,6 +167,11 @@ class AgentConfig:
     enabled: bool = os.getenv("MZ_AGENT_ENABLED", "true").lower() == "true"
     use_unified_handler: bool = os.getenv("MZ_UNIFIED_HANDLER", "true").lower() == "true"
     unified_handler_rollout: float = float(os.getenv("MZ_UNIFIED_HANDLER_ROLLOUT", "1.0"))
+    # SPEC_016 Track 1 Phase 1c: A/B rollout for routing all 7 legacy-handler
+    # intents (dossier/compare/landscape/portfolio/pipeline/general/deep_research)
+    # through the agent graph instead of the if/elif chain. Starts OFF (opt-in);
+    # ramp to 0.5 once prod monitoring confirms quality parity with legacy.
+    router_rollout: float = float(os.getenv("MZ_AGENT_ROUTER_ROLLOUT", "0.0"))
 
 
 @dataclass

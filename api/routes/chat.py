@@ -18,6 +18,7 @@ import hashlib
 import logging
 import re
 import time
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
@@ -73,6 +74,67 @@ logger = logging.getLogger(__name__)
 
 
 # ── SPEC-011: A/B routing for unified handler ──
+
+# SPEC_016 Track 1 Phase 1c: the set of legacy-handler intents that Phase 1c
+# can redirect through the agent graph. team_eval and structured_query already
+# have their own graphs; unknown intents fall through to the legacy path.
+_AGENT_ROUTABLE_INTENTS = frozenset({
+    "dossier", "compare", "landscape", "portfolio",
+    "pipeline", "general", "deep_research",
+})
+
+
+def _should_route_via_agent(session_id: str, intent: str) -> bool:
+    """Decide whether this session should route the current intent through
+    the agent graph instead of the legacy if/elif chain.
+
+    Controls:
+      MZ_AGENT_ROUTER_ROLLOUT  0.0-1.0  traffic share. Defaults to 0.0.
+
+    Deterministic per-session: same session always gets the same path so
+    a multi-turn conversation doesn't flip between paths mid-session.
+    """
+    intent_key = str(intent).lower() if intent is not None else ""
+    if intent_key not in _AGENT_ROUTABLE_INTENTS:
+        return False
+    rollout = getattr(config.agent, "router_rollout", 0.0)
+    if rollout >= 1.0:
+        return True
+    if rollout <= 0.0:
+        return False
+    bucket = hashlib.md5(session_id.encode("utf-8")).digest()[0]
+    return bucket < (rollout * 256)
+
+
+def _log_agent_routing(
+    router: str,
+    session_id: str,
+    intent: str,
+    fallback: bool = False,
+    error: Optional[str] = None,
+) -> None:
+    """Fire-and-forget telemetry for the Phase 1c agent-vs-legacy A/B."""
+    try:
+        from services.telemetry import log_ctx_event
+        bucket = hashlib.md5(session_id.encode("utf-8")).digest()[0]
+        metadata = {
+            "router": router,
+            "bucket": bucket,
+            "intent": intent,
+            "fallback_triggered": fallback,
+        }
+        if error:
+            metadata["error"] = error[:200]
+        log_ctx_event(
+            db=get_db(),
+            question="",
+            intent=intent,
+            event_type="agent_routing",
+            metadata=metadata,
+        )
+    except Exception:
+        pass
+
 
 def _should_use_unified_handler(session_id: str) -> bool:
     """Decide whether this session uses the CTX UnifiedChatHandler or legacy.
@@ -367,6 +429,64 @@ def chat(
             except Exception as e:
                 logger.warning("Compound handler error, falling back to single intent: %s", e)
 
+    # SPEC_016 Track 1 Phase 1c: A/B route legacy-handler intents through
+    # the agent graph when the session is bucketed to the agent path.
+    # Gated by MZ_AGENT_ROUTER_ROLLOUT env var (default 0.0 = off). On any
+    # exception from the graph, we fall through to the legacy if/elif
+    # chain — same fallback pattern as SPEC_011.
+    intent_str = str(intent.value if hasattr(intent, "value") else intent).lower()
+    if _should_route_via_agent(session_id, intent_str):
+        try:
+            from api.deps import get_query_graph
+            graph = get_query_graph()
+            if graph is not None:
+                graph_state = {
+                    "messages": [],
+                    "question": resolved_question,
+                    "conversation_context": conv_context or "",
+                    "intent": "",
+                    "intent_hint": intent_str,
+                    "plan": {},
+                    "tool_results": {},
+                    "presentation": {},
+                    "table_data": None,
+                    "visualizations": [],
+                    "narrative": "",
+                    "error": None,
+                }
+                graph_result = graph.invoke(graph_state)
+                agent_payload = {
+                    "narrative": graph_result.get("narrative", ""),
+                    "intent": intent_str,
+                    "data": {
+                        "table_data": graph_result.get("table_data"),
+                        "visualizations": graph_result.get("visualizations", []),
+                        "tool_results": graph_result.get("tool_results", {}),
+                    },
+                    "metadata": {"router": "agent", "handler": "agent_graph"},
+                }
+                agent_payload = apply_chat_modes(
+                    agent_payload, include_graph, include_metrics, source_strict,
+                )
+                agent_payload["visualizations"] = (
+                    agent_payload.get("visualizations")
+                    or build_visualizations(agent_payload.get("data"))
+                )
+                agent_payload["followup_suggestions"] = generate_followups(
+                    question, intent_str, agent_payload.get("narrative", ""), params,
+                )
+                _log_agent_routing("agent", session_id, intent_str)
+                memory.add_exchange(question, agent_payload.get("narrative", ""))
+                save_conversation_memory(session_id, memory, db)
+                return agent_payload
+        except Exception as exc:
+            logger.warning("agent-graph routing failed, falling back to legacy: %s", exc)
+            _log_agent_routing(
+                "agent", session_id, intent_str,
+                fallback=True, error=str(exc),
+            )
+            # fall through to legacy if/elif chain below
+
     try:
         if intent == Intent.TEAM_EVAL:
             payload = handle_team_eval(resolved_question, engine, db, llm)
@@ -423,9 +543,15 @@ def chat(
         payload["followup_suggestions"] = generate_followups(
             question, intent, payload.get("narrative", ""), params,
         )
-        # SPEC-011: tag handler attribution for A/B comparison
-        payload["metadata"] = {**payload.get("metadata", {}), "handler": "legacy"}
+        # SPEC-011 + SPEC-016 Phase 1c: tag both handler (CTX A/B) and
+        # router (agent-vs-legacy A/B) attribution for telemetry analysis.
+        payload["metadata"] = {
+            **payload.get("metadata", {}),
+            "handler": "legacy",
+            "router": "legacy",
+        }
         _log_chat_routing("legacy", session_id, str(intent.value if hasattr(intent, "value") else intent))
+        _log_agent_routing("legacy", session_id, intent_str)
         memory.add_exchange(question, payload.get("narrative", ""))
         save_conversation_memory(session_id, memory, db)
 
