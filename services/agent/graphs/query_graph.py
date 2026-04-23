@@ -34,6 +34,31 @@ _STRUCTURED_PATTERNS = [
 ]
 
 
+# SPEC_016 Track 1 Phase 1a: map legacy intent names to graph classifier labels.
+# When the chat route already detected an intent (via regex or explicit flag),
+# it passes the hint through and the graph bypasses pattern counting. This
+# removes the bug where "Show pipeline for semaglutide" misclassifies as
+# knowledge_search because it hits zero structural patterns.
+#
+# Mapping rationale:
+#   landscape / portfolio / pipeline → structured_query (Metrics / MV queries)
+#   dossier / compare                → hybrid (entity facts + evidence)
+#   general / deep_research          → hybrid (planner picks tool mix)
+#   structured_query                 → pass through
+#   team_eval lives in a SEPARATE graph (team_eval_graph) — the chat router
+#   dispatches team_eval queries there, so it doesn't appear in this map.
+_INTENT_HINT_MAP: dict[str, str] = {
+    "landscape": "structured_query",
+    "portfolio": "structured_query",
+    "pipeline": "structured_query",
+    "dossier": "hybrid",
+    "compare": "hybrid",
+    "general": "hybrid",
+    "deep_research": "hybrid",
+    "structured_query": "structured_query",
+}
+
+
 # ── State ──
 
 class QueryAgentState(TypedDict):
@@ -41,6 +66,7 @@ class QueryAgentState(TypedDict):
     question: str
     conversation_context: str            # compact summary of prior exchanges for follow-ups
     intent: str                          # structured_query | knowledge_search | hybrid
+    intent_hint: str                     # SPEC_016 Phase 1a: caller's intent (biases _classify)
     plan: dict                           # {sql, params, explanation} or {search_params}
     tool_results: dict                   # {step_name: ToolResult}
     presentation: dict                   # PresentationConfig
@@ -50,12 +76,17 @@ class QueryAgentState(TypedDict):
     error: Optional[str]
 
 
-def _default_state(question: str, conversation_context: str = "") -> QueryAgentState:
+def _default_state(
+    question: str,
+    conversation_context: str = "",
+    intent_hint: str = "",
+) -> QueryAgentState:
     return QueryAgentState(
         messages=[HumanMessage(content=question)],
         question=question,
         conversation_context=conversation_context,
         intent="",
+        intent_hint=intent_hint,
         plan={},
         tool_results={},
         presentation={},
@@ -69,7 +100,18 @@ def _default_state(question: str, conversation_context: str = "") -> QueryAgentS
 # ── Node implementations ──
 
 def _classify(state: QueryAgentState, *, llm=None) -> dict:
-    """Classify intent via regex fast-path, LLM fallback."""
+    """Classify intent. Order:
+        1. intent_hint from caller (Phase 1a) — authoritative when present
+        2. regex fast-path counting structural signals
+        3. LLM fallback for ambiguous (1-hit) cases
+        4. default to hybrid
+    """
+    # SPEC_016 Phase 1a: honour caller's intent_hint over pattern counting.
+    # Unknown hint values fall through to existing logic (defensive).
+    hint = (state.get("intent_hint") or "").strip().lower()
+    if hint and hint in _INTENT_HINT_MAP:
+        return {"intent": _INTENT_HINT_MAP[hint]}
+
     q = state["question"]
 
     # Fast-path: count structural signal matches

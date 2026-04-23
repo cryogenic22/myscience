@@ -220,20 +220,18 @@ def test_query_graph_produces_narrative_output():
     assert "semaglutide" in final_state["narrative"].lower()
 
 
-def test_query_graph_intent_hint_not_yet_supported():
-    """SPEC_016 Track 1 Phase 1: add intent_hint param to bias planning.
-
-    This test EXPECTS to fail today (no intent_hint support) — it documents
-    the gap that Phase 1 must close. When Phase 1 ships, this test moves to
-    asserting the intent_hint actually biases the planner.
-    """
-    from services.agent.graphs.query_graph import QueryAgentState
-    fields = QueryAgentState.__annotations__ if hasattr(QueryAgentState, "__annotations__") else {}
-    has_hint = "intent_hint" in fields
-    if has_hint:
-        pytest.skip("intent_hint already supported — Phase 1 partially shipped")
-    pytest.xfail(
-        "SPEC_016 Track 1 Phase 1: QueryAgentState must add intent_hint field "
-        "so chat.py can pass detected intent (dossier/compare/landscape/...) "
-        "as a planning bias to the LLM planner."
+def test_query_graph_intent_hint_is_now_supported():
+    """SPEC_016 Track 1 Phase 1a shipped: QueryAgentState has intent_hint
+    and _classify honours it. This test now asserts the positive behaviour
+    (replaces the previous xfail baseline)."""
+    from services.agent.graphs.query_graph import (
+        QueryAgentState, _classify, _INTENT_HINT_MAP,
     )
+    fields = QueryAgentState.__annotations__
+    assert "intent_hint" in fields, "Phase 1a must add intent_hint field"
+    # Every legacy intent we care about is in the map
+    for intent in ("dossier", "compare", "landscape", "portfolio",
+                   "pipeline", "general", "deep_research"):
+        assert intent in _INTENT_HINT_MAP, (
+            f"legacy intent '{intent}' must be mapped in _INTENT_HINT_MAP"
+        )
