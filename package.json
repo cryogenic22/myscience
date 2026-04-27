@@ -1,0 +1,28 @@
+{
+  "name": "market-zero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Market Zero — pharma intelligence platform. Monorepo root.",
+  "packageManager": "pnpm@10.12.4",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "storybook": "pnpm --filter @mz/ui storybook",
+    "clean": "turbo run clean && rimraf node_modules .turbo",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.3",
+    "typescript": "~5.9.3"
+  }
+}
