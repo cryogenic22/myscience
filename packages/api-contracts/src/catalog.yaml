@@ -1,0 +1,353 @@
+openapi: 3.1.0
+info:
+  title: PulseAction.AI — Catalog API
+  version: 0.1.0
+  description: |
+    Horizontal Data Catalog Layer. Owns canonical entities, documents,
+    typed links, provenance, and connector health.
+
+    **Module access pattern:** modules READ this surface; they do not write.
+    New connectors land here so all modules benefit. See SPEC-016 §1.1.
+
+  contact:
+    name: PulseAction.AI Platform Team
+servers:
+  - url: https://api.pulseaction.ai/catalog
+    description: Production
+  - url: http://localhost:8020/catalog
+    description: Local development
+
+# ────────────────────────────────────────────────────────────────────
+# Tags
+# ────────────────────────────────────────────────────────────────────
+tags:
+  - name: entities
+    description: Canonical entity reads (drug, company, trial, person, indication, patent, deal)
+  - name: documents
+    description: Source documents with provenance
+  - name: links
+    description: Typed edges between entities, with confidence + provenance
+  - name: resolve
+    description: Entity resolution as a service
+  - name: health
+    description: Connector freshness, ingest volume, error rates
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Catalog freshness summary
+      operationId: catalogHealth
+      responses:
+        '200':
+          description: Per-source freshness, last 24h ingest counts, error rates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogHealth' }
+
+  /entities/{type}/{id}:
+    get:
+      tags: [entities]
+      summary: Fetch a canonical entity by type + id
+      operationId: getEntity
+      parameters:
+        - $ref: '#/components/parameters/EntityType'
+        - $ref: '#/components/parameters/EntityId'
+        - $ref: '#/components/parameters/Include'
+      responses:
+        '200':
+          description: Entity payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /entities/{type}:
+    get:
+      tags: [entities]
+      summary: List/search entities of a type
+      operationId: searchEntities
+      parameters:
+        - $ref: '#/components/parameters/EntityType'
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Free-text search
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Paginated entity list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityList' }
+
+  /documents/{id}:
+    get:
+      tags: [documents]
+      summary: Fetch a source document with provenance
+      operationId: getDocument
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Document with raw payload + provenance
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /links/{entity_id}:
+    get:
+      tags: [links]
+      summary: Typed edges from an entity
+      operationId: getLinks
+      parameters:
+        - in: path
+          name: entity_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: link_type
+          schema: { type: string }
+        - in: query
+          name: min_confidence
+          schema: { type: number, minimum: 0, maximum: 1 }
+          description: Filter by provenance-derived confidence floor (per SPEC-013)
+        - in: query
+          name: direction
+          schema: { type: string, enum: [out, in, both], default: both }
+      responses:
+        '200':
+          description: Edge list ordered by confidence DESC
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkList' }
+
+  /resolve:
+    post:
+      tags: [resolve]
+      summary: Entity resolution as a service
+      operationId: resolveEntity
+      description: |
+        6-strategy cascade: exact ID → alias → fuzzy → embedding → LLM →
+        auto-create (if `allow_create=true`). Returns the resolved canonical
+        entity or null. See `integration/entity_resolver.py`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_type, mention]
+              properties:
+                entity_type:
+                  type: string
+                  enum: [drug, company, trial, person, indication, patent, deal, mechanism]
+                mention:
+                  type: string
+                  description: The raw text mention to resolve (e.g. "Pfizer Inc.", "Keytruda")
+                context:
+                  type: object
+                  description: Optional surrounding-context hints (sponsor name, drug list, indication, etc.)
+                  additionalProperties: true
+                allow_create:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Resolution outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resolved:
+                    oneOf:
+                      - { $ref: '#/components/schemas/Entity' }
+                      - type: 'null'
+                  strategy:
+                    type: string
+                    enum: [exact_id, alias, fuzzy, embedding, llm, created, unresolved]
+                  confidence:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+
+# ────────────────────────────────────────────────────────────────────
+# Components
+# ────────────────────────────────────────────────────────────────────
+components:
+  parameters:
+    EntityType:
+      in: path
+      name: type
+      required: true
+      schema:
+        type: string
+        enum: [drug, company, trial, person, indication, patent, deal, mechanism]
+    EntityId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    Include:
+      in: query
+      name: include
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [aliases, external_ids, links, history, embeddings]
+        explode: false
+        style: form
+
+  responses:
+    NotFound:
+      description: Entity/document not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: not_found }
+        message: { type: string }
+        request_id: { type: string }
+
+    Provenance:
+      type: object
+      required: [source_id, source_url, source_published_at, ingested_at]
+      properties:
+        source_id: { type: string }
+        source_url: { type: string, format: uri }
+        source_published_at: { type: string, format: date-time }
+        ingested_at: { type: string, format: date-time }
+        extracted_by: { type: string, description: 'Connector + version (e.g. "sec_edgar@1.4.0")' }
+        extraction_method:
+          type: string
+          enum: [rule, ner, llm, manual]
+
+    Entity:
+      type: object
+      required: [id, type, name, created_at]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [drug, company, trial, person, indication, patent, deal, mechanism]
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        aliases:
+          type: array
+          items: { type: string }
+        external_ids:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Bag of vendor IDs (cik, lei, duns, ndc, unii, chembl_id,
+            cortellis_id, etc.). See domain/pharma/pack.py.
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g. drugs.modality, companies.country_hq, trials.phase)
+
+    EntityList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Entity' }
+        next_cursor: { type: string, nullable: true }
+        total: { type: integer, nullable: true }
+
+    Document:
+      type: object
+      required: [id, source_record_id, provenance, content_type]
+      properties:
+        id: { type: string, format: uuid }
+        source_record_id: { type: string }
+        provenance: { $ref: '#/components/schemas/Provenance' }
+        content_type:
+          type: string
+          enum: [api_json, rss_item, html, pdf, xbrl, spl_xml, sec_filing, transcript]
+        document_hash: { type: string, description: SHA-256 of raw_payload }
+        normalised_text: { type: string, nullable: true }
+        language: { type: string, nullable: true, example: en }
+        raw_payload_url:
+          type: string
+          format: uri
+          description: Pre-signed URL to raw blob; valid for 5 minutes
+          nullable: true
+
+    Link:
+      type: object
+      required: [source_entity_id, target_entity_id, link_type, confidence, link_via]
+      properties:
+        source_entity_id: { type: string }
+        source_entity_type: { type: string }
+        target_entity_id: { type: string }
+        target_entity_type: { type: string }
+        link_type:
+          type: string
+          example: TARGETS_MECHANISM
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Calibrated per SPEC-013 by extraction method
+        link_via:
+          type: string
+          enum: [exact_id, entity_resolution, mesh_term, llm_extracted, user_tagged, derived, default_pre_calibration]
+        provenance_source: { type: string, nullable: true }
+        valid_from: { type: string, format: date-time, nullable: true }
+        valid_until: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    LinkList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Link' }
+        total: { type: integer }
+
+    SourceFreshness:
+      type: object
+      required: [source_name, last_successful_run, status]
+      properties:
+        source_name: { type: string }
+        last_successful_run: { type: string, format: date-time, nullable: true }
+        last_attempt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [healthy, degraded, failing, unknown] }
+        records_last_24h: { type: integer, nullable: true }
+        error_rate_24h: { type: number, nullable: true }
+
+    CatalogHealth:
+      type: object
+      required: [overall_status, sources]
+      properties:
+        overall_status: { type: string, enum: [healthy, degraded, failing] }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/SourceFreshness' }
+        entity_counts:
+          type: object
+          additionalProperties: { type: integer }
+          description: Approximate counts per entity type
+        last_full_sync: { type: string, format: date-time, nullable: true }
