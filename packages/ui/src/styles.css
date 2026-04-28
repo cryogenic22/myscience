@@ -1,9 +1,9 @@
 /*
- * @mz/ui — base styles for component primitives.
+ * @pulse/ui — base styles for component primitives.
  * Imported once per app; component-level styles use these primitives.
  */
 
-@import '@mz/design-tokens/tokens.css';
+@import '@pulse/design-tokens/tokens.css';
 
 *, *::before, *::after { box-sizing: border-box; }
 

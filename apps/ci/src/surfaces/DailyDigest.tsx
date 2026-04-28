@@ -1,4 +1,4 @@
-import { Card, Pill, ScoreTile, KbqTag, type Kbq } from '@mz/ui';
+import { Card, Pill, ScoreTile, KbqTag, type Kbq } from '@pulse/ui';
 
 type Tier = 'high' | 'medium' | 'low';
 type Confidence = 'confirmed' | 'reported' | 'inferred' | 'disputed';

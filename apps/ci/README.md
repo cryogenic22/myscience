@@ -1,4 +1,4 @@
-# @mz/ci — Competitive Intelligence module
+# @pulse/ci — Competitive Intelligence module
 
 The CI analyst's surface: digest, signal detail, watchlist, alerts, reviewer queue. Phase 1.5 adds briefs, trackers, connector health.
 
@@ -6,7 +6,7 @@ The CI analyst's surface: digest, signal detail, watchlist, alerts, reviewer que
 
 ```bash
 pnpm install
-pnpm --filter @mz/ci dev    # http://localhost:5174
+pnpm --filter @pulse/ci dev    # http://localhost:5174
 ```
 
 ## Status

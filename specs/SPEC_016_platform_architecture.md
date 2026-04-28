@@ -1,7 +1,7 @@
-# SPEC-016 — Market Zero Platform: Layers, Modules, and Foundations
+# SPEC-016 — PulseAction.AI Platform: Layers, Modules, and Foundations
 
 **Status:** Architectural Decision Document — supersedes SPEC-015 §Verdict on the architectural-shape question; absorbs `comp_intel_2.md` critique
-**Decision:** Reposition Market Zero as a **horizontal pharma intelligence platform** with a thin Mission Control landing surface and pluggable **module apps** on top. Initial modules: *Pharma Research Intelligence* (the existing chat+canvas, repositioned) and *Competitive Intelligence* (new). Future modules (Regulatory Affairs, Market Access, Medical Affairs, KOL Intelligence) plug into the same horizontal layers.
+**Decision:** Reposition PulseAction.AI as a **horizontal pharma intelligence platform** with a thin Mission Control landing surface and pluggable **module apps** on top. Initial modules: *Pharma Research Intelligence* (the existing chat+canvas, repositioned) and *Competitive Intelligence* (new). Future modules (Regulatory Affairs, Market Access, Medical Affairs, KOL Intelligence) plug into the same horizontal layers.
 **Primary inputs:** `comp_intelligence.md`, `comp_intel.tsx`, `specs/SPEC_015_competitive_intelligence_assessment.md`, `specs/comp_intel_2.md`, the existing codebase.
 
 ---
@@ -175,7 +175,7 @@ The user lands on Mission Control. They see:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  ◐ Market Zero                                          kapil@…  ⚙  ⌘K  │
+│  ◐ PulseAction.AI                                          kapil@…  ⚙  ⌘K  │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  Good morning, Kapil.                                                    │
@@ -244,12 +244,12 @@ What we explicitly reject:
 
 ### 4.2 Brand identity (proposed, open to revision)
 
-- **Platform:** *Market Zero* (existing). Wordmark in display type, lowercase, tight tracking. Internal codename: `mz`.
+- **Platform:** *PulseAction.AI* (existing). Wordmark in display type, lowercase, tight tracking. Internal codename: `mz`.
 - **Modules:**
-  - *MZ · Research* (pharma research intelligence)
-  - *MZ · CI* (competitive intelligence)
-  - *MZ · Regulatory* (future)
-  - *MZ · Market Access* (future)
+  - *PulseAction · Research* (pharma research intelligence)
+  - *PulseAction · CI* (competitive intelligence)
+  - *PulseAction · Regulatory* (future)
+  - *PulseAction · Market Access* (future)
 
 Module identifier always co-locates with platform mark. Modules carry one accent color (Research = warm amber; CI = analyst blue). All other UI uses neutral grays.
 
@@ -341,7 +341,7 @@ The shared `packages/ui` library exports a small set; modules compose from this 
 
 ### 4.5 Surfaces — the analyst's day, designed
 
-**MZ · CI module surfaces** (Phase 1):
+**PulseAction · CI module surfaces** (Phase 1):
 
 1. **Daily Digest** — landing for the CI module. Score tiles (signal volume, high-impact count, queue depth) above the fold. Below: signal cards grouped by KBQ section, sorted by impact. Keyboard-first triage (j/k navigate, e escalate, f flag, x dismiss, ↵ open).
 2. **Signal Detail** — `<Sheet>` from the right when a signal is opened, OR full-page route if direct-linked from an alert. Header (entity, event type, dual tiers, supersedence indicator if applicable). Body: evidence stack ordered by confidence tier, side-by-side conflict view if `cluster.status='conflict'`, historical strip (last N events for entity), peer strip (competitor events in same indication / TA), inline ask-the-agent.
@@ -352,7 +352,7 @@ The shared `packages/ui` library exports a small set; modules compose from this 
 7. **(P1.5) Trackers** — Trial / PDUFA / LOE / Deal / Exec / Earnings, as `<DataTable>` views with filters and exports.
 8. **(P1.5) Connector Health** — admin surface for catalog freshness, error rates, doc volume.
 
-**MZ · Research module surfaces** (refactored for consistency, not rebuilt):
+**PulseAction · Research module surfaces** (refactored for consistency, not rebuilt):
 - Workspace (chat + canvas, retains Fraunces for chat warmth — kept as Research-module brand affordance).
 - Sessions (saved conversations).
 - Saved Research (bookmarked dossiers, comparisons, landscapes).
@@ -369,11 +369,11 @@ The platform's longevity depends on these getting set up right at the start. Non
 ### 5.1 Repository structure (monorepo)
 
 ```
-market-zero/
+pulseaction/
 ├── apps/
 │   ├── landing/            # Mission Control SPA (React 19 + Vite)
-│   ├── ci/                 # MZ · CI module SPA
-│   └── research/           # MZ · Research module SPA (refactored from frontend/)
+│   ├── ci/                 # PulseAction · CI module SPA
+│   └── research/           # PulseAction · Research module SPA (refactored from frontend/)
 │
 ├── packages/
 │   ├── design-tokens/      # CSS variables + JSON tokens, single source of truth
@@ -623,7 +623,7 @@ Cortellis (Reg + Deals + Pipeline), Citeline, AlphaSense, Bloomberg, Evaluate, M
 
 - Rebuilding the existing 17 connectors. They stay; they get the contract surface in front of them.
 - Rebuilding the 6-strategy entity resolver. It stays; we extend the alias table and seed trial acronyms.
-- Forking `/research`. It stays as MZ · Research module. Visual refresh, no workflow change.
+- Forking `/research`. It stays as PulseAction · Research module. Visual refresh, no workflow change.
 - Property graph DB (Neo4j etc.). Postgres + materialized edges has carried us to 600K+ links; revisit only if a query pattern demonstrates need.
 - GraphQL Federation. REST + OpenAPI is fine for two modules. Reconsider when there are five.
 - Multi-tenant isolation in Phase 1. Single-tenant; tenancy in Phase 2.
@@ -635,7 +635,7 @@ Cortellis (Reg + Deals + Pipeline), Citeline, AlphaSense, Bloomberg, Evaluate, M
 
 ## 13. Open decisions still owed
 
-1. **Brand mark + module names** — does "MZ · CI" resonate, or do we want module-specific product names (e.g., "Pulse" for CI, "Atlas" for Research)? Decision needed before C2 starts (week 3).
+1. **Module names within PulseAction.AI** — platform brand is locked to *PulseAction.AI*. Open: do modules carry the descriptive `PulseAction · CI` / `PulseAction · Research` form, or get distinct product names (e.g., *Pulse* for CI, *Atlas* for Research)? Decision needed before C2 starts (week 3). See SPEC-017 D1.
 2. **Light vs dark default** — proposal: light default, dark available, persisted per device. Confirm.
 3. **Density default** — proposal: comfortable for read views, compact for triage views (Daily Digest, Reviewer Queue). Confirm.
 4. **SSO timing** — Phase 1 email/pw, Phase 2 SSO. Confirm acceptable for early users.
@@ -662,4 +662,4 @@ The recommendation is: approve, kick off Phase 0, hold daily 15-minute standups 
 
 ---
 
-*ADR-016. Authored against SPEC-015 + comp_intel_2.md + comp_intelligence.md + the existing Market Zero codebase. Supersedes the architectural-shape recommendation in SPEC-015 §0; KBQ analysis and gap matrix in SPEC-015 remain valid as Phase 1 implementation reference.*
+*ADR-016. Authored against SPEC-015 + comp_intel_2.md + comp_intelligence.md + the existing PulseAction.AI codebase. Supersedes the architectural-shape recommendation in SPEC-015 §0; KBQ analysis and gap matrix in SPEC-015 remain valid as Phase 1 implementation reference.*

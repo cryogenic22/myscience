@@ -1,5 +1,5 @@
 import type { Preview } from '@storybook/react';
-import '@mz/design-tokens/tokens.css';
+import '@pulse/design-tokens/tokens.css';
 import '../src/styles.css';
 
 const preview: Preview = {

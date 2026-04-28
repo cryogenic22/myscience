@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import '@mz/ui/styles.css';
+import '@pulse/ui/styles.css';
 import { MissionControl } from './MissionControl';
 
 const el = document.getElementById('root');

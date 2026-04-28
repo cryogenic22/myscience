@@ -87,7 +87,7 @@ function Wordmark() {
           fontSize: 'var(--mz-text-headline-3)',
         }}
       >
-        Market Zero
+        PulseAction<span style={{ color: 'var(--mz-color-text-tertiary)', fontWeight: 'var(--mz-weight-medium)' }}>.AI</span>
       </span>
     </div>
   );

@@ -1,5 +1,5 @@
 /**
- * @mz/ui — shared component primitives.
+ * @pulse/ui — shared component primitives.
  *
  * Phase 0 / M0 set:
  *   - Card           (the universal composition primitive)

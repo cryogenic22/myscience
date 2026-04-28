@@ -1,27 +1,27 @@
-# @mz/ui
+# @pulse/ui
 
-Shared component primitives for Market Zero apps.
+Shared component primitives for PulseAction.AI apps.
 
 ## Install (workspace)
 
 ```ts
 // package.json of any app
-"dependencies": { "@mz/ui": "workspace:*", "@mz/design-tokens": "workspace:*" }
+"dependencies": { "@pulse/ui": "workspace:*", "@pulse/design-tokens": "workspace:*" }
 ```
 
 ## Use
 
 ```tsx
-import { Card, Pill, ScoreTile, KbqTag, CitationPill } from '@mz/ui';
-import '@mz/ui/styles.css'; // imports tokens too
+import { Card, Pill, ScoreTile, KbqTag, CitationPill } from '@pulse/ui';
+import '@pulse/ui/styles.css'; // imports tokens too
 ```
 
 ## Develop
 
 ```bash
-pnpm --filter @mz/ui storybook       # http://localhost:6006
-pnpm --filter @mz/ui test            # vitest run
-pnpm --filter @mz/ui build           # tsc --noEmit
+pnpm --filter @pulse/ui storybook       # http://localhost:6006
+pnpm --filter @pulse/ui test            # vitest run
+pnpm --filter @pulse/ui build           # tsc --noEmit
 ```
 
 ## Rules
