@@ -61,10 +61,16 @@ def get_pharma_pack() -> DomainPack:
         table_name="companies",
         record_types=["company"],
         required_fields=["name"],
-        recommended_fields=["cik", "ticker", "country", "sic_code"],
+        # SPEC-016 A1.1: aliases jsonb array and external_ids jsonb bag
+        # were added in migration 036. The resolver and steward use them.
+        recommended_fields=[
+            "cik", "ticker", "country", "sic_code", "lei",
+            "aliases", "external_ids", "parent_company_id",
+        ],
         exact_lookup_keys={
             "cik": "cik",
             "ticker": "ticker",
+            "lei": "lei",
         },
         fuzzy_match_fields={
             "company_name": "name",
