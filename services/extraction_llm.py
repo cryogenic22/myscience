@@ -43,6 +43,7 @@ from services.extraction.financial_disclosure import (
     GuidanceIssuance,
 )
 from services.extraction.regulatory_crl import CRLExtraction
+from services.extraction.trial_readout import TrialReadoutExtraction
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,36 @@ Rules:
 If the block is not a CRL: return {"extractions": []}."""
 
 
+_TRIAL_READOUT_PROMPT = """You extract trial-readout events from company press releases or news articles.
+
+Most press releases are NOT trial readouts. Only emit an extraction when the text clearly describes results from a clinical trial — endpoints met / not met, efficacy numerics, primary completion, or readout of a Phase 1/2/3/4 study.
+
+For each readout disclosed, emit one item in `extractions`.
+
+Rules:
+- trial_identifier: NCT id, acronym, or sponsor protocol id as stated in the press release. Use the acronym ("CHECKMATE-816") when stated; fall back to the NCT id only when no acronym is given.
+- phase: pick from Early Phase 1, Phase 1, Phase 1, Phase 2, Phase 2, Phase 2, Phase 3, Phase 3, Phase 4, N/A.
+- drug_name: as stated. Code names ("DS-8201") and generics ("trastuzumab deruxtecan") both fine.
+- sponsor_name: lead sponsor as stated.
+- indication: short condition phrase ("HER2-positive metastatic breast cancer").
+- primary_endpoint_met: true ONLY when the press release explicitly states the trial met its PRIMARY endpoint. A secondary-only positive readout with a missed primary is false.
+- readout_date: when the readout was announced (release date).
+- sample_size: total trial sample size, if stated.
+- efficacy_outcomes[]: one entry per stated endpoint with structured numerics. Each:
+    * endpoint_name: stated phrase ("progression-free survival", "ORR")
+    * endpoint_type: primary | secondary | exploratory
+    * met: did this specific endpoint hit its bar?
+    * hazard_ratio: 0.0-10.0 if a survival/TTE endpoint and stated
+    * p_value: 0.0-1.0 if stated
+    * ci_low / ci_high: confidence interval bounds if stated
+    * response_rate_pct: 0-100 if a response-rate endpoint and stated
+    * sample_size: patients evaluated for THIS endpoint, if stated
+- safety_summary: short free-text TEAE / SAE summary if stated.
+- headline_summary: one-paragraph narrative summary suitable for the event description.
+
+Do NOT invent numerics. If a value is not stated, leave it null. If the text is not a trial readout, return {"extractions": []}."""
+
+
 # ────────────────────────────────────────────────────────────────────
 # Wrapper schemas (LLM returns one of these per call)
 # ────────────────────────────────────────────────────────────────────
@@ -290,6 +321,11 @@ class _DealContainer(BaseModel):
 class _CRLContainer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     extractions: list[CRLExtraction] = Field(default_factory=list)
+
+
+class _TrialReadoutContainer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    extractions: list[TrialReadoutExtraction] = Field(default_factory=list)
 
 
 class _FinancialContainer(BaseModel):
@@ -364,6 +400,30 @@ def make_crl_extractor(
     """Factory: returns an extractor satisfying the CRLExtractor
     Protocol used by connectors/sec_8k/item_8_01.parse_item_8_01."""
     return _CRLExtractorImpl(structured_call)
+
+
+class _TrialReadoutExtractorImpl:
+    def __init__(self, structured_call: StructuredCall):
+        self._call = structured_call
+
+    def extract(self, block: str) -> list[TrialReadoutExtraction]:
+        return _extract_list(
+            block,
+            system_prompt=_TRIAL_READOUT_PROMPT,
+            schema_class=TrialReadoutExtraction,
+            structured_call=self._call,
+        )
+
+
+def make_trial_readout_extractor(
+    *, structured_call: StructuredCall,
+) -> _TrialReadoutExtractorImpl:
+    """Factory: returns an extractor for press-release trial readouts.
+
+    Used by the A3.3 press-release runner (Cycle 4) to extract structured
+    trial_readout events from company press releases / news articles.
+    """
+    return _TrialReadoutExtractorImpl(structured_call)
 
 
 class _FinancialExtractorImpl:
