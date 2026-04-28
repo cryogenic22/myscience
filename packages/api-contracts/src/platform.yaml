@@ -1,0 +1,185 @@
+openapi: 3.1.0
+info:
+  title: PulseAction.AI — Platform API
+  version: 0.1.0
+  description: |
+    Cross-cutting platform endpoints. Auth, RBAC, modules, recent
+    activity (cross-module), cost / budget, audit log.
+
+    Lives outside the horizontal layers because it doesn't fit catalog
+    or intelligence semantically — it's about the platform itself.
+
+  contact:
+    name: PulseAction.AI Platform Team
+servers:
+  - url: https://api.pulseaction.ai/platform
+    description: Production
+  - url: http://localhost:8020/platform
+    description: Local development
+
+tags:
+  - name: me
+    description: The authenticated user, their modules, watchlists, preferences
+  - name: activity
+    description: Cross-module recent activity timeline
+  - name: cost
+    description: LLM spend per module / per agent / per workflow
+  - name: audit
+    description: Read-only audit log of state changes
+
+paths:
+  /me:
+    get:
+      tags: [me]
+      summary: Current user profile + module access
+      operationId: getMe
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me/modules:
+    get:
+      tags: [me]
+      summary: Modules the current user has access to
+      operationId: getMyModules
+      responses:
+        '200':
+          description: Module access list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModuleAccess' }
+
+  /recent-activity:
+    get:
+      tags: [activity]
+      summary: Cross-module activity timeline for the current user
+      operationId: getRecentActivity
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Activity rows from CI + Research + future modules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityRow' }
+
+  /budget:
+    get:
+      tags: [cost]
+      summary: LLM spend rollup
+      operationId: getBudget
+      parameters:
+        - in: query
+          name: window
+          schema: { type: string, enum: [day, week, month, year], default: month }
+      responses:
+        '200':
+          description: Spend breakdown
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BudgetSummary' }
+
+components:
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        request_id: { type: string }
+
+    Me:
+      type: object
+      required: [user_id, email, modules]
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        avatar_initial: { type: string, maxLength: 2 }
+        roles:
+          type: array
+          items: { type: string, example: ci.review }
+        modules:
+          type: array
+          items: { $ref: '#/components/schemas/ModuleAccess' }
+        preferences:
+          type: object
+          properties:
+            theme: { type: string, enum: [light, dark, system] }
+            density: { type: string, enum: [compact, comfortable, spacious] }
+
+    ModuleAccess:
+      type: object
+      required: [module_id, route, scopes]
+      properties:
+        module_id: { type: string, enum: [pulse_ci, pulse_research, pulse_regulatory] }
+        display_name: { type: string }
+        route: { type: string, example: /ci }
+        scopes:
+          type: array
+          items: { type: string, example: ci.read }
+        live_stats:
+          type: object
+          additionalProperties: true
+          description: |
+            Module-supplied tile stats (e.g. CI: new_signals, high_impact,
+            queue_depth; Research: active_runs, last_query, memory_size)
+
+    ActivityRow:
+      type: object
+      required: [id, module_id, title, occurred_at]
+      properties:
+        id: { type: string }
+        module_id: { type: string }
+        title: { type: string }
+        meta: { type: string, nullable: true }
+        link: { type: string, format: uri, nullable: true }
+        occurred_at: { type: string, format: date-time }
+        importance:
+          type: string
+          enum: [high, medium, low, info]
+
+    BudgetSummary:
+      type: object
+      required: [window, total_usd, cap_usd]
+      properties:
+        window: { type: string }
+        total_usd: { type: number }
+        cap_usd: { type: number }
+        by_module:
+          type: object
+          additionalProperties: { type: number }
+        by_workflow:
+          type: object
+          additionalProperties: { type: number }
+        by_model:
+          type: object
+          additionalProperties: { type: number }

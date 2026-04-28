@@ -1,0 +1,512 @@
+openapi: 3.1.0
+info:
+  title: PulseAction.AI — Intelligence API
+  version: 0.1.0
+  description: |
+    Horizontal Intelligence Layer. Owns events, signals, scoring,
+    synthesis, hallucination guard, eval harness, and provenance audit.
+
+    **Module access pattern:** modules READ signals/events and WRITE
+    module-specific derivatives (briefs, alerts, watchlists). Intelligence
+    layer never reads from a module. See SPEC-016 §1.2.
+
+  contact:
+    name: PulseAction.AI Platform Team
+servers:
+  - url: https://api.pulseaction.ai/intel
+    description: Production
+  - url: http://localhost:8020/intel
+    description: Local development
+
+tags:
+  - name: signals
+    description: The unit-of-output — deduplicated, KBQ-tagged, dual-tier-scored
+  - name: events
+    description: The Event spine — typed real-world occurrences with linked evidence
+  - name: synthesis
+    description: Narrative synthesis with per-sentence citations
+  - name: ask
+    description: Signal-aware Q&A — natural language over the signal store
+  - name: health
+    description: Pipeline freshness, guard pass rate, eval scores
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Intelligence pipeline health
+      operationId: intelHealth
+      responses:
+        '200':
+          description: Pipeline metrics (last 24h / 7d)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntelHealth' }
+
+  /signals:
+    get:
+      tags: [signals]
+      summary: Search signals with filters
+      operationId: searchSignals
+      parameters:
+        - in: query
+          name: kbq
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/Kbq' }
+            explode: false
+            style: form
+        - in: query
+          name: entity_id
+          schema: { type: string }
+          description: Filter to signals about a specific entity (any type)
+        - in: query
+          name: watchlist_id
+          schema: { type: string }
+          description: Filter to entities in a watchlist
+        - in: query
+          name: confidence_tier
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ConfidenceTier' }
+            explode: false
+            style: form
+        - in: query
+          name: impact_tier
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ImpactTier' }
+            explode: false
+            style: form
+        - in: query
+          name: status
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/SignalStatus' }
+            explode: false
+            style: form
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+        - in: query
+          name: until
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: order
+          schema: { type: string, enum: [impact, recency, confidence], default: impact }
+      responses:
+        '200':
+          description: Paginated signal list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalList' }
+
+  /signals/{id}:
+    get:
+      tags: [signals]
+      summary: Fetch a signal with full evidence stack
+      operationId: getSignal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: include
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [evidence, history, peers, supersedence_chain]
+            explode: false
+            style: form
+      responses:
+        '200':
+          description: Signal with optional evidence + history + peers
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalDetail' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{id}:
+    get:
+      tags: [events]
+      summary: Fetch an event with linked signals and evidence
+      operationId: getEvent
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Event payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /synthesize:
+    post:
+      tags: [synthesis]
+      summary: Generate a narrative paragraph over a Signal set
+      operationId: synthesize
+      description: |
+        Returns a paragraph with per-sentence citations. Hedging language
+        is tied to confidence tier (confirmed → direct, reported → attributed,
+        inferred → hedged). Guard-checked before return.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signal_ids]
+              properties:
+                signal_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+                  minItems: 1
+                  maxItems: 50
+                template:
+                  type: string
+                  enum: [headline_summary, signal_detail_paragraph, brief_section]
+                  default: signal_detail_paragraph
+                max_tokens:
+                  type: integer
+                  default: 500
+      responses:
+        '200':
+          description: Cited synthesis
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SynthesisOutput' }
+
+  /ask:
+    post:
+      tags: [ask]
+      summary: Signal-aware Q&A
+      operationId: ask
+      description: |
+        Routes to specialist agents per KBQ. Returns answer with cited
+        Signals, not raw documents. If the question hits a low-confidence
+        area, the answer is honest about the gap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, maxLength: 1000 }
+                scope:
+                  type: object
+                  properties:
+                    entity_ids:
+                      type: array
+                      items: { type: string }
+                    kbqs:
+                      type: array
+                      items: { $ref: '#/components/schemas/Kbq' }
+                    since: { type: string, format: date-time }
+                stream:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Answer with cited Signals
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AskResponse' }
+
+components:
+  responses:
+    NotFound:
+      description: Signal/event not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        request_id: { type: string }
+
+    Kbq:
+      type: string
+      enum:
+        - financial          # KBQ 1
+        - governance         # KBQ 2 (exec movement)
+        - strategic          # KBQ 3
+        - clinical           # KBQ 4
+        - product            # KBQ 5
+        - ai_digital         # KBQ 6
+        - conferences        # KBQ 7
+        - pricing_access     # KBQ 8
+        - regulatory         # KBQ 9
+        - m_and_a            # KBQ 10
+        - esg_supply         # KBQ 11
+
+    ConfidenceTier:
+      type: string
+      enum: [confirmed, reported, inferred, disputed]
+      description: Per ADR-002 — derived, never assigned
+
+    ImpactTier:
+      type: string
+      enum: [high, medium, low]
+
+    SignalStatus:
+      type: string
+      enum: [candidate, reviewed, shipped, superseded, retracted]
+
+    Direction:
+      type: string
+      enum: [positive, negative, neutral, mixed]
+
+    EventType:
+      type: string
+      description: |
+        Event taxonomy from SPEC-016 §1.2. Extensible — new types added
+        as connectors gain new capabilities.
+      enum:
+        - regulatory_approval
+        - regulatory_submission
+        - regulatory_crl
+        - regulatory_designation
+        - trial_status_change
+        - trial_results_posted
+        - trial_publication
+        - label_change
+        - safety_alert
+        - loe_event
+        - product_discontinuation
+        - deal_announced
+        - deal_closed
+        - deal_termination
+        - exec_change
+        - financial_disclosure
+        - guidance_change
+        - strategic_signal
+        - event_participation
+        - pricing_change
+        - formulary_change
+        - mfg_event
+        - esg_disclosure
+        - predicted_approval
+        - expected_event_missed
+        - pattern_signal
+
+    Signal:
+      type: object
+      required:
+        - id
+        - event_id
+        - kbq_tags
+        - headline
+        - confidence_tier
+        - impact_tier
+        - primary_entity_type
+        - primary_entity_id
+        - status
+        - created_at
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        kbq_tags:
+          type: array
+          items: { $ref: '#/components/schemas/Kbq' }
+        headline: { type: string, maxLength: 120 }
+        summary: { type: string, maxLength: 500 }
+        direction: { $ref: '#/components/schemas/Direction' }
+        confidence_tier: { $ref: '#/components/schemas/ConfidenceTier' }
+        trust_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Continuous companion to confidence_tier (ADR-002)
+        impact_tier: { $ref: '#/components/schemas/ImpactTier' }
+        impact_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        rule_version_id: { type: string }
+        primary_entity_type: { type: string }
+        primary_entity_id: { type: string }
+        primary_entity_name: { type: string, nullable: true }
+        related_entity_ids:
+          type: array
+          items: { type: string }
+        evidence_count: { type: integer }
+        status: { $ref: '#/components/schemas/SignalStatus' }
+        superseded_by: { type: string, format: uuid, nullable: true }
+        supersedence_reason:
+          type: string
+          enum: [corrected, progressed, downgraded, retracted, merged]
+          nullable: true
+        created_at: { type: string, format: date-time }
+
+    SignalList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Signal' }
+        next_cursor: { type: string, nullable: true }
+        total: { type: integer, nullable: true }
+
+    EvidenceItem:
+      type: object
+      required: [document_id, source_class, ref, confidence_tier]
+      properties:
+        document_id: { type: string, format: uuid }
+        source_class:
+          type: string
+          enum: [edgar, fda, ema, ct_gov, pubmed, pmc, dailymed, orange_book, patent, press, news, tier3, signal]
+        ref: { type: string, description: 'Index or short id within source (e.g. "0", "abc123")' }
+        title: { type: string, nullable: true }
+        snippet: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        confidence_tier: { $ref: '#/components/schemas/ConfidenceTier' }
+
+    PeerSignal:
+      type: object
+      properties:
+        signal_id: { type: string, format: uuid }
+        primary_entity_id: { type: string }
+        primary_entity_name: { type: string }
+        headline: { type: string }
+        relation: { type: string, enum: [same_indication, same_TA, same_modality, competitor, predecessor] }
+        created_at: { type: string, format: date-time }
+
+    SignalDetail:
+      allOf:
+        - $ref: '#/components/schemas/Signal'
+        - type: object
+          properties:
+            evidence:
+              type: array
+              items: { $ref: '#/components/schemas/EvidenceItem' }
+            history:
+              type: array
+              items:
+                type: object
+                description: Prior events for the same primary_entity (entity-keyed timeline)
+            peers:
+              type: array
+              items: { $ref: '#/components/schemas/PeerSignal' }
+            supersedence_chain:
+              type: array
+              items: { type: string, format: uuid }
+
+    Event:
+      type: object
+      required: [id, event_type, primary_entity_type, primary_entity_id, event_date]
+      properties:
+        id: { type: string, format: uuid }
+        event_type: { $ref: '#/components/schemas/EventType' }
+        event_hash: { type: string }
+        primary_entity_type: { type: string }
+        primary_entity_id: { type: string }
+        primary_entity_name: { type: string, nullable: true }
+        event_date: { type: string, format: date-time }
+        disclosed_date: { type: string, format: date-time, nullable: true }
+        embargoed: { type: boolean, default: false }
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Event-type-specific structured fields
+        evidence_document_ids:
+          type: array
+          items: { type: string, format: uuid }
+        signals:
+          type: array
+          items: { $ref: '#/components/schemas/Signal' }
+        created_at: { type: string, format: date-time }
+
+    CitedSentence:
+      type: object
+      required: [text, citations]
+      properties:
+        text: { type: string }
+        citations:
+          type: array
+          items:
+            type: object
+            required: [kind, ref]
+            properties:
+              kind: { type: string, enum: [document, signal] }
+              ref: { type: string }
+
+    SynthesisOutput:
+      type: object
+      required: [sentences, guard_status]
+      properties:
+        sentences:
+          type: array
+          items: { $ref: '#/components/schemas/CitedSentence' }
+        guard_status:
+          type: string
+          enum: [pass, fail_no_evidence, fail_unsupported_claim, fail_overconfident_hedge]
+        token_usage: { type: integer }
+        model: { type: string }
+
+    AskResponse:
+      type: object
+      required: [answer, signals_consulted]
+      properties:
+        answer:
+          type: array
+          items: { $ref: '#/components/schemas/CitedSentence' }
+        signals_consulted:
+          type: array
+          items: { type: string, format: uuid }
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        gaps:
+          type: array
+          items: { type: string }
+          description: |
+            Areas where the system explicitly has no signal — surfaced
+            verbatim to the user per "honest about gaps" principle.
+
+    IntelHealth:
+      type: object
+      required: [signals_24h, signals_7d, guard_pass_rate]
+      properties:
+        signals_24h: { type: integer }
+        signals_7d: { type: integer }
+        guard_pass_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Fraction of synthesis calls that pass the hallucination guard
+        provenance_audit:
+          type: object
+          properties:
+            last_run: { type: string, format: date-time }
+            orphans_found: { type: integer }
+            retracted_citations: { type: integer }
+        eval_score:
+          type: object
+          properties:
+            last_run: { type: string, format: date-time }
+            precision: { type: number }
+            recall: { type: number }
+            dedup_correctness: { type: number }
+        clusterer_lag_seconds: { type: number }

@@ -1,0 +1,22 @@
+{
+  "name": "@pulse/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PulseAction.AI horizontal-layer API contracts (OpenAPI 3.1).",
+  "type": "module",
+  "exports": {
+    "./catalog.yaml": "./src/catalog.yaml",
+    "./intel.yaml": "./src/intel.yaml",
+    "./platform.yaml": "./src/platform.yaml"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "lint": "echo 'Phase 1 will add @redocly/cli for spec linting'",
+    "build": "echo 'Phase 1 will add openapi-typescript codegen'",
+    "test": "echo 'Phase 1 will add contract tests'",
+    "typecheck": "echo 'no TS surface yet'",
+    "clean": "rimraf .turbo dist"
+  }
+}
