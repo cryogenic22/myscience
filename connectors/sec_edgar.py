@@ -386,7 +386,97 @@ class SECEdgarConnector(BaseConnector):
             "  Extracted %d chunks from %s %s",
             len(records), form_type, accession,
         )
+
+        # Cycle 1: 8-K → run through α1+α2+α3 pipeline (events / deals /
+        # roles_history). Feature-flagged via MZ_8K_PIPELINE_ENABLED.
+        # Errors logged inside the runner; never propagate to this loop.
+        self._maybe_run_8k_pipeline(
+            text=text,
+            cik=cik,
+            company_name=company_name,
+            accession=accession,
+            form_type=form_type,
+            filing_date=filing_date,
+        )
+
         return records
+
+    def _maybe_run_8k_pipeline(
+        self,
+        *,
+        text: str,
+        cik: str,
+        company_name: str,
+        accession: str,
+        form_type: str,
+        filing_date: str,
+    ) -> None:
+        """Run the 8-K filing through the orchestrator if applicable.
+
+        Gating handled inside connectors.sec_edgar_8k_runner — this method
+        only checks the form-type filter and converts filing_date to a
+        date object before delegating.
+        """
+        try:
+            from connectors.sec_edgar_8k_runner import (
+                run_8k_through_pipeline,
+                should_run_pipeline_for_form,
+            )
+        except ImportError:
+            # Module not available (e.g., older deploy missing files);
+            # silently skip rather than break the connector.
+            return
+
+        if not should_run_pipeline_for_form(form_type):
+            return
+
+        # Database access — the connector instance has a config; the
+        # actual Database is the one configured at import time.
+        db = self._get_db_for_pipeline()
+        if db is None:
+            return
+
+        try:
+            from datetime import datetime as _dt
+            parsed_date = _dt.fromisoformat(filing_date).date() \
+                if filing_date else _dt.utcnow().date()
+        except ValueError:
+            parsed_date = datetime.utcnow().date()
+
+        result = run_8k_through_pipeline(
+            filing_text=text,
+            cik=cik,
+            company_name=company_name,
+            accession=accession,
+            filing_date=parsed_date,
+            db=db,
+        )
+        if result is not None:
+            logger.info(
+                "  8-K pipeline: events=%d deals=%d roles=%d dupes=%d errors=%d",
+                result.events_emitted,
+                result.deals_emitted,
+                result.roles_appended,
+                result.duplicates_skipped,
+                len(result.errors),
+            )
+
+    def _get_db_for_pipeline(self):
+        """Return a Database handle for the 8-K pipeline, or None.
+
+        Splits this out so tests + alternative wiring can override.
+        """
+        try:
+            from db import Database
+            from config import config
+            db = Database(config.db.dsn)
+            db.connect()
+            return db
+        except Exception as exc:
+            logger.warning(
+                "8-K pipeline: could not get Database handle: %s", exc,
+            )
+            return None
 
     # ------------------------------------------------------------------ #
     # XBRL Financial Facts
