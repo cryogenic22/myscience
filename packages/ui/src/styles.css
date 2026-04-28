@@ -1,0 +1,39 @@
+/*
+ * @mz/ui — base styles for component primitives.
+ * Imported once per app; component-level styles use these primitives.
+ */
+
+@import '@mz/design-tokens/tokens.css';
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--mz-color-canvas);
+  color: var(--mz-color-text-primary);
+  font-family: var(--mz-font-sans);
+  font-size: var(--mz-text-body-2);
+  line-height: var(--mz-leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+
+body {
+  margin: 0;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+button { font: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; }
+
+::selection {
+  background: color-mix(in oklab, var(--mz-color-accent) 24%, transparent);
+}
+
+/* Focus ring — single visual language across the platform */
+:focus-visible {
+  outline: 2px solid var(--mz-color-accent);
+  outline-offset: 2px;
+  border-radius: var(--mz-radius-control);
+}

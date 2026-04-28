@@ -1,0 +1,7 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Existing frontend/ is intentionally NOT in the workspace yet.
+# It keeps building via its own package.json + the Railway nixpacks path.
+# It moves into apps/research/ at migration step M5 (see docs/adrs/ADR-001).

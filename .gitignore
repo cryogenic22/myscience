@@ -33,6 +33,16 @@ _test_*.json
 frontend/node_modules/
 frontend/dist/
 
+# Monorepo (M0 scaffold)
+node_modules/
+.turbo/
+**/dist/
+**/build/
+**/storybook-static/
+**/.vite/
+**/coverage/
+*.tsbuildinfo
+
 # OS
 Thumbs.db
 .DS_Store
@@ -54,6 +64,9 @@ NUL
 !specs/**/*.md
 !ctxpack/**/*.md
 !.claude/**/*.md
+!docs/adrs/**/*.md
+!apps/**/README.md
+!packages/**/README.md
 
 # Images/screenshots
 *.png
