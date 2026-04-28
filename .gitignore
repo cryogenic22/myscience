@@ -65,6 +65,7 @@ NUL
 !ctxpack/**/*.md
 !.claude/**/*.md
 !docs/adrs/**/*.md
+!docs/runbooks/**/*.md
 !apps/**/README.md
 !packages/**/README.md
 

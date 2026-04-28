@@ -1,0 +1,38 @@
+name: Schema Drift Guard
+
+# Runs the static SPEC-010 drift checks on every PR + push to main.
+# These tests scan source files for forbidden SQL patterns (etl_runs.source_type,
+# bare 'details' from steward_actions, clinical_trials.label, MIN(uuid) on entity_links).
+# They are stateless — no DB needed — so they're cheap CI guardrails that prevent
+# the April 2026 schema-drift class of bugs from regressing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-drift-checks:
+    runs-on: ubuntu-latest
+    name: Schema drift static checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install minimal deps
+        run: pip install pytest
+
+      - name: Run SPEC-010 static checks (no DB)
+        # The 7 static + migration-file tests must always pass.
+        # Live-DB tests auto-skip when no DATABASE_URL.
+        run: python -m pytest tests/test_schema_drift_fix.py -v -k 'not _in_db and not _applied and not _column and not _has and not _runs_without' --no-header
+
+      - name: Confirm migration files exist
+        run: |
+          test -f schema/migrations/029_agent_sessions.sql
+          test -f schema/migrations/032_market_events_primary_entity_id.sql
+          echo "✓ Required migration files present"
