@@ -59,7 +59,7 @@ A clean rename of all of these in one PR would touch ~250+ files, break every im
 market_zero/
 ├── apps/
 │   ├── landing/        ← NEW Mission Control SPA (Vite + React)
-│   └── ci/             ← NEW MZ · CI module SPA (Vite + React)
+│   └── ci/             ← NEW PulseAction · CI module SPA (Vite + React)
 ├── packages/
 │   ├── design-tokens/  ← NEW (token JSON → CSS vars + TS types)
 │   ├── ui/             ← NEW (shared primitives + Storybook)

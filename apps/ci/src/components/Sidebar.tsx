@@ -58,7 +58,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
             background: 'var(--mz-color-accent)',
           }}
         />
-        <span>Market Zero</span>
+        <span>PulseAction<span style={{ color: 'var(--mz-color-text-tertiary)', fontWeight: 'var(--mz-weight-medium)' }}>.AI</span></span>
         <span
           style={{
             fontFamily: 'var(--mz-font-mono)',

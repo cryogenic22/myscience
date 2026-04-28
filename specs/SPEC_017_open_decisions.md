@@ -15,30 +15,33 @@ This document records the eight decisions that Phase 0 work can proceed without,
 
 ---
 
-## D1 — Brand mark + module names
+## D1 — Module names (platform brand is locked to PulseAction.AI)
 
-### Question
-Do modules carry the `MZ · {Module}` form (e.g., *MZ · CI*, *MZ · Research*), or do they get product-name brands (e.g., *Pulse* for CI, *Atlas* for Research)?
+### Status — Resolved at platform level
+**Platform brand: PulseAction.AI** (decided 2026-04-28). The remaining sub-question is just whether modules use a descriptive `PulseAction · {Module}` form or carry distinct product-name brands.
+
+### Sub-question
+Do modules carry the `PulseAction · {Module}` form (e.g., *PulseAction · CI*, *PulseAction · Research*), or do they get distinct product-name brands (e.g., *Pulse* for CI, *Atlas* for Research)?
 
 ### Options
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. `MZ · {Module}`** (descriptive) | Honest, scalable, zero brand risk; new modules slot in trivially | Reads as "internal codename"; no marketing pull |
-| **B. Product names** (e.g., *Pulse*, *Atlas*) | Memorable, distinct, supports per-module marketing | Requires brand work per module; may suggest separate products |
-| **C. Hybrid** — platform mark + product name (e.g., *Market Zero · Pulse*) | Best of both | Heavier in UI; needs typography lockup design |
+| **A. `PulseAction · {Module}`** (descriptive) | Reinforces platform brand; new modules slot in trivially; no per-module marketing work | Reads as a label rather than a product; may flatten differentiation |
+| **B. Distinct product names** (e.g., *Pulse*, *Atlas*) | Memorable, distinct, supports per-module marketing; "Pulse" as CI reuses the platform's audio identity | Requires brand work per module; "Pulse" as both the platform's stem and a module name risks confusion |
+| **C. Hybrid lockup** — platform mark + product name (e.g., *PulseAction.AI · Pulse*) | Best of both | Heavier in UI; needs typography lockup design |
 
 ### Recommendation
-**B (Product names) for analyst-facing surfaces, with the platform mark co-located as a small sub-mark in the corner.** Pharma analysts work in this product daily; a name they can say in a sentence ("did you check Pulse this morning?") matters. The platform mark gives architectural honesty for stakeholders who care about that layer.
+**B (Distinct product names) for analyst-facing surfaces, with PulseAction.AI co-located as a small sub-mark in the corner.** Pharma analysts work in the product daily; a name they can say in a sentence ("did you check Pulse this morning?") matters. The platform mark gives architectural honesty for stakeholders who care about that layer.
 
-Suggested names:
-- *Pulse* (CI) — matches the alert/signal/heartbeat semantics; one syllable, easy.
+Suggested module names:
+- *Pulse* (CI) — matches the alert/signal/heartbeat semantics; one syllable, easy. Naturally reads as "the active half of PulseAction."
 - *Atlas* (Research) — matches the graph/exploration semantics; pharma-adjacent (atlas = comprehensive map).
 - Reserved future: *Compass* (Regulatory), *Beacon* (Market Access), *Forum* (KOL).
 
 ### Decision
-- [ ] A · `MZ · CI` style
-- [ ] B · Product names (*Pulse* / *Atlas*)
+- [ ] A · `PulseAction · {Module}` (descriptive)
+- [ ] B · Distinct product names (*Pulse* / *Atlas*)
 - [ ] C · Hybrid lockup
 
 **Decided value:** _________________

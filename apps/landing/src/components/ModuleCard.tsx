@@ -1,4 +1,4 @@
-import { Card, Pill, type PillTone } from '@mz/ui';
+import { Card, Pill, type PillTone } from '@pulse/ui';
 
 export interface ModuleStat {
   label: string;

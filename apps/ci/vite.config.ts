@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@mz/design-tokens': path.resolve(__dirname, '../../packages/design-tokens/src'),
-      '@mz/ui':            path.resolve(__dirname, '../../packages/ui/src'),
+      '@pulse/design-tokens': path.resolve(__dirname, '../../packages/design-tokens/src'),
+      '@pulse/ui':            path.resolve(__dirname, '../../packages/ui/src'),
     },
   },
   server: { port: 5174, strictPort: false },

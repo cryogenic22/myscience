@@ -1,8 +1,8 @@
 {
-  "name": "market-zero",
+  "name": "pulseaction",
   "version": "0.1.0",
   "private": true,
-  "description": "Market Zero — pharma intelligence platform. Monorepo root.",
+  "description": "PulseAction.AI — pharma intelligence platform. Monorepo root.",
   "packageManager": "pnpm@10.12.4",
   "engines": {
     "node": ">=22.0.0",
@@ -14,7 +14,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "storybook": "pnpm --filter @mz/ui storybook",
+    "storybook": "pnpm --filter @pulse/ui storybook",
     "clean": "turbo run clean && rimraf node_modules .turbo",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
   },

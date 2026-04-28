@@ -1,8 +1,8 @@
 {
-  "name": "@mz/design-tokens",
+  "name": "@pulse/design-tokens",
   "version": "0.1.0",
   "private": true,
-  "description": "Market Zero design tokens — single source of truth for color, type, spacing, motion.",
+  "description": "PulseAction.AI design tokens — single source of truth for color, type, spacing, motion.",
   "type": "module",
   "exports": {
     ".": {

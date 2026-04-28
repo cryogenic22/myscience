@@ -1,5 +1,5 @@
 /**
- * @mz/design-tokens — runtime token access for TS consumers.
+ * @pulse/design-tokens — runtime token access for TS consumers.
  *
  * Tokens are also emitted as CSS variables (see ./tokens.css). Components
  * should prefer the CSS variable surface (`var(--mz-color-text-primary)`)

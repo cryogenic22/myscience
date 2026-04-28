@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Pill, ScoreTile } from '@mz/ui';
+import { Card, Pill, ScoreTile } from '@pulse/ui';
 import { ModuleCard } from './components/ModuleCard';
 import { RecentActivity } from './components/RecentActivity';
 import { Header } from './components/Header';

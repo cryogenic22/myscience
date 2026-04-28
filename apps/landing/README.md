@@ -1,4 +1,4 @@
-# @mz/landing — Mission Control
+# @pulse/landing — Mission Control
 
 The platform's first screen. Module switcher + platform health + cross-module recent activity + ⌘K command palette.
 
@@ -6,7 +6,7 @@ The platform's first screen. Module switcher + platform health + cross-module re
 
 ```bash
 pnpm install
-pnpm --filter @mz/landing dev   # http://localhost:5173
+pnpm --filter @pulse/landing dev   # http://localhost:5173
 ```
 
 ## Status

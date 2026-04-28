@@ -1,6 +1,10 @@
-# @mz/design-tokens
+# @pulse/design-tokens
 
-Single source of truth for Market Zero color, type, spacing, radius, motion, and shadow.
+Single source of truth for PulseAction.AI color, type, spacing, radius, motion, and shadow.
+
+> The CSS variable prefix is `--mz-*` for now (lower-noise migration from the
+> initial scaffold). Will be renamed to `--pa-*` in a future cleanup once
+> consumers are stable.
 
 ## Three surfaces, one source
 
@@ -14,7 +18,7 @@ For now, `tokens.css` is hand-maintained. A `scripts/build.mjs` will auto-genera
 
 ```ts
 // In your app entry (e.g. apps/landing/src/main.tsx):
-import '@mz/design-tokens/tokens.css';
+import '@pulse/design-tokens/tokens.css';
 ```
 
 Then style with CSS variables:

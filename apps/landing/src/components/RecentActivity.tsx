@@ -1,4 +1,4 @@
-import { Pill } from '@mz/ui';
+import { Pill } from '@pulse/ui';
 
 interface ActivityRow {
   id: string;

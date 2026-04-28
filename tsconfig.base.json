@@ -26,10 +26,10 @@
     "jsx": "react-jsx",
 
     "paths": {
-      "@mz/design-tokens": ["./packages/design-tokens/src"],
-      "@mz/design-tokens/*": ["./packages/design-tokens/src/*"],
-      "@mz/ui": ["./packages/ui/src"],
-      "@mz/ui/*": ["./packages/ui/src/*"]
+      "@pulse/design-tokens": ["./packages/design-tokens/src"],
+      "@pulse/design-tokens/*": ["./packages/design-tokens/src/*"],
+      "@pulse/ui": ["./packages/ui/src"],
+      "@pulse/ui/*": ["./packages/ui/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "build", ".turbo", "storybook-static"]

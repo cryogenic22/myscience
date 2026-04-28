@@ -1,8 +1,8 @@
 {
-  "name": "@mz/ui",
+  "name": "@pulse/ui",
   "version": "0.1.0",
   "private": true,
-  "description": "Market Zero shared component primitives.",
+  "description": "PulseAction.AI shared component primitives.",
   "type": "module",
   "exports": {
     ".": {
@@ -28,7 +28,7 @@
     "clean": "rimraf .turbo storybook-static *.tsbuildinfo"
   },
   "dependencies": {
-    "@mz/design-tokens": "workspace:*"
+    "@pulse/design-tokens": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

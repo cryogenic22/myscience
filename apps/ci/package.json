@@ -1,8 +1,8 @@
 {
-  "name": "@mz/ci",
+  "name": "@pulse/ci",
   "version": "0.1.0",
   "private": true,
-  "description": "Market Zero — Competitive Intelligence module.",
+  "description": "PulseAction.AI — Competitive Intelligence module.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,8 +14,8 @@
     "clean": "rimraf .turbo dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@mz/design-tokens": "workspace:*",
-    "@mz/ui": "workspace:*",
+    "@pulse/design-tokens": "workspace:*",
+    "@pulse/ui": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
