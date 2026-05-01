@@ -6,6 +6,7 @@ import WorkspacePage from './pages/WorkspacePage';
 import SearchPage from './pages/SearchPage';
 import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
+import CIPage from './pages/CIPage';
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ function AppRoutes() {
         />
         <Route path="/newui" element={<NewWorkspace key="newui" />} />
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
+        <Route path="/ci" element={<CIPage key="ci" />} />
         {/* Catch-all → landing */}
         <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} />} />
       </Routes>

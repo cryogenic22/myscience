@@ -997,3 +997,109 @@ export const connectorsApi = {
       return r.json();
     }),
 };
+
+// ────────────────────────────────────────────────────────────────────
+// SPEC-020 — Signals + Watchlist API (CI surface)
+// ────────────────────────────────────────────────────────────────────
+
+export type ConfidenceTier = 'confirmed' | 'reported' | 'inferred' | 'disputed';
+export type ImpactTier = 'high' | 'medium' | 'low';
+export type SignalStatus = 'candidate' | 'reviewed' | 'shipped' | 'superseded' | 'retracted';
+
+export interface Signal {
+  id: string;
+  event_id: string | null;
+  kbq_tags: string[];
+  headline: string;
+  summary: string | null;
+  direction: 'positive' | 'negative' | 'neutral' | 'mixed' | null;
+  confidence_tier: ConfidenceTier;
+  trust_score: number | null;
+  impact_tier: ImpactTier;
+  impact_score: number | null;
+  rule_version_id: string | null;
+  primary_entity_type: string | null;
+  primary_entity_id: string | null;
+  primary_entity_name: string | null;
+  related_entity_ids: string[];
+  evidence_document_ids: string[];
+  status: SignalStatus;
+  superseded_by: string | null;
+  supersedence_reason: string | null;
+  created_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  shipped_at: string | null;
+}
+
+export interface SignalsListParams {
+  status?: SignalStatus;
+  impact?: ImpactTier;
+  kbq?: string;
+  entity_type?: string;
+  entity_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const signalsApi = {
+  list: (params: SignalsListParams = {}): Promise<{ signals: Signal[]; count: number; limit: number; offset: number }> => {
+    const qsStr = qs(params as Record<string, unknown>);
+    const url = `${BASE}/signals${qsStr ? `?${qsStr}` : ''}`;
+    return fetch(url).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    });
+  },
+
+  detail: (id: string): Promise<Signal> =>
+    fetch(`${BASE}/signals/${encodeURIComponent(id)}`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  review: (id: string, status: 'reviewed' | 'shipped' | 'retracted'): Promise<{ id: string; status: string }> =>
+    fetch(`${BASE}/signals/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ status }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
+export interface WatchlistEntry {
+  id: string;
+  user_id: string;
+  entity_type: string;
+  entity_id: string;
+  label: string | null;
+  created_at: string | null;
+}
+
+export const watchlistApi = {
+  list: (): Promise<{ entries: WatchlistEntry[] }> =>
+    fetch(`${BASE}/watchlist`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  add: (body: { entity_type: string; entity_id: string; label?: string }): Promise<WatchlistEntry> =>
+    fetch(`${BASE}/watchlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  remove: (id: string): Promise<void> =>
+    fetch(`${BASE}/watchlist/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok && r.status !== 204) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+    }),
+};
