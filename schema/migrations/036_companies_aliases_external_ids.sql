@@ -88,10 +88,10 @@ BEGIN
         UPDATE companies c
         SET aliases = COALESCE(
             (
-                SELECT jsonb_agg(DISTINCT ea.alias)
+                SELECT jsonb_agg(DISTINCT ea.alias_text)
                 FROM entity_aliases ea
                 WHERE ea.entity_type = 'company'
-                  AND ea.entity_id = c.id::text
+                  AND ea.entity_id::text = c.id::text
             ),
             '[]'::jsonb
         )
