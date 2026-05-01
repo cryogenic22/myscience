@@ -9,5 +9,13 @@ cmds = [
     "cd frontend && npm ci && npm run build",
 ]
 
+# Explicit empty build phase. Without this, Nixpacks auto-detects the
+# leftover `build` script in the root package.json (a stale PulseAction.AI
+# monorepo scaffold) and runs `npx turbo run build`, which fails because
+# the @pulse/* workspaces and pnpm-lock.yaml don't exist. The real frontend
+# build already happens in the install phase above.
+[phases.build]
+cmds = ["echo 'build phase intentionally empty — frontend built in install phase'"]
+
 [start]
 cmd = "/opt/venv/bin/python start.py"
