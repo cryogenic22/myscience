@@ -43,13 +43,28 @@ except Exception as _e:
     logger.error("Failed to import auth router (SPEC_018): %s", _e)
     _AUTH_ROUTER_OK = False
 
-# SPEC_019 connectors router (list, dossier, health-check, config, run)
+# SPEC_019 connectors router
 try:
     from api.routes import connectors as connectors_route
     _CONNECTORS_ROUTER_OK = True
 except Exception as _e:
     logger.error("Failed to import connectors router (SPEC_019): %s", _e)
     _CONNECTORS_ROUTER_OK = False
+
+# SPEC_020 signals + watchlist routers
+try:
+    from api.routes import signals as signals_route
+    _SIGNALS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import signals router (SPEC_020): %s", _e)
+    _SIGNALS_ROUTER_OK = False
+
+try:
+    from api.routes import watchlist as watchlist_route
+    _WATCHLIST_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import watchlist router (SPEC_020): %s", _e)
+    _WATCHLIST_ROUTER_OK = False
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -95,6 +110,10 @@ def create_app() -> FastAPI:
         all_routers.append(auth_route.router)
     if _CONNECTORS_ROUTER_OK:
         all_routers.append(connectors_route.router)
+    if _SIGNALS_ROUTER_OK:
+        all_routers.append(signals_route.router)
+    if _WATCHLIST_ROUTER_OK:
+        all_routers.append(watchlist_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
@@ -516,6 +535,7 @@ def create_app() -> FastAPI:
                     "therapeutic-areas", "feedback", "scenarios", "steward",
                     "literature", "pricing", "intelligence", "agent",
                     "auth/", "upload", "connectors/",
+                    "signals", "watchlist",
                     "openapi.json", "docs", "redoc",
                 ))
                 if not is_api and not path.startswith("assets/"):
@@ -541,6 +561,7 @@ def create_app() -> FastAPI:
         @app.get("/search")
         @app.get("/newui")
         @app.get("/connectors")
+        @app.get("/ci")
         async def serve_frontend_routes():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 

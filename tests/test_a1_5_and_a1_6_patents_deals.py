@@ -66,26 +66,42 @@ class TestPatentsMigration:
             sql, re.IGNORECASE,
         )
 
-    def test_migration_041_required_columns(self):
+    def test_migration_041_adds_uspto_columns(self):
+        """Migration 041 ADDs the USPTO PatentsView columns that 006 didn't have.
+        Columns from 006 (source_api, source_url, retrieved_at, created_at) are
+        already present on the existing table — 041 doesn't re-declare them."""
         sql = PATENTS_MIGRATION.read_text(encoding="utf-8").lower()
         for col in [
-            "id", "patent_number", "patent_type", "assignee_company_id",
+            "patent_office", "assignee_company_id", "assignee_name_raw",
             "filing_date", "grant_date", "expiration_date", "priority_date",
-            "cpc_codes", "status", "title", "abstract",
-            "source_api", "source_url", "retrieved_at", "created_at",
+            "cpc_codes", "status", "title", "abstract", "updated_at",
         ]:
             assert re.search(rf"\b{col}\b", sql), f"missing column: {col}"
 
-    def test_migration_041_patent_type_check(self):
+    def test_migration_041_uses_additive_alter(self):
+        """041 must be a pure ADD COLUMN IF NOT EXISTS sequence — the patents
+        table already exists from migration 006 with a different shape, so
+        any new column has to be additive."""
         sql = PATENTS_MIGRATION.read_text(encoding="utf-8")
-        for value in ("grant", "application", "design", "PTE"):
-            assert f"'{value}'" in sql, f"patent_type missing: {value}"
+        # At least one ADD COLUMN IF NOT EXISTS for cpc_codes (the headline
+        # USPTO field that triggered the original deploy bug)
+        assert re.search(
+            r"ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+cpc_codes",
+            sql, re.IGNORECASE,
+        ), "041 must additively ADD cpc_codes"
 
-    def test_migration_041_status_check(self):
+    def test_migration_041_no_check_constraints_on_legacy_columns(self):
+        """Original 041 had CHECK on patent_type/status with new vocabulary
+        ('grant', 'granted', etc.) — but legacy data from 006 uses
+        'Drug Substance', 'Method of Use'. CHECK constraints would fail.
+        Migration 041 must NOT add them."""
         sql = PATENTS_MIGRATION.read_text(encoding="utf-8")
-        for value in ("granted", "abandoned", "expired", "challenged",
-                      "pending", "withdrawn"):
-            assert f"'{value}'" in sql, f"status missing: {value}"
+        assert "patents_patent_type_check" not in sql, (
+            "CHECK on patent_type would violate legacy rows"
+        )
+        assert "patents_status_check" not in sql, (
+            "CHECK on status would violate legacy rows"
+        )
 
     def test_migration_041_assignee_fk(self):
         sql = PATENTS_MIGRATION.read_text(encoding="utf-8")
@@ -93,13 +109,6 @@ class TestPatentsMigration:
             r"assignee_company_id[\s\S]{0,200}REFERENCES\s+companies\s*\(\s*id",
             sql, re.IGNORECASE,
         )
-
-    def test_migration_041_unique_patent_number(self):
-        sql = PATENTS_MIGRATION.read_text(encoding="utf-8")
-        assert re.search(
-            r"CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+\S*patent_number",
-            sql, re.IGNORECASE,
-        ), "patent_number needs unique index"
 
     def test_migration_041_indexes(self):
         sql = PATENTS_MIGRATION.read_text(encoding="utf-8")
