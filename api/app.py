@@ -117,6 +117,38 @@ def create_app() -> FastAPI:
             import traceback
             return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
+    @app.post("/debug/seed-users")
+    def debug_seed_users():
+        """SPEC_018 — Seed the 3 demo users. Idempotent (ON CONFLICT updates).
+
+        Safe to call repeatedly: the seed script does ON CONFLICT (email)
+        DO UPDATE so re-runs just refresh the password hash to the current
+        MZ_DEMO_PASSWORD value. Low blast radius — demo accounts are
+        intentionally well-known.
+        """
+        try:
+            from scripts.seed_demo_users import main as seed_main
+            exit_code = seed_main()
+            db = get_db()
+            row = db.fetch_one(
+                "SELECT COUNT(*) AS n FROM users WHERE email LIKE %s",
+                ["%@demo.market-zero.io"],
+            )
+            users = db.fetch_all(
+                "SELECT email, role, is_active FROM users "
+                "WHERE email LIKE %s ORDER BY role",
+                ["%@demo.market-zero.io"],
+            )
+            return {
+                "ok": exit_code == 0,
+                "demo_users_in_db": row["n"] if row else 0,
+                "users": [dict(u) for u in users],
+                "jwt_secret_set": bool(os.getenv("MZ_JWT_SECRET")),
+            }
+        except Exception as e:
+            import traceback
+            return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
     @app.get("/debug/routes")
     def debug_routes():
         """Debug: show registered route count and new router status."""
