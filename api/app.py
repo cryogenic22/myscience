@@ -143,7 +143,9 @@ def create_app() -> FastAPI:
                 "ok": exit_code == 0,
                 "demo_users_in_db": row["n"] if row else 0,
                 "users": [dict(u) for u in users],
-                "jwt_secret_set": bool(os.getenv("MZ_JWT_SECRET")),
+                "jwt_secret_set": bool(
+                    os.getenv("MZ_JWT_SECRET") or os.getenv("SECRET_KEY")
+                ),
             }
         except Exception as e:
             import traceback

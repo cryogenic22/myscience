@@ -37,9 +37,15 @@ ROLE_HIERARCHY: dict[str, int] = {
 DEFAULT_TOKEN_TTL_SECONDS = 24 * 3600  # 24 hours
 
 # JWT secret: env var in prod, random per-process in dev.
-# Random secret means: server restart → all tokens invalidated. This is
-# acceptable for local dev / demo; production must set MZ_JWT_SECRET.
-_JWT_SECRET = os.getenv("MZ_JWT_SECRET") or secrets.token_urlsafe(32)
+# Lookup order: MZ_JWT_SECRET (preferred) → SECRET_KEY (Railway default
+# secret slot) → random per-process token (dev only). Random means
+# server restart → all tokens invalidated; production must set one of
+# the env vars.
+_JWT_SECRET = (
+    os.getenv("MZ_JWT_SECRET")
+    or os.getenv("SECRET_KEY")
+    or secrets.token_urlsafe(32)
+)
 _JWT_ALGORITHM = "HS256"
 
 
