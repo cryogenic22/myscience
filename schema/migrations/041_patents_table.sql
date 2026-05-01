@@ -1,89 +1,59 @@
--- Migration 041: patents table (skeleton)
+-- Migration 041: extend patents table with USPTO PatentsView columns
 --
 -- SPEC-016 §7 swimlane A1, task A1.5.
 --
--- Per CI design, patents are needed for:
---   - LOE (Loss of Exclusivity) computation per drug — A5.2
---   - Patent challenges / IPR proceedings tracking (Phase 2 PTAB connector)
---   - Cross-link to drugs via Orange Book listings (existing data)
+-- The `patents` table was created by migration 006 with a drug-centric
+-- schema (drug_id, patent_number, patent_expiry_date, patent_type,
+-- applicant_holder). This migration ADDS the columns the USPTO
+-- PatentsView connector (A5.1) needs:
+--   - patent_office, assignee_company_id, assignee_name_raw
+--   - filing_date, grant_date, expiration_date, priority_date
+--   - cpc_codes, status, title, abstract, updated_at
 --
--- This migration creates the SCHEMA only. Population is A5.1 USPTO
--- PatentsView connector. Until then, patent_id columns on entity_links
--- and elsewhere can FK to this empty table.
+-- All additions use ADD COLUMN IF NOT EXISTS so re-running is safe.
+-- CHECK constraints are intentionally skipped: existing rows use the
+-- legacy vocabulary ("Drug Substance", "Drug Product", "Method of Use")
+-- which would violate any new check on patent_type/status. The connector
+-- writes the new vocabulary; legacy values can be migrated separately.
 
 BEGIN;
 
+-- ============================================================
+-- Ensure base table exists (no-op if migration 006 already ran)
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS patents (
-    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    -- Identity
-    patent_number           TEXT NOT NULL,
-    patent_office           TEXT NOT NULL DEFAULT 'USPTO',
-                            -- USPTO | EPO | WIPO | JPO | CNIPA | ...
-    patent_type             TEXT NOT NULL DEFAULT 'grant',
-
-    -- Assignee (owner) — FK to companies, nullable for unresolved cases
-    assignee_company_id     UUID REFERENCES companies(id),
-    assignee_name_raw       TEXT,
-                            -- raw name as it appeared in PatentsView
-                            -- (resolved to assignee_company_id by entity_resolver)
-
-    -- Dates
-    filing_date             DATE,
-    grant_date              DATE,
-    expiration_date         DATE,
-    priority_date           DATE,
-
-    -- Classification
-    cpc_codes               TEXT[] NOT NULL DEFAULT '{}',
-                            -- Cooperative Patent Classification codes
-
-    -- Lifecycle
-    status                  TEXT NOT NULL DEFAULT 'granted',
-
-    -- Content
-    title                   TEXT,
-    abstract                TEXT,
-
-    -- Provenance
-    source_api              TEXT NOT NULL DEFAULT 'uspto_patentsview',
-    source_url              TEXT,
-    retrieved_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Audit
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Constraints
-    CONSTRAINT patents_patent_type_check
-        CHECK (patent_type IN ('grant', 'application', 'design', 'PTE')),
-    CONSTRAINT patents_status_check
-        CHECK (status IN (
-            'granted', 'pending', 'application',
-            'abandoned', 'expired', 'challenged', 'withdrawn'
-        ))
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patent_number TEXT NOT NULL
 );
 
-COMMENT ON TABLE patents IS
-    'Patent records — populated by USPTO PatentsView connector (A5.1) + '
-    'cross-walked to drugs via Orange Book (existing). Read by LOE '
-    'computation service (A5.2) for floor-LOE per drug. Phase 2 adds '
-    'PTAB IPR proceedings + global patents (WIPO PATENTSCOPE).';
+-- ============================================================
+-- Add USPTO PatentsView columns
+-- ============================================================
 
-COMMENT ON COLUMN patents.patent_type IS
-    'grant = utility patent granted; application = pending application; '
-    'design = design patent; PTE = patent term extension grant';
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS patent_office TEXT NOT NULL DEFAULT 'USPTO';
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS assignee_company_id UUID REFERENCES companies(id);
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS assignee_name_raw TEXT;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS filing_date DATE;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS grant_date DATE;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS expiration_date DATE;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS priority_date DATE;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS cpc_codes TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'granted';
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS abstract TEXT;
+ALTER TABLE patents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 COMMENT ON COLUMN patents.cpc_codes IS
     'Cooperative Patent Classification codes (e.g. A61K31/00 for medicinal '
     'preparations). Pharma-relevant filtering happens via these.';
 
--- ============================================================
--- Indexes
--- ============================================================
+COMMENT ON COLUMN patents.assignee_company_id IS
+    'FK to companies — populated by entity_resolver from assignee_name_raw.';
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_patents_patent_number
-    ON patents (patent_office, patent_number);
+-- ============================================================
+-- Indexes (idempotent)
+-- ============================================================
 
 CREATE INDEX IF NOT EXISTS idx_patents_assignee
     ON patents (assignee_company_id)
