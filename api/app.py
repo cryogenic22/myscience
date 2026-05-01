@@ -43,6 +43,14 @@ except Exception as _e:
     logger.error("Failed to import auth router (SPEC_018): %s", _e)
     _AUTH_ROUTER_OK = False
 
+# SPEC_019 connectors router (list, dossier, health-check, config, run)
+try:
+    from api.routes import connectors as connectors_route
+    _CONNECTORS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import connectors router (SPEC_019): %s", _e)
+    _CONNECTORS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -85,6 +93,8 @@ def create_app() -> FastAPI:
         all_routers.append(upload_route.router)
     if _AUTH_ROUTER_OK:
         all_routers.append(auth_route.router)
+    if _CONNECTORS_ROUTER_OK:
+        all_routers.append(connectors_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
@@ -471,6 +481,7 @@ def create_app() -> FastAPI:
                     "catalog/", "metrics", "enrichment", "health",
                     "therapeutic-areas", "feedback", "scenarios", "steward",
                     "literature", "pricing", "intelligence", "agent",
+                    "auth/", "upload", "connectors/",
                     "openapi.json", "docs", "redoc",
                 ))
                 if not is_api and not path.startswith("assets/"):
@@ -495,6 +506,7 @@ def create_app() -> FastAPI:
         @app.get("/workspace")
         @app.get("/search")
         @app.get("/newui")
+        @app.get("/connectors")
         async def serve_frontend_routes():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
