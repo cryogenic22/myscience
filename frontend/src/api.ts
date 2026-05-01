@@ -903,3 +903,97 @@ function filenameFromDisposition(disposition: string): string {
   const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
   return match?.[1] ?? 'report.md';
 }
+
+// ────────────────────────────────────────────────────────────────────
+// SPEC-019 — Connector management API
+// ────────────────────────────────────────────────────────────────────
+
+export interface ConnectorSummary {
+  source_key: string;
+  label: string;
+  schedule: string;
+  enabled: boolean;
+  auto_approve_runs: boolean;
+  manual_only: boolean;
+  notes: string | null;
+  connection_status: 'connected' | 'available' | 'disabled';
+  last_run: { status: string; completed_at: string | null; records_inserted: number | null } | null;
+  description: string | null;
+  license: string | null;
+}
+
+export interface ConnectorDetail extends ConnectorSummary {
+  license_url: string | null;
+  api_base_url: string | null;
+  config: {
+    enabled: boolean;
+    auto_approve_runs: boolean;
+    manual_only: boolean;
+    notes: string | null;
+  };
+  recent_runs: Array<{
+    status: string;
+    started_at: string | null;
+    completed_at: string | null;
+    records_inserted: number | null;
+  }>;
+}
+
+export interface HealthCheckResponse {
+  source_key: string;
+  healthy: boolean;
+  message: string;
+  response_time_ms: number | null;
+  checked_at: string | null;
+}
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const tok = window.localStorage.getItem('mz_auth_token');
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
+}
+
+export const connectorsApi = {
+  list: (): Promise<{ connectors: ConnectorSummary[] }> =>
+    fetch(`${BASE}/connectors`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  detail: (key: string): Promise<ConnectorDetail> =>
+    fetch(`${BASE}/connectors/${encodeURIComponent(key)}`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  healthCheck: (key: string): Promise<HealthCheckResponse> =>
+    fetch(`${BASE}/connectors/${encodeURIComponent(key)}/health-check`, {
+      method: 'POST',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  updateConfig: (
+    key: string,
+    body: { enabled?: boolean; auto_approve_runs?: boolean; manual_only?: boolean; notes?: string | null },
+  ): Promise<ConnectorDetail['config'] & { source_key: string }> =>
+    fetch(`${BASE}/connectors/${encodeURIComponent(key)}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  triggerRun: (key: string): Promise<{ source_key: string; queued: boolean; triggered_by: string; detail: unknown }> =>
+    fetch(`${BASE}/connectors/${encodeURIComponent(key)}/run`, {
+      method: 'POST',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
