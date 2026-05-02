@@ -507,6 +507,50 @@ class LLMSynthesizer:
 
         return narrative
 
+    def raw_chat(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 900,
+        temperature: float = 0.2,
+    ) -> Optional[str]:
+        """Direct chat completion bypass for callers that build their own
+        prompts (e.g. SPEC-021 war game reaction engine).
+
+        Returns the assistant's text content or None if the LLM is
+        unavailable / all model attempts fail. Tries the primary model
+        then the fallback, same retry shape as synthesize().
+        """
+        if not self.enabled:
+            return None
+
+        primary_model = self.config.llm.model
+        fallback_model = getattr(self.config.llm, "fallback_model", primary_model)
+        models = [primary_model]
+        if fallback_model and fallback_model != primary_model:
+            models.append(fallback_model)
+
+        client = self._get_client()
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        for model in models:
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                text = (resp.choices[0].message.content or "").strip()
+                if text:
+                    return text
+            except Exception as e:
+                logger.warning("raw_chat model %s failed: %s", model, e)
+                continue
+        return None
+
     def synthesize(
         self,
         question: str,

@@ -360,9 +360,9 @@ def generate_reactions(
         )
 
         try:
-            reply = llm.synthesize(
-                system_prompt=system_prompt,
-                user_content=user_content,
+            reply = llm.raw_chat(
+                system=system_prompt,
+                user=user_content,
                 max_tokens=900,
             )
         except Exception as exc:

@@ -145,23 +145,44 @@ def _fetch_room(db: Database, room_id: str) -> Optional[dict]:
         return None
 
 
-def _fetch_competitors(db: Database, exclude_company_id: Optional[str], *, limit: int = 4) -> list[dict]:
+def _fetch_competitors(
+    db: Database,
+    exclude_company_id: Optional[str],
+    exclude_company_name: Optional[str] = None,
+    *,
+    limit: int = 4,
+) -> list[dict]:
     """Pick top-N competitor companies for the simulation.
 
     Heuristic: companies with the most drugs (rough proxy for competitive
-    relevance). Excludes the player's own company if known.
+    relevance). Excludes the player by id when available, otherwise by
+    ILIKE on name (handles the demo case where the player isn't a real
+    DB company id).
     """
+    name_pattern = None
+    if exclude_company_name:
+        # Match either direction: stored name contains player or vice-versa
+        # Take the first 2-3 distinct word(s) for fuzzy match (e.g. "Novo Nordisk Inc"
+        # matches "Novo Nordisk")
+        first_words = " ".join(exclude_company_name.split()[:2])
+        name_pattern = f"%{first_words}%"
+
     try:
         rows = db.fetch_all(
             """SELECT c.id::text AS id, c.name, COUNT(d.id) AS drug_count
                FROM companies c
                LEFT JOIN drugs d ON d.company_id = c.id
                WHERE (%s::text IS NULL OR c.id::text != %s)
+                 AND (%s::text IS NULL OR c.name NOT ILIKE %s)
                GROUP BY c.id, c.name
                HAVING COUNT(d.id) > 0
                ORDER BY drug_count DESC NULLS LAST
                LIMIT %s""",
-            [exclude_company_id, exclude_company_id, limit],
+            [
+                exclude_company_id, exclude_company_id,
+                name_pattern, name_pattern,
+                limit,
+            ],
         )
         return [{"id": r["id"], "name": r["name"]} for r in (rows or [])]
     except Exception:
@@ -391,7 +412,11 @@ def submit_round(
         for r in history_rows
     ]
 
-    competitors = _fetch_competitors(db, body.player_company_id)
+    competitors = _fetch_competitors(
+        db,
+        body.player_company_id,
+        body.player_company_name or room.get("primary_entity_name"),
+    )
 
     reactions = _generate_reactions(
         db, llm,
