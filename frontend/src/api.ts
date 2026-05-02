@@ -1228,7 +1228,30 @@ export const warRoomApi = {
         throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       }
     }),
+
+  suggestMoves: (id: string, body: { n?: number; signal_context?: Record<string, unknown> } = {}):
+    Promise<{ war_room_id: string; suggestions: MoveSuggestion[]; count: number; rule_version_id: string }> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/suggest-moves`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
 };
+
+export interface MoveSuggestion {
+  move_type: MoveType;
+  move_payload: Record<string, string>;
+  rationale: string;
+  expected_impact_score: number;       // 0..1
+  confidence_score: number;            // 0..1
+  confidence: 'high' | 'medium' | 'low';
+  evidence_basis: string[];
+  stripped_citations: string[];
+  evidence_validated: boolean;
+}
 
 export const MOVE_TYPE_META: Record<MoveType, { label: string; icon: string; desc: string; fields: string[] }> = {
   price_cut:          { label: 'Price Cut',            icon: '💵', desc: 'Reduce list/net price on a product',         fields: ['target_drug', 'discount_pct', 'geography', 'timing'] },

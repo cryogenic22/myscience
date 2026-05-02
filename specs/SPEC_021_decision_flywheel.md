@@ -331,6 +331,82 @@ The Phase D loop is the consulting moat. Most pharma CI vendors ship
 Phase A and call it AI. ZS's thesis (and ours) is that the value is in
 C+D.
 
+## LLM / tools / harness architecture decision
+
+The PD reviewer noted the path from AI-assisted to AI-led is incremental,
+not architectural. To make that real, we settled on this combination:
+
+- **LLM call:** `LLMSynthesizer.raw_chat(system, user, max_tokens)` — a
+  single thin passthrough that respects the model fallback chain. Used by
+  every war-game prompt (reactor + suggester). No streaming, no tool-use
+  inside the LLM call — the war-game prompts are *closed-form* (we
+  pre-build the dossier, ask one structured question, parse JSON).
+- **Tools:** the existing tool layer (`SQLQueryTool`, `MetricsQueryTool`,
+  `GraphSearchTool`) is used at *engine-construction time* — the engine
+  pre-fetches the dossier from the DB before invoking the LLM. We do
+  NOT give the LLM tool-use access during reaction generation. Reasons:
+  (a) the war-game LLM should only see what we vetted, (b) tool-use mid-
+  prompt makes outputs non-reproducible, (c) latency. Tools are still
+  there if a future "deep research" mode wants them.
+- **Harness:** `MarketZeroHarness` is reserved for **multi-step
+  autonomous loops** (DataSteward, FAIR scoring, etc.). The war-game
+  engines are single-step services and don't need a harness session.
+  When Phase D adds outcome detection (which IS a multi-step autonomous
+  flow), we'll wrap the suggester+reactor through the harness and get
+  session tracking, prompt versioning, and budget caps for free.
+
+The contract: every war-game engine is a function with signature
+`(db, llm, **structured_inputs) -> structured_output` so the harness
+can wrap it as an executor later without changing the service API.
+
+## Phase A.5 — Autonomous Move Suggester
+
+The reviewer's smallest leap toward AI-led: the system proposes the
+move, the human approves. Same engine pattern as the reactor, prompt
+reversed.
+
+### Player dossier (mirror of `build_competitor_dossier`)
+Pulls from the live DB:
+- Player's drugs (with mechanism, phase, approval date)
+- Active trials sponsored by the player
+- Recent market_events affecting the player
+- Pipeline-strength metric (from PharmaMetrics)
+- Coverage statement so the LLM doesn't reason as if the dossier were
+  exhaustive
+
+### Endpoint
+`POST /war-rooms/{id}/suggest-moves` (owner). Body optional:
+`{n: 3, signal_context: {kbq_tags, headline}}`. Returns N ranked
+suggestions, each:
+```json
+{
+  "move_type": "trial_readout",
+  "move_payload": {"target_drug": "semaglutide", "trial_id": "NCT...", ...},
+  "rationale": "Player has 3 Phase 3 GLP-1 trials reading out in Q3...",
+  "expected_impact_score": 0.78,
+  "confidence_score": 0.65,
+  "evidence_basis": ["NCT04822181", "drug semaglutide"]
+}
+```
+
+Suggestions persist in `move_suggestions` (migration 047) for audit and
+later prompt-version comparison.
+
+### Frontend
+`MoveSuggestions` component shows the 3 cards in the war room above the
+move selector. Click a card → pre-fills `MoveSelector` (move type +
+payload fields) and scrolls to "Run simulation". The human can accept,
+edit, or ignore. Clear visual: this is the system suggesting, you
+deciding.
+
+### Why this is still AI-assisted, not AI-led
+Honest framing: the human still picks among 3 ranked suggestions, sees
+why each was suggested, and triggers the simulation. The system is
+**proposing**, not **deciding**. To cross to AI-led we need Phases
+C+D — autonomous outcome detection + continuous recalibration. A.5 is
+the bridge that makes the future autonomous mode possible without
+re-platforming.
+
 ## Path from AI-assisted to AI-led (PD review follow-ups)
 
 These move us from "AI augments the analyst" to "AI leads with human
