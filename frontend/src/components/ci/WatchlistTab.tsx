@@ -16,7 +16,11 @@ function hasToken(): boolean {
   return !!window.localStorage.getItem('mz_auth_token');
 }
 
-export default function WatchlistTab() {
+interface Props {
+  onOpenWarRoom?: (roomId: string) => void;
+}
+
+export default function WatchlistTab({ onOpenWarRoom }: Props = {}) {
   const authed = hasToken();
   const [entries, setEntries] = useState<WatchlistEntry[]>([]);
   const [loading, setLoading] = useState(authed);
@@ -246,6 +250,7 @@ export default function WatchlistTab() {
             entity_type: e.entity_type,
             entity_id: e.entity_id,
           }))}
+          onOpenWarRoom={onOpenWarRoom}
         />
       )}
     </div>

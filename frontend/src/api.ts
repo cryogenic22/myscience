@@ -1103,3 +1103,148 @@ export const watchlistApi = {
       if (!r.ok && r.status !== 204) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
     }),
 };
+
+// ────────────────────────────────────────────────────────────────────
+// SPEC-021 — War Room API (decision flywheel Phase A)
+// ────────────────────────────────────────────────────────────────────
+
+export type MoveType =
+  | 'price_cut' | 'new_indication' | 'label_expansion' | 'trial_readout'
+  | 'acquisition' | 'formulation_switch' | 'geo_expansion' | 'segment_pivot';
+
+export type ReactionType =
+  | 'match_price' | 'counter_launch' | 'accelerate_trial' | 'seek_partnership'
+  | 'attack_label' | 'hold_position' | 'exit_segment' | 'differentiate';
+
+export type GamePhase = 'prelaunch' | 'launch' | 'postlaunch';
+
+export interface WarRoomReaction {
+  id: string | null;
+  round_id: string;
+  competitor_company_id: string | null;
+  competitor_company_name: string;
+  reaction_type: ReactionType;
+  headline: string | null;
+  specific_action: string | null;
+  asset_leveraged: { id?: string; name?: string; rationale?: string } | null;
+  rationale: string | null;
+  evidence_basis: string[];
+  scores: {
+    market_share_delta?: number;
+    time_to_execute_months?: number;
+    capex_required_musd?: number;
+    regulatory_risk?: number;
+    payer_acceptance?: number;
+  };
+  confidence: 'high' | 'medium' | 'low' | null;
+  created_at: string | null;
+}
+
+export interface WarRoomRound {
+  id: string;
+  war_room_id: string;
+  round_number: number;
+  player_company_id: string | null;
+  player_company_name: string | null;
+  move_type: MoveType;
+  move_payload: Record<string, unknown>;
+  notes: string | null;
+  created_at: string | null;
+  reactions: WarRoomReaction[];
+}
+
+export interface WarRoom {
+  id: string;
+  title: string;
+  owner_user_id: string | null;
+  scenario_question: string | null;
+  primary_entity_type: string | null;
+  primary_entity_id: string | null;
+  primary_entity_name: string | null;
+  source_signal_id: string | null;
+  game_phase: GamePhase;
+  status: 'draft' | 'active' | 'closed';
+  created_at: string | null;
+  updated_at: string | null;
+  rounds?: WarRoomRound[];
+}
+
+export const warRoomApi = {
+  create: (body: {
+    title: string;
+    scenario_question?: string;
+    primary_entity_type?: string;
+    primary_entity_id?: string;
+    primary_entity_name?: string;
+    source_signal_id?: string;
+    game_phase?: GamePhase;
+  }): Promise<WarRoom> =>
+    fetch(`${BASE}/war-rooms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  list: (): Promise<{ war_rooms: WarRoom[] }> =>
+    fetch(`${BASE}/war-rooms`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  detail: (id: string): Promise<WarRoom> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  submitRound: (id: string, body: {
+    move_type: MoveType;
+    move_payload?: Record<string, unknown>;
+    notes?: string;
+    player_company_id?: string;
+    player_company_name?: string;
+  }): Promise<WarRoomRound> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/rounds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  remove: (id: string): Promise<void> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok && r.status !== 204) {
+        throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      }
+    }),
+};
+
+export const MOVE_TYPE_META: Record<MoveType, { label: string; icon: string; desc: string; fields: string[] }> = {
+  price_cut:          { label: 'Price Cut',            icon: '💵', desc: 'Reduce list/net price on a product',         fields: ['target_drug', 'discount_pct', 'geography', 'timing'] },
+  new_indication:     { label: 'New Indication',       icon: '🎯', desc: 'Pursue a new indication approval',           fields: ['target_drug', 'indication', 'phase', 'timing'] },
+  label_expansion:    { label: 'Label Expansion',      icon: '📋', desc: 'Expand existing label',                      fields: ['target_drug', 'expansion', 'evidence_source', 'timing'] },
+  trial_readout:      { label: 'Pivotal Trial Readout',icon: '📊', desc: 'Announce Phase 3 results',                   fields: ['target_drug', 'trial_id', 'endpoint', 'timing'] },
+  acquisition:        { label: 'Acquisition',          icon: '🤝', desc: 'M&A or in-licensing',                        fields: ['asset', 'deal_size', 'indication', 'timing'] },
+  formulation_switch: { label: 'Formulation Switch',   icon: '💊', desc: 'Launch new formulation',                     fields: ['target_drug', 'new_formulation', 'advantage', 'timing'] },
+  geo_expansion:      { label: 'Geographic Expansion', icon: '🌍', desc: 'Enter new geography',                        fields: ['target_drug', 'region', 'approach', 'timing'] },
+  segment_pivot:      { label: 'Segment Pivot',        icon: '🎯', desc: 'Shift between patient segments',             fields: ['target_drug', 'from_segment', 'to_segment', 'timing'] },
+};
+
+export const REACTION_TYPE_META: Record<ReactionType, { label: string; color: string }> = {
+  match_price:        { label: 'Match Price',          color: '#F59E0B' },
+  counter_launch:     { label: 'Counter-Launch',       color: '#DC2626' },
+  accelerate_trial:   { label: 'Accelerate Trial',     color: '#7C3AED' },
+  seek_partnership:   { label: 'Seek Partnership',     color: '#16A34A' },
+  attack_label:       { label: 'Attack Label',         color: '#B91C1C' },
+  hold_position:      { label: 'Hold Position',        color: '#71717A' },
+  exit_segment:       { label: 'Exit Segment',         color: '#52525B' },
+  differentiate:      { label: 'Differentiate',        color: '#2563EB' },
+};

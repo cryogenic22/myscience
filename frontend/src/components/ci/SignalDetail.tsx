@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { signalsApi, type Signal } from '../../api';
+import { Swords } from 'lucide-react';
+import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
 import EvidenceStack from './EvidenceStack';
@@ -8,6 +9,7 @@ interface Props {
   signal: Signal;
   reviewerMode?: boolean;
   onReviewed?: () => void;
+  onOpenWarRoom?: (roomId: string) => void;
 }
 
 function getRole(): string | null {
@@ -15,11 +17,40 @@ function getRole(): string | null {
   return window.localStorage.getItem('mz_auth_role');
 }
 
-export default function SignalDetail({ signal, reviewerMode = false, onReviewed }: Props) {
+function hasToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!window.localStorage.getItem('mz_auth_token');
+}
+
+export default function SignalDetail({ signal, reviewerMode = false, onReviewed, onOpenWarRoom }: Props) {
   const role = getRole();
   const isEnterprise = role === 'enterprise';
+  const authed = hasToken();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
+
+  const simulate = async () => {
+    if (!authed || !onOpenWarRoom) return;
+    setSimulating(true);
+    setError(null);
+    try {
+      const room = await warRoomApi.create({
+        title: `What if: ${signal.headline}`,
+        scenario_question: signal.summary || signal.headline,
+        primary_entity_type: signal.primary_entity_type ?? undefined,
+        primary_entity_id: signal.primary_entity_id ?? undefined,
+        primary_entity_name: signal.primary_entity_name ?? undefined,
+        source_signal_id: signal.id,
+        game_phase: 'launch',
+      });
+      onOpenWarRoom(room.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const review = async (status: 'reviewed' | 'shipped' | 'retracted') => {
     setBusy(status);
@@ -57,6 +88,26 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed 
           >
             {signal.status}
           </span>
+          {onOpenWarRoom && (
+            <button
+              type="button"
+              onClick={simulate}
+              disabled={!authed || simulating}
+              className="text-[11px] font-medium ml-auto inline-flex items-center gap-1.5"
+              style={{
+                padding: '5px 12px',
+                borderRadius: '6px',
+                background: authed ? 'var(--color-accent)' : 'var(--color-surface-2)',
+                color: authed ? 'white' : 'var(--color-ink-4)',
+                cursor: authed && !simulating ? 'pointer' : 'not-allowed',
+                border: 'none',
+              }}
+              title={authed ? 'Open this signal in a war room — pick a competitive move and model competitor reactions.' : 'Log in to simulate'}
+            >
+              <Swords size={12} />
+              {simulating ? 'Opening…' : 'Simulate in War Room'}
+            </button>
+          )}
         </div>
         <h1
           className="font-display text-[20px] leading-snug"

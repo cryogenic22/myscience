@@ -1,17 +1,20 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import DigestTab from '../components/ci/DigestTab';
 import SignalsTab from '../components/ci/SignalsTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
+import WarRoomView from '../components/ci/war/WarRoomView';
+import WarRoomsList from '../components/ci/war/WarRoomsList';
 
-type TabKey = 'digest' | 'signals' | 'watchlist' | 'reviewer';
+type TabKey = 'digest' | 'signals' | 'watchlist' | 'rooms' | 'reviewer';
 
 const ALL_TABS: Array<{ key: TabKey; label: string; enterprise?: boolean }> = [
   { key: 'digest',    label: 'Digest' },
   { key: 'signals',   label: 'Signals' },
   { key: 'watchlist', label: 'Watchlist' },
+  { key: 'rooms',     label: 'War Rooms' },
   { key: 'reviewer',  label: 'Reviewer', enterprise: true },
 ];
 
@@ -22,10 +25,45 @@ function getRole(): string | null {
 
 export default function CIPage() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const role = getRole();
   const isEnterprise = role === 'enterprise';
   const tabs = ALL_TABS.filter((t) => !t.enterprise || isEnterprise);
-  const [tab, setTab] = useState<TabKey>('digest');
+
+  const initialTab = (params.get('tab') as TabKey) || 'digest';
+  const [tab, setTabState] = useState<TabKey>(initialTab);
+  const activeRoom = params.get('room');
+
+  // Sync tab to URL
+  const setTab = (t: TabKey) => {
+    setTabState(t);
+    const next = new URLSearchParams(params);
+    next.set('tab', t);
+    next.delete('room');
+    setParams(next, { replace: true });
+  };
+
+  const openWarRoom = (id: string) => {
+    const next = new URLSearchParams(params);
+    next.set('tab', 'rooms');
+    next.set('room', id);
+    setParams(next, { replace: false });
+    setTabState('rooms');
+  };
+
+  const closeWarRoom = () => {
+    const next = new URLSearchParams(params);
+    next.delete('room');
+    next.set('tab', 'rooms');
+    setParams(next, { replace: false });
+  };
+
+  // If room param disappears (back button), no-op — body already conditions on it
+  useEffect(() => {
+    const t = (params.get('tab') as TabKey) || 'digest';
+    if (t !== tab) setTabState(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   return (
     <div className="flex flex-col h-screen" style={{ background: 'var(--color-surface)' }}>
@@ -59,7 +97,6 @@ export default function CIPage() {
           Competitive Intelligence
         </span>
 
-        {/* Tab nav */}
         <nav
           className="ml-6 flex items-center gap-0.5 rounded-[10px]"
           style={{ padding: '4px', background: 'var(--color-surface-2)' }}
@@ -111,10 +148,19 @@ export default function CIPage() {
       {/* Body */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'digest' && <DigestTab />}
-        {tab === 'signals' && <SignalsTab />}
-        {tab === 'watchlist' && <WatchlistTab />}
+        {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'rooms' && (
+          activeRoom
+            ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
+            : <WarRoomsList onOpen={openWarRoom} />
+        )}
         {tab === 'reviewer' && isEnterprise && (
-          <SignalsTab reviewerMode initialStatus="candidate" />
+          <SignalsTab
+            reviewerMode
+            initialStatus="candidate"
+            onOpenWarRoom={openWarRoom}
+          />
         )}
       </div>
     </div>

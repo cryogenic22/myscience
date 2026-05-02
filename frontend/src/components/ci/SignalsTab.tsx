@@ -8,6 +8,7 @@ interface Props {
   reviewerMode?: boolean;
   initialStatus?: 'candidate' | 'reviewed' | 'shipped';
   watchlistFilter?: Array<{ entity_type: string; entity_id: string }>;
+  onOpenWarRoom?: (roomId: string) => void;
 }
 
 const IMPACT_OPTIONS: Array<{ key: ImpactTier | 'all'; label: string }> = [
@@ -21,6 +22,7 @@ export default function SignalsTab({
   reviewerMode = false,
   initialStatus,
   watchlistFilter,
+  onOpenWarRoom,
 }: Props) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -156,6 +158,7 @@ export default function SignalsTab({
             signal={detail}
             reviewerMode={reviewerMode}
             onReviewed={() => void reload()}
+            onOpenWarRoom={onOpenWarRoom}
           />
         ) : (
           <div
