@@ -125,7 +125,10 @@ def _reaction_to_dict(row: dict) -> dict:
         "asset_leveraged": asset,
         "rationale": row.get("rationale"),
         "evidence_basis": list(row.get("evidence_basis") or []),
+        "stripped_citations": list(row.get("stripped_citations") or []),
+        "evidence_validated": bool(row.get("evidence_validated", True)),
         "scores": scores or {},
+        "confidence_score": row.get("confidence_score"),
         "confidence": row.get("confidence"),
         "created_at": _iso(row.get("created_at")),
     }
@@ -436,9 +439,10 @@ def submit_round(
                 """INSERT INTO war_room_reactions
                        (round_id, competitor_company_id, competitor_company_name,
                         reaction_type, headline, specific_action, asset_leveraged,
-                        rationale, evidence_basis, scores, confidence)
+                        rationale, evidence_basis, stripped_citations,
+                        evidence_validated, scores, confidence_score, confidence)
                    VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s::jsonb,
-                           %s, %s, %s::jsonb, %s)""",
+                           %s, %s, %s, %s, %s::jsonb, %s, %s)""",
                 [
                     round_id,
                     rxn.get("competitor_company_id"),
@@ -449,7 +453,10 @@ def submit_round(
                     json.dumps(rxn.get("asset_leveraged") or {}),
                     rxn.get("rationale"),
                     rxn.get("evidence_basis") or [],
+                    rxn.get("stripped_citations") or [],
+                    bool(rxn.get("evidence_validated", True)),
                     json.dumps(rxn.get("scores") or {}),
+                    rxn.get("confidence_score"),
                     rxn.get("confidence"),
                 ],
             )

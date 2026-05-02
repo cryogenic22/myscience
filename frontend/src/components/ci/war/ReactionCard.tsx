@@ -62,10 +62,30 @@ export default function ReactionCard({ reaction }: Props) {
             />
             <span className="text-[10px] uppercase" style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}>
               {reaction.confidence}
+              {typeof reaction.confidence_score === 'number' && (
+                <span className="ml-1">
+                  ({(reaction.confidence_score * 100).toFixed(0)}%)
+                </span>
+              )}
             </span>
           </div>
         )}
       </div>
+
+      {reaction.evidence_validated === false && reaction.stripped_citations && reaction.stripped_citations.length > 0 && (
+        <div
+          className="text-[10px] mb-2 inline-flex items-center gap-1"
+          style={{
+            padding: '3px 8px',
+            borderRadius: '4px',
+            background: '#FEF3C7',
+            color: '#A16207',
+          }}
+          title={`Stripped: ${reaction.stripped_citations.join(', ')}`}
+        >
+          ⚠ {reaction.stripped_citations.length} citation{reaction.stripped_citations.length === 1 ? '' : 's'} unverified — confidence downgraded
+        </div>
+      )}
 
       {reaction.specific_action && (
         <div

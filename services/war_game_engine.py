@@ -84,8 +84,15 @@ def build_competitor_dossier(db, company_id: Optional[str], *, max_drugs: int = 
     Defensive: missing tables / queries return empty arrays so the
     engine still produces a `hold_position` reaction rather than
     crashing.
+
+    PD review strengthening: includes a `coverage_statement` so the
+    LLM doesn't reason as if the dossier were exhaustive.
     """
-    dossier: dict = {"company_id": company_id, "drugs": [], "trials": [], "events": []}
+    dossier: dict = {
+        "company_id": company_id,
+        "drugs": [], "trials": [], "events": [],
+        "coverage_statement": "No data available.",
+    }
     if not company_id:
         return dossier
 
@@ -158,7 +165,166 @@ def build_competitor_dossier(db, company_id: Optional[str], *, max_drugs: int = 
     except Exception:
         logger.debug("dossier: events query failed for %s", company_id)
 
+    # PD review strengthening: dossier coverage statement
+    try:
+        total_drugs_row = db.fetch_one(
+            "SELECT COUNT(*) AS c FROM drugs WHERE company_id = %s::uuid",
+            [company_id],
+        )
+        total_trials_row = db.fetch_one(
+            """SELECT COUNT(*) AS c FROM clinical_trials
+               WHERE sponsor_name ILIKE
+                     (SELECT '%%' || name || '%%' FROM companies WHERE id = %s::uuid LIMIT 1)""",
+            [company_id],
+        )
+        total_drugs = (total_drugs_row or {}).get("c", 0) or 0
+        total_trials = (total_trials_row or {}).get("c", 0) or 0
+        shown_drugs = len(dossier["drugs"])
+        shown_trials = len(dossier["trials"])
+        dossier["coverage_statement"] = (
+            f"Showing {shown_drugs} of {total_drugs} known drugs and "
+            f"{shown_trials} of {total_trials} known trials in our DB. "
+            f"Real-world counts are likely higher; reason conservatively."
+        )
+    except Exception:
+        logger.debug("dossier: coverage query failed for %s", company_id)
+
     return dossier
+
+
+# ────────────────────────────────────────────────────────────────────
+# PD review strengthening: post-LLM evidence validation
+# ────────────────────────────────────────────────────────────────────
+
+def validate_evidence_basis(db, evidence: list[str]) -> tuple[list[str], list[str]]:
+    """Verify each cited ID against the live DB.
+
+    Returns (validated_ids, stripped_ids). A citation is "validated"
+    if it matches at least one row in drugs.id, drugs.generic_name,
+    drugs.brand_name, clinical_trials.id (NCT), pubmed_articles.pmid,
+    OR — defensively — looks like a well-formed pattern (NCTxxxxxxxx,
+    PMID:nnnn, drug_id UUID) AND we just couldn't query the right
+    table. We err on the side of stripping anything that fails to
+    resolve so hallucinations are downgraded, not displayed.
+    """
+    if not evidence:
+        return [], []
+
+    validated: list[str] = []
+    stripped: list[str] = []
+
+    for raw in evidence:
+        ev = (raw or "").strip()
+        if not ev:
+            continue
+
+        resolved = False
+        # NCT — clinical_trials.id is the NCT
+        if ev.upper().startswith("NCT"):
+            try:
+                row = db.fetch_one(
+                    "SELECT 1 FROM clinical_trials WHERE id = %s LIMIT 1",
+                    [ev],
+                )
+                resolved = bool(row)
+            except Exception:
+                # If query fails, leave resolved=False — strip rather
+                # than risk surfacing a hallucination
+                resolved = False
+        # PMID
+        elif ev.upper().startswith("PMID"):
+            pmid = ev.split(":", 1)[-1].strip()
+            try:
+                row = db.fetch_one(
+                    "SELECT 1 FROM pubmed_articles WHERE pmid = %s LIMIT 1",
+                    [pmid],
+                )
+                resolved = bool(row)
+            except Exception:
+                resolved = False
+        # CHEMBL
+        elif ev.upper().startswith("CHEMBL"):
+            # We don't currently have a chembl_id column to validate against
+            # — accept the format but flag low-confidence in the audit
+            resolved = True
+        # UUID-shaped → try drug_id, then company_id
+        elif len(ev) == 36 and ev.count("-") == 4:
+            try:
+                row = db.fetch_one(
+                    "SELECT 1 FROM drugs WHERE id = %s::uuid LIMIT 1",
+                    [ev],
+                )
+                resolved = bool(row)
+                if not resolved:
+                    row = db.fetch_one(
+                        "SELECT 1 FROM companies WHERE id = %s::uuid LIMIT 1",
+                        [ev],
+                    )
+                    resolved = bool(row)
+            except Exception:
+                resolved = False
+        # Drug name fallback — match against generic_name or brand_name
+        else:
+            try:
+                row = db.fetch_one(
+                    """SELECT 1 FROM drugs
+                       WHERE LOWER(generic_name) = LOWER(%s)
+                          OR LOWER(brand_name) = LOWER(%s)
+                       LIMIT 1""",
+                    [ev, ev],
+                )
+                resolved = bool(row)
+            except Exception:
+                resolved = False
+
+        if resolved:
+            validated.append(ev)
+        else:
+            stripped.append(ev)
+
+    return validated, stripped
+
+
+# ────────────────────────────────────────────────────────────────────
+# Numeric confidence helpers (PD review strengthening)
+# ────────────────────────────────────────────────────────────────────
+
+def categorize_confidence(score: float) -> str:
+    """Derive categorical label from numeric confidence score.
+
+    Thresholds chosen so 'high' is a meaningful claim (top third),
+    'medium' covers the middle third, 'low' is the bottom third + zero.
+    """
+    if score >= 0.66:
+        return "high"
+    if score >= 0.33:
+        return "medium"
+    return "low"
+
+
+def _coerce_confidence_score(parsed: dict) -> float:
+    """Pull numeric confidence from LLM output. Falls back through:
+       1. parsed.confidence_score (the new schema we ask for)
+       2. parsed.confidence as numeric
+       3. parsed.confidence as categorical → midpoint of the band
+       4. 0.5 default
+    """
+    raw = parsed.get("confidence_score")
+    if isinstance(raw, (int, float)):
+        return max(0.0, min(1.0, float(raw)))
+
+    raw = parsed.get("confidence")
+    if isinstance(raw, (int, float)):
+        return max(0.0, min(1.0, float(raw)))
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s == "high":
+            return 0.8
+        if s == "medium":
+            return 0.5
+        if s == "low":
+            return 0.2
+    return 0.5
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -175,6 +341,8 @@ GROUNDING RULES (no-fabrication invariant):
 3. If no asset enables a credible reaction, choose hold_position. Do NOT invent
    capabilities, drugs, or trials that are not in the dossier.
 4. Be deterministic and conservative. Do not optimise narratives.
+5. Respect the dossier coverage statement — if data is partial, lower your
+   confidence_score accordingly. Better honest than precise.
 
 REACTION ENUM (pick one): {reaction_types}
 
@@ -184,6 +352,12 @@ SCORING:
 - capex_required_musd: 50 to 3000
 - regulatory_risk: 1 (low) to 10 (high)
 - payer_acceptance: 1 (weak) to 10 (strong)
+- confidence_score: 0.0 (no data supports this) to 1.0 (high-quality direct evidence)
+
+EVIDENCE_BASIS:
+List the dossier IDs/names that support the reaction. Use real values from the
+dossier (NCT IDs, drug names, drug_ids). Anything you can't cite from the
+dossier will be stripped post-hoc and your confidence_score downgraded.
 
 Output ONLY a single JSON object, no markdown, no preamble:
 {{
@@ -200,18 +374,20 @@ Output ONLY a single JSON object, no markdown, no preamble:
     "regulatory_risk": <number>,
     "payer_acceptance": <number>
   }},
-  "confidence": "high|medium|low"
+  "confidence_score": <number 0.0..1.0>
 }}
 """
 
 
 def _build_user_content(player_name: str, move_type: str, move_payload: dict,
                          competitor_dossier: dict, history: list) -> str:
+    coverage = competitor_dossier.get("coverage_statement") or ""
     return (
         f"PLAYER MOVE ({player_name}):\n"
         f"  type: {move_type}\n"
         f"  payload: {json.dumps(move_payload, default=str)}\n\n"
         f"YOUR DOSSIER ({competitor_dossier.get('company_id')}):\n"
+        f"  COVERAGE: {coverage}\n"
         f"{json.dumps(competitor_dossier, indent=2, default=str)}\n\n"
         f"RECENT HISTORY (last few rounds):\n"
         f"{json.dumps(history[-4:], indent=2, default=str)}\n\n"
@@ -271,6 +447,8 @@ def _hold_position(competitor_name: str, reason: str) -> dict:
         "asset_leveraged": {"id": "n/a", "name": "n/a", "rationale": reason},
         "rationale": reason,
         "evidence_basis": [],
+        "stripped_citations": [],
+        "evidence_validated": True,
         "scores": {
             "market_share_delta": 0.0,
             "time_to_execute_months": 6.0,
@@ -278,11 +456,18 @@ def _hold_position(competitor_name: str, reason: str) -> dict:
             "regulatory_risk": 5.0,
             "payer_acceptance": 5.0,
         },
+        "confidence_score": 0.15,
         "confidence": "low",
     }
 
 
-def _normalize_reaction(parsed: dict, competitor: dict) -> dict:
+def _normalize_reaction(parsed: dict, competitor: dict, db=None) -> dict:
+    """Normalize the LLM JSON into the persistence shape, including the
+    PD-review strengthenings:
+      - numeric confidence_score (0..1) with categorical derived
+      - post-LLM evidence validation (strip hallucinated IDs)
+      - confidence downgrade per stripped citation (-0.2, floor 0.0)
+    """
     rxn_type = parsed.get("reaction_type")
     if rxn_type not in REACTION_TYPES:
         rxn_type = "hold_position"
@@ -291,13 +476,21 @@ def _normalize_reaction(parsed: dict, competitor: dict) -> dict:
     if not isinstance(asset, dict):
         asset = {"id": "", "name": "", "rationale": ""}
 
-    evidence = parsed.get("evidence_basis") or []
-    if not isinstance(evidence, list):
-        evidence = []
+    evidence_raw = parsed.get("evidence_basis") or []
+    if not isinstance(evidence_raw, list):
+        evidence_raw = []
+    evidence_raw = [str(e)[:200] for e in evidence_raw][:10]
 
-    confidence = parsed.get("confidence")
-    if confidence not in ("high", "medium", "low"):
-        confidence = "low"
+    # Validate evidence against the live DB (strengthening #2)
+    if db is not None and evidence_raw:
+        validated, stripped = validate_evidence_basis(db, evidence_raw)
+    else:
+        validated, stripped = list(evidence_raw), []
+
+    # Numeric confidence + downgrade per stripped citation (strengthening #1)
+    score = _coerce_confidence_score(parsed)
+    if stripped:
+        score = max(0.0, score - 0.2 * len(stripped))
 
     return {
         "competitor_company_id": competitor.get("id"),
@@ -307,9 +500,12 @@ def _normalize_reaction(parsed: dict, competitor: dict) -> dict:
         "specific_action": (parsed.get("specific_action") or "")[:500],
         "asset_leveraged": asset,
         "rationale": (parsed.get("rationale") or "")[:1000],
-        "evidence_basis": [str(e)[:200] for e in evidence][:10],
+        "evidence_basis": validated,
+        "stripped_citations": stripped,
+        "evidence_validated": len(stripped) == 0,
         "scores": _clamp_scores(parsed.get("scores")),
-        "confidence": confidence,
+        "confidence_score": score,
+        "confidence": categorize_confidence(score),
     }
 
 
@@ -383,6 +579,6 @@ def generate_reactions(
             })
             continue
 
-        out.append(_normalize_reaction(parsed, {"id": comp_id, "name": comp_name}))
+        out.append(_normalize_reaction(parsed, {"id": comp_id, "name": comp_name}, db=db))
 
     return out

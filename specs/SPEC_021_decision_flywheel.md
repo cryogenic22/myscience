@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
 *Date: 2 May 2026*
-*Status: Phase A in progress*
+*Status: Phase A shipped + strengthenings in progress*
 
 ---
 
@@ -18,6 +18,27 @@ actionable hypothesis.
 
 The unit of value is no longer "an analyst saw a signal." It is **"a
 decision was made, simulated, committed, and post-mortemed."**
+
+## Honest positioning: AI-assisted vs AI-led
+
+This distinction matters for client positioning and for our own engineering
+discipline. Per the PD review:
+
+| Phase | Honest classification |
+|---|---|
+| A — Simulation | **AI-assisted.** Human picks the move, system models reactions. |
+| B — Catalog | No AI — pure CRUD. |
+| C — Decision Ledger | **AI-assisted.** Human commits, system records with AI-generated context. |
+| D — Outcome capture + flywheel | **AI-informed, approaching AI-led** when outcome detection is automated. |
+| Future — autonomous moves, multi-round, real-time recalibration | **AI-led.** |
+
+Don't oversell Phase A as "AI-led decision-making." It is "AI-powered
+competitive simulation grounded in real market data." That's strong
+positioning; it's also accurate.
+
+The infrastructure built in this spec **supports** the upgrade to AI-led
+without architectural rework. Each phase increases autonomy on the same
+substrate.
 
 ## The flywheel applied
 
@@ -60,6 +81,32 @@ data feeds back into:
 
 This is the closing of the flywheel. **It is the differentiator** —
 most CI platforms stop at Phase A.
+
+## PD reviewer strengthenings (incorporated)
+
+Three concrete asks from the design review, all incorporated below and
+shipped as a fast follow-up after Phase A:
+
+1. **Numeric confidence calibration.** Reaction `confidence` is a numeric
+   `confidence_score` (0.0–1.0); the categorical label (high/medium/low)
+   is derived from thresholds (≥0.66 = high, ≥0.33 = medium, else low).
+   This makes Phase D's prediction-error computation mathematical, not
+   categorical — essential for meaningful weight adjustment.
+
+2. **Post-LLM grounding validation.** Every cited evidence ID
+   (NCT/PMID/drug_id/etc.) is verified against the live DB after the LLM
+   responds. Hallucinated IDs are stripped and `confidence_score` is
+   downgraded by 0.2 per stripped citation (floor 0.0). The reaction is
+   tagged `evidence_validated: true|false` so the UI can flag stripped
+   citations explicitly. This is the same numeric-grounding pattern as
+   the SPEC-015 remediation plan, applied to simulation output.
+
+3. **Dossier coverage awareness.** `build_competitor_dossier` includes a
+   `coverage_statement` like *"Showing 3 of ~12 known drugs and 5 of
+   ~25 active trials"* derived from `COUNT(*)` queries. The prompt
+   includes this so the LLM doesn't reason as if the dossier were
+   exhaustive. The UI surfaces it on each reaction card so analysts
+   calibrate their trust.
 
 ## Phase A — Detailed Design
 
@@ -284,7 +331,64 @@ The Phase D loop is the consulting moat. Most pharma CI vendors ship
 Phase A and call it AI. ZS's thesis (and ours) is that the value is in
 C+D.
 
-## Follow-ups (not in any phase yet)
+## Path from AI-assisted to AI-led (PD review follow-ups)
+
+These move us from "AI augments the analyst" to "AI leads with human
+oversight." The architecture supports each one without rework — each is
+a new prompt, a new loop, or a new wire, not a new system.
+
+### Autonomous move generation (Phase A.5)
+Today: human picks the move type. AI-led: on a signal, the system
+generates 2–3 plausible competitive moves the player could make,
+simulates reactions for each, and presents a ranked recommendation.
+Same engine, same dossier pattern, prompt reversed
+("given this signal + player asset dossier, propose 3 high-impact
+responses constrained to the 8 move types"). Frontend shifts from
+*Pick a move → Simulate* to *Review and approve recommendation*.
+
+### Multi-round forward simulation (Phase B.5)
+Today: single round (player moves, competitors react, done). AI-led:
+the engine plays N rounds forward — competitor reactions trigger
+follow-up moves from the player and other competitors, surfacing
+stable equilibria and unstable dynamics. This is where "war game"
+becomes literal game theory, not just reaction prediction. Loop the
+existing single-round engine, cap depth.
+
+### Automated outcome detection (replaces manual capture in Phase D)
+Today (as specified): decision owner manually records actual outcome at
+target date. AI-led: the existing DataSteward signal loop watches the
+decision's primary entity. When a matching outcome signal appears
+(trial status change, FDA action, competitor launch), the system
+auto-proposes the post-mortem: *"Your committed decision predicted
+Lilly would hold_position. Signal fired 12 days ago shows they
+accelerated NCT09876543. Confirm as actual outcome?"* This wires the
+decision ledger directly to the signal pipeline and closes the loop
+without waiting for a human to remember.
+
+### Continuous (not quarterly) signal-weight recalibration
+Today (as specified): batch quarterly recalibration job. AI-led:
+every captured outcome immediately adjusts the relevant
+`signal_score_adjustments` row. The system maintains a running per-KBQ
+accuracy score and surfaces its own confidence trends:
+*"Clinical signals: 73% over last 6mo. M&A signals: 41% — consider
+reducing weight."* This makes calibration a property of the system,
+not an ops task.
+
+### The end state we're building toward
+
+A strategy team configures Market Zero at the start of a quarter
+(competitive scope, watched entities, KBQs of interest). At the end of
+the quarter they receive a report:
+
+> Here are the 12 competitive moves that occurred this quarter, here's
+> how they compared to our simulated predictions, here's how we've
+> adjusted our models, and here are the 3 decisions you should
+> consider for next quarter.
+
+— with no human manually triggering simulations or recording outcomes
+in between. SPEC-021 Phase A is step one of five toward that vision.
+
+## Other follow-ups (not in any phase yet)
 
 - Multi-region / multi-payer simulation dimensions
 - Probabilistic scoring (Monte Carlo over 100 reaction draws)

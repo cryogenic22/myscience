@@ -1129,6 +1129,8 @@ export interface WarRoomReaction {
   asset_leveraged: { id?: string; name?: string; rationale?: string } | null;
   rationale: string | null;
   evidence_basis: string[];
+  stripped_citations?: string[];           // PD strengthening: hallucinated IDs
+  evidence_validated?: boolean;            // false if anything was stripped
   scores: {
     market_share_delta?: number;
     time_to_execute_months?: number;
@@ -1136,7 +1138,8 @@ export interface WarRoomReaction {
     regulatory_risk?: number;
     payer_acceptance?: number;
   };
-  confidence: 'high' | 'medium' | 'low' | null;
+  confidence_score?: number | null;        // numeric (0..1) — primary
+  confidence: 'high' | 'medium' | 'low' | null;  // categorical (derived)
   created_at: string | null;
 }
 

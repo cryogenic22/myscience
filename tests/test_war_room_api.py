@@ -146,21 +146,42 @@ def _make_db():
             return None
         if "insert into war_room_reactions" in s and params:
             rid = _gen_id("rxn")
-            reactions.append({
-                "id": rid,
-                "round_id": params[0],
-                "competitor_company_id": params[1],
-                "competitor_company_name": params[2],
-                "reaction_type": params[3],
-                "headline": params[4],
-                "specific_action": params[5],
-                "asset_leveraged": params[6],
-                "rationale": params[7],
-                "evidence_basis": params[8],
-                "scores": params[9],
-                "confidence": params[10],
-                "created_at": datetime.now(timezone.utc),
-            })
+            # Accept both legacy (11 params) and post-046 (14 params) shapes
+            if len(params) >= 14:
+                reactions.append({
+                    "id": rid,
+                    "round_id": params[0],
+                    "competitor_company_id": params[1],
+                    "competitor_company_name": params[2],
+                    "reaction_type": params[3],
+                    "headline": params[4],
+                    "specific_action": params[5],
+                    "asset_leveraged": params[6],
+                    "rationale": params[7],
+                    "evidence_basis": params[8],
+                    "stripped_citations": params[9],
+                    "evidence_validated": params[10],
+                    "scores": params[11],
+                    "confidence_score": params[12],
+                    "confidence": params[13],
+                    "created_at": datetime.now(timezone.utc),
+                })
+            else:
+                reactions.append({
+                    "id": rid,
+                    "round_id": params[0],
+                    "competitor_company_id": params[1],
+                    "competitor_company_name": params[2],
+                    "reaction_type": params[3],
+                    "headline": params[4],
+                    "specific_action": params[5],
+                    "asset_leveraged": params[6],
+                    "rationale": params[7],
+                    "evidence_basis": params[8],
+                    "scores": params[9],
+                    "confidence": params[10],
+                    "created_at": datetime.now(timezone.utc),
+                })
             return None
         if "update war_rooms" in s and "set status" in s and params:
             # Route hardcodes status='closed'; param is just the room id
