@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { warRoomApi, type WarRoom } from '../../../api';
 
 interface Props {
@@ -30,6 +31,19 @@ export default function WarRoomsList({ onOpen }: Props) {
   }, [authed]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  const handleDelete = async (e: React.MouseEvent, id: string, title: string) => {
+    e.stopPropagation();
+    if (!window.confirm(`Close war room "${title}"? It stays in the DB but is hidden from active lists.`)) {
+      return;
+    }
+    try {
+      await warRoomApi.remove(id);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   if (!authed) {
     return (
@@ -72,11 +86,9 @@ export default function WarRoomsList({ onOpen }: Props) {
       ) : (
         <div className="space-y-2">
           {rooms.map((r) => (
-            <button
+            <div
               key={r.id}
-              type="button"
-              onClick={() => onOpen(r.id)}
-              className="w-full text-left"
+              className="group relative"
               style={{
                 padding: '14px 16px',
                 borderRadius: '6px',
@@ -84,44 +96,68 @@ export default function WarRoomsList({ onOpen }: Props) {
                 background: 'var(--color-surface)',
               }}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="text-[10px] uppercase font-medium"
-                  style={{
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    background: r.status === 'active' ? '#DCFCE7' : 'var(--color-surface-2)',
-                    color: r.status === 'active' ? '#15803D' : 'var(--color-ink-4)',
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  {r.status}
-                </span>
-                <span
-                  className="text-[10px] uppercase"
-                  style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}
-                >
-                  {r.game_phase}
-                </span>
-                <span
-                  className="ml-auto text-[11px]"
-                  style={{ color: 'var(--color-ink-4)' }}
-                >
-                  {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
-                </span>
-              </div>
-              <div
-                className="text-[13px] font-medium"
-                style={{ color: 'var(--color-ink)' }}
+              <button
+                type="button"
+                onClick={() => onOpen(r.id)}
+                className="w-full text-left"
+                style={{ background: 'transparent', border: 'none' }}
               >
-                {r.title}
-              </div>
-              {r.primary_entity_name && (
-                <div className="text-[11px] mt-1" style={{ color: 'var(--color-ink-4)' }}>
-                  {r.primary_entity_name}
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="text-[10px] uppercase font-medium"
+                    style={{
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      background: r.status === 'active' ? '#DCFCE7' : 'var(--color-surface-2)',
+                      color: r.status === 'active' ? '#15803D' : 'var(--color-ink-4)',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    {r.status}
+                  </span>
+                  <span
+                    className="text-[10px] uppercase"
+                    style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}
+                  >
+                    {r.game_phase}
+                  </span>
+                  <span
+                    className="ml-auto text-[11px]"
+                    style={{ color: 'var(--color-ink-4)' }}
+                  >
+                    {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+                  </span>
                 </div>
+                <div
+                  className="text-[13px] font-medium"
+                  style={{ color: 'var(--color-ink)' }}
+                >
+                  {r.title}
+                </div>
+                {r.primary_entity_name && (
+                  <div className="text-[11px] mt-1" style={{ color: 'var(--color-ink-4)' }}>
+                    {r.primary_entity_name}
+                  </div>
+                )}
+              </button>
+              {r.status === 'active' && (
+                <button
+                  type="button"
+                  onClick={(e) => handleDelete(e, r.id, r.title)}
+                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    padding: '4px',
+                    borderRadius: '4px',
+                    background: 'transparent',
+                    color: 'var(--color-ink-4)',
+                  }}
+                  title="Close war room"
+                  aria-label="Close war room"
+                >
+                  <Trash2 size={13} />
+                </button>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}

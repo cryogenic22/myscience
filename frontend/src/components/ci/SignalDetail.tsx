@@ -9,7 +9,7 @@ interface Props {
   signal: Signal;
   reviewerMode?: boolean;
   onReviewed?: () => void;
-  onOpenWarRoom?: (roomId: string) => void;
+  onOpenWarRoom?: (roomId: string, signalKbq?: string) => void;
 }
 
 function getRole(): string | null {
@@ -44,7 +44,8 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
         source_signal_id: signal.id,
         game_phase: 'launch',
       });
-      onOpenWarRoom(room.id);
+      // Pass the first KBQ tag so WarRoomView can pre-suggest a move type
+      onOpenWarRoom(room.id, signal.kbq_tags?.[0]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

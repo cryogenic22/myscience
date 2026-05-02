@@ -17,7 +17,7 @@ function hasToken(): boolean {
 }
 
 interface Props {
-  onOpenWarRoom?: (roomId: string) => void;
+  onOpenWarRoom?: (roomId: string, signalKbq?: string) => void;
 }
 
 export default function WatchlistTab({ onOpenWarRoom }: Props = {}) {

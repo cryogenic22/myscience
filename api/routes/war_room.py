@@ -16,6 +16,10 @@ from pydantic import BaseModel
 
 from api.deps import get_current_user, get_db, get_llm, require_role
 from db import Database
+from services.move_suggester import (
+    SUGGESTER_RULE_VERSION,
+    suggest_moves as _engine_suggest_moves,
+)
 from services.war_game_engine import (
     MOVE_TYPES,
     generate_reactions as _engine_generate,
@@ -47,6 +51,11 @@ class RoundBody(BaseModel):
     notes: Optional[str] = None
     player_company_id: Optional[str] = None
     player_company_name: Optional[str] = None
+
+
+class SuggestMovesBody(BaseModel):
+    n: int = 3
+    signal_context: Optional[dict] = None
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -207,6 +216,19 @@ def _generate_reactions(db, llm, *, player_name, move_type, move_payload,
     )
 
 
+# Stubable — tests patch this name
+def _suggest_moves(db, llm, *, player_entity_type, player_entity_id, player_name,
+                   signal_context, n):
+    return _engine_suggest_moves(
+        db, llm,
+        player_entity_type=player_entity_type,
+        player_entity_id=player_entity_id,
+        player_name=player_name,
+        signal_context=signal_context,
+        n=n,
+    )
+
+
 # ────────────────────────────────────────────────────────────────────
 # POST /war-rooms — create
 # ────────────────────────────────────────────────────────────────────
@@ -309,7 +331,9 @@ def get_room(room_id: str, db: Database = Depends(get_db)):
             reaction_rows = db.fetch_all(
                 """SELECT id, round_id, competitor_company_id, competitor_company_name,
                           reaction_type, headline, specific_action, asset_leveraged,
-                          rationale, evidence_basis, scores, confidence, created_at
+                          rationale, evidence_basis, stripped_citations,
+                          evidence_validated, scores, confidence_score, confidence,
+                          created_at
                    FROM war_room_reactions WHERE round_id = %s::uuid
                    ORDER BY created_at ASC""",
                 [rnd_dict["id"]],
@@ -431,8 +455,9 @@ def submit_round(
         history=history,
     )
 
-    # Persist reactions
+    # Persist reactions; track partial failures so the UI can surface them
     saved_reactions: list[dict] = []
+    persistence_errors: list[dict] = []
     for rxn in reactions:
         try:
             db.execute(
@@ -463,6 +488,10 @@ def submit_round(
         except Exception as exc:
             logger.warning("reaction insert failed (round=%s competitor=%s): %s",
                            round_id, rxn.get("competitor_company_name"), exc)
+            persistence_errors.append({
+                "competitor_company_name": rxn.get("competitor_company_name"),
+                "error": str(exc)[:200],
+            })
             continue
         # Echo into the response (no separate read-back — tests verify)
         saved_reactions.append({
@@ -473,7 +502,76 @@ def submit_round(
 
     out = _round_to_dict(rnd_row)
     out["reactions"] = saved_reactions
+    out["competitors_attempted"] = len(reactions)
+    out["competitors_persisted"] = len(saved_reactions)
+    if persistence_errors:
+        out["persistence_errors"] = persistence_errors
     return out
+
+
+# ────────────────────────────────────────────────────────────────────
+# POST /war-rooms/{id}/suggest-moves — Phase A.5 autonomous move suggester
+# ────────────────────────────────────────────────────────────────────
+
+@router.post("/{room_id}/suggest-moves")
+def suggest_moves_endpoint(
+    room_id: str,
+    body: SuggestMovesBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    llm = Depends(get_llm),
+):
+    """Generate N ranked move suggestions for the war room owner.
+
+    Owner-only. Persists the batch into move_suggestions for audit + the
+    Phase D learning loop. Returns the suggestions in ranked order
+    (highest expected_impact_score first).
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    if body.n < 1 or body.n > 8:
+        raise HTTPException(400, f"n must be between 1 and 8 (got {body.n})")
+
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+    if str(room.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the room owner can request suggestions")
+
+    suggestions = _suggest_moves(
+        db, llm,
+        player_entity_type=room.get("primary_entity_type"),
+        player_entity_id=room.get("primary_entity_id"),
+        player_name=room.get("primary_entity_name") or "Player",
+        signal_context=body.signal_context,
+        n=body.n,
+    )
+
+    # Persist for audit / Phase D — failure here is non-fatal
+    try:
+        db.execute(
+            """INSERT INTO move_suggestions
+                   (war_room_id, source_signal_id, suggestions,
+                    rule_version_id, requested_by)
+               VALUES (%s::uuid, %s, %s::jsonb, %s, %s::uuid)""",
+            [
+                room_id,
+                room.get("source_signal_id"),
+                json.dumps(suggestions),
+                SUGGESTER_RULE_VERSION,
+                user.get("id"),
+            ],
+        )
+    except Exception as exc:
+        logger.warning("move_suggestions audit insert failed: %s", exc)
+
+    return {
+        "war_room_id": room_id,
+        "suggestions": suggestions,
+        "count": len(suggestions),
+        "rule_version_id": SUGGESTER_RULE_VERSION,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────

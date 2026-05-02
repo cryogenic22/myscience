@@ -43,10 +43,15 @@ export default function CIPage() {
     setParams(next, { replace: true });
   };
 
-  const openWarRoom = (id: string) => {
+  const openWarRoom = (id: string, signalKbq?: string) => {
     const next = new URLSearchParams(params);
     next.set('tab', 'rooms');
     next.set('room', id);
+    if (signalKbq) {
+      next.set('signal_kbq', signalKbq);
+    } else {
+      next.delete('signal_kbq');
+    }
     setParams(next, { replace: false });
     setTabState('rooms');
   };

@@ -8,7 +8,7 @@ interface Props {
   reviewerMode?: boolean;
   initialStatus?: 'candidate' | 'reviewed' | 'shipped';
   watchlistFilter?: Array<{ entity_type: string; entity_id: string }>;
-  onOpenWarRoom?: (roomId: string) => void;
+  onOpenWarRoom?: (roomId: string, signalKbq?: string) => void;
 }
 
 const IMPACT_OPTIONS: Array<{ key: ImpactTier | 'all'; label: string }> = [

@@ -189,6 +189,9 @@ def _make_db():
             if room_id in rooms:
                 rooms[room_id]["status"] = "closed"
             return None
+        if "insert into move_suggestions" in s and params:
+            # Phase A.5 audit insert — accept and ignore
+            return None
         return None
 
     db = MagicMock()
@@ -533,3 +536,198 @@ def test_round_endpoint_400_for_invalid_move_type():
     r = client.post(f"/war-rooms/{rid}/rounds", headers=_hdr(tok),
                     json={"move_type": "do_a_dance", "move_payload": {}})
     assert r.status_code == 400
+
+
+# ────────────────────────────────────────────────────────────────────
+# Audit fix #1: GET reaction returns strengthening fields after persist
+# ────────────────────────────────────────────────────────────────────
+
+def test_get_room_returns_strengthenings_in_reactions():
+    """Regression: GET /war-rooms/{id} previously dropped confidence_score,
+    stripped_citations, and evidence_validated from the reaction SELECT.
+    The strengthenings landed in DB on POST but disappeared on GET."""
+    db, _, _, _ = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    create = client.post("/war-rooms", headers=_hdr(tok), json={
+        "title": "strengthening regression test",
+        "primary_entity_type": "company", "primary_entity_id": "ent-novo",
+        "primary_entity_name": "Novo Nordisk",
+    })
+    rid = create.json()["id"]
+
+    with patch("api.routes.war_room._generate_reactions",
+               side_effect=_stub_reactions):
+        client.post(
+            f"/war-rooms/{rid}/rounds", headers=_hdr(tok),
+            json={"move_type": "trial_readout",
+                  "move_payload": {"target_drug": "semaglutide"}},
+        )
+
+    # GET via anon — confirm new fields round-trip
+    r = client.get(f"/war-rooms/{rid}")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["rounds"]) == 1
+    rxn = body["rounds"][0]["reactions"][0]
+    # All three strengthenings present (not None / not missing)
+    assert "confidence_score" in rxn, "confidence_score should be present in GET response"
+    assert "stripped_citations" in rxn, "stripped_citations should be present"
+    assert "evidence_validated" in rxn, "evidence_validated should be present"
+
+
+# ────────────────────────────────────────────────────────────────────
+# Audit fix #2: Partial INSERT failures surfaced in response
+# ────────────────────────────────────────────────────────────────────
+
+# ────────────────────────────────────────────────────────────────────
+# Phase A.5: POST /war-rooms/{id}/suggest-moves
+# ────────────────────────────────────────────────────────────────────
+
+_STUB_SUGGESTIONS = [
+    {
+        "move_type": "trial_readout",
+        "move_payload": {"target_drug": "semaglutide"},
+        "rationale": "Player has Phase 3 trial reading out Q3.",
+        "expected_impact_score": 0.85,
+        "confidence_score": 0.7,
+        "confidence": "high",
+        "evidence_basis": ["semaglutide"],
+        "stripped_citations": [],
+        "evidence_validated": True,
+    },
+    {
+        "move_type": "label_expansion",
+        "move_payload": {"target_drug": "semaglutide", "expansion": "MASH"},
+        "rationale": "Existing label allows expansion to MASH.",
+        "expected_impact_score": 0.6,
+        "confidence_score": 0.55,
+        "confidence": "medium",
+        "evidence_basis": ["semaglutide"],
+        "stripped_citations": [],
+        "evidence_validated": True,
+    },
+]
+
+
+def test_suggest_moves_401_anonymous():
+    db, _, _, _ = _make_db()
+    client = _client(db)
+    create = MagicMock()  # not used; we need to create a room first via auth
+    tok_owner = _login(client, "viewer@demo.market-zero.io")
+    rid = client.post("/war-rooms", headers=_hdr(tok_owner), json={
+        "title": "x", "primary_entity_type": "company",
+        "primary_entity_id": "x", "primary_entity_name": "X",
+    }).json()["id"]
+    # Anon attempt
+    r = client.post(f"/war-rooms/{rid}/suggest-moves", json={"n": 3})
+    assert r.status_code == 401
+
+
+def test_suggest_moves_403_for_non_owner():
+    db, _, _, _ = _make_db()
+    client = _client(db)
+    vt = _login(client, "viewer@demo.market-zero.io")
+    rid = client.post("/war-rooms", headers=_hdr(vt), json={
+        "title": "owned by viewer",
+        "primary_entity_type": "company",
+        "primary_entity_id": "x", "primary_entity_name": "X",
+    }).json()["id"]
+    ut = _login(client, "uploader@demo.market-zero.io")
+    r = client.post(
+        f"/war-rooms/{rid}/suggest-moves", headers=_hdr(ut), json={"n": 3},
+    )
+    assert r.status_code == 403
+
+
+def test_suggest_moves_200_owner_returns_ranked_list():
+    db, _, _, _ = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    rid = client.post("/war-rooms", headers=_hdr(tok), json={
+        "title": "ranked test",
+        "primary_entity_type": "company",
+        "primary_entity_id": "ent-novo", "primary_entity_name": "Novo Nordisk",
+    }).json()["id"]
+
+    with patch("api.routes.war_room._suggest_moves",
+               return_value=list(_STUB_SUGGESTIONS)):
+        r = client.post(
+            f"/war-rooms/{rid}/suggest-moves", headers=_hdr(tok),
+            json={"n": 3},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["war_room_id"] == rid
+    assert "rule_version_id" in body
+    assert body["count"] == 2
+    assert len(body["suggestions"]) == 2
+    # First by impact desc
+    assert body["suggestions"][0]["move_type"] == "trial_readout"
+    assert body["suggestions"][0]["expected_impact_score"] == 0.85
+
+
+def test_suggest_moves_400_for_invalid_n():
+    db, _, _, _ = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    rid = client.post("/war-rooms", headers=_hdr(tok), json={
+        "title": "x", "primary_entity_type": "company",
+        "primary_entity_id": "x", "primary_entity_name": "X",
+    }).json()["id"]
+    r = client.post(
+        f"/war-rooms/{rid}/suggest-moves", headers=_hdr(tok),
+        json={"n": 0},
+    )
+    assert r.status_code == 400
+
+
+def test_round_endpoint_surfaces_partial_failures():
+    """If 1 of N reaction inserts fails, the response must surface it
+    via persistence_errors + competitors_attempted/persisted counters,
+    not silently drop the failed reaction."""
+    from unittest.mock import MagicMock
+
+    db, _, _, _ = _make_db()
+
+    # Wrap db.execute so the war_room_reactions insert fails on the
+    # second call; everything else passes through.
+    real_execute = db.execute.side_effect
+    insert_call_count = [0]
+
+    def selective_failing_execute(sql, params=None):
+        s = (sql or "").lower()
+        if "insert into war_room_reactions" in s:
+            insert_call_count[0] += 1
+            if insert_call_count[0] == 2:  # second reaction fails
+                raise RuntimeError("simulated DB failure on second reaction")
+        return real_execute(sql, params)
+
+    db.execute.side_effect = selective_failing_execute
+
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    create = client.post("/war-rooms", headers=_hdr(tok), json={
+        "title": "partial failure test",
+        "primary_entity_type": "company", "primary_entity_id": "ent-x",
+        "primary_entity_name": "X",
+    })
+    rid = create.json()["id"]
+
+    with patch("api.routes.war_room._generate_reactions",
+               side_effect=_stub_reactions):
+        r = client.post(
+            f"/war-rooms/{rid}/rounds", headers=_hdr(tok),
+            json={"move_type": "price_cut", "move_payload": {}},
+        )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # 2 reactions attempted (stub returns 2), 1 persisted, 1 in errors
+    assert body.get("competitors_attempted") == 2
+    assert body.get("competitors_persisted") == 1
+    assert "persistence_errors" in body
+    assert len(body["persistence_errors"]) == 1
+    err = body["persistence_errors"][0]
+    assert "competitor_company_name" in err
+    assert "error" in err

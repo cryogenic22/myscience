@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { warRoomApi, type MoveType, type WarRoom } from '../../../api';
-import MoveSelector from './MoveSelector';
+import MoveSelector, { type MoveSelectorHandle } from './MoveSelector';
+import MoveSuggestions from './MoveSuggestions';
 import RoundHistory from './RoundHistory';
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
   onClose: () => void;
 }
 
+// Suggested move per signal KBQ tag — fed via ?signal_kbq= URL param
+// when the room was opened from the Simulate button on a signal card.
 const KBQ_TO_MOVE: Record<string, MoveType> = {
   clinical: 'trial_readout',
   m_and_a: 'acquisition',
@@ -16,9 +20,16 @@ const KBQ_TO_MOVE: Record<string, MoveType> = {
   pricing_access: 'price_cut',
   regulatory: 'new_indication',
   strategic: 'segment_pivot',
+  financial: 'price_cut',
+  governance: 'segment_pivot',
 };
 
 export default function WarRoomView({ roomId, onClose }: Props) {
+  const [params] = useSearchParams();
+  const signalKbq = params.get('signal_kbq');
+  const suggestedMove: MoveType =
+    (signalKbq && KBQ_TO_MOVE[signalKbq]) || 'trial_readout';
+  const selectorRef = useRef<MoveSelectorHandle>(null);
   const [room, setRoom] = useState<WarRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -76,9 +87,6 @@ export default function WarRoomView({ roomId, onClose }: Props) {
       </div>
     );
   }
-
-  // Suggested move from source signal's KBQ if present in URL state (later)
-  const suggested: MoveType = 'trial_readout';
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ padding: '20px 28px' }}>
@@ -140,12 +148,23 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         )}
       </div>
 
+      {/* Phase A.5 — Autonomous move suggestions */}
+      <MoveSuggestions
+        roomId={roomId}
+        signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
+        onPick={(move_type, payload) => {
+          selectorRef.current?.applySuggestion(move_type, payload);
+        }}
+      />
+
       {/* Move selector */}
       <div className="mb-6">
         <MoveSelector
+          ref={selectorRef}
           onSubmit={handleSubmit}
           busy={busy}
-          initialMoveType={suggested}
+          initialMoveType={suggestedMove}
+          roomId={roomId}
         />
       </div>
 

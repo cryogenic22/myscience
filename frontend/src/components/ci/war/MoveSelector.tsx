@@ -1,17 +1,37 @@
-import { useState } from 'react';
+import { useImperativeHandle, forwardRef, useState } from 'react';
 import { MOVE_TYPE_META, type MoveType } from '../../../api';
 
 interface Props {
   onSubmit: (move_type: MoveType, payload: Record<string, string>) => void;
   busy: boolean;
   initialMoveType?: MoveType;
+  roomId?: string;  // used by Phase A.5 Move Suggester
+}
+
+export interface MoveSelectorHandle {
+  applySuggestion: (move_type: MoveType, payload: Record<string, string>) => void;
 }
 
 const MOVE_KEYS = Object.keys(MOVE_TYPE_META) as MoveType[];
 
-export default function MoveSelector({ onSubmit, busy, initialMoveType = 'trial_readout' }: Props) {
+const MoveSelector = forwardRef<MoveSelectorHandle, Props>(function MoveSelector(
+  { onSubmit, busy, initialMoveType = 'trial_readout', roomId: _roomId },
+  ref,
+) {
   const [moveType, setMoveType] = useState<MoveType>(initialMoveType);
   const [payload, setPayload] = useState<Record<string, string>>({});
+
+  useImperativeHandle(ref, () => ({
+    applySuggestion: (mt: MoveType, p: Record<string, string>) => {
+      setMoveType(mt);
+      // Coerce payload values to strings for the input fields
+      const coerced: Record<string, string> = {};
+      for (const [k, v] of Object.entries(p || {})) {
+        coerced[k] = v == null ? '' : String(v);
+      }
+      setPayload(coerced);
+    },
+  }), []);
 
   const meta = MOVE_TYPE_META[moveType];
 
@@ -109,4 +129,6 @@ export default function MoveSelector({ onSubmit, busy, initialMoveType = 'trial_
       </div>
     </form>
   );
-}
+});
+
+export default MoveSelector;
