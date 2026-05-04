@@ -1324,6 +1324,109 @@ export const warRoomApi = {
     }),
 };
 
+// ────────────────────────────────────────────────────────────────────
+// SPEC-021 Phase C — Decision Ledger
+// ────────────────────────────────────────────────────────────────────
+
+export type DecisionStatus = 'open' | 'in_progress' | 'verified' | 'missed' | 'cancelled';
+
+export interface Decision {
+  id: string;
+  war_room_round_id: string | null;
+  war_room_id: string | null;
+  source_signal_id: string | null;
+  title: string;
+  rationale: string | null;
+  move_type: MoveType;
+  move_payload_snapshot: Record<string, unknown>;
+  owner_user_id: string | null;
+  owner_display_name: string;
+  target_metric: string | null;
+  target_value: string | null;
+  deadline: string | null;
+  confidence_at_commit: number | null;
+  status: DecisionStatus;
+  actual_outcome: string | null;
+  actual_outcome_recorded_at: string | null;
+  calibration_score: number | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  // Computed at read time
+  overdue: boolean;
+  days_to_deadline: number | null;
+}
+
+export interface DecisionListFilters {
+  status?: DecisionStatus;
+  war_room_id?: string;
+  overdue?: boolean;
+}
+
+export const decisionsApi = {
+  promoteRound: (roundId: string, body: {
+    title: string;
+    rationale?: string;
+    target_metric?: string;
+    target_value?: string;
+    deadline?: string;
+    owner_display_name?: string;
+  }): Promise<Decision> =>
+    fetch(`${BASE}/decisions/from-round/${encodeURIComponent(roundId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  list: (filters: DecisionListFilters = {}): Promise<{ decisions: Decision[] }> => {
+    const qs = new URLSearchParams();
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.war_room_id) qs.set('war_room_id', filters.war_room_id);
+    if (filters.overdue !== undefined) qs.set('overdue', String(filters.overdue));
+    const tail = qs.toString() ? `?${qs.toString()}` : '';
+    return fetch(`${BASE}/decisions${tail}`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    });
+  },
+
+  detail: (id: string): Promise<Decision> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  patch: (id: string, body: {
+    status?: DecisionStatus;
+    notes?: string;
+    deadline?: string;        // empty string clears
+    target_metric?: string;
+    target_value?: string;
+    actual_outcome?: string;
+  }): Promise<Decision> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  remove: (id: string): Promise<void> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok && r.status !== 204) {
+        throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      }
+    }),
+};
+
 export interface MoveSuggestion {
   move_type: MoveType;
   move_payload: Record<string, string>;

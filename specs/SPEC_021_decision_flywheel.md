@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
-*Date: 2 May 2026 (last revised 4 May 2026 — Phase B detailed design appended)*
-*Status: Phase A + A.5 shipped & verified on prod. Phase B in build.*
+*Date: 2 May 2026 (last revised 4 May 2026 — Phase C detailed design appended)*
+*Status: Phase A + A.5 + B shipped & verified on prod. Phase C in build.*
 
 ---
 
@@ -632,6 +632,189 @@ button is just another room action, the decision references
 `war_room_round_id`, the comments thread carries forward as decision
 context. Without B's catalog + room-actions chrome, C has nowhere to
 hang its UI.
+
+## Phase C — Decision Ledger (this sprint, ~1 week)
+
+### Requirement
+
+A war-room round is a hypothesis. The system models reactions, scores
+them, the team comments. But there's no moment where someone says
+*"we're going to do X by Y date, owned by Z, and we expect outcome W."*
+The simulation evaporates. There's no audit trail of decisions, no
+deadline that triggers a post-mortem, no anchor for Phase D's outcome
+capture. C turns hypothesis into commitment.
+
+### Storage
+
+Migration `049_decisions.sql` (additive, idempotent):
+
+```sql
+CREATE TABLE IF NOT EXISTS decisions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Anchor: every decision originates from a war-room round.
+    -- ON DELETE SET NULL because we want decisions to survive room
+    -- archive/close (the audit trail outlives the room).
+    war_room_round_id UUID REFERENCES war_room_rounds(id) ON DELETE SET NULL,
+    war_room_id       UUID REFERENCES war_rooms(id)       ON DELETE SET NULL,
+    source_signal_id  UUID REFERENCES signals(id)         ON DELETE SET NULL,
+
+    -- Snapshot at promotion time so we have an immutable record even
+    -- if the source room is later archived/edited.
+    title             TEXT NOT NULL,
+    rationale         TEXT,
+    move_type         TEXT NOT NULL,
+    move_payload_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    owner_user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+    owner_display_name TEXT NOT NULL,
+
+    -- The "expected" frame — what we predicted at commit time
+    target_metric     TEXT,                          -- "market_share_delta", "trial readout date", free text
+    target_value      TEXT,                          -- "+5pp", "Q3 2026", free text
+    deadline          DATE,                          -- when we re-check
+    confidence_at_commit REAL                        -- snapshotted from the round's reactions
+        CHECK (confidence_at_commit IS NULL OR confidence_at_commit BETWEEN 0.0 AND 1.0),
+
+    status TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open', 'in_progress', 'verified', 'missed', 'cancelled')),
+
+    -- Phase D fields (filled later, but defined now to avoid a follow-on migration)
+    actual_outcome    TEXT,
+    actual_outcome_recorded_at TIMESTAMPTZ,
+    calibration_score REAL                           -- |predicted - actual| normalized 0..1
+        CHECK (calibration_score IS NULL OR calibration_score BETWEEN 0.0 AND 1.0),
+
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_decisions_owner   ON decisions (owner_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_decisions_room    ON decisions (war_room_id) WHERE war_room_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_decisions_round   ON decisions (war_room_round_id) WHERE war_room_round_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_decisions_deadline ON decisions (deadline) WHERE deadline IS NOT NULL AND status IN ('open','in_progress');
+```
+
+Why pre-define Phase D's `actual_outcome` columns now: schema migrations
+on prod are minor friction but every avoided migration is a deployment
+saved. The fields are NULL until D wires them; CHECK constraints are
+permissive (allow NULL).
+
+### Endpoints (`api/routes/decisions.py` — new file)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/decisions/from-round/{round_id}` | viewer+ (room owner) | Promote a round to a decision (snapshots round + reactions) |
+| GET | `/decisions` | viewer+ | List current user's decisions; filters: `?status=`, `?war_room_id=`, `?overdue=true` |
+| GET | `/decisions/{id}` | anon | Read a single decision (shareable like a war room) |
+| PATCH | `/decisions/{id}` | owner | Partial update (status, notes, deadline, target_*) |
+| DELETE | `/decisions/{id}` | owner | Hard delete (ledger entries should be rare to delete; we offer it for typos) |
+
+POST `/decisions/from-round/{round_id}` body:
+```json
+{
+  "title": "Accelerate semaglutide MASH expansion",
+  "rationale": "Phase 3 readout strong; Lilly's tirzepatide threat real",
+  "target_metric": "market_share_delta",
+  "target_value": "+3pp by Q4",
+  "deadline": "2026-12-31",
+  "owner_display_name": "Kapil Pant"  // defaults to current user
+}
+```
+
+The endpoint pulls the round's `move_type` + `move_payload` and the
+mean `confidence_score` of its reactions to snapshot
+`confidence_at_commit`. Then inserts the decision row.
+
+PATCH body (all optional):
+```json
+{
+  "status": "in_progress" | "verified" | "missed" | "cancelled",
+  "notes": "added context...",
+  "deadline": "2027-03-31",
+  "target_metric": "...",
+  "target_value": "..."
+}
+```
+
+### Frontend
+
+```
+frontend/src/components/ci/decisions/
+├── DecisionsTab.tsx           — NEW. New tab on /ci alongside Signals/Rooms
+├── DecisionsList.tsx          — NEW. Filter chips (Open/In progress/Verified/Missed/All)
+├── DecisionCard.tsx           — NEW. Status pill, deadline countdown, owner, target, link to source room
+├── DecisionDetail.tsx         — NEW. Full view with rationale + status changes + audit trail
+├── PromoteToDecisionDialog.tsx — NEW. Modal triggered from RoundHistory
+└── DeadlineChip.tsx           — NEW. Renders "due in 12d" / "overdue 3d" with color coding
+```
+
+`RoundHistory` gets a "Promote to decision" button next to each round
+header. Clicking opens `PromoteToDecisionDialog` which pre-fills
+title/rationale from the round and lets the user set deadline + target.
+On submit → `POST /decisions/from-round/{round_id}` → navigate to the
+new decision.
+
+CI page navigation:
+```
+/ci?tab=signals       (existing)
+/ci?tab=rooms         (existing — Phase A/B war rooms)
+/ci?tab=decisions     (NEW — Phase C ledger)
+```
+
+### Backend → Frontend coverage audit (running)
+
+Cumulative table — bringing C's backend fields into the running audit:
+
+| Backend field | Surface today | Notes |
+|---|---|---|
+| `decisions.title` | 🛠 NEW C: DecisionCard | |
+| `decisions.move_type` + `move_payload_snapshot` | 🛠 NEW C: shown via existing MOVE_TYPE_META icons | |
+| `decisions.target_metric` + `target_value` | 🛠 NEW C: DecisionCard "Target: X" line | |
+| `decisions.deadline` | 🛠 NEW C: DeadlineChip with color (green > 14d, amber 1-14d, red overdue) | |
+| `decisions.status` | 🛠 NEW C: status pill on card | |
+| `decisions.confidence_at_commit` | 🛠 NEW C: shown as "Committed at NN% confidence" | |
+| `decisions.war_room_id` / `war_room_round_id` | 🛠 NEW C: "From: <war room title>" link | |
+| `decisions.source_signal_id` | ⚠ stored, not yet linked back to signal in UI | Phase E: full provenance trail |
+| `decisions.actual_outcome` | ⏳ Phase D | |
+| `decisions.calibration_score` | ⏳ Phase D | |
+
+### Tests
+
+`tests/test_decisions_api.py` — new file:
+- Module exists + routes registered
+- POST from-round 401 anon, 403 if user is not the room owner
+- POST from-round 200: snapshots `move_type`, `move_payload`, mean `confidence_score`
+- POST from-round 404 if round doesn't exist
+- POST from-round 400 if `deadline` invalid format or in the past (>1 day past)
+- GET list returns only current user's decisions
+- GET list filter by status, war_room_id, overdue=true
+- GET detail anon returns decision (anon-readable like rooms)
+- PATCH 401 anon, 403 non-owner, 200 owner with status transition
+- PATCH 400 for invalid status
+- DELETE 403 non-owner, 204 owner
+
+### Acceptance — Phase C
+
+- All Phase C tests pass; baseline holds (1980 → 1980 + N)
+- After migrate:
+  - Promote a round to decision → row in `decisions` table with
+    `confidence_at_commit` snapshotted from the round's reactions
+  - Decision survives war room archive/close (FK is SET NULL, not CASCADE)
+  - GET `/decisions?overdue=true` lists only past-deadline open decisions
+  - PATCH status open → in_progress → verified persists state
+- /ci page: new "Decisions" tab; promote button visible in RoundHistory; deadline chips render
+
+### What this unlocks (Phase D)
+
+D is the outcome capture loop. It needs a stable identifier for "the
+thing we committed to" — that's `decisions.id`. D reads
+`decisions WHERE status IN ('open','in_progress')`, watches DataSteward
+signals for outcome matches, proposes a status update + actual_outcome
+to the owner, computes `calibration_score`, writes back. Without C's
+ledger, D has nothing to learn from.
 
 ## Other follow-ups (not in any phase yet)
 

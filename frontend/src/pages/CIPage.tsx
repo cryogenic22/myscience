@@ -7,14 +7,16 @@ import SignalsTab from '../components/ci/SignalsTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
+import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 
-type TabKey = 'digest' | 'signals' | 'watchlist' | 'rooms' | 'reviewer';
+type TabKey = 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'reviewer';
 
 const ALL_TABS: Array<{ key: TabKey; label: string; enterprise?: boolean }> = [
   { key: 'digest',    label: 'Digest' },
   { key: 'signals',   label: 'Signals' },
   { key: 'watchlist', label: 'Watchlist' },
   { key: 'rooms',     label: 'War Rooms' },
+  { key: 'decisions', label: 'Decisions' },
   { key: 'reviewer',  label: 'Reviewer', enterprise: true },
 ];
 
@@ -160,6 +162,7 @@ export default function CIPage() {
             ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
             : <WarRoomsList onOpen={openWarRoom} />
         )}
+        {tab === 'decisions' && <DecisionsTab onOpenWarRoom={openWarRoom} />}
         {tab === 'reviewer' && isEnterprise && (
           <SignalsTab
             reviewerMode

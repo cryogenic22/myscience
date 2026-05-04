@@ -1,11 +1,22 @@
+import { useState } from 'react';
+import { Target } from 'lucide-react';
 import { MOVE_TYPE_META, type WarRoomRound } from '../../../api';
 import ReactionCard from './ReactionCard';
+import PromoteToDecisionDialog from '../decisions/PromoteToDecisionDialog';
 
 interface Props {
   rounds: WarRoomRound[];
+  onPromoted?: () => void;
 }
 
-export default function RoundHistory({ rounds }: Props) {
+function isAuthed(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!window.localStorage.getItem('mz_auth_token');
+}
+
+export default function RoundHistory({ rounds, onPromoted }: Props) {
+  const [promoting, setPromoting] = useState<WarRoomRound | null>(null);
+  const authed = isAuthed();
   if (rounds.length === 0) {
     return (
       <div
@@ -18,6 +29,7 @@ export default function RoundHistory({ rounds }: Props) {
   }
 
   return (
+    <>
     <div className="space-y-6">
       {[...rounds].reverse().map((rnd) => {
         const meta = MOVE_TYPE_META[rnd.move_type as keyof typeof MOVE_TYPE_META];
@@ -53,6 +65,25 @@ export default function RoundHistory({ rounds }: Props) {
                   · {payloadEntries.map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
                 </span>
               )}
+              {authed && (
+                <button
+                  type="button"
+                  onClick={() => setPromoting(rnd)}
+                  className="ml-auto text-[10px] inline-flex items-center gap-1 font-medium"
+                  style={{
+                    padding: '4px 9px',
+                    borderRadius: '4px',
+                    background: 'transparent',
+                    color: 'var(--color-ink-3)',
+                    border: '1px solid var(--color-line)',
+                    cursor: 'pointer',
+                  }}
+                  title="Promote this round to a committed decision"
+                >
+                  <Target size={11} />
+                  Promote to decision
+                </button>
+              )}
             </div>
 
             {/* Reactions */}
@@ -74,5 +105,16 @@ export default function RoundHistory({ rounds }: Props) {
         );
       })}
     </div>
+    {promoting && (
+      <PromoteToDecisionDialog
+        round={promoting}
+        onClose={() => setPromoting(null)}
+        onPromoted={() => {
+          setPromoting(null);
+          if (onPromoted) onPromoted();
+        }}
+      />
+    )}
+    </>
   );
 }
