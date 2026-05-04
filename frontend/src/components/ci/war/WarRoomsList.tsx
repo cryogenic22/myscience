@@ -1,34 +1,63 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
-import { warRoomApi, type WarRoom } from '../../../api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Trash2, Search, MessageSquare } from 'lucide-react';
+import { warRoomApi, type WarRoom, type WarRoomListFilters } from '../../../api';
 
 interface Props {
   onOpen: (id: string) => void;
 }
+
+type FilterTab = 'all' | 'active' | 'closed' | 'archived';
+
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'closed', label: 'Closed' },
+  { key: 'archived', label: 'Archived' },
+];
 
 function hasToken(): boolean {
   if (typeof window === 'undefined') return false;
   return !!window.localStorage.getItem('mz_auth_token');
 }
 
+function tabToFilters(tab: FilterTab, q: string): WarRoomListFilters {
+  const base: WarRoomListFilters = {};
+  if (q.trim()) base.q = q.trim();
+  switch (tab) {
+    case 'active':
+      return { ...base, status: 'active', archived: false };
+    case 'closed':
+      return { ...base, status: 'closed', archived: false };
+    case 'archived':
+      return { ...base, archived: true };
+    case 'all':
+    default:
+      return base;
+  }
+}
+
 export default function WarRoomsList({ onOpen }: Props) {
   const authed = hasToken();
+  const [tab, setTab] = useState<FilterTab>('active');
+  const [q, setQ] = useState('');
   const [rooms, setRooms] = useState<WarRoom[]>([]);
   const [loading, setLoading] = useState(authed);
   const [error, setError] = useState<string | null>(null);
+
+  const filters = useMemo(() => tabToFilters(tab, q), [tab, q]);
 
   const reload = useCallback(async () => {
     if (!authed) return;
     setLoading(true);
     try {
-      const r = await warRoomApi.list();
+      const r = await warRoomApi.list(filters);
       setRooms(r.war_rooms);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [authed]);
+  }, [authed, filters]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -64,10 +93,74 @@ export default function WarRoomsList({ onOpen }: Props) {
     <div className="flex-1 overflow-y-auto" style={{ padding: '24px 32px' }}>
       <div className="mb-4">
         <div
-          className="text-[10px] uppercase font-medium"
+          className="text-[10px] uppercase font-medium mb-3"
           style={{ color: 'var(--color-ink-4)', letterSpacing: '0.06em' }}
         >
-          Your war rooms ({rooms.length})
+          Your war rooms
+        </div>
+
+        {/* Filter tabs + search */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1">
+            {FILTER_TABS.map((t) => {
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className="text-[11px]"
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-line)'}`,
+                    background: active ? 'var(--color-accent)' : 'transparent',
+                    color: active ? 'white' : 'var(--color-ink-3)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            className="flex items-center gap-1 ml-auto"
+            style={{
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: '1px solid var(--color-line)',
+              background: 'var(--color-surface)',
+              minWidth: '220px',
+            }}
+          >
+            <Search size={12} style={{ color: 'var(--color-ink-4)' }} />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search title…"
+              className="text-[12px] flex-1 bg-transparent"
+              style={{ border: 'none', outline: 'none', color: 'var(--color-ink)' }}
+            />
+            {q && (
+              <button
+                type="button"
+                onClick={() => setQ('')}
+                className="text-[10px]"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--color-ink-4)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0 4px',
+                }}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -81,85 +174,139 @@ export default function WarRoomsList({ onOpen }: Props) {
         </div>
       ) : rooms.length === 0 ? (
         <div className="text-[13px]" style={{ color: 'var(--color-ink-4)' }}>
-          No war rooms yet. Open a signal and click <strong>Simulate in War Room</strong> to start one.
+          {q || tab !== 'active'
+            ? 'No war rooms match this filter.'
+            : 'No war rooms yet. Open a signal and click Simulate in War Room to start one.'}
         </div>
       ) : (
         <div className="space-y-2">
+          <div
+            className="text-[10px] uppercase mb-1"
+            style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}
+          >
+            {rooms.length} room{rooms.length === 1 ? '' : 's'}
+          </div>
           {rooms.map((r) => (
-            <div
+            <RoomCard
               key={r.id}
-              className="group relative"
-              style={{
-                padding: '14px 16px',
-                borderRadius: '6px',
-                border: '1px solid var(--color-line)',
-                background: 'var(--color-surface)',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => onOpen(r.id)}
-                className="w-full text-left"
-                style={{ background: 'transparent', border: 'none' }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="text-[10px] uppercase font-medium"
-                    style={{
-                      padding: '2px 7px',
-                      borderRadius: '4px',
-                      background: r.status === 'active' ? '#DCFCE7' : 'var(--color-surface-2)',
-                      color: r.status === 'active' ? '#15803D' : 'var(--color-ink-4)',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    {r.status}
-                  </span>
-                  <span
-                    className="text-[10px] uppercase"
-                    style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}
-                  >
-                    {r.game_phase}
-                  </span>
-                  <span
-                    className="ml-auto text-[11px]"
-                    style={{ color: 'var(--color-ink-4)' }}
-                  >
-                    {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
-                  </span>
-                </div>
-                <div
-                  className="text-[13px] font-medium"
-                  style={{ color: 'var(--color-ink)' }}
-                >
-                  {r.title}
-                </div>
-                {r.primary_entity_name && (
-                  <div className="text-[11px] mt-1" style={{ color: 'var(--color-ink-4)' }}>
-                    {r.primary_entity_name}
-                  </div>
-                )}
-              </button>
-              {r.status === 'active' && (
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, r.id, r.title)}
-                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{
-                    padding: '4px',
-                    borderRadius: '4px',
-                    background: 'transparent',
-                    color: 'var(--color-ink-4)',
-                  }}
-                  title="Close war room"
-                  aria-label="Close war room"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
+              room={r}
+              onOpen={onOpen}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function RoomCard({
+  room,
+  onOpen,
+  onDelete,
+}: {
+  room: WarRoom;
+  onOpen: (id: string) => void;
+  onDelete: (e: React.MouseEvent, id: string, title: string) => void;
+}) {
+  const r = room;
+  const roundCount = r.rounds?.length ?? 0;
+  const commentCount = r.comments?.length ?? 0;
+  return (
+    <div
+      className="group relative"
+      style={{
+        padding: '14px 16px',
+        borderRadius: '6px',
+        border: '1px solid var(--color-line)',
+        background: 'var(--color-surface)',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => onOpen(r.id)}
+        className="w-full text-left"
+        style={{ background: 'transparent', border: 'none' }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="text-[10px] uppercase font-medium"
+            style={{
+              padding: '2px 7px',
+              borderRadius: '4px',
+              background: r.status === 'active' ? '#DCFCE7' : 'var(--color-surface-2)',
+              color: r.status === 'active' ? '#15803D' : 'var(--color-ink-4)',
+              letterSpacing: '0.05em',
+            }}
+          >
+            {r.status}
+          </span>
+          {r.archived_at && (
+            <span
+              className="text-[10px] uppercase font-medium"
+              style={{
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: '#F3E8FF',
+                color: '#6D28D9',
+                letterSpacing: '0.05em',
+              }}
+              title={`Archived ${new Date(r.archived_at).toLocaleDateString()}`}
+            >
+              archived
+            </span>
+          )}
+          <span
+            className="text-[10px] uppercase"
+            style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}
+          >
+            {r.game_phase}
+          </span>
+          <span
+            className="ml-auto text-[11px]"
+            style={{ color: 'var(--color-ink-4)' }}
+          >
+            {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+          </span>
+        </div>
+        <div
+          className="text-[13px] font-medium"
+          style={{ color: 'var(--color-ink)' }}
+        >
+          {r.title}
+        </div>
+        {r.primary_entity_name && (
+          <div className="text-[11px] mt-1" style={{ color: 'var(--color-ink-4)' }}>
+            {r.primary_entity_name}
+          </div>
+        )}
+        {commentCount > 0 && (
+          <div
+            className="text-[10px] mt-2 inline-flex items-center gap-1"
+            style={{ color: 'var(--color-ink-4)' }}
+          >
+            <MessageSquare size={10} />
+            {commentCount} comment{commentCount === 1 ? '' : 's'}
+            {roundCount > 0 && ` · ${roundCount} round${roundCount === 1 ? '' : 's'}`}
+          </div>
+        )}
+      </button>
+      {r.status === 'active' && !r.archived_at && (
+        <button
+          type="button"
+          onClick={(e) => onDelete(e, r.id, r.title)}
+          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{
+            padding: '4px',
+            borderRadius: '4px',
+            background: 'transparent',
+            color: 'var(--color-ink-4)',
+          }}
+          title="Close war room"
+          aria-label="Close war room"
+        >
+          <Trash2 size={13} />
+        </button>
       )}
     </div>
   );

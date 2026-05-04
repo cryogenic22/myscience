@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { warRoomApi, type MoveType, type WarRoom } from '../../../api';
+import CommentsPanel from './CommentsPanel';
 import MoveSelector, { type MoveSelectorHandle } from './MoveSelector';
 import MoveSuggestions from './MoveSuggestions';
+import RoomActionsMenu from './RoomActionsMenu';
 import RoundHistory from './RoundHistory';
 
 interface Props {
@@ -126,6 +128,28 @@ export default function WarRoomView({ roomId, onClose }: Props) {
           >
             {room.status}
           </span>
+          {room.archived_at && (
+            <span
+              className="text-[10px] uppercase font-medium"
+              style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                background: '#F3E8FF',
+                color: '#6D28D9',
+                letterSpacing: '0.06em',
+              }}
+              title={`Archived ${new Date(room.archived_at).toLocaleDateString()}`}
+            >
+              archived
+            </span>
+          )}
+          <div className="ml-auto">
+            <RoomActionsMenu
+              room={room}
+              onChange={(updated) => setRoom(updated)}
+              onClosed={onClose}
+            />
+          </div>
         </div>
         <h1
           className="font-display text-[22px]"
@@ -183,7 +207,7 @@ export default function WarRoomView({ roomId, onClose }: Props) {
       )}
 
       {/* Round history */}
-      <div>
+      <div className="mb-6">
         <div
           className="text-[10px] uppercase font-medium mb-3"
           style={{ color: 'var(--color-ink-4)', letterSpacing: '0.06em' }}
@@ -191,6 +215,17 @@ export default function WarRoomView({ roomId, onClose }: Props) {
           Simulation history ({room.rounds?.length ?? 0} round{room.rounds?.length === 1 ? '' : 's'})
         </div>
         <RoundHistory rounds={room.rounds ?? []} />
+      </div>
+
+      {/* Phase B — Comments */}
+      <div>
+        <div
+          className="text-[10px] uppercase font-medium mb-3"
+          style={{ color: 'var(--color-ink-4)', letterSpacing: '0.06em' }}
+        >
+          Discussion
+        </div>
+        <CommentsPanel roomId={roomId} ownerUserId={room.owner_user_id} />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
-*Date: 2 May 2026*
-*Status: Phase A shipped + strengthenings in progress*
+*Date: 2 May 2026 (last revised 4 May 2026 — Phase B detailed design appended)*
+*Status: Phase A + A.5 shipped & verified on prod. Phase B in build.*
 
 ---
 
@@ -464,6 +464,175 @@ the quarter they receive a report:
 — with no human manually triggering simulations or recording outcomes
 in between. SPEC-021 Phase A is step one of five toward that vision.
 
+## Phase B — War Room Catalog (this sprint, ~3 days)
+
+### Requirement
+
+A war-room is born and dies in isolation. Users can simulate inside it
+(Phase A), and the system can suggest moves (A.5), but they can't see
+all their rooms in one place, can't share a room with a teammate, can't
+comment on a round, can't rename or archive. Net effect: every
+simulation is throwaway, no team workflow forms, the agentic loop never
+gets a memory.
+
+### Hardening fixes folded into B (carried over from Phase A audit)
+
+These touch the same code paths Phase B modifies, so they ship together:
+
+1. **`INSERT … RETURNING id`** — replace title-based read-back races on
+   war room create + replace `(war_room_id, round_number)` read-back
+   on round insert. Both done via `db.fetch_one("INSERT ... RETURNING id", ...)`.
+2. **Tests for `_fetch_competitors` ILIKE fuzzy exclusion** — coverage
+   gap identified in audit; add now.
+
+**Audit recommendation overturned on review:** "Wrap submit_round in
+BEGIN/COMMIT" was rejected after design check. Two reasons:
+(a) production uses `pool_size=5` and the current `db.transaction()`
+context manager assumes single-connection mode — it would
+AttributeError on `self._conn` in production. Fixing `db.py` for
+pool-aware transactions is cross-cutting and out of scope for B.
+(b) more importantly, the current "persist what you can, surface
+partial failures via `persistence_errors`" behavior is correct, not
+buggy. If reaction 3 of 4 fails, we *want* to keep reactions 1, 2, 4
+rather than rollback all of them. The response makes the failure
+visible to the UI. All-or-nothing would *hide* partial successes from
+the user.
+
+Cost guardrails (rate limit + LLM cap) and per-call timeouts deferred
+to a "Phase B+ hardening" item; called out separately in `Other
+follow-ups` so they aren't lost.
+
+### Storage
+
+Migration `048_war_room_collab.sql` (additive, idempotent):
+
+```sql
+ALTER TABLE war_rooms
+    ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS war_room_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    war_room_id UUID NOT NULL REFERENCES war_rooms(id) ON DELETE CASCADE,
+    round_id UUID REFERENCES war_room_rounds(id) ON DELETE SET NULL,
+    author_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    author_display_name TEXT NOT NULL,
+    body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 4000),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    edited_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_war_room_comments_room
+    ON war_room_comments (war_room_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_war_room_comments_round
+    ON war_room_comments (round_id) WHERE round_id IS NOT NULL;
+```
+
+`status` already supports `closed` (soft delete). New `archived_at`
+distinguishes "user-archived" from "soft-deleted" so the catalog can
+show archived rooms in a separate tab without conflating with deletion.
+
+### Endpoints (add to `api/routes/war_room.py`)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/war-rooms` | viewer+ | Existing — extend with `?status=`, `?q=` (title search), `?entity_id=`, `?archived=true|false` |
+| PATCH | `/war-rooms/{id}` | owner | `{title?, scenario_question?, status?, archived?: bool}` — partial update |
+| GET | `/war-rooms/{id}/comments` | anon | List comments (chronological, optional `?round_id=`) |
+| POST | `/war-rooms/{id}/comments` | viewer+ | `{body, round_id?}` — body sanitized server-side |
+| PATCH | `/war-rooms/{id}/comments/{cid}` | author | Edit own comment; sets `edited_at` |
+| DELETE | `/war-rooms/{id}/comments/{cid}` | author or room owner | Hard delete |
+
+The anon read on detail + comments deliberately keeps the share-by-URL
+flow working without auth. PII risk: comments only have
+`author_display_name` (not email). Body is server-sanitized to plain
+text + safe markdown subset (no script, no html).
+
+### Frontend
+
+```
+frontend/src/components/ci/war/
+├── WarRoomsList.tsx          — extend: filter chips, search, archived tab
+├── WarRoomView.tsx           — add: room actions menu (rename/archive/share),
+│                                CommentsPanel, copy-share-URL button
+├── CommentsPanel.tsx         — NEW. Threaded by round_id, anon read,
+│                                viewer-write inline composer
+├── RoomActionsMenu.tsx       — NEW. Rename modal, Archive, Share-URL,
+│                                Delete (owner only)
+└── ConfidencePill.tsx        — NEW shared. Used by suggester + reactions
+                                + (later) decision ledger
+```
+
+`ConfidencePill` is the canonical surface for `confidence_score` /
+`evidence_validated` / `stripped_citations` so the same trust-signal
+shows everywhere reactions or suggestions are rendered. This is the
+first piece of the **Phase E coherence kit**.
+
+### Backend → Frontend coverage audit (running spec for Phase E)
+
+Every backend field that exists must have a UI surface OR be on the
+explicit deferred list. Updated each phase; the Phase E build closes
+remaining gaps.
+
+| Backend field | Surface today | Notes |
+|---|---|---|
+| `war_rooms.status` | ✅ pill in WarRoomView header | |
+| `war_rooms.archived_at` | 🛠 NEW in B (catalog tab) | |
+| `war_rooms.scenario_question` | ✅ subtitle in WarRoomView | |
+| `war_rooms.primary_entity_name` | ✅ subject line | |
+| `war_rooms.source_signal_id` | ⚠ stored, not linked back to signal in UI | Phase E: "Born from signal X" trail |
+| `war_room_rounds.move_payload` | ✅ shown in RoundHistory | |
+| `war_room_reactions.reaction_type` | ✅ ReactionCard | |
+| `war_room_reactions.scores` | ✅ ScoreBars | |
+| `war_room_reactions.confidence_score` | 🛠 NEW B: ConfidencePill in RoundHistory | suggester already shows |
+| `war_room_reactions.evidence_validated` | 🛠 NEW B: warning chip in RoundHistory | |
+| `war_room_reactions.stripped_citations` | 🛠 NEW B: tooltip on warning chip | |
+| `war_room_reactions.evidence_basis` | ✅ EvidenceChips | |
+| `war_room_reactions.rationale` | ✅ ReactionCard | |
+| Dossier `coverage_statement` | ⚠ in prompt, not surfaced in UI | Phase E: "based on N of M known assets" footer per reaction |
+| `move_suggestions.rule_version_id` | ⚠ logged, not shown | Phase E: prompt-version diff view |
+| Backend → frontend share-URL flow | 🛠 NEW B: explicit "Copy share URL" | already works via anon GET |
+
+Anything marked ⚠ is explicitly deferred to Phase E so we don't lose
+sight of it. Anything 🛠 ships in B.
+
+### Tests
+
+`tests/test_war_room_api.py` — extend:
+- PATCH 401 anon, 403 non-owner, 200 owner with `{title}` and with `{archived: true}`
+- GET `/war-rooms?status=closed&q=test&archived=true` returns filtered set
+- GET `/war-rooms/{id}/comments` anon returns ordered list
+- POST comment 401 anon, 200 viewer with sanitization (script tags stripped)
+- POST comment with `body=""` → 422; body 4001 chars → 422
+- PATCH comment by author 200, by other viewer 403, sets `edited_at`
+- DELETE comment by author 204, by room owner 204, by stranger 403
+- Comments survive room soft-close (status='closed') but cascade on hard delete
+
+Hardening tests:
+- `_fetch_competitors` ILIKE fuzzy exclusion when `player_company_id` is NULL
+- Round insert + reaction insert wrapped in transaction: simulate reaction-3-of-4
+  raising → assert *all 3 prior reactions roll back* (no partial persistence)
+- `INSERT … RETURNING id` returns id on first call (no second SELECT)
+
+### Acceptance — Phase B
+
+- All Phase B tests pass; baseline holds (≥1920 → ≥1920 + N new tests, 0 regressions)
+- After migrate:
+  - `PATCH /war-rooms/{id}` (owner token) renames + archives
+  - `POST /war-rooms/{id}/comments` (viewer token) creates a comment
+  - `GET /war-rooms/{id}` includes `comments` array on the response
+  - `GET /war-rooms?archived=true` lists only archived rooms
+  - `GET /war-rooms?q=tirzepatide` substring-matches title
+- /ci war room view: rename, archive, copy share URL, post comment, see
+  confidence pill on every reaction, see warning chip when evidence stripped
+
+### What this unlocks
+
+C (Decision Ledger) sits cleanly on top: the "Promote round → decision"
+button is just another room action, the decision references
+`war_room_round_id`, the comments thread carries forward as decision
+context. Without B's catalog + room-actions chrome, C has nowhere to
+hang its UI.
+
 ## Other follow-ups (not in any phase yet)
 
 - Multi-region / multi-payer simulation dimensions
@@ -472,3 +641,13 @@ in between. SPEC-021 Phase A is step one of five toward that vision.
   current scoring rules to validate a rule change
 - Brand-team subscription to a war room's outcome — they get notified
   when the decision is committed / outcome recorded
+- **Phase B+ hardening:** per-user rate limit on rounds + suggest, daily
+  LLM call cap, per-reaction LLM wall-clock timeout (deferred from
+  Phase A audit; do before public demo)
+- **Phase E — Agentic CI Workspace** (after D ships): tie everything
+  into one coherent surface — inbox of "what to war-game now,"
+  active-rooms strip with live confidence summaries, decision ledger
+  with deadline countdowns, outcome stream with auto-detected matches,
+  system-self-narrative ("watching N signals, M rooms active, K
+  decisions pending recalibration"). Closes the running coverage-audit
+  gaps from each phase.

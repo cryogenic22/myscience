@@ -1167,9 +1167,29 @@ export interface WarRoom {
   source_signal_id: string | null;
   game_phase: GamePhase;
   status: 'draft' | 'active' | 'closed';
+  archived_at: string | null;                     // Phase B
   created_at: string | null;
   updated_at: string | null;
   rounds?: WarRoomRound[];
+  comments?: WarRoomComment[];                    // Phase B (in detail)
+}
+
+export interface WarRoomComment {
+  id: string;
+  war_room_id: string;
+  round_id: string | null;
+  author_user_id: string | null;
+  author_display_name: string;
+  body: string;
+  created_at: string | null;
+  edited_at: string | null;
+}
+
+export interface WarRoomListFilters {
+  status?: 'active' | 'closed';
+  archived?: boolean;
+  q?: string;
+  entity_id?: string;
 }
 
 export const warRoomApi = {
@@ -1191,10 +1211,73 @@ export const warRoomApi = {
       return r.json();
     }),
 
-  list: (): Promise<{ war_rooms: WarRoom[] }> =>
-    fetch(`${BASE}/war-rooms`, { headers: { ...authHeaders() } }).then(async (r) => {
+  list: (filters: WarRoomListFilters = {}): Promise<{ war_rooms: WarRoom[] }> => {
+    const qs = new URLSearchParams();
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.archived !== undefined) qs.set('archived', String(filters.archived));
+    if (filters.q) qs.set('q', filters.q);
+    if (filters.entity_id) qs.set('entity_id', filters.entity_id);
+    const tail = qs.toString() ? `?${qs.toString()}` : '';
+    return fetch(`${BASE}/war-rooms${tail}`, { headers: { ...authHeaders() } }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
+    });
+  },
+
+  patch: (id: string, body: {
+    title?: string;
+    scenario_question?: string;
+    status?: 'active' | 'closed';
+    archived?: boolean;
+  }): Promise<WarRoom> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  listComments: (id: string, roundId?: string):
+    Promise<{ war_room_id: string; comments: WarRoomComment[]; count: number }> => {
+    const tail = roundId ? `?round_id=${encodeURIComponent(roundId)}` : '';
+    return fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/comments${tail}`).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    });
+  },
+
+  createComment: (id: string, body: { body: string; round_id?: string }):
+    Promise<WarRoomComment> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  patchComment: (id: string, commentId: string, body: { body: string }):
+    Promise<WarRoomComment> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  deleteComment: (id: string, commentId: string): Promise<void> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok && r.status !== 204) {
+        throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      }
     }),
 
   detail: (id: string): Promise<WarRoom> =>

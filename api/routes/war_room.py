@@ -3,6 +3,9 @@
 CRUD over war_rooms + the run-round endpoint that generates competitor
 reactions. Mutations are owner-only; reads are anonymous (so a war
 room URL is shareable).
+
+Phase B adds: rename/archive (PATCH), threaded comments (CRUD), and
+list filters (status, archived, search by title, by entity).
 """
 
 from __future__ import annotations
@@ -11,8 +14,8 @@ import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 
 from api.deps import get_current_user, get_db, get_llm, require_role
 from db import Database
@@ -58,6 +61,23 @@ class SuggestMovesBody(BaseModel):
     signal_context: Optional[dict] = None
 
 
+class PatchRoomBody(BaseModel):
+    """Partial update. All fields optional; only provided fields are written."""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    scenario_question: Optional[str] = Field(default=None, max_length=2000)
+    status: Optional[str] = None  # 'active' | 'closed' (re-open or close)
+    archived: Optional[bool] = None  # true → set archived_at=NOW; false → NULL
+
+
+class CommentBody(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    round_id: Optional[str] = None
+
+
+class CommentPatchBody(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
 # ────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────
@@ -82,9 +102,29 @@ def _room_to_dict(row: dict) -> dict:
         "source_signal_id": str(row["source_signal_id"]) if row.get("source_signal_id") else None,
         "game_phase": row.get("game_phase"),
         "status": row.get("status"),
+        "archived_at": _iso(row.get("archived_at")),
         "created_at": _iso(row.get("created_at")),
         "updated_at": _iso(row.get("updated_at")),
     }
+
+
+def _comment_to_dict(row: dict) -> dict:
+    return {
+        "id": str(row.get("id")),
+        "war_room_id": str(row.get("war_room_id")),
+        "round_id": str(row["round_id"]) if row.get("round_id") else None,
+        "author_user_id": str(row["author_user_id"]) if row.get("author_user_id") else None,
+        "author_display_name": row.get("author_display_name"),
+        "body": row.get("body"),
+        "created_at": _iso(row.get("created_at")),
+        "edited_at": _iso(row.get("edited_at")),
+    }
+
+
+_ROOM_COLS = """id, title, owner_user_id, scenario_question,
+                primary_entity_type, primary_entity_id, primary_entity_name,
+                source_signal_id, game_phase, status, archived_at,
+                created_at, updated_at"""
 
 
 def _round_to_dict(row: dict) -> dict:
@@ -146,15 +186,27 @@ def _reaction_to_dict(row: dict) -> dict:
 def _fetch_room(db: Database, room_id: str) -> Optional[dict]:
     try:
         return db.fetch_one(
-            """SELECT id, title, owner_user_id, scenario_question,
-                      primary_entity_type, primary_entity_id, primary_entity_name,
-                      source_signal_id, game_phase, status, created_at, updated_at
-               FROM war_rooms WHERE id::text = %s""",
+            f"SELECT {_ROOM_COLS} FROM war_rooms WHERE id::text = %s",
             [room_id],
         )
     except Exception:
         logger.exception("war room fetch failed")
         return None
+
+
+def _fetch_comments(db: Database, room_id: str) -> list[dict]:
+    try:
+        rows = db.fetch_all(
+            """SELECT id, war_room_id, round_id, author_user_id,
+                      author_display_name, body, created_at, edited_at
+               FROM war_room_comments
+               WHERE war_room_id = %s::uuid
+               ORDER BY created_at ASC""",
+            [room_id],
+        ) or []
+    except Exception:
+        rows = []
+    return [_comment_to_dict(r) for r in rows]
 
 
 def _fetch_competitors(
@@ -242,13 +294,16 @@ def create_room(
     if body.game_phase not in ("prelaunch", "launch", "postlaunch"):
         raise HTTPException(400, f"invalid game_phase: {body.game_phase}")
 
+    # INSERT ... RETURNING id — replaces the title-based read-back race
+    # (Phase A audit fix). fetch_one runs the INSERT and returns the row.
     try:
-        db.execute(
+        new = db.fetch_one(
             """INSERT INTO war_rooms
                    (title, owner_user_id, scenario_question,
                     primary_entity_type, primary_entity_id, primary_entity_name,
                     source_signal_id, game_phase)
-               VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
             [
                 body.title, user.get("id"), body.scenario_question,
                 body.primary_entity_type, body.primary_entity_id,
@@ -260,20 +315,10 @@ def create_room(
         logger.exception("war room insert failed")
         raise HTTPException(500, f"create failed: {exc}") from exc
 
-    # Read back — most recent room owned by this user with this title
-    try:
-        row = db.fetch_one(
-            """SELECT id, title, owner_user_id, scenario_question,
-                      primary_entity_type, primary_entity_id, primary_entity_name,
-                      source_signal_id, game_phase, status, created_at, updated_at
-               FROM war_rooms
-               WHERE owner_user_id = %s::uuid AND title = %s
-               ORDER BY created_at DESC LIMIT 1""",
-            [user.get("id"), body.title],
-        )
-    except Exception:
-        row = None
+    if not new or not new.get("id"):
+        raise HTTPException(500, "create succeeded but RETURNING id was empty")
 
+    row = _fetch_room(db, str(new["id"]))
     if not row:
         raise HTTPException(500, "create succeeded but read-back failed")
     return _room_to_dict(row)
@@ -285,20 +330,49 @@ def create_room(
 
 @router.get("")
 def list_rooms(
+    status: Optional[str] = Query(default=None, description="active | closed"),
+    archived: Optional[bool] = Query(default=None, description="true | false; omit for both"),
+    q: Optional[str] = Query(default=None, description="title substring (ILIKE)"),
+    entity_id: Optional[str] = Query(default=None, description="primary_entity_id exact match"),
     user: dict = Depends(require_role("viewer")),
     db: Database = Depends(get_db),
 ):
+    """List the current user's war rooms with optional filters.
+
+    Default (no filters): returns all of the user's non-archived rooms in
+    descending creation order. Pass `archived=true` to see only archived,
+    `archived=false` to explicitly exclude them, or omit to include both.
+    """
+    where = ["owner_user_id = %s::uuid"]
+    params: list[Any] = [user.get("id")]
+
+    if status:
+        where.append("status = %s")
+        params.append(status)
+
+    if archived is True:
+        where.append("archived_at IS NOT NULL")
+    elif archived is False:
+        where.append("archived_at IS NULL")
+    # archived is None → no filter (show both)
+
+    if q:
+        where.append("title ILIKE %s")
+        params.append(f"%{q}%")
+
+    if entity_id:
+        where.append("primary_entity_id = %s")
+        params.append(entity_id)
+
+    sql = (
+        f"SELECT {_ROOM_COLS} FROM war_rooms "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY created_at DESC"
+    )
     try:
-        rows = db.fetch_all(
-            """SELECT id, title, owner_user_id, scenario_question,
-                      primary_entity_type, primary_entity_id, primary_entity_name,
-                      source_signal_id, game_phase, status, created_at, updated_at
-               FROM war_rooms
-               WHERE owner_user_id = %s::uuid
-               ORDER BY created_at DESC""",
-            [user.get("id")],
-        )
+        rows = db.fetch_all(sql, params)
     except Exception:
+        logger.exception("war room list query failed")
         rows = []
     return {"war_rooms": [_room_to_dict(r) for r in rows]}
 
@@ -345,7 +419,66 @@ def get_room(room_id: str, db: Database = Depends(get_db)):
 
     out = _room_to_dict(room)
     out["rounds"] = rounds_out
+    out["comments"] = _fetch_comments(db, room_id)
     return out
+
+
+# ────────────────────────────────────────────────────────────────────
+# PATCH /war-rooms/{id} — partial update (rename / archive / re-open)
+# ────────────────────────────────────────────────────────────────────
+
+@router.patch("/{room_id}")
+def patch_room(
+    room_id: str,
+    body: PatchRoomBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+    if str(room.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the room owner can update")
+
+    sets: list[str] = []
+    params: list[Any] = []
+
+    if body.title is not None:
+        sets.append("title = %s")
+        params.append(body.title)
+    if body.scenario_question is not None:
+        sets.append("scenario_question = %s")
+        params.append(body.scenario_question)
+    if body.status is not None:
+        if body.status not in ("active", "closed"):
+            raise HTTPException(400, f"invalid status: {body.status}")
+        sets.append("status = %s")
+        params.append(body.status)
+    if body.archived is not None:
+        if body.archived:
+            sets.append("archived_at = NOW()")
+        else:
+            sets.append("archived_at = NULL")
+
+    if not sets:
+        # No-op patch — return current state
+        return _room_to_dict(room)
+
+    sets.append("updated_at = NOW()")
+    sql = f"UPDATE war_rooms SET {', '.join(sets)} WHERE id::text = %s"
+    params.append(room_id)
+
+    try:
+        db.execute(sql, params)
+    except Exception as exc:
+        logger.exception("war room patch failed")
+        raise HTTPException(500, f"patch failed: {exc}") from exc
+
+    updated = _fetch_room(db, room_id)
+    return _room_to_dict(updated) if updated else _room_to_dict(room)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -386,13 +519,15 @@ def submit_round(
     next_round = (mx_row.get("max_round") if mx_row else 0) or 0
     next_round = int(next_round) + 1
 
-    # Insert round
+    # Insert round + read back via RETURNING (avoids the
+    # (war_room_id, round_number) read-back race — Phase A audit fix).
     try:
-        db.execute(
+        new = db.fetch_one(
             """INSERT INTO war_room_rounds
                    (war_room_id, round_number, player_company_id,
                     player_company_name, move_type, move_payload, notes)
-               VALUES (%s::uuid, %s, %s, %s, %s, %s::jsonb, %s)""",
+               VALUES (%s::uuid, %s, %s, %s, %s, %s::jsonb, %s)
+               RETURNING id""",
             [
                 room_id, next_round, body.player_company_id,
                 body.player_company_name, body.move_type,
@@ -403,20 +538,23 @@ def submit_round(
         logger.exception("round insert failed")
         raise HTTPException(500, f"round create failed: {exc}") from exc
 
-    # Read back round id
+    if not new or not new.get("id"):
+        raise HTTPException(500, "round insert succeeded but RETURNING id was empty")
+    round_id = str(new["id"])
+
+    # Hydrate the row for the response (full set of columns)
     try:
         rnd_row = db.fetch_one(
             """SELECT id, war_room_id, round_number, player_company_id,
                       player_company_name, move_type, move_payload, notes, created_at
                FROM war_room_rounds
-               WHERE war_room_id = %s::uuid AND round_number = %s""",
-            [room_id, next_round],
+               WHERE id::text = %s""",
+            [round_id],
         )
     except Exception:
         rnd_row = None
     if not rnd_row:
         raise HTTPException(500, "round insert succeeded but read-back failed")
-    round_id = str(rnd_row["id"])
 
     # Pull recent history for prompt context
     try:
@@ -601,5 +739,174 @@ def delete_room(
     except Exception as exc:
         logger.exception("room close failed")
         raise HTTPException(500, f"close failed: {exc}") from exc
+
+    return Response(status_code=204)
+
+
+# ────────────────────────────────────────────────────────────────────
+# COMMENTS — anon read, viewer-write, author-edit, author-or-owner-delete
+# ────────────────────────────────────────────────────────────────────
+
+@router.get("/{room_id}/comments")
+def list_comments(
+    room_id: str,
+    round_id: Optional[str] = Query(default=None),
+    db: Database = Depends(get_db),
+):
+    """Anon read. Optional ?round_id= filters to comments on a single round."""
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+
+    if round_id:
+        try:
+            rows = db.fetch_all(
+                """SELECT id, war_room_id, round_id, author_user_id,
+                          author_display_name, body, created_at, edited_at
+                   FROM war_room_comments
+                   WHERE war_room_id = %s::uuid AND round_id = %s::uuid
+                   ORDER BY created_at ASC""",
+                [room_id, round_id],
+            ) or []
+        except Exception:
+            rows = []
+        comments = [_comment_to_dict(r) for r in rows]
+    else:
+        comments = _fetch_comments(db, room_id)
+
+    return {"war_room_id": room_id, "comments": comments, "count": len(comments)}
+
+
+@router.post("/{room_id}/comments", status_code=201)
+def create_comment(
+    room_id: str,
+    body: CommentBody,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """viewer+ can comment on any war room (rooms are anon-readable)."""
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+
+    # If round_id provided, sanity-check it belongs to this room (cheap).
+    if body.round_id:
+        try:
+            rnd = db.fetch_one(
+                "SELECT war_room_id FROM war_room_rounds WHERE id::text = %s",
+                [body.round_id],
+            )
+        except Exception:
+            rnd = None
+        if not rnd or str(rnd.get("war_room_id")) != str(room.get("id")):
+            raise HTTPException(400, f"round_id {body.round_id} not in this room")
+
+    display_name = (
+        user.get("display_name")
+        or user.get("email", "").split("@")[0]
+        or "anonymous"
+    )
+
+    try:
+        new = db.fetch_one(
+            """INSERT INTO war_room_comments
+                   (war_room_id, round_id, author_user_id, author_display_name, body)
+               VALUES (%s::uuid, %s, %s::uuid, %s, %s)
+               RETURNING id, war_room_id, round_id, author_user_id,
+                         author_display_name, body, created_at, edited_at""",
+            [
+                room_id,
+                body.round_id,
+                user.get("id"),
+                display_name,
+                body.body,
+            ],
+        )
+    except Exception as exc:
+        logger.exception("comment insert failed")
+        raise HTTPException(500, f"comment create failed: {exc}") from exc
+
+    if not new:
+        raise HTTPException(500, "comment insert succeeded but RETURNING was empty")
+    return _comment_to_dict(new)
+
+
+def _fetch_comment(db: Database, comment_id: str) -> Optional[dict]:
+    try:
+        return db.fetch_one(
+            """SELECT id, war_room_id, round_id, author_user_id,
+                      author_display_name, body, created_at, edited_at
+               FROM war_room_comments WHERE id::text = %s""",
+            [comment_id],
+        )
+    except Exception:
+        return None
+
+
+@router.patch("/{room_id}/comments/{comment_id}")
+def patch_comment(
+    room_id: str,
+    comment_id: str,
+    body: CommentPatchBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Edit your own comment. Sets edited_at."""
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    comment = _fetch_comment(db, comment_id)
+    if not comment or str(comment.get("war_room_id")) != room_id:
+        raise HTTPException(404, f"comment not found in room {room_id}")
+    if str(comment.get("author_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the author can edit a comment")
+
+    try:
+        db.execute(
+            """UPDATE war_room_comments
+               SET body = %s, edited_at = NOW()
+               WHERE id::text = %s""",
+            [body.body, comment_id],
+        )
+    except Exception as exc:
+        logger.exception("comment patch failed")
+        raise HTTPException(500, f"edit failed: {exc}") from exc
+
+    updated = _fetch_comment(db, comment_id)
+    return _comment_to_dict(updated) if updated else _comment_to_dict(comment)
+
+
+@router.delete("/{room_id}/comments/{comment_id}", status_code=204)
+def delete_comment(
+    room_id: str,
+    comment_id: str,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Author OR room owner can delete."""
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    comment = _fetch_comment(db, comment_id)
+    if not comment or str(comment.get("war_room_id")) != room_id:
+        raise HTTPException(404, f"comment not found in room {room_id}")
+
+    is_author = str(comment.get("author_user_id")) == str(user.get("id"))
+    is_owner = False
+    room = _fetch_room(db, room_id)
+    if room:
+        is_owner = str(room.get("owner_user_id")) == str(user.get("id"))
+
+    if not (is_author or is_owner):
+        raise HTTPException(403, "only the author or room owner can delete")
+
+    try:
+        db.execute(
+            "DELETE FROM war_room_comments WHERE id::text = %s",
+            [comment_id],
+        )
+    except Exception as exc:
+        logger.exception("comment delete failed")
+        raise HTTPException(500, f"delete failed: {exc}") from exc
 
     return Response(status_code=204)
