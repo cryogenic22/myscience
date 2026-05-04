@@ -24,6 +24,12 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user, get_db, require_role
 from db import Database
+from services.outcome_detector import (
+    DETECTOR_RULE_VERSION,
+    compute_calibration_score,
+    match_signals_to_decision,
+    suggest_weight_delta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +37,7 @@ router = APIRouter(prefix="/decisions", tags=["decisions"])
 
 
 VALID_STATUSES = ("open", "in_progress", "verified", "missed", "cancelled")
+VALID_OUTCOME_VERDICTS = ("verified", "missed", "cancelled")
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -53,6 +60,13 @@ class PatchDecisionBody(BaseModel):
     target_metric: Optional[str] = Field(default=None, max_length=200)
     target_value: Optional[str] = Field(default=None, max_length=200)
     actual_outcome: Optional[str] = Field(default=None, max_length=4000)
+
+
+class CaptureOutcomeBody(BaseModel):
+    signal_id: str
+    verdict: str
+    actual_outcome: str = Field(min_length=1, max_length=4000)
+    notes: Optional[str] = Field(default=None, max_length=4000)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -414,3 +428,164 @@ def delete_decision(
         raise HTTPException(500, f"delete failed: {exc}") from exc
 
     return Response(status_code=204)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Phase D — outcome detection + capture
+# ────────────────────────────────────────────────────────────────────
+
+def _entity_id_for_decision(db: Database, decision: dict) -> Optional[str]:
+    """Decisions don't carry primary_entity_id — pull it from the
+    source war_room. Falls back to None if the war_room is gone (FK
+    SET NULL)."""
+    war_room_id = decision.get("war_room_id")
+    if not war_room_id:
+        return None
+    try:
+        row = db.fetch_one(
+            "SELECT primary_entity_id FROM war_rooms WHERE id::text = %s",
+            [str(war_room_id)],
+        )
+    except Exception:
+        return None
+    return row.get("primary_entity_id") if row else None
+
+
+@router.post("/{decision_id}/suggest-outcome")
+def suggest_outcome(
+    decision_id: str,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Run the outcome matcher for a decision; return ranked candidates.
+
+    Owner-only. The matcher reads from the live `signals` table — what
+    DataSteward has surfaced — and scores each candidate signal on
+    entity overlap, KBQ overlap, and temporal proximity to the
+    decision's window. Threshold and cap defined in
+    `services.outcome_detector`.
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    decision = _fetch_decision(db, decision_id)
+    if not decision:
+        raise HTTPException(404, f"decision not found: {decision_id}")
+    if str(decision.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the decision owner can detect outcomes")
+
+    entity_id = _entity_id_for_decision(db, decision)
+
+    candidates = match_signals_to_decision(
+        db,
+        decision=decision,
+        entity_id_for_matching=entity_id,
+    )
+
+    return {
+        "decision_id": decision_id,
+        "rule_version_id": DETECTOR_RULE_VERSION,
+        "candidates": candidates,
+        "count": len(candidates),
+    }
+
+
+@router.post("/{decision_id}/capture-outcome")
+def capture_outcome(
+    decision_id: str,
+    body: CaptureOutcomeBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Record the actual outcome for a decision and compute calibration.
+
+    Writes:
+      - decisions.actual_outcome, actual_outcome_recorded_at, status,
+        calibration_score
+      - signal_score_adjustments row (one per capture) — feeds Phase 2
+        recalibration job
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    if body.verdict not in VALID_OUTCOME_VERDICTS:
+        raise HTTPException(
+            400,
+            f"verdict must be one of {VALID_OUTCOME_VERDICTS} (got {body.verdict!r})",
+        )
+
+    decision = _fetch_decision(db, decision_id)
+    if not decision:
+        raise HTTPException(404, f"decision not found: {decision_id}")
+    if str(decision.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the decision owner can capture outcomes")
+
+    # Verify the signal exists (cheap lookup; we also pull rule_version
+    # + kbq_tags for the learning-ledger row)
+    try:
+        sig = db.fetch_one(
+            """SELECT id, kbq_tags, rule_version_id, primary_entity_name
+               FROM signals WHERE id::text = %s""",
+            [body.signal_id],
+        )
+    except Exception:
+        sig = None
+    if not sig:
+        raise HTTPException(400, f"signal_id {body.signal_id} not found")
+
+    # Calibration math
+    confidence = decision.get("confidence_at_commit")
+    cal_score = compute_calibration_score(
+        verdict=body.verdict,
+        confidence_at_commit=confidence,
+    )
+    delta = suggest_weight_delta(calibration_score=cal_score, verdict=body.verdict)
+
+    # Update the decision
+    try:
+        db.execute(
+            """UPDATE decisions
+               SET actual_outcome = %s,
+                   actual_outcome_recorded_at = NOW(),
+                   status = %s,
+                   calibration_score = %s,
+                   notes = COALESCE(%s, notes),
+                   updated_at = NOW()
+               WHERE id::text = %s""",
+            [
+                body.actual_outcome,
+                body.verdict,
+                cal_score,
+                body.notes,
+                decision_id,
+            ],
+        )
+    except Exception as exc:
+        logger.exception("decision outcome update failed")
+        raise HTTPException(500, f"outcome update failed: {exc}") from exc
+
+    # Append to learning ledger — one row per kbq_tag of the matched
+    # signal, since weights are per-(rule_version, kbq_tag).
+    rule_version = sig.get("rule_version_id") or "unknown"
+    kbq_tags = list(sig.get("kbq_tags") or [])
+    if not kbq_tags:
+        kbq_tags = ["uncategorized"]
+    for tag in kbq_tags:
+        try:
+            db.execute(
+                """INSERT INTO signal_score_adjustments
+                       (rule_version_id, kbq_tag, decision_id,
+                        matched_signal_id, calibration_score,
+                        weight_delta_suggested, notes)
+                   VALUES (%s, %s, %s::uuid, %s::uuid, %s, %s, %s)""",
+                [
+                    rule_version, tag, decision_id, body.signal_id,
+                    cal_score, delta, body.notes,
+                ],
+            )
+        except Exception as exc:
+            # Non-fatal — outcome is captured even if the learning row fails.
+            logger.warning("signal_score_adjustments insert failed (kbq=%s): %s", tag, exc)
+
+    updated = _fetch_decision(db, decision_id)
+    return _decision_to_dict(updated) if updated else _decision_to_dict(decision)

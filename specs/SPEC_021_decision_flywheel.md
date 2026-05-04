@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
-*Date: 2 May 2026 (last revised 4 May 2026 — Phase C detailed design appended)*
-*Status: Phase A + A.5 + B shipped & verified on prod. Phase C in build.*
+*Date: 2 May 2026 (last revised 4 May 2026 — Phase D MVP detailed design appended)*
+*Status: Phase A + A.5 + B + C shipped & verified on prod. Phase D MVP in build.*
 
 ---
 
@@ -815,6 +815,254 @@ thing we committed to" — that's `decisions.id`. D reads
 signals for outcome matches, proposes a status update + actual_outcome
 to the owner, computes `calibration_score`, writes back. Without C's
 ledger, D has nothing to learn from.
+
+## Phase D — Outcome Capture + Flywheel Closure (MVP, this sprint)
+
+### Requirement
+
+A decision sits in the ledger with a deadline and an expected outcome.
+When reality moves — a competitor announces, a trial reads out, an FDA
+action lands — those signals are already flowing into our `signals`
+table from the DataSteward pipeline. But there's no link between
+*"signal X just landed"* and *"this decision predicted that."* So the
+predicted-vs-actual loop never closes, the system never learns, and
+the moat that distinguishes us from "vendors stopping at simulation"
+doesn't form. **D wires that link.**
+
+### Honest scope split
+
+The full D vision is large (auto-detection scheduler + weight
+recalibration + per-rule learning ledger). This phase ships **D MVP**:
+the matcher + the human-in-the-loop capture surface. Once that loop is
+proven against real signals on prod, **D Phase 2** layers the
+autonomous batch detection + signal-weight feedback on top of it.
+
+| | D MVP (this sprint) | D Phase 2 (later) |
+|---|---|---|
+| Matching | On-demand: user clicks "Detect outcome" on a decision | Background scheduler runs hourly across all open decisions |
+| Capture | Owner picks one of N candidate signals; system writes `actual_outcome` + `calibration_score` | Same, plus auto-propose via Slack/email when high-confidence match found |
+| Learning | `signal_score_adjustments` table populated; visible in Recalibration tab | Quarterly batch updates `intelligence_rules.yaml` weights |
+| Positioning | **AI-informed** — system suggests, human decides | **Approaching AI-led** — system flags, human confirms |
+
+### Matching design (`services/outcome_detector.py`)
+
+Given a decision with `move_type`, `primary_entity_id`, and `created_at`,
+score each candidate signal in `signals` table on three dimensions:
+
+1. **Entity overlap** (0.0–0.5):
+   - `1.0` weight if `signal.primary_entity_id == decision.primary_entity_id` (via war_room)
+   - `0.5` weight if signal's `primary_entity_id` ∈ `related_entity_ids` of any other signal pointing at the decision's entity
+   - `0.0` otherwise
+2. **KBQ overlap** (0.0–0.3): mapped from `move_type`:
+   - `trial_readout` → `{clinical}`
+   - `new_indication` → `{clinical, regulatory}`
+   - `label_expansion` → `{regulatory}`
+   - `price_cut` → `{pricing_access}`
+   - `acquisition` → `{m_and_a, strategic}`
+   - `formulation_switch` → `{product}`
+   - `geo_expansion` → `{strategic}`
+   - `segment_pivot` → `{strategic, product}`
+   - Score = `0.3 * len(intersect) / len(expected_kbqs)`
+3. **Temporal proximity** (0.0–0.2): higher score for signals landing
+   between `decision.created_at` and `decision.deadline + 30 days`
+   - In window: `0.2`
+   - Within 60 days outside window: `0.1`
+   - Else: `0.0`
+
+Composite **match_score** = sum (0.0–1.0). Threshold for surfacing as
+candidate: `≥ 0.4`. Top N by score, capped at 5.
+
+Signals tied to the same source as the decision (`source_signal_id`)
+are excluded — that's the seed signal, not an outcome.
+
+### Calibration scoring (`services/outcome_detector.calibrate`)
+
+Once an outcome is captured (decision moves to `verified` or `missed`
+with `actual_outcome` text), compute a **simple calibration_score**:
+
+- The heuristic is intentionally crude in MVP — text-based, not numeric:
+  - `verified` + decision had non-null `confidence_at_commit ≥ 0.5`
+    → calibration_score = `confidence_at_commit` (we predicted high
+    and were right; full credit)
+  - `verified` + low confidence_at_commit → `1 - confidence_at_commit`
+    (we hedged but were right; partial credit because we were
+    *too* uncertain)
+  - `missed` + high confidence_at_commit → `1 - confidence_at_commit`
+    (we predicted high and were wrong; large penalty)
+  - `missed` + low confidence_at_commit → `confidence_at_commit`
+    (we hedged and were wrong; small penalty — we already knew we
+    didn't know)
+
+This produces a value in `[0, 1]` where higher = better-calibrated.
+Stored on `decisions.calibration_score`.
+
+D Phase 2 will replace this with a richer numeric metric once we have
+structured `target_value` parsing (e.g. *"+3pp by Q4"* → numeric ±2pp
+delta from actual market_share_delta).
+
+### Storage
+
+Migration `050_signal_score_adjustments.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS signal_score_adjustments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- What rule version was active when the matched signal fired?
+    rule_version_id TEXT NOT NULL,
+    -- Which KBQ category does this adjustment apply to?
+    kbq_tag TEXT NOT NULL,
+
+    -- Provenance — which decision drove this adjustment?
+    decision_id UUID REFERENCES decisions(id) ON DELETE SET NULL,
+    matched_signal_id UUID REFERENCES signals(id) ON DELETE SET NULL,
+
+    -- The numbers that drive future weight recalibration (Phase 2)
+    calibration_score REAL NOT NULL
+        CHECK (calibration_score BETWEEN 0.0 AND 1.0),
+    weight_delta_suggested REAL,  -- derived; -0.05 if missed, +0.05 if verified, etc.
+
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_adj_rule_kbq
+    ON signal_score_adjustments (rule_version_id, kbq_tag);
+
+CREATE INDEX IF NOT EXISTS idx_signal_adj_decision
+    ON signal_score_adjustments (decision_id) WHERE decision_id IS NOT NULL;
+```
+
+D MVP populates this on every `capture-outcome` call so the data is
+ready when D Phase 2's recalibration job ships.
+
+### Endpoints (extend `api/routes/decisions.py`)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/decisions/{id}/suggest-outcome` | owner | Run matcher; return ranked candidate signals |
+| POST | `/decisions/{id}/capture-outcome` | owner | Owner picks a signal as the outcome; computes calibration_score, writes to decision + signal_score_adjustments |
+
+`POST /decisions/{id}/suggest-outcome` response:
+```json
+{
+  "decision_id": "...",
+  "rule_version_id": "outcome-v1.0.0",
+  "candidates": [
+    {
+      "signal_id": "...",
+      "headline": "...",
+      "summary": "...",
+      "kbq_tags": ["clinical"],
+      "created_at": "...",
+      "primary_entity_name": "...",
+      "match_score": 0.78,
+      "match_components": {
+        "entity_overlap": 0.5,
+        "kbq_overlap": 0.15,
+        "temporal_proximity": 0.13
+      }
+    }
+  ],
+  "count": 3
+}
+```
+
+`POST /decisions/{id}/capture-outcome` body:
+```json
+{
+  "signal_id": "...",       // pick from suggested candidates
+  "verdict": "verified" | "missed" | "cancelled",
+  "actual_outcome": "...",  // required text summary; UI pre-fills from signal.headline
+  "notes": "..."            // optional extra context
+}
+```
+Response = updated decision (`status` set, `actual_outcome` populated,
+`calibration_score` computed, `actual_outcome_recorded_at` set).
+
+### Frontend
+
+```
+frontend/src/components/ci/decisions/
+├── OutcomeDetector.tsx       — NEW. Modal: "Detect outcome" button →
+│                               candidate signals list with match_score bars
+├── CalibrationChip.tsx       — NEW. Renders calibration_score with color
+│                               (>0.66 green, >0.33 amber, else red)
+└── DecisionCard.tsx          — extend: "Detect outcome" button for
+                                in_progress decisions; CalibrationChip when
+                                calibration_score is non-null
+```
+
+The flow:
+1. Decision in `in_progress` state → "Detect outcome" button visible
+2. Click → POST `/decisions/{id}/suggest-outcome` → modal shows ranked
+   candidate signals (each with headline, kbq tags, match_score bar)
+3. Owner picks one → composes `actual_outcome` text (pre-filled with
+   signal headline) → picks verdict (`verified`/`missed`)
+4. Submit → POST `/decisions/{id}/capture-outcome` → decision updates
+   in place with new status + `calibration_score` + `CalibrationChip`
+
+### Backend → Frontend coverage audit (running)
+
+Phase D additions:
+
+| Backend field | Surface today | Notes |
+|---|---|---|
+| `decisions.actual_outcome` | ✅ already shown in DecisionCard expanded view (built in C, populated in D) | |
+| `decisions.calibration_score` | 🛠 NEW D: CalibrationChip on card | |
+| `decisions.actual_outcome_recorded_at` | ✅ shown next to actual_outcome label | |
+| `signal_score_adjustments` table | ⏳ D Phase 2: Recalibration ledger view | Populated in D MVP, surfaced in Phase E |
+| `match_components` per candidate | 🛠 NEW D: tooltip on match_score bar in OutcomeDetector | |
+
+### Tests
+
+`tests/test_outcome_detector.py` — new file:
+- `_kbq_for_move`: every move_type maps to ≥1 KBQ
+- `_score_temporal`: in-window/near-window/far cases all expected scores
+- `_score_kbq`: full overlap, partial overlap, no overlap
+- `_score_entity`: same entity / related entity / unrelated
+- `match_signals_to_decision`: returns sorted by score, threshold respected, source_signal excluded, capped at 5
+- `compute_calibration_score`: all 4 quadrants (verified+high, verified+low, missed+high, missed+low)
+- `compute_calibration_score`: NULL confidence_at_commit returns 0.5 (neutral)
+
+Extend `tests/test_decisions_api.py`:
+- POST suggest-outcome 401 anon, 403 non-owner
+- POST suggest-outcome 200: returns candidates ordered by match_score
+- POST suggest-outcome excludes the source_signal_id
+- POST capture-outcome 401 anon, 403 non-owner
+- POST capture-outcome 200: writes actual_outcome, calibration_score,
+  status, AND inserts signal_score_adjustments row
+- POST capture-outcome 400 if signal_id not in candidates
+- POST capture-outcome 400 for invalid verdict
+
+### Acceptance — Phase D MVP
+
+- All Phase D tests pass; baseline 1982 → 1982 + N
+- After migrate (050):
+  - For an open decision, POST suggest-outcome returns ranked candidates
+    from real signals (or empty array if no matches)
+  - Capturing an outcome writes `decisions.actual_outcome` +
+    `calibration_score` + appends `signal_score_adjustments`
+  - DecisionCard renders CalibrationChip when score is set
+- /ci page: "Detect outcome" button on in_progress decisions; modal
+  shows ranked candidates; capture writes back
+
+### What this unlocks (D Phase 2 + beyond)
+
+- **D Phase 2:** background scheduler iterates open decisions every
+  hour, calls `match_signals_to_decision`, sends notification to owner
+  when high-confidence match found (Slack/email), no manual click
+- **D Phase 2:** recalibration job aggregates `signal_score_adjustments`
+  per `(rule_version_id, kbq_tag)` and adjusts weights in
+  `intelligence_rules.yaml` quarterly
+- **Phase E (Agentic Workspace):** outcome stream surface that shows
+  these matches happening in near-real-time across all decisions
+
+This is the moat: the system that watches for outcomes and updates
+its own scoring as predictions land. **Most pharma CI vendors stop at
+Phase A** — they show signals, they show competitive landscape, they
+don't close the loop. C+D is what makes the platform get smarter every
+quarter rather than aging like a deck.
 
 ## Other follow-ups (not in any phase yet)
 

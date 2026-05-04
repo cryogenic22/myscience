@@ -1425,7 +1425,53 @@ export const decisionsApi = {
         throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       }
     }),
+
+  // Phase D MVP — outcome detection + capture
+  suggestOutcome: (id: string):
+    Promise<{ decision_id: string; rule_version_id: string; candidates: OutcomeCandidate[]; count: number }> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}/suggest-outcome`, {
+      method: 'POST',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  captureOutcome: (id: string, body: {
+    signal_id: string;
+    verdict: 'verified' | 'missed' | 'cancelled';
+    actual_outcome: string;
+    notes?: string;
+  }): Promise<Decision> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}/capture-outcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
 };
+
+export interface OutcomeCandidate {
+  signal_id: string;
+  headline: string;
+  summary: string | null;
+  kbq_tags: string[];
+  created_at: string;
+  primary_entity_name: string | null;
+  primary_entity_id: string | null;
+  rule_version_id: string;
+  confidence_tier: string | null;
+  trust_score: number | null;
+  impact_tier: string | null;
+  match_score: number;
+  match_components: {
+    entity_overlap: number;
+    kbq_overlap: number;
+    temporal_proximity: number;
+  };
+}
 
 export interface MoveSuggestion {
   move_type: MoveType;

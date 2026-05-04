@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Target, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { Target, ExternalLink, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { decisionsApi, MOVE_TYPE_META, type Decision, type DecisionStatus } from '../../../api';
 import DeadlineChip from './DeadlineChip';
+import CalibrationChip from './CalibrationChip';
+import OutcomeDetector from './OutcomeDetector';
 
 interface Props {
   decision: Decision;
@@ -38,9 +40,11 @@ function isOwner(d: Decision): boolean {
 export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const owner = isOwner(decision);
   const meta = STATUS_META[decision.status];
   const moveMeta = MOVE_TYPE_META[decision.move_type];
+  const canDetectOutcome = owner && ['open', 'in_progress'].includes(decision.status);
 
   const handleStatus = async (next: DecisionStatus) => {
     setBusy(true);
@@ -91,6 +95,7 @@ export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Prop
               overdue={decision.overdue}
               status={decision.status}
             />
+            <CalibrationChip score={decision.calibration_score} />
             <span style={{ fontSize: '12px' }}>{moveMeta?.icon}</span>
             <span className="text-[10px]" style={{ color: 'var(--color-ink-4)', letterSpacing: '0.05em' }}>
               {moveMeta?.label ?? decision.move_type}
@@ -146,23 +151,55 @@ export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Prop
             </div>
           )}
 
-          {decision.war_room_id && onOpenWarRoom && (
-            <button
-              type="button"
-              onClick={() => onOpenWarRoom(decision.war_room_id!)}
-              className="text-[11px] inline-flex items-center gap-1"
-              style={{
-                padding: '4px 10px',
-                borderRadius: '4px',
-                background: 'transparent',
-                color: 'var(--color-ink-3)',
-                border: '1px solid var(--color-line)',
-                cursor: 'pointer',
+          <div className="flex items-center gap-2 flex-wrap">
+            {decision.war_room_id && onOpenWarRoom && (
+              <button
+                type="button"
+                onClick={() => onOpenWarRoom(decision.war_room_id!)}
+                className="text-[11px] inline-flex items-center gap-1"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: 'var(--color-ink-3)',
+                  border: '1px solid var(--color-line)',
+                  cursor: 'pointer',
+                }}
+              >
+                <ExternalLink size={10} />
+                Open source war room
+              </button>
+            )}
+            {canDetectOutcome && (
+              <button
+                type="button"
+                onClick={() => setDetecting(true)}
+                className="text-[11px] inline-flex items-center gap-1 font-medium"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'var(--color-accent)',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                title="Run the outcome matcher: scan recent signals for an outcome that matches this decision"
+              >
+                <Search size={10} />
+                Detect outcome
+              </button>
+            )}
+          </div>
+
+          {detecting && (
+            <OutcomeDetector
+              decision={decision}
+              onClose={() => setDetecting(false)}
+              onCaptured={(updated) => {
+                setDetecting(false);
+                onChange(updated);
               }}
-            >
-              <ExternalLink size={10} />
-              Open source war room
-            </button>
+            />
           )}
 
           {owner && (
