@@ -144,6 +144,14 @@ def _make_db():
         if "from decisions" in s and "id::text" in s and params:
             return decisions.get(str(params[0]))
 
+        # D2 idempotency: SELECT decision by war_room_round_id
+        if "from decisions" in s and "war_room_round_id" in s and params:
+            target_round = str(params[0])
+            for d in decisions.values():
+                if str(d.get("war_room_round_id")) == target_round:
+                    return dict(d)
+            return None
+
         return None
 
     def fake_fetch_all(sql, params=None):
@@ -735,6 +743,110 @@ def test_capture_outcome_writes_actual_and_calibration():
     assert body["actual_outcome_recorded_at"] is not None
     # verified + 0.7 confidence → score = 0.7
     assert body["calibration_score"] == pytest.approx(0.7, abs=0.01)
+
+
+# ────────────────────────────────────────────────────────────────────
+# D2 — idempotency
+# ────────────────────────────────────────────────────────────────────
+
+def test_promote_round_idempotent_returns_existing_with_200():
+    """Second POST for the same round returns existing decision (200)
+    instead of erroring on the UNIQUE constraint."""
+    db, decisions_store = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+
+    # First promote → 201
+    r1 = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                     json={"title": "first call"})
+    assert r1.status_code == 201
+    first_id = r1.json()["id"]
+
+    # Second promote of the SAME round → 200 with the existing decision
+    r2 = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                     json={"title": "this title is ignored on duplicate"})
+    assert r2.status_code == 200
+    assert r2.json()["id"] == first_id
+    # Original title preserved (not overwritten by second call)
+    assert r2.json()["title"] == "first call"
+
+
+def test_capture_outcome_409_when_already_captured():
+    """Capturing twice without ?force=true must 409."""
+    db, _ = _make_db()
+    db._signals = {
+        "sig-A": {"id": "sig-A", "kbq_tags": ["clinical"],
+                  "rule_version_id": "intel-v1.2.0",
+                  "primary_entity_name": "Lilly"},
+    }
+    real_fetch_one = db.fetch_one.side_effect
+    def patched_fetch_one(sql, params=None):
+        s = (sql or "").lower()
+        if "from signals" in s and "id::text" in s and params:
+            return db._signals.get(str(params[0]))
+        if "primary_entity_id from war_rooms" in s and params:
+            return {"primary_entity_id": "ent-novo"}
+        return real_fetch_one(sql, params)
+    db.fetch_one.side_effect = patched_fetch_one
+
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    did = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                       json={"title": "x"}).json()["id"]
+
+    # First capture → 200
+    r1 = client.post(
+        f"/decisions/{did}/capture-outcome", headers=_hdr(tok),
+        json={"signal_id": "sig-A", "verdict": "verified",
+              "actual_outcome": "first"},
+    )
+    assert r1.status_code == 200
+
+    # Second capture → 409
+    r2 = client.post(
+        f"/decisions/{did}/capture-outcome", headers=_hdr(tok),
+        json={"signal_id": "sig-A", "verdict": "verified",
+              "actual_outcome": "second"},
+    )
+    assert r2.status_code == 409
+
+
+def test_capture_outcome_force_overrides_409():
+    db, _ = _make_db()
+    db._signals = {
+        "sig-A": {"id": "sig-A", "kbq_tags": ["clinical"],
+                  "rule_version_id": "intel-v1.2.0",
+                  "primary_entity_name": "Lilly"},
+    }
+    real_fetch_one = db.fetch_one.side_effect
+    def patched_fetch_one(sql, params=None):
+        s = (sql or "").lower()
+        if "from signals" in s and "id::text" in s and params:
+            return db._signals.get(str(params[0]))
+        if "primary_entity_id from war_rooms" in s and params:
+            return {"primary_entity_id": "ent-novo"}
+        return real_fetch_one(sql, params)
+    db.fetch_one.side_effect = patched_fetch_one
+
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    did = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                       json={"title": "x"}).json()["id"]
+
+    client.post(
+        f"/decisions/{did}/capture-outcome", headers=_hdr(tok),
+        json={"signal_id": "sig-A", "verdict": "verified",
+              "actual_outcome": "first"},
+    )
+    # Force second capture
+    r2 = client.post(
+        f"/decisions/{did}/capture-outcome?force=true", headers=_hdr(tok),
+        json={"signal_id": "sig-A", "verdict": "missed",
+              "actual_outcome": "corrected"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["actual_outcome"] == "corrected"
+    assert r2.json()["status"] == "missed"
 
 
 def test_capture_outcome_writes_signal_score_adjustments():

@@ -87,11 +87,33 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup callbacks are registered onto app.state by the
+        # remainder of create_app(); we just invoke them here so we get
+        # the modern lifespan API without restructuring 200 lines.
+        for fn in getattr(app.state, "_startup_fns", []):
+            try:
+                fn()
+            except Exception:
+                logger.exception("startup callback failed")
+        yield
+        for fn in getattr(app.state, "_shutdown_fns", []):
+            try:
+                fn()
+            except Exception:
+                logger.exception("shutdown callback failed")
+
     app = FastAPI(
         title="Market-Zero",
         description="Pharmaceutical intelligence API: search, graph, metrics, and GraphRAG queries.",
         version="0.1.0",
+        lifespan=lifespan,
     )
+    app.state._startup_fns = []
+    app.state._shutdown_fns = []
 
     allowed_origins = [
         "http://localhost:5090",
@@ -107,10 +129,26 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o for o in allowed_origins if o],
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Content-Type", "Authorization", "X-Session-ID"],
         allow_credentials=True,
     )
+
+    # SPEC-021 D2 — per-user rate limiting on LLM-heavy endpoints
+    try:
+        from api.middleware.rate_limit import rate_limit_middleware
+        app.middleware("http")(rate_limit_middleware)
+        logger.info("Rate limit middleware registered (SPEC-021 D2)")
+    except Exception as _e:
+        logger.warning("Rate limit middleware NOT registered: %s", _e)
+
+    # SPEC-021 D2 — standard error envelope for HTTPException + ValidationError
+    try:
+        from api.exception_handlers import install_exception_handlers
+        install_exception_handlers(app)
+        logger.info("Standard error envelope handlers installed (SPEC-021 D2)")
+    except Exception as _e:
+        logger.warning("Error envelope handlers NOT installed: %s", _e)
 
     # Register API routers — mount at both root (backwards compat) and /api/v1
     all_routers = [
@@ -362,7 +400,6 @@ def create_app() -> FastAPI:
 
     _scheduler = None
 
-    @app.on_event("startup")
     def start_background_agents():
         """Start the pipeline scheduler and data steward as background agents.
 
@@ -532,32 +569,87 @@ def create_app() -> FastAPI:
         t.start()
         logger.info("Background agents thread started (30s delayed)")
 
-    @app.on_event("shutdown")
-    def shutdown():
+    def _shutdown():
         try:
             get_db().close()
         except Exception:
             pass
 
+    # Register the lifespan callbacks
+    app.state._startup_fns.append(start_background_agents)
+    app.state._shutdown_fns.append(_shutdown)
+
+    # SPEC-021 D2 — autonomous outcome detection job
+    def _start_outcome_scheduler():
+        if os.environ.get("MZ_OUTCOME_SCHEDULER_DISABLED", "").lower() in ("1", "true", "yes"):
+            logger.info("outcome scheduler disabled via env")
+            return
+        try:
+            from apscheduler.schedulers.background import BackgroundScheduler
+            from services.outcome_scheduler import register_outcome_scheduler
+
+            sched = BackgroundScheduler(timezone="UTC")
+            register_outcome_scheduler(sched, db_factory=get_db, interval_hours=1)
+            sched.start()
+            app.state.outcome_scheduler = sched
+            logger.info("Outcome scheduler started (SPEC-021 D2)")
+        except Exception:
+            logger.exception("Outcome scheduler failed to start")
+
+    def _stop_outcome_scheduler():
+        sched = getattr(app.state, "outcome_scheduler", None)
+        if sched is not None:
+            try:
+                sched.shutdown(wait=False)
+            except Exception:
+                pass
+
+    app.state._startup_fns.append(_start_outcome_scheduler)
+    app.state._shutdown_fns.append(_stop_outcome_scheduler)
+
+    # Auto-collected API prefix registry — replaces the hand-maintained
+    # list. Walks registered routes and extracts the first path segment
+    # (the unique top-level prefix) into a frozenset. Eliminates the
+    # category of bugs where a new router shipped without being added
+    # to the SPA fallback's allowlist (cause of the C-launch incident).
+    def _collect_api_prefixes(app_obj: FastAPI) -> frozenset[str]:
+        prefixes: set[str] = set()
+        for route in app_obj.routes:
+            path = getattr(route, "path", "") or ""
+            if not path.startswith("/"):
+                continue
+            # Strip /api/v1 prefix if present, then take first segment
+            stripped = path[len("/api/v1"):] if path.startswith("/api/v1") else path
+            stripped = stripped.lstrip("/")
+            if not stripped:
+                continue
+            seg = stripped.split("/", 1)[0]
+            if seg:
+                prefixes.add(seg)
+        # Always include the universally needed ones
+        prefixes.update({"api", "openapi.json", "docs", "redoc", "debug"})
+        return frozenset(prefixes)
+
     # Serve frontend static files (must come after API routes)
     if FRONTEND_DIR.exists():
+        # Computed once at startup — routes don't change at runtime
+        _api_prefixes = _collect_api_prefixes(app)
+        logger.info("SPA fallback API prefixes (auto-collected): %s",
+                    sorted(_api_prefixes))
+
         @app.middleware("http")
         async def spa_fallback(request: Request, call_next):
-            """Serve SPA for frontend routes, let API routes pass through."""
+            """Serve SPA for frontend routes, let API routes pass through.
+
+            Uses the auto-collected prefix registry (SPEC-021 D2). Adding
+            a new router automatically protects its 404s from being
+            replaced with index.html.
+            """
             response = await call_next(request)
-            # If the API returned 404 and the path looks like a frontend route,
-            # serve index.html instead. API paths return proper 404 JSON.
             if response.status_code == 404:
                 path = request.url.path.lstrip("/")
-                is_api = any(path.startswith(p) for p in (
-                    "api/", "chat", "search/", "graph/", "query", "entities",
-                    "catalog/", "metrics", "enrichment", "health",
-                    "therapeutic-areas", "feedback", "scenarios", "steward",
-                    "literature", "pricing", "intelligence", "agent",
-                    "auth/", "upload", "connectors/",
-                    "signals", "watchlist", "war-rooms", "decisions",
-                    "openapi.json", "docs", "redoc",
-                ))
+                first_seg = path.split("/", 1)[0] if path else ""
+                is_api = first_seg in _api_prefixes
                 if not is_api and not path.startswith("assets/"):
                     return FileResponse(str(FRONTEND_DIR / "index.html"))
             return response

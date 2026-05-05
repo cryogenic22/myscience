@@ -145,14 +145,39 @@ class Database:
     @contextmanager
     def transaction(self):
         """
-        Context manager for explicit transactions.
+        Context manager for explicit transactions. Pool-aware (SPEC-021 D2).
 
         Usage:
-            with db.transaction():
-                db.execute("INSERT INTO ...")
-                db.execute("UPDATE ...")
+            with db.transaction() as tx:
+                tx.execute("INSERT INTO ...")
+                tx.execute("UPDATE ...")
             # auto-commits on exit, rolls back on exception
+
+        In single-conn mode (`pool_size=0`) this yields `self` for back
+        compat with existing call sites that do `with db.transaction():
+        db.execute(...)`. In pooled mode it grabs ONE connection from
+        the pool, sets autocommit=False, and yields a `_TxnView`
+        wrapping that single conn so all execute/fetch calls run on the
+        same transaction. The conn is returned to the pool on exit.
         """
+        if self._pool is not None:
+            conn = self._pool.getconn()
+            old_autocommit = conn.autocommit
+            conn.autocommit = False
+            try:
+                yield _TxnView(conn)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.autocommit = old_autocommit
+                self._pool.putconn(conn)
+            return
+
+        # Single-conn fallback
+        if self._conn is None:
+            self.connect()
         old_autocommit = self._conn.autocommit
         self._conn.autocommit = False
         try:
@@ -189,3 +214,29 @@ class Database:
                 user_part = prefix.rsplit(":", 1)[0]
                 return f"{user_part}:***@{rest}"
         return self.dsn
+
+
+class _TxnView:
+    """Single-connection transaction view yielded by `Database.transaction()`
+    in pooled mode. Exposes execute/fetch_one/fetch_all bound to one conn
+    so multi-statement transactions stay atomic.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query: str, params: Optional[list[Any]] = None) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+
+    def fetch_one(self, query: str, params: Optional[list[Any]] = None) -> Optional[dict]:
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def fetch_all(self, query: str, params: Optional[list[Any]] = None) -> list[dict]:
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]

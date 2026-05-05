@@ -345,7 +345,20 @@ def suggest_moves(
     user_content = _build_user_content(dossier, signal_context, n)
 
     try:
-        reply = llm.raw_chat(system=system_prompt, user=user_content, max_tokens=1500)
+        # SPEC-021 D2: telemetry + timeout wrapper. Same shape as war_game_engine.
+        try:
+            from services.llm_telemetry import chat_with_telemetry
+            reply = chat_with_telemetry(
+                llm, db,
+                system=system_prompt,
+                user=user_content,
+                caller="suggester",
+                prompt_version=f"suggester-{SUGGESTER_RULE_VERSION}",
+                max_tokens=1500,
+                timeout_seconds=45.0,
+            )
+        except Exception:
+            reply = llm.raw_chat(system=system_prompt, user=user_content, max_tokens=1500)
     except Exception as exc:
         logger.warning("Move suggester LLM call failed: %s", exc)
         return []

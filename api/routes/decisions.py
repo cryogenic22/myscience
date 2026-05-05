@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user, get_db, require_role
 from db import Database
+from services.calibration_math import compute_numeric_calibration
 from services.outcome_detector import (
     DETECTOR_RULE_VERSION,
     compute_calibration_score,
@@ -207,6 +208,7 @@ def _mean_confidence(db: Database, round_id: str) -> Optional[float]:
 def promote_round(
     round_id: str,
     body: PromoteBody,
+    response: Response,
     user: dict = Depends(require_role("viewer")),
     db: Database = Depends(get_db),
 ):
@@ -215,6 +217,11 @@ def promote_round(
     Snapshots the round's move_type, move_payload, and mean confidence
     score so the ledger entry is immutable even if the source room is
     later edited or archived.
+
+    Idempotent: a second POST for the same round_id returns the
+    existing decision with HTTP 200 (not 201). Enforced by the
+    UNIQUE partial index on `decisions(war_room_round_id)` from
+    migration 051.
     """
     deadline = _parse_deadline(body.deadline)
 
@@ -223,6 +230,20 @@ def promote_round(
         raise HTTPException(404, f"round not found: {round_id}")
     if str(rnd.get("owner_user_id")) != str(user.get("id")):
         raise HTTPException(403, "only the room owner can promote a round")
+
+    # Idempotency check — return existing decision if this round was
+    # already promoted (UNIQUE index will reject on INSERT either way,
+    # but we'd rather not hit the constraint when we can short-circuit).
+    try:
+        existing = db.fetch_one(
+            f"SELECT {_DECISION_COLS} FROM decisions WHERE war_room_round_id = %s::uuid",
+            [round_id],
+        )
+    except Exception:
+        existing = None
+    if existing:
+        response.status_code = 200
+        return _decision_to_dict(existing)
 
     confidence = _mean_confidence(db, round_id)
     payload_snapshot = rnd.get("move_payload") or {}
@@ -494,6 +515,7 @@ def suggest_outcome(
 def capture_outcome(
     decision_id: str,
     body: CaptureOutcomeBody,
+    force: bool = Query(default=False, description="Override 409 if already captured"),
     user: Optional[dict] = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
@@ -502,8 +524,11 @@ def capture_outcome(
     Writes:
       - decisions.actual_outcome, actual_outcome_recorded_at, status,
         calibration_score
-      - signal_score_adjustments row (one per capture) — feeds Phase 2
+      - signal_score_adjustments row (one per capture) — feeds D Phase 2
         recalibration job
+
+    Idempotent guard: once `actual_outcome_recorded_at` is set, returns
+    409 unless `?force=true` (owner-only escape hatch for typo correction).
     """
     if user is None:
         raise HTTPException(401, "authentication required")
@@ -520,6 +545,13 @@ def capture_outcome(
     if str(decision.get("owner_user_id")) != str(user.get("id")):
         raise HTTPException(403, "only the decision owner can capture outcomes")
 
+    if decision.get("actual_outcome_recorded_at") and not force:
+        raise HTTPException(
+            409,
+            "Outcome already captured for this decision. "
+            "Pass ?force=true to overwrite (owner-only).",
+        )
+
     # Verify the signal exists (cheap lookup; we also pull rule_version
     # + kbq_tags for the learning-ledger row)
     try:
@@ -533,12 +565,21 @@ def capture_outcome(
     if not sig:
         raise HTTPException(400, f"signal_id {body.signal_id} not found")
 
-    # Calibration math
+    # Calibration math — try numeric first (D2 upgrade), fall back to
+    # the categorical heuristic from D MVP when target_value can't be parsed
+    # or the actual_outcome is free text we can't extract a magnitude from.
     confidence = decision.get("confidence_at_commit")
-    cal_score = compute_calibration_score(
-        verdict=body.verdict,
-        confidence_at_commit=confidence,
+    numeric_cal = compute_numeric_calibration(
+        target_value=decision.get("target_value"),
+        actual_outcome=body.actual_outcome,
     )
+    if numeric_cal is not None:
+        cal_score = numeric_cal
+    else:
+        cal_score = compute_calibration_score(
+            verdict=body.verdict,
+            confidence_at_commit=confidence,
+        )
     delta = suggest_weight_delta(calibration_score=cal_score, verdict=body.verdict)
 
     # Update the decision
@@ -589,3 +630,232 @@ def capture_outcome(
 
     updated = _fetch_decision(db, decision_id)
     return _decision_to_dict(updated) if updated else _decision_to_dict(decision)
+
+
+# ────────────────────────────────────────────────────────────────────
+# D2 — outcome_proposals (autonomous detection awaiting confirm)
+# ────────────────────────────────────────────────────────────────────
+
+def _proposal_to_dict(row: dict) -> dict:
+    components = row.get("match_components") or {}
+    if isinstance(components, str):
+        try:
+            components = json.loads(components)
+        except Exception:
+            components = {}
+    return {
+        "id": str(row.get("id")),
+        "decision_id": str(row.get("decision_id")),
+        "matched_signal_id": str(row.get("matched_signal_id")),
+        "match_score": row.get("match_score"),
+        "match_components": components,
+        "status": row.get("status"),
+        "proposed_at": _iso(row.get("proposed_at")),
+        "resolved_at": _iso(row.get("resolved_at")),
+        "resolved_by": str(row["resolved_by"]) if row.get("resolved_by") else None,
+        # Joined signal fields for the UI
+        "signal_headline": row.get("signal_headline"),
+        "signal_summary": row.get("signal_summary"),
+        "signal_kbq_tags": list(row.get("signal_kbq_tags") or []),
+        "signal_primary_entity_name": row.get("signal_primary_entity_name"),
+        "signal_created_at": _iso(row.get("signal_created_at")),
+    }
+
+
+@router.get("/{decision_id}/proposals")
+def list_proposals(
+    decision_id: str,
+    status: Optional[str] = Query(default="pending"),
+    db: Database = Depends(get_db),
+):
+    """List autonomous outcome-detection proposals for a decision.
+    Anon read so share-by-URL keeps working. Default filter: pending."""
+    if not _fetch_decision(db, decision_id):
+        raise HTTPException(404, f"decision not found: {decision_id}")
+
+    if status and status not in ("pending", "confirmed", "dismissed", "all"):
+        raise HTTPException(400, f"invalid status: {status}")
+
+    where = ["p.decision_id = %s::uuid"]
+    params: list[Any] = [decision_id]
+    if status and status != "all":
+        where.append("p.status = %s")
+        params.append(status)
+
+    sql = f"""
+        SELECT p.id, p.decision_id, p.matched_signal_id, p.match_score,
+               p.match_components, p.status, p.proposed_at, p.resolved_at,
+               p.resolved_by,
+               s.headline AS signal_headline, s.summary AS signal_summary,
+               s.kbq_tags AS signal_kbq_tags,
+               s.primary_entity_name AS signal_primary_entity_name,
+               s.created_at AS signal_created_at
+        FROM outcome_proposals p
+        LEFT JOIN signals s ON s.id = p.matched_signal_id
+        WHERE {' AND '.join(where)}
+        ORDER BY p.match_score DESC, p.proposed_at DESC
+    """
+    try:
+        rows = db.fetch_all(sql, params)
+    except Exception:
+        logger.exception("list_proposals query failed")
+        rows = []
+
+    return {
+        "decision_id": decision_id,
+        "proposals": [_proposal_to_dict(r) for r in rows],
+        "count": len(rows),
+    }
+
+
+@router.post("/{decision_id}/proposals/{proposal_id}/confirm")
+def confirm_proposal(
+    decision_id: str,
+    proposal_id: str,
+    body: CaptureOutcomeBody = None,  # type: ignore[assignment]
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Owner accepts a proposal — calls capture_outcome internally with
+    the proposal's signal_id, then marks the proposal confirmed.
+
+    Body fields are optional: defaults pull from the proposed signal's
+    headline (actual_outcome) and verdict='verified'.
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    decision = _fetch_decision(db, decision_id)
+    if not decision:
+        raise HTTPException(404, f"decision not found: {decision_id}")
+    if str(decision.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the decision owner can confirm")
+
+    try:
+        prop = db.fetch_one(
+            """SELECT p.id, p.matched_signal_id, p.status,
+                      s.headline AS signal_headline,
+                      s.kbq_tags AS signal_kbq_tags,
+                      s.rule_version_id AS signal_rule_version
+               FROM outcome_proposals p
+               LEFT JOIN signals s ON s.id = p.matched_signal_id
+               WHERE p.id::text = %s AND p.decision_id::text = %s""",
+            [proposal_id, decision_id],
+        )
+    except Exception:
+        prop = None
+    if not prop:
+        raise HTTPException(404, f"proposal not found: {proposal_id}")
+    if prop.get("status") != "pending":
+        raise HTTPException(409, f"proposal already resolved (status={prop.get('status')})")
+
+    # Build the capture body — caller may override
+    actual = (body.actual_outcome if body else None) or prop.get("signal_headline") or ""
+    verdict = (body.verdict if body else None) or "verified"
+    if verdict not in VALID_OUTCOME_VERDICTS:
+        raise HTTPException(400, f"invalid verdict: {verdict}")
+
+    # Compute calibration (numeric first)
+    numeric_cal = compute_numeric_calibration(
+        target_value=decision.get("target_value"),
+        actual_outcome=actual,
+    )
+    cal_score = numeric_cal if numeric_cal is not None else compute_calibration_score(
+        verdict=verdict, confidence_at_commit=decision.get("confidence_at_commit"),
+    )
+    delta = suggest_weight_delta(calibration_score=cal_score, verdict=verdict)
+
+    notes = body.notes if body else None
+    sig_id = str(prop["matched_signal_id"])
+    rule_version = prop.get("signal_rule_version") or "unknown"
+    kbq_tags = list(prop.get("signal_kbq_tags") or []) or ["uncategorized"]
+
+    try:
+        db.execute(
+            """UPDATE decisions
+                  SET actual_outcome = %s,
+                      actual_outcome_recorded_at = NOW(),
+                      status = %s,
+                      calibration_score = %s,
+                      notes = COALESCE(%s, notes),
+                      updated_at = NOW()
+                WHERE id::text = %s""",
+            [actual, verdict, cal_score, notes, decision_id],
+        )
+    except Exception as exc:
+        logger.exception("confirm_proposal: decision update failed")
+        raise HTTPException(500, f"capture failed: {exc}") from exc
+
+    # Learning ledger rows
+    for tag in kbq_tags:
+        try:
+            db.execute(
+                """INSERT INTO signal_score_adjustments
+                       (rule_version_id, kbq_tag, decision_id,
+                        matched_signal_id, calibration_score,
+                        weight_delta_suggested, notes)
+                   VALUES (%s, %s, %s::uuid, %s::uuid, %s, %s, %s)""",
+                [rule_version, tag, decision_id, sig_id, cal_score, delta, notes],
+            )
+        except Exception as exc:
+            logger.warning("signal_score_adjustments insert failed (kbq=%s): %s", tag, exc)
+
+    # Mark the proposal resolved
+    try:
+        db.execute(
+            """UPDATE outcome_proposals
+               SET status = 'confirmed', resolved_at = NOW(), resolved_by = %s::uuid
+               WHERE id::text = %s""",
+            [user.get("id"), proposal_id],
+        )
+    except Exception:
+        logger.exception("confirm_proposal: status update failed")
+
+    updated = _fetch_decision(db, decision_id)
+    return _decision_to_dict(updated) if updated else _decision_to_dict(decision)
+
+
+@router.post("/{decision_id}/proposals/{proposal_id}/dismiss")
+def dismiss_proposal(
+    decision_id: str,
+    proposal_id: str,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Owner rejects a proposal — won't be re-proposed (UNIQUE on
+    decision_id+matched_signal_id ensures the scheduler skips it
+    next tick because of ON CONFLICT DO NOTHING)."""
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    decision = _fetch_decision(db, decision_id)
+    if not decision:
+        raise HTTPException(404, f"decision not found: {decision_id}")
+    if str(decision.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the decision owner can dismiss")
+
+    try:
+        prop = db.fetch_one(
+            """SELECT id, status FROM outcome_proposals
+               WHERE id::text = %s AND decision_id::text = %s""",
+            [proposal_id, decision_id],
+        )
+    except Exception:
+        prop = None
+    if not prop:
+        raise HTTPException(404, f"proposal not found: {proposal_id}")
+    if prop.get("status") != "pending":
+        raise HTTPException(409, f"proposal already resolved (status={prop.get('status')})")
+
+    try:
+        db.execute(
+            """UPDATE outcome_proposals
+               SET status = 'dismissed', resolved_at = NOW(), resolved_by = %s::uuid
+               WHERE id::text = %s""",
+            [user.get("id"), proposal_id],
+        )
+    except Exception as exc:
+        logger.exception("dismiss_proposal failed")
+        raise HTTPException(500, f"dismiss failed: {exc}") from exc
+
+    return Response(status_code=204)

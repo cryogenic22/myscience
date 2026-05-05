@@ -556,11 +556,23 @@ def generate_reactions(
         )
 
         try:
-            reply = llm.raw_chat(
-                system=system_prompt,
-                user=user_content,
-                max_tokens=900,
-            )
+            # SPEC-021 D2: route through telemetry wrapper so every LLM call
+            # is logged + bounded by a wall-clock timeout. Falls back
+            # gracefully on db unavailable.
+            try:
+                from services.llm_telemetry import chat_with_telemetry
+                reply = chat_with_telemetry(
+                    llm, db,
+                    system=system_prompt,
+                    user=user_content,
+                    caller="war_game",
+                    prompt_version="reaction-v1",
+                    max_tokens=900,
+                    timeout_seconds=45.0,
+                )
+            except Exception:
+                # Telemetry import or DB connection issue — fall back to bare call
+                reply = llm.raw_chat(system=system_prompt, user=user_content, max_tokens=900)
         except Exception as exc:
             logger.warning("LLM reaction call failed for %s: %s", comp_name, exc)
             out.append({

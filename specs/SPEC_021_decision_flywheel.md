@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
-*Date: 2 May 2026 (last revised 4 May 2026 — Phase D MVP detailed design appended)*
-*Status: Phase A + A.5 + B + C shipped & verified on prod. Phase D MVP in build.*
+*Date: 2 May 2026 (last revised 5 May 2026 — Phase D2 detailed design appended)*
+*Status: Phase A + A.5 + B + C + D MVP shipped & verified on prod. Phase D2 in build.*
 
 ---
 
@@ -1063,6 +1063,276 @@ its own scoring as predictions land. **Most pharma CI vendors stop at
 Phase A** — they show signals, they show competitive landscape, they
 don't close the loop. C+D is what makes the platform get smarter every
 quarter rather than aging like a deck.
+
+## Phase D2 — Backend AI upgrades + high-grade hardening (this sprint)
+
+### Requirement
+
+The MVP closed the loop with a human in the middle. To cross from
+"AI-informed" to "AI-led" the system needs to **see outcomes
+autonomously**, **measure prediction quality numerically** (not
+categorically), be **safe under load** (rate limits, timeouts,
+idempotency), and be **inspectable** (per-call LLM telemetry). The
+repo's accumulated quality debt — deprecated FastAPI APIs,
+pool-incompatible `db.transaction()`, hand-maintained SPA prefix list
+(direct cause of the C-launch bug), inconsistent error envelopes, no
+pagination — gets paid down in the same pass since it touches the
+same files.
+
+### Scope split (4 build sub-loops, one push)
+
+D2 is large enough that I split the BUILD step into 3 sub-loops to
+stay coherent. Tests + red team + push happen at the end as one unit.
+
+#### Sub-loop 1: AI upgrades
+
+**Numeric calibration** (`services/calibration_math.py`):
+- `parse_target_value(text)` → `ParsedTarget(magnitude, unit, direction, by_date)`
+  - Supported patterns: `+3pp by Q4 2026`, `$5B by 2027-12-31`,
+    `Phase 3 by Q3`, `<6 months`, `>=80% adherence`, free-form fallback
+- `compute_numeric_calibration(predicted, actual_text)` →
+  - When parser succeeds for both: numeric distance normalized 0..1
+    (closer = higher score)
+  - When either fails: fall back to existing 4-quadrant heuristic
+    (preserves D MVP behavior; numeric is upgrade, not breaking change)
+
+**Autonomous outcome detection** (`services/outcome_scheduler.py`):
+- New APScheduler job registered alongside ETL connectors
+- Tick: every 1 hour, scan `decisions WHERE status IN ('open','in_progress')
+   AND outcome_auto_checked_at IS NULL OR outcome_auto_checked_at < NOW() - INTERVAL '6 hours'`
+- For each: run `match_signals_to_decision()`; if top match has
+  `match_score ≥ 0.75`, write a row to `outcome_proposals` table for
+  the human to confirm/reject (does NOT auto-capture — D2 stays
+  "AI-informed → confirmed by human"; full autonomy is D Phase 3)
+- Tick logged via existing telemetry
+
+**LLM telemetry** (`services/llm_telemetry.py` + wrap `raw_chat`):
+- Persist every `raw_chat` call to `llm_call_log`: model, prompt_version,
+  caller (war_game / suggester / outcome_detector / synthesize), latency_ms,
+  prompt_tokens, completion_tokens, cost_estimate_usd, success/failed,
+  error_message, created_at
+- Wrapper preserves the `Optional[str]` return contract so call sites
+  don't change
+
+#### Sub-loop 2: Reliability
+
+**Per-call timeout** in war_game_engine, move_suggester, outcome_detector:
+- `LLMSynthesizer.raw_chat` already has model fallback; D2 wraps the
+  whole multi-model attempt in `concurrent.futures.ThreadPoolExecutor`
+  with a 45s wall-clock budget. On timeout → return None (caller
+  gracefully degrades to fallback path)
+
+**Per-user rate limits** (`api/middleware/rate_limit.py`):
+- Sliding-window in-memory counter (no Redis dep — sufficient for
+  single-instance prod; doc'd as a known limitation in spec)
+- Limits: round submissions = 12/hour/user; suggest-moves = 20/hour/user;
+  suggest-outcome = 30/hour/user
+- Returns 429 with `Retry-After` header
+
+**Daily LLM call cap** (`services/llm_quota.py`):
+- Persisted in `llm_quota_usage(user_id, day, calls)` table
+- Default cap: 200 calls/user/day; configurable via `MZ_LLM_DAILY_CAP` env
+- Cap exceeded → 429 with descriptive message ("daily quota reached;
+  resets at midnight UTC")
+
+**Idempotency on key endpoints:**
+- `POST /decisions/from-round/{round_id}` — UNIQUE partial index on
+  `decisions(war_room_round_id) WHERE war_room_round_id IS NOT NULL`;
+  duplicate POST returns the existing decision with HTTP 200 (instead
+  of 201 — signals "already existed")
+- `POST /decisions/{id}/capture-outcome` — once a decision has
+  `actual_outcome_recorded_at`, refuse re-capture with 409 Conflict
+  unless `?force=true` (owner-only escape hatch for typo correction)
+
+#### Sub-loop 3: Code quality + API surface
+
+**FastAPI lifespan migration** — replace all `@app.on_event(...)` with
+the modern `@asynccontextmanager async def lifespan(app)` pattern.
+Kills the 500+ deprecation warnings clogging test output.
+
+**Pool-aware `db.transaction()`** — currently hits AttributeError
+in pool mode (the cause we declined to fix during Phase B; now we
+fix it properly). Grabs one conn from pool, yields a `_TxnView`
+wrapper exposing execute/fetch_one bound to that conn, returns conn
+to pool on exit.
+
+**SPA fallback registry** — replace the hand-maintained prefix list
+with `_collect_api_prefixes(app)` that walks registered routers and
+extracts top-level path segments at startup. The C-launch bug
+(forgot to add `decisions` to the prefix list → SPA served HTML for
+404s) is impossible by construction after this.
+
+**Standard error envelope** — `api/exception_handlers.py` registers a
+handler for `HTTPException` and `RequestValidationError` that returns:
+```json
+{"error": {"code": 404, "type": "not_found",
+           "message": "war room not found: abc",
+           "details": {"resource": "war_room", "id": "abc"}}}
+```
+Existing string-detail responses become `{"error": {..., "message": "..."}}`.
+Frontend keeps reading `.detail` for back-compat (handler also sets that
+for 1 release cycle, then we drop it in the next pass).
+
+**Cursor pagination helper** (`api/utils/pagination.py`):
+- `paginate(query_sql, params, *, cursor=None, limit=20, sort_col='created_at')`
+- Cursor is base64-encoded `(sort_value, id)` tuple; ORDER BY uses
+  `(sort_col, id) DESC` for stable ordering
+- Apply to: `/war-rooms`, `/decisions` (the two new ones from this
+  spec); leave existing /signals/list as-is for now (separate spec)
+
+### Storage
+
+Migration `051_d2_infrastructure.sql` (additive, idempotent):
+
+```sql
+-- Idempotency for decision promotion
+CREATE UNIQUE INDEX IF NOT EXISTS uq_decisions_war_room_round
+    ON decisions (war_room_round_id)
+    WHERE war_room_round_id IS NOT NULL;
+
+-- LLM call telemetry
+CREATE TABLE IF NOT EXISTS llm_call_log (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    caller          TEXT NOT NULL,           -- 'war_game' | 'suggester' | 'outcome_detector' | 'synthesize' | 'raw_chat'
+    model           TEXT,
+    prompt_version  TEXT,
+    user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+    latency_ms      INTEGER,
+    prompt_tokens   INTEGER,
+    completion_tokens INTEGER,
+    cost_estimate_usd REAL,
+    succeeded       BOOLEAN NOT NULL,
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_caller_time
+    ON llm_call_log (caller, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_user_day
+    ON llm_call_log (user_id, created_at);
+
+-- Daily quota tracking (auth'd users only)
+CREATE TABLE IF NOT EXISTS llm_quota_usage (
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day         DATE NOT NULL,
+    call_count  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);
+
+-- Autonomous detection bookkeeping
+ALTER TABLE decisions
+    ADD COLUMN IF NOT EXISTS outcome_auto_checked_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_decisions_auto_check
+    ON decisions (outcome_auto_checked_at NULLS FIRST)
+    WHERE status IN ('open', 'in_progress');
+
+-- Auto-detected outcome proposals awaiting human confirm
+CREATE TABLE IF NOT EXISTS outcome_proposals (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    decision_id     UUID NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
+    matched_signal_id UUID NOT NULL REFERENCES signals(id) ON DELETE CASCADE,
+    match_score     REAL NOT NULL,
+    match_components JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status          TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'confirmed', 'dismissed')),
+    proposed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ,
+    resolved_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (decision_id, matched_signal_id)
+);
+CREATE INDEX IF NOT EXISTS idx_outcome_proposals_status_decision
+    ON outcome_proposals (status, decision_id);
+```
+
+### New endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/decisions/{id}/proposals` | anon | List auto-detected outcome proposals (pending/all via `?status=`) |
+| POST | `/decisions/{id}/proposals/{pid}/confirm` | owner | Accept proposal → calls `capture_outcome` internally |
+| POST | `/decisions/{id}/proposals/{pid}/dismiss` | owner | Reject (won't re-propose this signal) |
+| GET | `/admin/llm-telemetry` | enterprise | Query `llm_call_log` (range, caller, p95 latency, daily cost rollup) |
+
+### Tests
+
+`tests/test_calibration_math.py`:
+- parse `+3pp`, `$5B`, `Phase 3`, `<6 months`, `>=80%`, free-form
+- numeric calibration distance under various predicted/actual pairs
+- fallback to 4-quadrant heuristic when parser fails
+
+`tests/test_outcome_scheduler.py`:
+- Tick processes only open decisions whose auto_checked_at is stale
+- High-confidence match writes to outcome_proposals
+- Sub-threshold match doesn't write
+- Already-proposed signal isn't re-proposed (UNIQUE constraint)
+
+`tests/test_rate_limit.py`:
+- Hits the limit returns 429
+- Different users have independent counters
+- After window slides forward, requests succeed again
+
+`tests/test_llm_quota.py`:
+- Cap enforced
+- Resets at midnight UTC
+- Successful calls increment counter; failed (e.g. timeout) do too
+
+`tests/test_idempotency.py`:
+- POST /from-round same round twice → second returns existing with 200
+- POST /capture-outcome twice → second 409 unless ?force=true
+
+`tests/test_d2_code_quality.py`:
+- Lifespan startup/shutdown fires correctly
+- SPA fallback registry includes all router prefixes (no manual list)
+- Error envelope shape consistent across HTTPException + ValidationError
+- Cursor pagination round-trips correctly
+
+`tests/test_llm_telemetry.py`:
+- raw_chat call writes a row to llm_call_log
+- Token counts populated when API returns them
+- Cost estimate computed using model price table
+
+### Acceptance — D2
+
+- All D2 tests pass; baseline 2027 → 2027 + N, **0 failures**
+- Test output is clean: zero `on_event` deprecation warnings
+- After migrate (051): `outcome_scheduler` job appears in
+  `/admin/scheduler-status` (existing endpoint), runs hourly,
+  populates `outcome_proposals` for open decisions
+- Numeric calibration on a real decision produces a score that visibly
+  differs from the 4-quadrant fallback (e.g. predicted "+3pp",
+  actual "+2.5pp" → ~0.83 not 0.7)
+- 13th round in an hour for a single user → 429 with `Retry-After: 3600`
+- Duplicate `POST /from-round` → returns existing decision (200, not 201)
+- Forced 12s LLM hang → `raw_chat` returns None within 45s (test
+  doesn't have to wait the full hang)
+- `GET /decisions/{id}` response shape unchanged for back-compat
+- `GET /decisions` with no params returns first page; `next_cursor` in
+  response → next page query returns next batch with no overlap
+
+### Rollout
+
+1. Local pytest passes, lint clean (no new mypy/ruff issues vs main)
+2. Push → Railway redeploys
+3. POST /debug/migrate (applies 051)
+4. Verify scheduler tick runs (check llm_call_log row appears)
+5. No env var changes required by default; `MZ_LLM_DAILY_CAP=200` is
+   the soft default if not set
+
+### Rollback
+
+- All migrations additive — safe to leave applied
+- Set `MZ_OUTCOME_SCHEDULER_DISABLED=true` to skip the autonomous job
+- Set `MZ_RATE_LIMIT_DISABLED=true` to bypass rate limit middleware
+- LLM telemetry wrapper degrades gracefully (insert failure logged,
+  call still returns to caller)
+
+### What this unlocks (Phase E + beyond)
+
+- **Phase E** can render outcome_proposals as a notification stream
+  ("3 signals matched your open decisions overnight")
+- **Phase E** can chart calibration trends per user (now numeric →
+  meaningful aggregation)
+- **D Phase 3 (full autonomy)** flips outcome_proposals.confirmed
+  threshold so >0.9 matches auto-capture instead of awaiting human
 
 ## Other follow-ups (not in any phase yet)
 

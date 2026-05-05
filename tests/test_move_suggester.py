@@ -31,7 +31,8 @@ class _StubLLM:
         self._reply = reply
         self.calls = []
 
-    def raw_chat(self, *, system, user, max_tokens=900):
+    def raw_chat(self, *, system, user, max_tokens=900, **_kwargs):
+        # **_kwargs absorbs temperature= passed by D2's chat_with_telemetry wrapper
         self.calls.append({"system": system, "user": user, "max_tokens": max_tokens})
         return self._reply
 
