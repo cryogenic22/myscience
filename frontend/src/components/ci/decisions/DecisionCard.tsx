@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Target, ExternalLink, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Target, ExternalLink, ChevronDown, ChevronRight, Search, ArrowUpRight } from 'lucide-react';
 import { decisionsApi, MOVE_TYPE_META, type Decision, type DecisionStatus } from '../../../api';
 import DeadlineChip from './DeadlineChip';
 import CalibrationChip from './CalibrationChip';
 import OutcomeDetector from './OutcomeDetector';
+import ProvenanceTrail from '../ProvenanceTrail';
 
 interface Props {
   decision: Decision;
   onChange: (updated: Decision) => void;
   onOpenWarRoom?: (roomId: string) => void;
+  /** Phase E: navigate to /ci/decisions/{id} full page */
+  onOpenDetail?: (decisionId: string) => void;
 }
 
 const STATUS_META: Record<DecisionStatus, { label: string; bg: string; fg: string }> = {
@@ -37,7 +40,7 @@ function isOwner(d: Decision): boolean {
   }
 }
 
-export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Props) {
+export default function DecisionCard({ decision, onChange, onOpenWarRoom, onOpenDetail }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [detecting, setDetecting] = useState(false);
@@ -122,6 +125,15 @@ export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Prop
 
       {expanded && (
         <div className="mt-3 pl-6 space-y-3">
+          {/* Provenance trail — closes the source-signal-not-linked-back gap */}
+          {decision.war_room_id && (
+            <ProvenanceTrail
+              warRoom={{ id: decision.war_room_id, title: 'Source war room' }}
+              onOpenWarRoom={onOpenWarRoom}
+              variant="compact"
+            />
+          )}
+
           {decision.rationale && (
             <div
               className="text-[12px] leading-relaxed"
@@ -152,6 +164,24 @@ export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Prop
           )}
 
           <div className="flex items-center gap-2 flex-wrap">
+            {onOpenDetail && (
+              <button
+                type="button"
+                onClick={() => onOpenDetail(decision.id)}
+                className="text-[11px] inline-flex items-center gap-1 font-medium"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: 'var(--color-accent)',
+                  border: '1px solid var(--color-accent)',
+                  cursor: 'pointer',
+                }}
+              >
+                <ArrowUpRight size={10} />
+                Open full page
+              </button>
+            )}
             {decision.war_room_id && onOpenWarRoom && (
               <button
                 type="button"
@@ -167,7 +197,7 @@ export default function DecisionCard({ decision, onChange, onOpenWarRoom }: Prop
                 }}
               >
                 <ExternalLink size={10} />
-                Open source war room
+                Source war room
               </button>
             )}
             {canDetectOutcome && (

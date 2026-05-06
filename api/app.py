@@ -82,6 +82,14 @@ except Exception as _e:
     logger.error("Failed to import decisions router (SPEC_021 C): %s", _e)
     _DECISIONS_ROUTER_OK = False
 
+# SPEC_021 inbox aggregator (Phase E)
+try:
+    from api.routes import inbox as inbox_route
+    _INBOX_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import inbox router (SPEC_021 E): %s", _e)
+    _INBOX_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -172,6 +180,11 @@ def create_app() -> FastAPI:
         all_routers.append(war_room_route.router)
     if _DECISIONS_ROUTER_OK:
         all_routers.append(decisions_route.router)
+    if _INBOX_ROUTER_OK:
+        all_routers.append(inbox_route.router)
+        # Phase E — insights surface lives in the same module
+        if hasattr(inbox_route, "insights_router"):
+            all_routers.append(inbox_route.insights_router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.

@@ -8,15 +8,19 @@ import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
 import DecisionsTab from '../components/ci/decisions/DecisionsTab';
+import InboxTab from '../components/ci/InboxTab';
+import InsightsTab from '../components/ci/InsightsTab';
 
-type TabKey = 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'reviewer';
+type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
 const ALL_TABS: Array<{ key: TabKey; label: string; enterprise?: boolean }> = [
+  { key: 'inbox',     label: 'Inbox' },
   { key: 'digest',    label: 'Digest' },
   { key: 'signals',   label: 'Signals' },
   { key: 'watchlist', label: 'Watchlist' },
   { key: 'rooms',     label: 'War Rooms' },
   { key: 'decisions', label: 'Decisions' },
+  { key: 'insights',  label: 'Insights' },
   { key: 'reviewer',  label: 'Reviewer', enterprise: true },
 ];
 
@@ -32,7 +36,7 @@ export default function CIPage() {
   const isEnterprise = role === 'enterprise';
   const tabs = ALL_TABS.filter((t) => !t.enterprise || isEnterprise);
 
-  const initialTab = (params.get('tab') as TabKey) || 'digest';
+  const initialTab = (params.get('tab') as TabKey) || 'inbox';
   const [tab, setTabState] = useState<TabKey>(initialTab);
   const activeRoom = params.get('room');
 
@@ -67,7 +71,7 @@ export default function CIPage() {
 
   // If room param disappears (back button), no-op — body already conditions on it
   useEffect(() => {
-    const t = (params.get('tab') as TabKey) || 'digest';
+    const t = (params.get('tab') as TabKey) || 'inbox';
     if (t !== tab) setTabState(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -154,6 +158,14 @@ export default function CIPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        {tab === 'inbox' && (
+          <InboxTab
+            onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
+            onOpenWarRoom={openWarRoom}
+            onOpenSignals={() => setTab('signals')}
+            onOpenInsights={() => setTab('insights')}
+          />
+        )}
         {tab === 'digest' && <DigestTab />}
         {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
@@ -162,7 +174,15 @@ export default function CIPage() {
             ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
             : <WarRoomsList onOpen={openWarRoom} />
         )}
-        {tab === 'decisions' && <DecisionsTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'decisions' && (
+          <DecisionsTab
+            onOpenWarRoom={openWarRoom}
+            onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
+          />
+        )}
+        {tab === 'insights' && (
+          <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
+        )}
         {tab === 'reviewer' && isEnterprise && (
           <SignalsTab
             reviewerMode

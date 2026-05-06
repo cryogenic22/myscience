@@ -1325,6 +1325,143 @@ export const warRoomApi = {
 };
 
 // ────────────────────────────────────────────────────────────────────
+// SPEC-021 Phase E — Inbox aggregator + DecisionDetail bundle
+// ────────────────────────────────────────────────────────────────────
+
+export interface InboxProposal {
+  proposal_id: string;
+  decision_id: string;
+  decision_title: string;
+  decision_status: string;
+  matched_signal_id: string;
+  signal_headline: string | null;
+  signal_summary: string | null;
+  signal_kbq_tags: string[];
+  signal_entity: string | null;
+  match_score: number;
+  match_components: { entity_overlap: number; kbq_overlap: number; temporal_proximity: number };
+  proposed_at: string | null;
+}
+
+export interface InboxOverdue {
+  id: string;
+  title: string;
+  deadline: string | null;
+  days_overdue: number | null;
+  status: string;
+  war_room_id: string | null;
+  target_metric: string | null;
+  target_value: string | null;
+  confidence_at_commit: number | null;
+}
+
+export interface InboxHighImpactSignal {
+  id: string;
+  headline: string;
+  summary: string | null;
+  kbq_tags: string[];
+  primary_entity_id: string | null;
+  primary_entity_type: string | null;
+  primary_entity_name: string | null;
+  impact_tier: string | null;
+  trust_score: number | null;
+  created_at: string | null;
+}
+
+export interface InboxCalibrationSummary {
+  last_30d_mean: number | null;
+  verified_count: number;
+  missed_count: number;
+  total: number;
+}
+
+export interface InboxResponse {
+  pending_proposals: InboxProposal[];
+  overdue_decisions: InboxOverdue[];
+  high_impact_signals: InboxHighImpactSignal[];
+  calibration_summary: InboxCalibrationSummary;
+}
+
+export const inboxApi = {
+  get: (): Promise<InboxResponse> =>
+    fetch(`${BASE}/inbox`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
+export interface InsightsCalibrationBucket {
+  month: string;
+  total: number;
+  mean_score: number | null;
+  verified: number;
+  missed: number;
+}
+
+export interface InsightsOutcomeEvent {
+  event_type: 'capture' | 'proposal';
+  decision_id: string | null;
+  decision_title: string | null;
+  decision_status: string | null;
+  detail_text: string | null;
+  detail_score: number | null;
+  proposal_id: string | null;
+  signal_id: string | null;
+  signal_headline: string | null;
+  event_at: string | null;
+}
+
+export interface InsightsResponse {
+  calibration_trend: InsightsCalibrationBucket[];
+  outcome_stream: InsightsOutcomeEvent[];
+  summary: InboxCalibrationSummary;
+}
+
+export const insightsApi = {
+  get: (): Promise<InsightsResponse> =>
+    fetch(`${BASE}/insights`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
+export interface DecisionFullBundle extends Decision {
+  war_room: {
+    id: string;
+    title: string;
+    primary_entity_name: string | null;
+    primary_entity_id: string | null;
+    primary_entity_type: string | null;
+    source_signal_id: string | null;
+    status: string;
+    archived_at: string | null;
+  } | null;
+  source_signal: {
+    id: string;
+    headline: string;
+    summary: string | null;
+    kbq_tags: string[];
+    primary_entity_name: string | null;
+    confidence_tier: string | null;
+    impact_tier: string | null;
+    created_at: string | null;
+  } | null;
+  comments: WarRoomComment[];
+  pending_proposals: Array<{
+    id: string;
+    matched_signal_id: string;
+    match_score: number;
+    match_components: { entity_overlap: number; kbq_overlap: number; temporal_proximity: number };
+    proposed_at: string | null;
+    signal_headline: string | null;
+    signal_summary: string | null;
+    signal_kbq_tags: string[];
+    signal_entity: string | null;
+  }>;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
 // SPEC-021 Phase C — Decision Ledger
 // ────────────────────────────────────────────────────────────────────
 
@@ -1419,6 +1556,38 @@ export const decisionsApi = {
   remove: (id: string): Promise<void> =>
     fetch(`${BASE}/decisions/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok && r.status !== 204) {
+        throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      }
+    }),
+
+  // Phase E — single-call detail bundle
+  detailFull: (id: string): Promise<DecisionFullBundle> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(id)}/full`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }),
+
+  // Phase D2 — outcome proposal confirm/dismiss
+  confirmProposal: (decisionId: string, proposalId: string, body?: {
+    actual_outcome?: string;
+    verdict?: 'verified' | 'missed' | 'cancelled';
+    notes?: string;
+  }): Promise<Decision> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(decisionId)}/proposals/${encodeURIComponent(proposalId)}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body || {}),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  dismissProposal: (decisionId: string, proposalId: string): Promise<void> =>
+    fetch(`${BASE}/decisions/${encodeURIComponent(decisionId)}/proposals/${encodeURIComponent(proposalId)}/dismiss`, {
+      method: 'POST',
       headers: { ...authHeaders() },
     }).then(async (r) => {
       if (!r.ok && r.status !== 204) {

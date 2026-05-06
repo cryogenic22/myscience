@@ -1,7 +1,7 @@
 # SPEC-021: Decision Flywheel — CI as a War-Game Cockpit
 
-*Date: 2 May 2026 (last revised 5 May 2026 — Phase D2 detailed design appended)*
-*Status: Phase A + A.5 + B + C + D MVP shipped & verified on prod. Phase D2 in build.*
+*Date: 2 May 2026 (last revised 5 May 2026 — Phase E (UX) detailed design appended)*
+*Status: Phase A + A.5 + B + C + D MVP + D2 shipped & verified on prod. Phase E (UX) in build.*
 
 ---
 
@@ -1333,6 +1333,214 @@ CREATE INDEX IF NOT EXISTS idx_outcome_proposals_status_decision
   meaningful aggregation)
 - **D Phase 3 (full autonomy)** flips outcome_proposals.confirmed
   threshold so >0.9 matches auto-capture instead of awaiting human
+
+## Phase E — UI/UX done properly (this sprint)
+
+### Requirement
+
+Phase A–D shipped *capabilities* (simulate, suggest, commit, capture,
+recalibrate). They live behind tabs the user has to click through.
+Nothing tells the user *"here's what's worth your attention right
+now."* The agentic loop runs in the backend (D2 scheduler) but the
+user has to remember to look. Decisions exist as cards-with-expand,
+not as full pages worth sharing. The provenance trail
+(signal → war-room → decision → outcome) exists in the data but is
+invisible in the UI. The system isn't *agentic* until it acts as one
+in the surface — proactively, with a coherent home, with full pages
+worth bookmarking, and with the predicted-vs-actual feedback loop
+*visible*.
+
+### Information architecture
+
+`/ci` becomes a workspace with one new default landing tab and one
+new full-page route. Existing tabs keep their URL params for
+back-compat:
+
+```
+/ci                           → Inbox (NEW default)
+/ci?tab=digest                (existing)
+/ci?tab=signals               (existing)
+/ci?tab=watchlist             (existing)
+/ci?tab=rooms                 (existing)
+/ci?tab=rooms&room=<id>       (existing)
+/ci?tab=decisions             (existing — list view)
+/ci/decisions/<id>            → Decision Detail page (NEW)
+/ci?tab=insights              → Calibration trends + Outcome Stream (NEW)
+/ci?tab=reviewer              (enterprise — existing)
+```
+
+### Inbox — the agentic home
+
+`/ci` (no params) lands on Inbox. Surfaces what needs my attention,
+grouped:
+
+| Section | Source | Action |
+|---|---|---|
+| **🟡 Outcome proposals awaiting confirm** | `outcome_proposals WHERE status='pending'` joined to my decisions | Confirm / dismiss inline |
+| **🔴 Overdue decisions** | `decisions WHERE deadline < TODAY AND status IN ('open','in_progress')` | Open detail to capture or extend |
+| **🟢 High-impact signals worth war-gaming** | `signals WHERE impact_tier='high' AND created_at > NOW()-7d` (limit 5, dedupe by entity) | Click "Simulate" → opens war room |
+| **📊 Your calibration this month** | aggregate `decisions WHERE actual_outcome_recorded_at > NOW()-30d` mean(calibration_score) + bucket counts | Click → Insights tab |
+
+Empty state for each section *teaches* the workflow:
+- Outcome proposals empty: *"No matches yet. The system scans every hour. Open decisions: 5."*
+- Overdue empty: *"You're on top of your deadlines. 3 decisions due in the next 2 weeks."*
+- High-impact signals empty: *"No fresh high-impact signals. The DataSteward is watching N sources."*
+
+### Decision Detail page
+
+Currently decisions exist as `DecisionCard` (collapsed) → expanded
+inline with a few buttons. Phase E replaces this with a real page at
+`/ci/decisions/<id>` with sections:
+
+```
+┌─ Header ─────────────────────────────────────────────────┐
+│ [Status pill] [Deadline chip] [Calibration chip]         │
+│ Title (large)                                            │
+│ Owner · created · committed at NN% confidence            │
+│ [Detect outcome] [Edit status ▾] [Share URL] [Delete]    │
+├─ Provenance trail ──────────────────────────────────────┤
+│ Born from signal "<headline>" · in war room "<title>"    │
+│ Move: trial_readout · semaglutide                        │
+│ Reactions modeled: 4 competitors · view round →          │
+├─ Target & rationale ────────────────────────────────────┤
+│ Target: market_share_delta = +3pp by Q4 2026             │
+│ Rationale: <full text>                                   │
+├─ Outcome (if captured) ─────────────────────────────────┤
+│ Verified · captured 2026-09-15 · cal score 0.83          │
+│ "Lilly accelerated SURMOUNT-MASH to Phase 3 (NCT...)"    │
+│ Numeric calibration: predicted +3pp · actual +2.5pp      │
+├─ Pending auto-proposals (if any) ───────────────────────┤
+│ [Proposal cards with confirm/dismiss inline]             │
+├─ Discussion ─────────────────────────────────────────────┤
+│ <CommentsPanel scoped to this decision>                  │
+└──────────────────────────────────────────────────────────┘
+```
+
+The page is anon-readable (route already supports it) so URLs are
+shareable. Owner-only sections (status changer, capture-outcome,
+delete) hide for non-owners; backend re-enforces.
+
+### Insights tab — Calibration + Outcome Stream
+
+Two sub-sections in one tab:
+
+**Calibration trends** (top): for the current user, monthly bucket
+of (decisions captured, mean calibration_score, % verified). 12-month
+sparkline. The big number is the trailing-90d mean: *"Your
+predictions are 71% calibrated over the last 90 days."*
+
+**Outcome Stream** (bottom): a chronological feed of outcome events
+(captures + auto-proposals + status changes) across the user's
+decisions. Each row shows the trigger (signal headline, deadline hit)
+and the response. This is the *"agentic loop is happening"* surface —
+proves the system is doing work even when the user isn't clicking.
+
+### Provenance trail components
+
+A small reusable element on every Decision card / War Room header /
+Signal detail pane:
+
+```
+[🔗 Born from signal "Lilly accelerated MASH" → War room "Tirzepatide threat" → This decision]
+```
+
+Each link navigates to the upstream surface. Closes the running
+"⚠ source_signal_id stored, not linked back to signal in UI" gap
+called out across phases B/C/D coverage audits.
+
+### What ships this sprint vs deferred
+
+| Item | This sprint | Deferred |
+|---|---|---|
+| Inbox tab as default landing | ✅ | |
+| Decision Detail page (full route) | ✅ | |
+| Provenance trail components | ✅ | |
+| Inline confirm/dismiss for outcome proposals | ✅ | |
+| Insights tab — calibration trends mini-dashboard | ✅ | |
+| Insights tab — outcome stream feed | ✅ | |
+| Empty states that teach the workflow | ✅ | |
+| Loading skeletons (replace spinners) | ✅ | |
+| Standardized error envelope rendering | ✅ | |
+| Keyboard shortcuts (J/K nav, ⌘K palette) | | next polish pass |
+| Mobile responsiveness audit | | next polish pass |
+| Accessibility (aria, focus management) audit | | next polish pass |
+| LLM telemetry admin dashboard | | next polish pass (`/admin`) |
+
+The deferrals aren't second-class — they're explicit follow-ups
+listed in `Other follow-ups`. Deferring them lets us ship the agentic
+surface coherently this sprint instead of half-completing every front.
+
+### Backend additions needed (light)
+
+E is mostly frontend, but two small backend helpers make the inbox
+clean and avoid N+1 queries:
+
+```
+GET /inbox    (viewer+, returns the 4 inbox sections in one call)
+  → {
+      pending_proposals: [...],   # outcome_proposals + signal joined
+      overdue_decisions: [...],
+      high_impact_signals: [...],
+      calibration_summary: {
+        last_30d_mean: 0.71,
+        verified_count: 12,
+        missed_count: 3,
+      },
+    }
+
+GET /decisions/{id}/full   (anon, single response with everything
+                            DecisionDetailPage needs — no waterfall)
+  → decision + war_room_summary + source_signal + comments + proposals
+```
+
+Both are read-only joins; no schema changes; no migration.
+
+### Tests
+
+Backend:
+- `tests/test_inbox_api.py` — auth, sections include current user only,
+  proposals join correctly to signals, empty state shape
+- `tests/test_decision_full_api.py` — single-call detail bundle, anon read,
+  contains all referenced rows, no N+1 detected via `db.fetch_*` call count
+
+Frontend:
+- Vite build clean (no TS errors)
+- Components render under test data shapes (smoke check via
+  `tsc --noEmit`)
+
+### Acceptance — Phase E
+
+- All E tests pass; baseline 2094 → 2094 + N, **0 failures**
+- /ci default landing is Inbox; no params shows the 4 attention sections
+- /ci/decisions/<id> renders the full detail page; URL is shareable
+  (anon read works in incognito)
+- Provenance trail visible on every decision card + war room header
+- Outcome proposals can be confirmed/dismissed inline from Inbox
+- Empty states are workflow-teaching (no naked "No data")
+- Coverage audit closes: every backend field from phases A–D2 has a UI
+  surface or an explicit out-of-scope tag
+
+### Rollout
+
+1. Build clean (`npm run build`)
+2. Backend: 2 new routes (`/inbox`, `/decisions/{id}/full`); no migration
+3. Push → Railway deploys
+4. Visual smoke: open `/ci` (default lands on Inbox), open a decision
+   detail by URL, click a provenance link, etc.
+5. No env vars
+
+### What this finishes
+
+The 4-phase consulting moat:
+
+| Sense | Model | Decide | Act | Learn |
+|---|---|---|---|---|
+| Signals (existing) | War room (A/A.5) | Decision (C) | (Phase D Phase 3) | Outcome capture (D MVP/D2) → calibration trends (E) |
+
+**The flywheel is visibly closed when the user opens `/ci`, sees an
+auto-proposed outcome match for a decision they made 6 weeks ago,
+clicks confirm, and watches their calibration score update in the
+Insights tab.** That's the agentic narrative made visible.
 
 ## Other follow-ups (not in any phase yet)
 

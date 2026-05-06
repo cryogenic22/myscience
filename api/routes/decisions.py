@@ -633,6 +633,147 @@ def capture_outcome(
 
 
 # ────────────────────────────────────────────────────────────────────
+# E — single-call detail bundle for the full Decision Detail page
+# ────────────────────────────────────────────────────────────────────
+
+@router.get("/{decision_id}/full")
+def get_decision_full(decision_id: str, db: Database = Depends(get_db)):
+    """Single-response bundle for the Decision Detail page.
+
+    Returns the decision + war_room summary + source signal headline +
+    comments scoped to the decision's war_room + pending proposals.
+    Anon read so URLs are shareable. Replaces 4-5 client waterfall
+    requests with one round-trip.
+    """
+    decision = _fetch_decision(db, decision_id)
+    if not decision:
+        raise HTTPException(404, f"decision not found: {decision_id}")
+
+    out = _decision_to_dict(decision)
+
+    # War room summary (light — title, primary_entity, source_signal_id)
+    war_room_summary = None
+    war_room_id = decision.get("war_room_id")
+    if war_room_id:
+        try:
+            wr = db.fetch_one(
+                """SELECT id, title, primary_entity_type, primary_entity_id,
+                          primary_entity_name, source_signal_id, status,
+                          archived_at
+                   FROM war_rooms WHERE id::text = %s""",
+                [str(war_room_id)],
+            )
+        except Exception:
+            wr = None
+        if wr:
+            war_room_summary = {
+                "id": str(wr["id"]),
+                "title": wr.get("title"),
+                "primary_entity_name": wr.get("primary_entity_name"),
+                "primary_entity_id": wr.get("primary_entity_id"),
+                "primary_entity_type": wr.get("primary_entity_type"),
+                "source_signal_id": str(wr["source_signal_id"]) if wr.get("source_signal_id") else None,
+                "status": wr.get("status"),
+                "archived_at": _iso(wr.get("archived_at")),
+            }
+    out["war_room"] = war_room_summary
+
+    # Source signal (the seed — what triggered the war room → decision chain)
+    source_signal = None
+    sig_id = decision.get("source_signal_id") or (war_room_summary and war_room_summary.get("source_signal_id"))
+    if sig_id:
+        try:
+            sig = db.fetch_one(
+                """SELECT id, headline, summary, kbq_tags, primary_entity_name,
+                          confidence_tier, impact_tier, created_at
+                   FROM signals WHERE id::text = %s""",
+                [str(sig_id)],
+            )
+        except Exception:
+            sig = None
+        if sig:
+            source_signal = {
+                "id": str(sig["id"]),
+                "headline": sig.get("headline"),
+                "summary": sig.get("summary"),
+                "kbq_tags": list(sig.get("kbq_tags") or []),
+                "primary_entity_name": sig.get("primary_entity_name"),
+                "confidence_tier": sig.get("confidence_tier"),
+                "impact_tier": sig.get("impact_tier"),
+                "created_at": _iso(sig.get("created_at")),
+            }
+    out["source_signal"] = source_signal
+
+    # Comments scoped to the source war room (Phase B reused — comment
+    # threads aren't decision-scoped in MVP since the discussion really
+    # belongs to the room that produced the decision)
+    comments = []
+    if war_room_id:
+        try:
+            rows = db.fetch_all(
+                """SELECT id, war_room_id, round_id, author_user_id,
+                          author_display_name, body, created_at, edited_at
+                   FROM war_room_comments
+                   WHERE war_room_id = %s::uuid
+                   ORDER BY created_at ASC""",
+                [str(war_room_id)],
+            ) or []
+        except Exception:
+            rows = []
+        comments = [{
+            "id": str(r.get("id")),
+            "war_room_id": str(r.get("war_room_id")),
+            "round_id": str(r["round_id"]) if r.get("round_id") else None,
+            "author_user_id": str(r["author_user_id"]) if r.get("author_user_id") else None,
+            "author_display_name": r.get("author_display_name"),
+            "body": r.get("body"),
+            "created_at": _iso(r.get("created_at")),
+            "edited_at": _iso(r.get("edited_at")),
+        } for r in rows]
+    out["comments"] = comments
+
+    # Pending outcome proposals
+    try:
+        prop_rows = db.fetch_all(
+            """SELECT p.id, p.matched_signal_id, p.match_score,
+                      p.match_components, p.proposed_at,
+                      s.headline AS signal_headline,
+                      s.summary AS signal_summary,
+                      s.kbq_tags AS signal_kbq_tags,
+                      s.primary_entity_name AS signal_entity
+               FROM outcome_proposals p
+               LEFT JOIN signals s ON s.id = p.matched_signal_id
+               WHERE p.decision_id::text = %s AND p.status = 'pending'
+               ORDER BY p.match_score DESC""",
+            [decision_id],
+        ) or []
+    except Exception:
+        prop_rows = []
+    proposals = []
+    for r in prop_rows:
+        components = r.get("match_components") or {}
+        if isinstance(components, str):
+            try:
+                components = json.loads(components)
+            except Exception:
+                components = {}
+        proposals.append({
+            "id": str(r.get("id")),
+            "matched_signal_id": str(r.get("matched_signal_id")),
+            "match_score": r.get("match_score"),
+            "match_components": components,
+            "proposed_at": _iso(r.get("proposed_at")),
+            "signal_headline": r.get("signal_headline"),
+            "signal_summary": r.get("signal_summary"),
+            "signal_kbq_tags": list(r.get("signal_kbq_tags") or []),
+            "signal_entity": r.get("signal_entity"),
+        })
+    out["pending_proposals"] = proposals
+
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────
 # D2 — outcome_proposals (autonomous detection awaiting confirm)
 # ────────────────────────────────────────────────────────────────────
 

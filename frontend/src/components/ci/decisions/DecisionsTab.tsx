@@ -4,6 +4,7 @@ import DecisionCard from './DecisionCard';
 
 interface Props {
   onOpenWarRoom?: (roomId: string) => void;
+  onOpenDecision?: (decisionId: string) => void;
 }
 
 type FilterTab = 'open' | 'in_progress' | 'verified' | 'overdue' | 'all';
@@ -32,7 +33,7 @@ function tabToFilters(tab: FilterTab): DecisionListFilters {
   }
 }
 
-export default function DecisionsTab({ onOpenWarRoom }: Props) {
+export default function DecisionsTab({ onOpenWarRoom, onOpenDecision }: Props) {
   const authed = hasToken();
   const [tab, setTab] = useState<FilterTab>('open');
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -149,6 +150,7 @@ export default function DecisionsTab({ onOpenWarRoom }: Props) {
               decision={d}
               onChange={handleChange}
               onOpenWarRoom={onOpenWarRoom}
+              onOpenDetail={onOpenDecision}
             />
           ))}
         </div>
