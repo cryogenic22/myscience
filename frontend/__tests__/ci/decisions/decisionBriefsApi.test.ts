@@ -165,7 +165,8 @@ describe('decisionBriefsApi.addOption', () => {
 describe('decisionBriefsApi.removeOption', () => {
   it('issues DELETE /decision-briefs/{id}/options/{option_id}', async () => {
     const { decisionBriefsApi } = await import('../../../src/api');
-    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }, 204));
+    // 204 No Content per FastAPI route — Response cannot have a body for 204
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await decisionBriefsApi.removeOption('b-001', 'opt-1');
     expect(mockFetch.mock.calls[0][0]).toContain('/decision-briefs/b-001/options/opt-1');
     expect((mockFetch.mock.calls[0][1] as RequestInit).method).toBe('DELETE');
