@@ -114,6 +114,14 @@ except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
 
+# SPEC_034 Decision Signing router
+try:
+    from api.routes import decision_signing as decision_signing_route
+    _DECISION_SIGNING_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import decision_signing router (SPEC_034): %s", _e)
+    _DECISION_SIGNING_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -215,6 +223,8 @@ def create_app() -> FastAPI:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _DECISION_SIGNING_ROUTER_OK:
+        all_routers.append(decision_signing_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
