@@ -6,8 +6,9 @@
    Palette: warm white · deep slate · single blue accent
    ══════════════════════════════════════════════════════ */
 @theme {
-  --font-display: 'Fraunces', Georgia, serif;
+  --font-display: 'Syne', 'Fraunces', Georgia, serif;
   --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Background */
   --color-bg:           #FAFAF8;
@@ -79,19 +80,25 @@
    DARK MODE
    ══════════════════════════════════════════════════════ */
 html.dark {
-  --color-bg:           #0C0C0D;
-  --color-bg-2:         #111113;
-  --color-surface:      #17171A;
-  --color-surface-2:    #1E1E22;
-  --color-surface-3:    #26262C;
-  --color-ink:          #F2F2F5;
-  --color-ink-2:        #AEAEB2;
-  --color-ink-3:        #636366;
-  --color-ink-4:        #48484A;
-  --color-line:         rgba(0,0,0,0.06);
-  --color-line-2:       rgba(0,0,0,0.04);
-  --color-divider:      #2C2C2E;
-  --color-divider-2:    rgba(255,255,255,0.06);
+  --color-bg:           #0d1117;
+  --color-bg-2:         #010409;
+  --color-surface:      #161b22;
+  --color-surface-2:    #21262d;
+  --color-surface-3:    #30363d;
+  --color-ink:          #c9d1d9;
+  --color-ink-2:        #8b949e;
+  --color-ink-3:        #484f58;
+  --color-ink-4:        #21262d;
+  --color-accent:       #58a6ff;
+  --color-accent-dark:  #1f6feb;
+  --color-accent-soft:  rgba(88, 166, 255, 0.1);
+  --color-line:         rgba(240, 246, 252, 0.1);
+  --color-line-2:       rgba(240, 246, 252, 0.05);
+  --color-divider:      #21262d;
+  --color-divider-2:    #30363d;
+  --color-green:        #3fb950;
+  --color-amber:        #f0883e;
+  --color-red:          #f85149;
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 8px 24px rgba(0,0,0,0.4);
   --shadow-lg:  0 20px 60px rgba(0,0,0,0.5);
