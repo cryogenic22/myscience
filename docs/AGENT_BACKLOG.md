@@ -145,7 +145,9 @@ target state. Each is tagged for ownership.
   exact evidence available at decision time"). Frontend Evidence Panel +
   evidence-affordance click-throughs depend on this.
 - Priority: high
-- Status: open
+- Status: **done** (2026-05-09 — `specs/SPEC_024_evidence_ledger.md`,
+  migration 053, `services/evidence_ledger.py`, `api/routes/evidence_ledger.py`,
+  35 tests green. Append-only DB triggers + content-addressed snapshots.)
 
 ### [BACKEND] War-game adversaries — multi-agent role-play
 - Filed: 2026-05-09 by Claude (from spec §6.3.2)
