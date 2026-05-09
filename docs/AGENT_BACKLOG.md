@@ -116,7 +116,7 @@ target state. Each is tagged for ownership.
   weight, not factor-attributed. Antigravity's signal cards need the factor
   breakdown.
 - Priority: high
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_031_materiality_scoring.md, migration 058, services/materiality.py, api/routes/materiality.py, 29 tests green. Factor-attributed v1; learned weight tuning deferred to SPEC-028 Learning Service.)
 
 ### [BACKEND] Source registry with quality scoring (5 dimensions)
 - Filed: 2026-05-09 by Claude (from spec §8.3)
