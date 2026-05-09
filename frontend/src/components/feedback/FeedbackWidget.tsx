@@ -97,10 +97,49 @@ export default function FeedbackWidget() {
   const [error, setError] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
 
+  // Stage 6 fix M3 — preserve in-progress draft in sessionStorage so
+  // an accidental Esc / refresh doesn't lose it. Restored on next open.
+  const DRAFT_KEY = 'mz_feedback_draft_v1';
+
   // Open on `mz:open-feedback` from FeedbackButton (or anywhere else).
   useEffect(() => {
     const handler = () => {
+      // M2 fix: respect mz_feedback_disabled even on event-driven open
+      if (
+        typeof window !== 'undefined' &&
+        window.localStorage.getItem('mz_feedback_disabled') === 'true'
+      ) {
+        return;
+      }
       setOpen(true);
+      // Try to restore a saved draft.
+      const saved =
+        typeof window !== 'undefined' ? window.sessionStorage.getItem(DRAFT_KEY) : null;
+      if (saved) {
+        try {
+          const d = JSON.parse(saved) as {
+            state?: ChatState;
+            messages?: ChatMessage[];
+            category?: FeedbackCategory | null;
+            description?: string;
+            draft?: string;
+            priority?: FeedbackPriority;
+            attachments?: FeedbackAttachment[];
+          };
+          setState(d.state ?? 'greeting');
+          setMessages(d.messages ?? [{ role: 'assistant', content: 'What kind of feedback do you have?' }]);
+          setCategory(d.category ?? null);
+          setDescription(d.description ?? '');
+          setDraft(d.draft ?? '');
+          setPriority(d.priority ?? 'medium');
+          setAttachments(d.attachments ?? []);
+          setError(null);
+          setResultId(null);
+          return;
+        } catch {
+          /* corrupted draft — fall through to fresh start */
+        }
+      }
       setState('greeting');
       setMessages([{ role: 'assistant', content: 'What kind of feedback do you have?' }]);
       setCategory(null);
@@ -115,18 +154,58 @@ export default function FeedbackWidget() {
     return () => window.removeEventListener('mz:open-feedback', handler);
   }, []);
 
-  // Esc closes; focus the close button on open.
+  // Stage 6 fix M3 — persist the in-flight draft on every state change so
+  // accidental close (Esc) preserves work.
+  useEffect(() => {
+    if (!open || state === 'submitted' || state === 'error') return;
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ state, messages, category, description, draft, priority, attachments }),
+      );
+    } catch {
+      /* storage quota exceeded — silently skip persistence */
+    }
+  }, [open, state, messages, category, description, draft, priority, attachments]);
+
+  // Esc closes; focus the close button on open. Stage 6 fix M2 —
+  // also trap Tab inside the dialog (WCAG 2.4.3) and restore focus
+  // on close.
   useEffect(() => {
     if (!open) return;
+    const restoreFocus = (document.activeElement as HTMLElement) ?? null;
     closeBtnRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         setOpen(false);
+        return;
+      }
+      if (e.key === 'Tab') {
+        const root = dialogRef.current;
+        if (!root) return;
+        const focusables = root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      restoreFocus?.focus?.();
+    };
   }, [open]);
 
   // Auto-scroll messages on append. JSDOM does not implement
@@ -241,6 +320,14 @@ export default function FeedbackWidget() {
       );
       setState('submitted');
       clearDiagnostics();
+      // Stage 6 fix M3 — clear the persisted draft on success
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.removeItem(DRAFT_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);

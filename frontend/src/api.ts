@@ -2030,4 +2030,14 @@ export const feedbackApi = {
     fetch(`${BASE}/feedback/stats`, { headers: { ...authHeaders() } }).then((r) =>
       expectJson<FeedbackStatsResponse>(r),
     ),
+
+  // SPEC_041 Stage 6 fix M4 — hard-delete for PII retraction.
+  remove: (id: string): Promise<{ ok: true }> =>
+    fetch(`${BASE}/feedback/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 204) return { ok: true } as const;
+      return expectJson<{ ok: true }>(r);
+    }),
 };

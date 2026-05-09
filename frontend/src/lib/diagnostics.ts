@@ -52,6 +52,63 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * SPEC_041 Stage 6 fix M1 — strip likely-secret tokens from URLs and
+ * truncate verbose error/body strings before they leave the browser.
+ * Conservative redactions; we'd rather lose context than leak
+ * customer secrets.
+ */
+const SENSITIVE_QUERY_PARAMS = new Set([
+  'token',
+  'access_token',
+  'refresh_token',
+  'api_key',
+  'apikey',
+  'auth',
+  'authorization',
+  'password',
+  'secret',
+  'session',
+  'sessionid',
+  'sid',
+  'jwt',
+  'bearer',
+]);
+
+function redactUrl(input: string): string {
+  try {
+    // Most app URLs are relative; URL parser needs an absolute base.
+    const u = new URL(input, 'http://x');
+    let touched = false;
+    for (const key of Array.from(u.searchParams.keys())) {
+      if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+        u.searchParams.set(key, '<redacted>');
+        touched = true;
+      }
+    }
+    if (!touched) return input;
+    // Strip the synthetic origin we added if the input was relative.
+    return input.startsWith('/') ? u.pathname + u.search + u.hash : u.toString();
+  } catch {
+    return input;
+  }
+}
+
+function redactBody(body: string | undefined): string | undefined {
+  if (!body) return body;
+  // Common bearer/token patterns
+  let out = body
+    .replace(/Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi, 'Bearer <redacted>')
+    .replace(/eyJ[A-Za-z0-9._-]{20,}/g, '<redacted-jwt>')
+    .replace(/[A-Za-z0-9]{32,}/g, (m) => (m.length > 60 ? '<redacted>' : m));
+  if (out.length > 500) out = out.slice(0, 500) + '… <truncated>';
+  return out;
+}
+
+function redactMessage(msg: string): string {
+  return msg.length > 1000 ? msg.slice(0, 1000) + '… <truncated>' : msg;
+}
+
 function detectTheme(): 'light' | 'dark' {
   if (typeof document === 'undefined') return 'light';
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
@@ -106,8 +163,8 @@ export function installDiagnostics(): void {
       const stack = args.find((a) => a instanceof Error) as Error | undefined;
       pushCapped(errors, {
         ts: nowIso(),
-        message,
-        stack: stack?.stack,
+        message: redactMessage(message),
+        stack: stack?.stack ? redactMessage(stack.stack) : undefined,
       });
     } catch {
       /* never let diagnostics break console.error itself */
@@ -139,9 +196,9 @@ export function installDiagnostics(): void {
         pushCapped(failedRequests, {
           ts: nowIso(),
           method,
-          url,
+          url: redactUrl(url),
           status: r.status,
-          body,
+          body: redactBody(body),
         });
       }
       return r;
@@ -149,8 +206,8 @@ export function installDiagnostics(): void {
       pushCapped(failedRequests, {
         ts: nowIso(),
         method,
-        url,
-        body: e instanceof Error ? e.message : String(e),
+        url: redactUrl(url),
+        body: redactBody(e instanceof Error ? e.message : String(e)),
       });
       throw e;
     }

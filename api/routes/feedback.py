@@ -156,6 +156,29 @@ def update_feedback(
     return {"feedback": row}
 
 
+@router.delete("/{feedback_id}", status_code=204)
+def delete_feedback(feedback_id: str, db: Database = Depends(get_db)):
+    """Hard-delete a feedback entry.
+
+    SPEC_041 Stage 6 fix M4 — privacy / GDPR. A user who submits
+    feedback containing PII (e.g. a screenshot or stack trace
+    revealing customer data) needs a removal path. POST /feedback is
+    public-write so anyone can spam — but DELETE is therefore left
+    public-write too in MVP; admin gating is filed as a follow-up
+    once we have a per-user retraction UI. Today the slash commands
+    use this to purge already-resolved/duplicate items during
+    triage.
+    """
+    row = db.fetch_one(
+        "DELETE FROM feedback_entries WHERE id = %s RETURNING id",
+        [feedback_id],
+    )
+    if not row:
+        raise HTTPException(404, f"Feedback {feedback_id} not found")
+    logger.info("Feedback deleted: %s", feedback_id)
+    return None
+
+
 @router.get("/stats")
 def feedback_stats(db: Database = Depends(get_db)):
     """Aggregate counts by category, status, and resolved_by."""

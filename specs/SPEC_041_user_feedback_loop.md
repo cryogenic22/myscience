@@ -1,6 +1,6 @@
 # SPEC_041: User Feedback Loop — in-app widget + autonomous triage
 
-Status: **Stage 5 complete (RED-TEAM appended 2026-05-09); FIX-ALL opens next**
+Status: **Shipped 2026-05-09** (Stage 7 closed; Loop #2 complete)
 
 ✓ Signed off by user 2026-05-09 (recommended defaults selected for Q1–Q4)
 Owner: Frontend Claude (cross-cutting — backend already shipped)
@@ -553,31 +553,35 @@ None.
 
 ### Major
 
-1. **Diagnostic auto-attach has no PII filter** — `major`
-   (privacy/security) — `collectDiagnostics()` ships every captured
-   `console.error` message + every failed-fetch URL/body verbatim.
-   A user reporting a UI bug while logged into a customer account
-   could leak email, customer IDs, signed URLs, query parameters
-   like `?api_key=…`, or stack traces with PII inside.
-   *Mitigation needed:* a denylist of URL patterns (`?token=`,
-   `?api_key=`, `Authorization` mentions) + a body truncation that
-   strips obvious secrets.
-2. **No focus trap inside the open feedback widget** — `major`
-   (a11y) — Tab from "Submit feedback" inside the dialog escapes to
-   the underlying `/ci` page (focus reaches background buttons).
-   `aria-modal="true"` is set but not enforced. Screen-reader users
-   with keyboard-only navigation lose track of the dialog boundary.
-3. **Esc closes widget mid-typing → user's draft is lost** — `major`
-   (UX) — pressing Escape while a 200-character bug description is
-   half-written discards the draft. The widget reopens at greeting,
-   not at the in-progress state. Two paths forward: (a) confirm-
-   before-close when there's unsaved input, or (b) preserve draft in
-   sessionStorage and restore on next open.
-4. **No DELETE endpoint for mistakenly-submitted feedback** — `major`
-   (privacy) — backend exposes POST/GET/PATCH but no DELETE. A user
-   who pastes a screenshot containing PII has no path to retract.
-   GDPR / customer trust concern. Mitigation needed: backend
-   `DELETE /feedback/{id}` (or PATCH-to-archived); admin-only.
+1. ~~**Diagnostic auto-attach has no PII filter**~~ — `major`
+   (privacy/security) — ✅ closed Stage 6. New `redactUrl()`,
+   `redactBody()`, `redactMessage()` helpers in `diagnostics.ts`.
+   URL search params with sensitive names (`token`, `access_token`,
+   `api_key`, `authorization`, `password`, `secret`, `session`,
+   `jwt`, `bearer`) become `<redacted>`. Bodies have `Bearer …`,
+   `eyJ…` JWT prefixes, and any 32+ char alphanumeric runs replaced
+   with `<redacted>`/`<redacted-jwt>`, then truncated to 500 chars.
+   Error messages truncate at 1000 chars.
+2. ~~**No focus trap inside the open feedback widget**~~ — `major`
+   (a11y) — ✅ closed Stage 6. Added Tab cycling (Shift+Tab from
+   first → last; Tab from last → first) inside `dialogRef`'s
+   focusable subtree, plus restore-focus on close. Same pattern as
+   SPEC-030 fix #10.
+3. ~~**Esc closes widget mid-typing → user's draft is lost**~~ —
+   `major` (UX) — ✅ closed Stage 6. Implemented option (b): every
+   state change (while open + not submitted/error) persists the
+   transcript + category + description + draft + priority +
+   attachments to `sessionStorage.mz_feedback_draft_v1`. Successful
+   submit clears the key. The open handler attempts restore before
+   falling back to a fresh greeting state.
+4. ~~**No DELETE endpoint for mistakenly-submitted feedback**~~ —
+   `major` (privacy) — ✅ closed Stage 6. Added
+   `DELETE /feedback/{id}` (`api/routes/feedback.py:159`) — returns
+   204 on success, 404 if not found. Frontend client gets a
+   `feedbackApi.remove()` method. Admin-gating filed as a follow-up
+   in AGENT_BACKLOG since the user-side retraction UI is itself a
+   future loop; today the slash commands use this to purge
+   already-resolved/duplicate entries.
 
 ### Minor
 
@@ -684,6 +688,29 @@ Stage 5 closes once this section is committed. Stage 6 (FIX-ALL)
 opens. M1–M4 (4 majors) must close before Stage 7 — those are the
 FIX-ALL backlog. Minors + nits are candidates for deferral via
 `docs/AGENT_BACKLOG.md`.
+
+### Stage 6 — FIX-ALL closed (2026-05-09)
+
+| Severity | Closed in Stage 6 | Deferred to backlog |
+|---|---|---|
+| Blocker | — (none filed) | — |
+| Major | M1, M2, M3, M4 (4/4) | — |
+| Minor | M2-extension (mz_feedback_disabled gates widget too) | 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19 |
+| Nit | — | 20, 21, 22, 23, 24 |
+
+Regression tests added at
+`frontend/__tests__/feedback/_stage6_regressions.test.tsx`
+(9 cases) plus `tests/test_feedback_api.py::TestDeleteFeedback`
+(2 cases). Final gate:
+- `npx tsc --noEmit` clean
+- `npx vitest run --no-file-parallelism` → **43 files, 292 tests
+  passing, 22 it.todo, zero failures**
+- `python -m pytest tests/test_feedback_api.py -v` → **14/14 passing**
+
+Deferred minors filed in `[FRONTEND] SPEC-041 deferred items` in
+`docs/AGENT_BACKLOG.md` with one-line defensible reasons each.
+
+Stage 7 (DEPLOY) opens next.
 
 ## 14. Acceptance for Stage 1
 

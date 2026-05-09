@@ -35,9 +35,14 @@ function open() {
 describe('FeedbackWidget', () => {
   beforeEach(() => {
     mockSubmit.mockReset();
+    // Stage 6 fix M3 added sessionStorage draft persistence — clear it
+    // between tests so a previous test's transient draft doesn't seed
+    // the next one.
+    window.sessionStorage.clear();
   });
   afterEach(() => {
     document.body.innerHTML = '';
+    window.sessionStorage.clear();
   });
 
   it('is closed by default — no dialog rendered until open event fires', () => {
