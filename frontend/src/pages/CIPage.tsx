@@ -77,13 +77,13 @@ export default function CIPage() {
   }, [params]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" style={{ background: 'var(--color-bg)' }}>
+    <div className="flex h-screen w-full overflow-hidden flex-col md:flex-row" style={{ background: 'var(--color-bg)' }}>
       
-      {/* Sidebar Navigation */}
-      <aside className="w-64 flex flex-col shrink-0 border-r" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
+      {/* Sidebar Navigation (Desktop) */}
+      <aside className="hidden md:flex w-64 flex-col shrink-0 border-r" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
         
         {/* Header Branding */}
-        <div className="flex items-center gap-3 h-16 px-6 border-b" style={{ borderColor: 'var(--color-line)' }}>
+        <div className="flex items-center gap-3 h-16 px-6 border-b shrink-0" style={{ borderColor: 'var(--color-line)' }}>
           <button
             type="button"
             onClick={() => navigate('/')}
@@ -126,7 +126,7 @@ export default function CIPage() {
         </nav>
 
         {/* Global Telemetry & Footer */}
-        <div className="p-4 border-t flex flex-col gap-4" style={{ borderColor: 'var(--color-line-2)' }}>
+        <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: 'var(--color-line-2)' }}>
           <AgentStatusBar status="sensing" message="Flywheel Active" agentCount={4} />
           
           <div className="flex items-center justify-between">
@@ -177,6 +177,25 @@ export default function CIPage() {
           />
         )}
       </main>
+
+      {/* Bottom Navigation (Mobile Only) */}
+      <nav className="flex md:hidden shrink-0 border-t items-center justify-around px-2 py-3" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
+        {tabs.slice(0, 4).map((t) => {
+          const isActive = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className="flex flex-col items-center gap-1"
+              style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-ink-3)' }}
+            >
+              <t.icon size={20} />
+              <span className="text-[10px] font-medium">{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
     </div>
   );
