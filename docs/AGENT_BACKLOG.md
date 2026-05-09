@@ -209,7 +209,7 @@ target state. Each is tagged for ownership.
   feed them back into source weights or prompt selection.
 - Depends on: Source registry (above) + LLM Gateway (above).
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_032_learning_service.md, migration 060, services/learning_service.py, api/routes/learning.py, 24 tests green. EWMA source.predictive_accuracy update + prompt flagging. Sync run; APScheduler wiring deferred.)
 
 ### [BACKEND] Counter-recommendation enforcement
 - Filed: 2026-05-09 by Claude (from spec §6.4.1)
@@ -411,4 +411,135 @@ target state. Each is tagged for ownership.
 - Spec ref: §10.4 ("trace ID surfaced in the Reasoning Trace UI panel")
 - Priority: medium
 - Status: open
+
+---
+
+# 2026-05-09 — Frontend takeover (Frontend Claude in Antigravity's seat)
+
+The previous frontend agent (Antigravity) was unable to continue. A second
+Claude instance has assumed the Frontend Lead role per `AGENTS.md §11`.
+Frontend branches from this date forward use the prefix `claude-fe/*` to
+disambiguate from backend Claude's `claude/*` branches.
+
+Master frontend spec: `specs/SPEC_029_app_aesthetics_upgrade.md` (Draft;
+pending user sign-off). Ralph-style 7-stage loop process documented in
+`docs/process/RALPH_LOOP.md`.
+
+Mini-specs queued under SPEC_029 §9 (skipping 031 which is backend's
+Materiality Scoring): SPEC_030, 032, 033, 034, 035, 036, 037, 038, 039, 040.
+
+## [BACKEND] (Frontend-filed) Confirm `materiality_factors` JSONB shape on `/signals` items
+- Filed: 2026-05-09 by Frontend Claude (consumer of SPEC_031)
+- Need: When backend SPEC_031 lands, ensure `GET /signals` and
+  `GET /signals/{id}` include `materiality_factors` in the response payload
+  alongside `materiality_score`. Shape used by FactorBar primitive:
+  `{ source_tier: number, entity_criticality: number, claim_type: number,
+  recency: number }` — each 0-1, weighted contribution to the 0-100 score.
+- Why: SPEC_035 Sensing Feed v2 renders factor bars on every signal card.
+  Currently signals expose `materiality_score` but not the breakdown.
+- Priority: medium (blocks SPEC_035 only; SPECs 030/032/033/034 can ship first)
+- Status: open
+
+## [BACKEND] (Frontend-filed) Optional: war-game adversary preview helper
+- Filed: 2026-05-09 by Frontend Claude (consumer of SPEC_028)
+- Need: A helper endpoint or precomputed seed to suggest groundable
+  `evidence_ids` per adversary kind (competitor / payer / regulator / KOL)
+  for a given brief, so the Decision Workspace "Start war-game" dialog can
+  preview "what evidence is available to ground each adversary?" without
+  forcing the user to know UUIDs. Could be:
+  - `GET /war-games/preview-adversaries?brief_id={id}` →
+    `{ competitor: { suggested_evidence_ids: [...] }, payer: {...}, ... }`
+- Why: SPEC_032 War-Game UI starts a run; without preview the user has to
+  paste evidence_ids by hand. Not a blocker — UI can ship with a "paste
+  evidence_ids" textarea fallback in v1.
+- Priority: low (UX nicety; ship SPEC_032 v1 without it)
+- Status: open
+
+## [BACKEND] (Frontend-filed) `POST /decisions/from-brief` — mint decision_id from a committed brief
+- Filed: 2026-05-09 by Frontend Claude (consumer of SPEC_023 + SPEC_021)
+- Need: When a SPEC_023 Decision Brief transitions to `committed`, it
+  requires `decision_id` to be set on the brief. Today there's no clean
+  bridge between a brief and a SPEC_021 `decisions` row.
+- Proposed shape:
+  ```
+  POST /decisions/from-brief
+  Body: { brief_id: UUID, rationale?: string, predicted_outcome?: string }
+  Response 201: { decision_id: UUID, brief_id: UUID, committed_at: ISO8601 }
+  ```
+  Side effects: creates `decisions` row, sets `decision_briefs.decision_id`,
+  appends a `state_log` entry transitioning the brief to `committed`.
+  Ideally atomic (single transaction).
+- Why: SPEC_030 Decision Workspace v2 ships a "Commit decision" button.
+  Without this endpoint the button is disabled-with-tooltip; once it lands
+  the button enables in `decision_pending` state and the workspace becomes
+  end-to-end usable.
+- Priority: medium (SPEC_030 ships v1 with the button disabled; once
+  endpoint lands frontend wires it via tooltip-flip)
+- Status: open
+
+## [BACKEND] (Frontend-filed) Decision calibration time-series endpoint
+- Filed: 2026-05-09 by Frontend Claude
+- Need: `GET /decisions/calibration?since=YYYY-MM-DD&until=YYYY-MM-DD` →
+  `{ buckets: [{ stated_confidence: 0.7, actual_correct_rate: 0.62, n: 18 }, ...] }`
+  for the Decisions list "calibration sparkline" header.
+- Why: SPEC_030 Decision Workspace v2 wants a small calibration trend chart
+  (Outcome Dashboard partial). Existing `/insights` endpoint returns latest
+  calibration but not the time-series.
+- Priority: medium (ship SPEC_030 v1 without it; chart added in v2 once
+  endpoint lands)
+- Status: open
+
+## [PROTOCOL] Spec number reservation convention
+- Filed: 2026-05-09 by Frontend Claude
+- Issue: Both Claude teams independently planned to use SPEC_031 (backend
+  for Materiality Scoring, frontend for War-Game UI). Caught before either
+  shipped, but the protocol should prevent this in future.
+- Proposal: Add a "Spec numbers in flight" section to top of
+  `docs/AGENT_BACKLOG.md`. Each agent claims a number by appending a line
+  there before authoring the spec. First-to-write wins; the other rebases.
+- Frontend has reclaimed: SPEC_029, 030, 032, 033, 034, 035, 036, 037, 038, 039, 040.
+- Backend currently holds: SPEC_031.
+- Priority: low (one-time clarification, not recurring blocker)
+- Status: open
+
+## [PROTOCOL] SPEC-029 number collision — frontend committed first; backend has a `claude/spec-029-framing-triggers` branch
+- Filed: 2026-05-09 by Frontend Claude
+- Issue: Frontend Claude committed `specs/SPEC_029_app_aesthetics_upgrade.md`
+  on branch `claude-fe/spec-029-aesthetics` (commit 053dce1) at ~2026-05-09.
+  Subsequently noticed backend Claude has a local branch
+  `claude/spec-029-framing-triggers` (no commits yet beyond main's tip
+  0bea866). Both teams appear to have planned SPEC-029 independently.
+- Resolution per AGENTS.md §6: "whoever opens a PR first wins. Other rebases."
+  Frontend has committed; backend's branch is empty. Frontend keeps SPEC_029.
+- Action requested from backend Claude: rename branch to e.g.
+  `claude/spec-041-framing-triggers` (next free number) and use SPEC_041 for
+  the framing-triggers spec content. Frontend's mini-spec block (§9 of
+  SPEC_029) currently runs 030–040; if backend prefers a number outside
+  that block, please use SPEC_041 or higher.
+- Priority: urgent (resolve before either team's PR lands)
+- Status: open
+
+---
+
+# Spec numbers in flight (claim-by-write convention — start of day)
+
+Each agent claims a spec number by appending a line below BEFORE authoring
+the spec content. First entry wins; the other rebases. This list is
+append-only; resolved entries stay for audit.
+
+| # | Title | Owner | Branch | Status |
+|---|---|---|---|---|
+| 029 | App-wide Aesthetics Upgrade | Frontend Claude | `claude-fe/spec-029-aesthetics` | committed (053dce1) |
+| 030 | Decision Workspace v2 | Frontend Claude | `claude-fe/spec-029-aesthetics` | Stage 1 sign-off complete |
+| 031 | Materiality Scoring (factor-attributed) | Backend Claude | `claude/spec-031-materiality` | committed (c12b905) |
+| 032 | War-Game Multi-Adversary UI | Frontend Claude | (planned) | reserved |
+| 033 | Source Health admin + Cost Telemetry | Frontend Claude | (planned) | reserved |
+| 034 | Connectors page reskin | Frontend Claude | (planned) | reserved |
+| 035 | Sensing Feed v2 + Signals + Watchlist | Frontend Claude | (planned) | reserved |
+| 036 | Cockpit-grade Landing | Frontend Claude | (planned) | reserved |
+| 037 | Workspace (chat + canvas) reskin | Frontend Claude | (planned) | reserved |
+| 038 | Search reskin | Frontend Claude | (planned) | reserved |
+| 039 | Catalog reskin | Frontend Claude | (planned) | reserved |
+| 040 | Auth surfaces | Frontend Claude | (planned) | reserved |
+| 041+ | (free — backend please claim from here) | — | — | available |
 
