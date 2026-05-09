@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { DecisionBrief } from '../../../api';
 import { STATE_META } from './StateMachineChip';
 
@@ -25,17 +25,51 @@ function fmtTime(iso: string): string {
 
 export default function ReasoningTraceDrawer({ brief, open, onClose }: Props) {
   const titleId = useId();
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  // Stage 6 fix #10 — return focus to whatever owned it before the
+  // drawer opened (typically the [t] toggle button), so AT users land
+  // back where they were after closing.
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    // Initial focus moves into the drawer so AT announces the dialog.
+    closeBtnRef.current?.focus();
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
+      }
+      // Focus trap — keep Tab cycling inside the drawer per WCAG 2.4.3
+      if (e.key === 'Tab') {
+        const root = drawerRef.current;
+        if (!root) return;
+        const focusables = root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // Restore focus when the drawer unmounts / closes
+      restoreFocusRef.current?.focus?.();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -46,6 +80,7 @@ export default function ReasoningTraceDrawer({ brief, open, onClose }: Props) {
 
   return (
     <div
+      ref={drawerRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -86,6 +121,7 @@ export default function ReasoningTraceDrawer({ brief, open, onClose }: Props) {
           Reasoning trace
         </h3>
         <button
+          ref={closeBtnRef}
           type="button"
           onClick={onClose}
           aria-label="close"

@@ -1793,8 +1793,31 @@ export type DecisionBriefOptionInput = Pick<
   'label' | 'description' | 'predicted_outcome' | 'cost_estimate' | 'risk_notes'
 >;
 
+/**
+ * SPEC_030 Stage 6 fix #11 — when an authenticated request returns 401,
+ * we treat the session as expired: clear the stored token+role, dispatch
+ * a custom event so the app can redirect, and throw an Error whose
+ * `.code` field downstream code can branch on. Per AGENTS.md §7
+ * "401 → redirect to login".
+ *
+ * Tests can register a `mz:auth-expired` listener to assert the dispatch
+ * fires; the redirect itself is the responsibility of a router-level
+ * listener (filed as a follow-up — see BACKLOG #spec-030-401-redirect).
+ */
 async function expectJson<T>(r: Response): Promise<T> {
   if (!r.ok) {
+    if (r.status === 401 && typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('mz_auth_token');
+        window.localStorage.removeItem('mz_auth_role');
+      } catch {
+        /* localStorage may be locked; ignore */
+      }
+      window.dispatchEvent(new CustomEvent('mz:auth-expired'));
+      const err = new Error('Session expired — please sign in again');
+      (err as Error & { code?: string }).code = 'AUTH_EXPIRED';
+      throw err;
+    }
     const text = await r.text().catch(() => r.statusText);
     throw new Error(`${r.status}: ${text}`);
   }

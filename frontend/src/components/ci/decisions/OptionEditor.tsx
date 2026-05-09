@@ -37,6 +37,11 @@ export default function OptionEditor({
   const [costEstimate, setCostEstimate] = useState(initial?.cost_estimate ?? '');
   const [riskNotes, setRiskNotes] = useState(initial?.risk_notes ?? '');
   const [busy, setBusy] = useState(false);
+  // Stage 6 fix #7 — surface save errors. The previous version used a
+  // try/finally that swallowed rejection silently; users could only tell
+  // by noticing the modal stayed open. Now we render the error inline
+  // and keep the modal open so they can retry.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -54,6 +59,7 @@ export default function OptionEditor({
   const submit = async () => {
     if (!canSave) return;
     setBusy(true);
+    setError(null);
     try {
       const payload: DecisionBriefOptionInput = {
         label: label.trim(),
@@ -63,6 +69,8 @@ export default function OptionEditor({
         risk_notes: riskNotes.trim() || null,
       };
       await onSave(payload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -194,6 +202,21 @@ export default function OptionEditor({
             style={inputStyle}
           />
         </label>
+
+        {error && (
+          <div
+            role="alert"
+            style={{
+              fontSize: 12,
+              color: 'var(--color-red, #C0392B)',
+              background: 'var(--color-red-soft, #FEF2F2)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-card, 12px)',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           {mode === 'edit' && onRemove && (

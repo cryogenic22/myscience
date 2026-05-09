@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
@@ -28,6 +29,17 @@ function AppRoutes() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const seedQuestion = searchParams.get('q');
+
+  // SPEC_030 Stage 6 fix #11 — global session-expiry listener. When any
+  // API call hits 401, expectJson dispatches `mz:auth-expired`; we send
+  // the user back to landing with a banner.
+  useEffect(() => {
+    const onExpired = () => {
+      navigate('/?session=expired', { replace: true });
+    };
+    window.addEventListener('mz:auth-expired', onExpired);
+    return () => window.removeEventListener('mz:auth-expired', onExpired);
+  }, [navigate]);
 
   return (
     <AnimatePresence mode="wait">
