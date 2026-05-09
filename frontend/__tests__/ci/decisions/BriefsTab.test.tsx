@@ -25,11 +25,12 @@ describe('BriefsTab', () => {
   beforeEach(() => mockList.mockReset());
 
   it('shows skeleton during initial load (not a spinner)', async () => {
-    let resolve: any;
-    mockList.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    mockList.mockResolvedValueOnce({ briefs: [], next_cursor: null, count: 0 });
     render(<BriefsTab onOpen={vi.fn()} />);
-    expect(await screen.findByLabelText(/loading briefs/i)).toBeInTheDocument();
-    resolve({ briefs: [], next_cursor: null, count: 0 });
+    // Skeleton renders synchronously on mount, before the load() promise resolves.
+    expect(screen.getByRole('status', { name: /loading briefs/i })).toBeInTheDocument();
+    // Wait for the promise to flush so cleanup doesn't see pending act warnings.
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
   });
 
   it('renders an empty state when 0 briefs come back', async () => {
