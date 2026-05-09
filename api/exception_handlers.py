@@ -70,10 +70,29 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     return _envelope(code=exc.status_code, message=message, headers=headers)
 
 
+def _sanitize_error_dict(err: dict) -> dict:
+    """Pydantic v2 attaches the original Python exception object to
+    ``ctx.error`` when a field_validator raises (e.g. ValueError). That
+    object is not JSON-serializable. Replace any non-JSON-serializable
+    values with their str() form."""
+    import json as _json
+    out = {}
+    for k, v in err.items():
+        try:
+            _json.dumps(v)
+            out[k] = v
+        except (TypeError, ValueError):
+            if isinstance(v, dict):
+                out[k] = _sanitize_error_dict(v)
+            else:
+                out[k] = str(v)
+    return out
+
+
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # FastAPI/Pydantic gives us a list of error dicts; surface the first
     # in `.message` and the full list in `.details.errors`.
-    errors = exc.errors()
+    errors = [_sanitize_error_dict(e) for e in exc.errors()]
     first_msg = "Request validation failed"
     if errors:
         first = errors[0]

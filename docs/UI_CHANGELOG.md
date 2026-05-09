@@ -42,4 +42,22 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 ### Surfaces
 - `index.css`: Added Phase F dark theme tokens (`#0d1117`, `#161b22`, etc.) and `Syne` / `DM Mono` typography.
 
+## 2026-05-09 (Phase 2-4 Cockpit Primitives)
 
+### New components
+- `ConfidenceBadge`: A primitive to display explicit uncertainty bands and scores.
+- `EvidenceAffordance`: A primitive to render deep-linkable evidence chains with source/passage visibility.
+- `DisagreementPanel`: A surface for side-by-side agent/source conflict resolution.
+
+### Surfaces
+- **Sensing Feed**: Implemented `SensingFeed` as the new Always-On continuous feed.
+- **InboxTab**: Replaced the default layout entirely with `SensingFeed`.
+
+## 2026-05-09 (SPEC-023 Sign-off & Main Shell Upgrade)
+
+### Surfaces
+- **LandingPage**: Full visual overhaul using Phase F Cockpit design. Added dark glassmorphic components, `AgentStatusBar` telemetry, and dynamic background.
+- **CIPage**: Redesigned the main application shell. Replaced horizontal topbar with a dark high-density sidebar. Added global agent telemetry monitoring the Flywheel.
+
+### Cross-Cutting
+- Signed off `SPEC_023_decision_briefs.md` for the backend data contract.

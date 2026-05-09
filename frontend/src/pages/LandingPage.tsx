@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Search } from 'lucide-react';
+import { ArrowRight, Search, Activity, Cpu } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import { useHealthStats } from '../hooks/useHealthStats';
+import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
+import React from 'react';
 
 interface LandingPageProps {
   onEnter: () => void;
@@ -30,92 +32,82 @@ function Counter({ value }: { value: number }) {
 }
 
 const PILLARS = [
-  { n: '01', title: 'Ontology Core', body: 'Unified entities and typed links across molecules, trials, companies, literature, and market signals.' },
-  { n: '02', title: 'GraphRAG Intelligence', body: 'Pharma-specific semantics power evidence retrieval and context composition for strategic reasoning.' },
-  { n: '03', title: 'Integrated Data Fabric', body: 'Continuously ingested evidence from regulatory, clinical, literature, and financial systems.' },
-  { n: '04', title: 'Agentic AI Ready', body: 'Search, graph, metrics, and query orchestration aligned for autonomous investigative workflows.' },
+  { n: '01', title: 'Always-On Sensing', body: 'Continuously ingests multi-modal evidence from SEC, FDA, clinical trials, and payer formularies to never miss a signal.' },
+  { n: '02', title: 'Agentic Intelligence', body: 'Autonomous agent loops run Monte Carlo simulations and war-games against competitive actions in real-time.' },
+  { n: '03', title: 'Decision Flywheel', body: 'Closes the loop from signal to structured decision, continually tracking accuracy and updating agent logic over time.' },
+  { n: '04', title: 'Immutable Provenance', body: 'Every output is cryptographically tied to exact source passages and confidence thresholds, eliminating hallucinations.' },
 ];
 
 export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
   const stats = useHealthStats();
 
   return (
-    <div style={{ minHeight: '100vh', overflowY: 'auto', background: 'var(--color-bg)', fontFamily: 'var(--font-body)' }}>
+    <div style={{ minHeight: '100vh', overflowY: 'auto', background: 'var(--color-bg)', fontFamily: 'var(--font-body)', position: 'relative' }}>
+      
+      {/* Background Mesh */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-20" style={{ 
+        background: 'radial-gradient(circle at 50% 0%, var(--color-accent-soft) 0%, transparent 60%)' 
+      }}></div>
 
       {/* ── Topbar ── */}
-      <header style={{
-        position: 'sticky', top: 0, zIndex: 40, height: '52px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px',
-        background: 'rgba(250,250,248,0.92)', backdropFilter: 'saturate(180%) blur(20px)',
-        WebkitBackdropFilter: 'saturate(180%) blur(20px)', borderBottom: '1px solid var(--color-line)',
+      <header className="relative z-40 sticky top-0 h-[52px] flex items-center justify-between px-8 border-b" style={{
+        background: 'rgba(13, 17, 23, 0.85)', backdropFilter: 'saturate(180%) blur(20px)',
+        borderColor: 'var(--color-line)'
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 400, color: 'var(--color-ink)', letterSpacing: '-0.01em' }}>
-          {PRODUCT_NAME}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button onClick={onSearch} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
-            borderRadius: '7px', background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: 'var(--color-ink-3)', fontFamily: 'var(--font-body)', transition: 'background 140ms, color 140ms',
-          }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; e.currentTarget.style.color = 'var(--color-ink)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-ink-3)'; }}
+        <div className="flex items-center gap-4">
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 500, color: 'var(--color-ink)', letterSpacing: '-0.02em' }}>
+            {PRODUCT_NAME}
+          </span>
+          <div className="hidden md:block">
+            <AgentStatusBar status="sensing" message="Monitoring competitive landscape" agentCount={4} />
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button onClick={onSearch} className="flex items-center gap-2 px-3 py-1.5 rounded transition-colors text-sm" style={{ color: 'var(--color-ink-3)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-ink)'; e.currentTarget.style.backgroundColor = 'var(--color-surface-2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-ink-3)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
-            <Search size={13} /> Search
+            <Search size={14} /> Catalog
           </button>
-          <button onClick={onEnter} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 15px',
-            borderRadius: '980px', background: 'var(--color-ink)', border: 'none', cursor: 'pointer',
-            fontSize: '13px', fontWeight: 500, color: '#fff', fontFamily: 'var(--font-body)', transition: 'background 140ms',
-          }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#2c2c30')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-ink)')}
+          <button onClick={onEnter} className="flex items-center gap-2 px-4 py-1.5 rounded-full transition-all text-sm font-medium" style={{ background: 'var(--color-ink)', color: 'var(--color-bg)' }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
-            Open <ArrowRight size={12} />
+            Launch Cockpit <ArrowRight size={14} />
           </button>
         </div>
       </header>
 
       {/* ── Hero ── */}
-      <section style={{ position: 'relative', padding: '88px 24px 72px', textAlign: 'center', overflow: 'hidden' }}>
-        <div aria-hidden style={{ pointerEvents: 'none', position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 60% 40% at 50% -5%, rgba(28,110,247,0.07) 0%, transparent 65%)' }} />
+      <section className="relative z-10 pt-32 pb-24 px-6 text-center">
         <motion.div
-          initial={{ opacity: 0, y: 22 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          style={{ position: 'relative', maxWidth: '820px', margin: '0 auto' }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-4xl mx-auto"
         >
-          <div style={{ marginBottom: '24px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-accent)' }}>
-            Pharmaceutical Intelligence Platform
+          <div className="mb-6 flex justify-center items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono tracking-widest uppercase border" style={{ color: 'var(--color-accent)', borderColor: 'var(--color-accent-soft)', backgroundColor: 'var(--color-surface)' }}>
+              <Cpu size={12} /> Autonomous CI
+            </span>
           </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(44px, 5.5vw, 72px)', fontWeight: 300, lineHeight: 1.09, letterSpacing: '-0.025em', color: 'var(--color-ink)', marginBottom: '24px' }}>
-            The intelligence layer<br /><em>pharma strategy needs</em>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(48px, 6vw, 84px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: 'var(--color-ink)', marginBottom: '24px' }}>
+            The intelligence layer<br />
+            <span style={{ color: 'var(--color-accent)', fontStyle: 'italic' }}>strategy demands.</span>
           </h1>
-          <p style={{ fontSize: '16px', lineHeight: 1.7, color: 'var(--color-ink-3)', fontWeight: 300, maxWidth: '500px', margin: '0 auto 36px' }}>
-            A unified knowledge graph across drugs, trials, companies, and literature. Evidence-grounded answers for executives and agentic AI workflows.
+          <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'var(--color-ink-3)', fontWeight: 300, maxWidth: '600px', margin: '0 auto 48px' }}>
+            A unified, multi-agent closed-loop platform that compresses signal-to-decision latency. Sense the market, simulate competitive dynamics, and build compounding strategic advantages.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-            <button onClick={onEnter} style={{
-              display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '12px 24px',
-              borderRadius: '980px', background: 'var(--color-accent)', border: 'none', cursor: 'pointer',
-              fontSize: '15px', fontWeight: 500, color: '#fff', fontFamily: 'var(--font-body)',
-              boxShadow: '0 4px 12px rgba(28,110,247,0.26)', transition: 'all 160ms',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-dark)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(28,110,247,0.36)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-accent)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(28,110,247,0.26)'; }}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button onClick={onEnter} className="flex items-center gap-2 px-8 py-4 rounded-full text-base font-medium transition-all shadow-lg hover:shadow-xl cursor-pointer"
+              style={{ background: 'var(--color-accent)', color: '#fff', boxShadow: '0 8px 32px rgba(88, 166, 255, 0.2)' }}
             >
-              Open Workspace <ArrowRight size={15} />
+              Enter Decision Flywheel <ArrowRight size={16} />
             </button>
-            <button onClick={onSearch} style={{
-              display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '12px 24px',
-              borderRadius: '980px', background: 'var(--color-surface)', border: '1px solid var(--color-line)',
-              cursor: 'pointer', fontSize: '15px', fontWeight: 500, color: 'var(--color-ink)',
-              fontFamily: 'var(--font-body)', transition: 'all 160ms',
-            }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-surface)')}
+            <button onClick={onSearch} className="flex items-center gap-2 px-8 py-4 rounded-full text-base font-medium transition-colors border cursor-pointer"
+              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-line-2)', color: 'var(--color-ink)' }}
             >
-              <Search size={14} /> Explore
+              <Search size={16} /> Query Graph
             </button>
           </div>
         </motion.div>
@@ -126,24 +118,22 @@ export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
         <motion.section
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          style={{ borderTop: '1px solid var(--color-line)', borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
+          transition={{ delay: 0.4, duration: 0.6 }}
+          className="relative z-10 border-y"
+          style={{ borderColor: 'var(--color-line-2)', background: 'var(--color-surface)' }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', maxWidth: '880px', margin: '0 auto' }}>
+          <div className="grid grid-cols-2 md:grid-cols-4 max-w-5xl mx-auto">
             {[
-              { label: 'Total Records', value: stats.totalRecords },
-              { label: 'Graph Links', value: stats.entityLinks },
-              { label: 'Clinical Trials', value: stats.trials },
-              { label: 'Companies', value: stats.companies },
+              { label: 'Active Signals', value: stats.totalRecords },
+              { label: 'Graph Edges', value: stats.entityLinks },
+              { label: 'Simulated Scenarios', value: stats.trials },
+              { label: 'Agent Tasks', value: stats.companies * 12 },
             ].map(({ label, value }, i) => (
-              <div key={label} style={{
-                padding: '36px 20px', textAlign: 'center',
-                borderRight: i < 3 ? '1px solid var(--color-line)' : 'none',
-              }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '38px', fontWeight: 300, letterSpacing: '-0.025em', color: 'var(--color-ink)', lineHeight: 1, marginBottom: '8px' }}>
+              <div key={label} className="py-10 text-center" style={{ borderRight: i % 4 !== 3 ? '1px solid var(--color-line-2)' : 'none' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '42px', fontWeight: 300, letterSpacing: '-0.02em', color: 'var(--color-ink)', lineHeight: 1, marginBottom: '12px' }}>
                   <Counter value={value} />
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-ink-4)', letterSpacing: '0.01em' }}>{label}</div>
+                <div className="text-[10px] font-mono tracking-widest uppercase" style={{ color: 'var(--color-ink-4)' }}>{label}</div>
               </div>
             ))}
           </div>
@@ -151,50 +141,47 @@ export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
       )}
 
       {/* ── Pillars ── */}
-      <section style={{ padding: '88px 40px 80px' }}>
-        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+      <section className="relative z-10 py-24 px-8">
+        <div className="max-w-6xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            style={{ textAlign: 'center', marginBottom: '56px' }}
+            className="text-center mb-16"
           >
-            <div style={{ marginBottom: '14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-ink-4)' }}>
-              Platform
+            <div className="text-[11px] font-mono font-bold tracking-widest uppercase mb-4" style={{ color: 'var(--color-ink-4)' }}>
+              Architecture
             </div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 2.8vw, 38px)', fontWeight: 300, letterSpacing: '-0.02em', color: 'var(--color-ink)', lineHeight: 1.15 }}>
-              Built on connected evidence
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, letterSpacing: '-0.02em', color: 'var(--color-ink)' }}>
+              Built for precision at scale
             </h2>
           </motion.div>
 
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1px',
-            background: 'var(--color-line)', border: '1px solid var(--color-line)',
-            borderRadius: '18px', overflow: 'hidden',
-          }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {PILLARS.map((pillar, i) => (
               <motion.div
                 key={pillar.n}
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.06, duration: 0.45 }}
+                transition={{ delay: i * 0.1, duration: 0.5 }}
+                className="p-10 rounded-2xl border flex flex-col"
                 style={{
                   background: 'var(--color-surface)',
-                  padding: '40px 40px 44px',
-                  minHeight: '190px',
-                  display: 'flex',
-                  flexDirection: 'column',
+                  borderColor: 'var(--color-line-2)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.2)'
                 }}
               >
-                <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--color-ink-4)', marginBottom: '18px' }}>
-                  {pillar.n}
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="text-[10px] font-mono px-2 py-1 rounded" style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+                    PHASE {pillar.n}
+                  </div>
+                  <Activity size={16} style={{ color: 'var(--color-ink-4)' }} />
                 </div>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--color-ink)', marginBottom: '10px', lineHeight: 1.3 }}>
+                <h3 className="text-xl font-medium mb-3" style={{ color: 'var(--color-ink)', fontFamily: 'var(--font-display)' }}>
                   {pillar.title}
                 </h3>
-                <p style={{ fontSize: '14px', lineHeight: 1.65, color: 'var(--color-ink-3)', fontWeight: 300, flexGrow: 1 }}>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--color-ink-3)' }}>
                   {pillar.body}
                 </p>
               </motion.div>
@@ -204,11 +191,10 @@ export default function LandingPage({ onEnter, onSearch }: LandingPageProps) {
       </section>
 
       {/* ── Footer ── */}
-      <footer style={{
-        padding: '28px 40px', textAlign: 'center', borderTop: '1px solid var(--color-line)',
-        fontSize: '12px', letterSpacing: '0.04em', color: 'var(--color-ink-4)',
+      <footer className="relative z-10 py-8 text-center border-t text-[11px] font-mono uppercase tracking-widest" style={{
+        borderColor: 'var(--color-line-2)', color: 'var(--color-ink-4)'
       }}>
-        Grounded in ClinicalTrials.gov · PubMed · FDA Orange Book · SEC Edgar · ChEMBL · Open Targets
+        Market Zero Agentic Platform · Confidential
       </footer>
     </div>
   );

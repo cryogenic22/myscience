@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Activity, LayoutGrid, Database, Target, ShieldAlert, LineChart, BrainCircuit, CheckSquare } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import DigestTab from '../components/ci/DigestTab';
 import SignalsTab from '../components/ci/SignalsTab';
@@ -10,18 +10,19 @@ import WarRoomsList from '../components/ci/war/WarRoomsList';
 import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
+import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
 
 type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
-const ALL_TABS: Array<{ key: TabKey; label: string; enterprise?: boolean }> = [
-  { key: 'inbox',     label: 'Inbox' },
-  { key: 'digest',    label: 'Digest' },
-  { key: 'signals',   label: 'Signals' },
-  { key: 'watchlist', label: 'Watchlist' },
-  { key: 'rooms',     label: 'War Rooms' },
-  { key: 'decisions', label: 'Decisions' },
-  { key: 'insights',  label: 'Insights' },
-  { key: 'reviewer',  label: 'Reviewer', enterprise: true },
+const ALL_TABS: Array<{ key: TabKey; label: string; icon: any; enterprise?: boolean }> = [
+  { key: 'inbox',     label: 'Sensing Feed', icon: Activity },
+  { key: 'digest',    label: 'Daily Digest', icon: LayoutGrid },
+  { key: 'signals',   label: 'Signals DB', icon: Database },
+  { key: 'watchlist', label: 'Watchlist', icon: Target },
+  { key: 'rooms',     label: 'War Rooms', icon: ShieldAlert },
+  { key: 'decisions', label: 'Decisions', icon: CheckSquare },
+  { key: 'insights',  label: 'Insights', icon: LineChart },
+  { key: 'reviewer',  label: 'Reviewer', icon: BrainCircuit, enterprise: true },
 ];
 
 function getRole(): string | null {
@@ -69,7 +70,6 @@ export default function CIPage() {
     setParams(next, { replace: false });
   };
 
-  // If room param disappears (back button), no-op — body already conditions on it
   useEffect(() => {
     const t = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
     if (t !== tab) setTabState(t);
@@ -77,87 +77,73 @@ export default function CIPage() {
   }, [params]);
 
   return (
-    <div className="flex flex-col h-screen" style={{ background: 'var(--color-surface)' }}>
-      {/* Header */}
-      <header
-        className="shrink-0 flex items-center gap-4"
-        style={{
-          height: '52px',
-          padding: '0 20px',
-          borderBottom: '1px solid var(--color-line)',
-          background: 'var(--color-surface)',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="btn-icon"
-          aria-label="Back"
-          title="Back"
-        >
-          <ArrowLeft size={15} />
-        </button>
-        <span
-          className="font-display text-[15px] font-light"
-          style={{ color: 'var(--color-ink-3)', letterSpacing: '-0.01em' }}
-        >
-          {PRODUCT_NAME}
-        </span>
-        <div className="h-4 w-px" style={{ background: 'var(--color-line)' }} />
-        <span className="font-display text-[15px]" style={{ color: 'var(--color-ink)' }}>
-          Competitive Intelligence
-        </span>
+    <div className="flex h-screen w-full overflow-hidden" style={{ background: 'var(--color-bg)' }}>
+      
+      {/* Sidebar Navigation */}
+      <aside className="w-64 flex flex-col shrink-0 border-r" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
+        
+        {/* Header Branding */}
+        <div className="flex items-center gap-3 h-16 px-6 border-b" style={{ borderColor: 'var(--color-line)' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="text-[var(--color-ink-3)] hover:text-[var(--color-ink)] transition-colors"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="flex flex-col">
+            <span className="font-display text-[15px] font-medium tracking-tight" style={{ color: 'var(--color-ink)' }}>
+              {PRODUCT_NAME}
+            </span>
+            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--color-ink-4)' }}>
+              Cockpit
+            </span>
+          </div>
+        </div>
 
-        <nav
-          className="ml-6 flex items-center gap-0.5 rounded-[10px]"
-          style={{ padding: '4px', background: 'var(--color-surface-2)' }}
-        >
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="text-[12px] font-medium"
-              style={{
-                padding: '5px 12px',
-                borderRadius: '6px',
-                background: tab === t.key ? 'var(--color-surface)' : 'transparent',
-                color: tab === t.key ? 'var(--color-ink)' : 'var(--color-ink-3)',
-                boxShadow: tab === t.key ? 'var(--shadow-xs)' : 'none',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Navigation Tabs */}
+        <nav className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-1">
+          {tabs.map((t) => {
+            const isActive = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all"
+                style={{
+                  background: isActive ? 'var(--color-surface-3)' : 'transparent',
+                  color: isActive ? 'var(--color-ink)' : 'var(--color-ink-3)',
+                  fontWeight: isActive ? 500 : 400,
+                  boxShadow: isActive ? 'var(--shadow-sm)' : 'none'
+                }}
+              >
+                <t.icon size={16} style={{ color: isActive ? 'var(--color-accent)' : 'inherit' }} />
+                {t.label}
+              </button>
+            );
+          })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3">
-          <a
-            href="/connectors"
-            className="text-[11px]"
-            style={{ color: 'var(--color-ink-4)' }}
-          >
-            Connectors →
-          </a>
-          {role && (
-            <span
-              className="text-[10px] uppercase font-medium"
-              style={{
-                padding: '3px 8px',
-                borderRadius: '4px',
-                background: 'var(--color-surface-2)',
-                color: 'var(--color-ink-3)',
-                letterSpacing: '0.06em',
-              }}
-            >
-              {role}
-            </span>
-          )}
+        {/* Global Telemetry & Footer */}
+        <div className="p-4 border-t flex flex-col gap-4" style={{ borderColor: 'var(--color-line-2)' }}>
+          <AgentStatusBar status="sensing" message="Flywheel Active" agentCount={4} />
+          
+          <div className="flex items-center justify-between">
+            <a href="/connectors" className="text-[11px] font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
+              Connectors →
+            </a>
+            {role && (
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded" style={{ background: 'var(--color-surface-2)', color: 'var(--color-ink-3)' }}>
+                {role}
+              </span>
+            )}
+          </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Body */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Main Content Area */}
+      <main className="flex-1 relative flex flex-col min-w-0 overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
         {tab === 'inbox' && (
           <InboxTab
             onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
@@ -190,7 +176,8 @@ export default function CIPage() {
             onOpenWarRoom={openWarRoom}
           />
         )}
-      </div>
+      </main>
+
     </div>
   );
 }

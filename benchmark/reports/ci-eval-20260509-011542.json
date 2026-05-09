@@ -1,0 +1,32 @@
+{
+  "passed": false,
+  "overall": 0.875,
+  "baseline": 0.999,
+  "regressions": [
+    {
+      "dimension": "overall",
+      "baseline": 0.999,
+      "current": 0.875,
+      "drop_pct": 12.4
+    }
+  ],
+  "fail_reasons": [
+    "Regression in: overall"
+  ],
+  "report_path": "C:\\Users\\kapil\\Documents\\market_zero\\benchmark\\reports\\eval-20260509-011542.json",
+  "by_intent": {
+    "dossier": 1.0,
+    "landscape": 0.75,
+    "portfolio": 0.875
+  },
+  "by_dimension": {
+    "intent": 1.0,
+    "grounding": 1.0,
+    "factual": 0.5,
+    "completeness": 1.0,
+    "citation": 1.0
+  },
+  "total_queries": 3,
+  "failures": 0,
+  "timestamp": "2026-05-09T01:15:42.946594+00:00"
+}

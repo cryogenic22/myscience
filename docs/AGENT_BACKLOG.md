@@ -231,6 +231,59 @@ target state. Each is tagged for ownership.
 
 ---
 
+## Game-theoretic simulation backlog (Claude)
+
+> Adds formal game-theoretic structure to the war-game layer. All three items
+> roll up under `specs/SPEC_025_game_theoretic_simulation.md`. Depends on
+> SPEC_028 War-Game Adversaries landing first.
+
+### [BACKEND] Bayesian war-game upgrade — incomplete-information adversaries
+- Filed: 2026-05-09 by Claude (from game-theory recommendation)
+- Need: Each adversary agent carries a "type distribution" over private states
+  (e.g., CompetitorAgent type ∈ {aggressive, defensive, cash-constrained} with
+  prior probabilities sourced from KG signals). Each round samples a type per
+  adversary; reactions are belief-distributions, not point reactions. Output:
+  posterior over outcomes per option after N rounds.
+- Why: Pharma adversaries have private info (pipeline state, internal Phase 2
+  reads, cost structure). Treating them as fully observable misses the central
+  uncertainty in CI strategy.
+- Depends on: SPEC_028 war-game adversaries.
+- Priority: medium
+- Status: open
+
+### [BACKEND] Stackelberg sequencing module — leader-follower analysis
+- Filed: 2026-05-09 by Claude (from game-theory recommendation)
+- Need: For any Decision Brief option that is timing-sensitive (launch date,
+  readout date, regulatory submission date), compute the Stackelberg-optimal
+  competitor counter-move. Algorithm: enumerate competitor's response set,
+  apply their estimated payoff function (sourced from KG + recent moves),
+  return arg-max counter. Surface as a "Stackelberg outlook" panel in the
+  simulation output: "If you accelerate Phase 3 readout 4 months, the
+  Stackelberg-optimal Pfizer response is to fast-follow with PRGN-2009 +
+  defensive pricing in 2L."
+- Why: Pharma launches are inherently sequential — first-mover sets context,
+  follower optimizes against it. Current simultaneous-move war-game misses
+  this structure.
+- Depends on: SPEC_028 war-game adversaries.
+- Priority: medium
+- Status: open
+
+### [BACKEND] POMDP value-of-information service
+- Filed: 2026-05-09 by Claude (from game-theory recommendation)
+- Need: For any pending Decision Brief, compute expected information value
+  of waiting for upcoming signals (earnings calendar, FDA action calendar,
+  conference dates from KG). Frame the brief as a POMDP: signals → posterior
+  belief update → optimal action under updated belief. Compare expected utility
+  of "decide now with current belief" vs "wait W weeks, decide with updated
+  belief minus W·discount_rate." Surface as a "Wait vs Decide" panel.
+- Why: Strategists routinely face the question "is it worth waiting for the
+  next earnings call?" Today this is intuition; the POMDP gives a principled
+  answer with explicit assumptions.
+- Priority: medium
+- Status: open
+
+---
+
 ## Frontend backlog (Antigravity)
 
 > All items below trace to spec §9 (Frontend Design Specification). Items

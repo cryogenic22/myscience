@@ -90,6 +90,14 @@ except Exception as _e:
     logger.error("Failed to import inbox router (SPEC_021 E): %s", _e)
     _INBOX_ROUTER_OK = False
 
+# SPEC_023 decision briefs router
+try:
+    from api.routes import decision_briefs as decision_briefs_route
+    _DECISION_BRIEFS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import decision_briefs router (SPEC_023): %s", _e)
+    _DECISION_BRIEFS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -185,6 +193,8 @@ def create_app() -> FastAPI:
         # Phase E — insights surface lives in the same module
         if hasattr(inbox_route, "insights_router"):
             all_routers.append(inbox_route.insights_router)
+    if _DECISION_BRIEFS_ROUTER_OK:
+        all_routers.append(decision_briefs_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
