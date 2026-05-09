@@ -257,7 +257,7 @@ target state. Each is tagged for ownership.
   uncertainty in CI strategy.
 - Depends on: SPEC_028 war-game adversaries.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — see specs/SPEC_025_game_theoretic_simulation.md, migration 057, services/game_theory.py, api/routes/game_theory.py, 25 tests green)
 
 ### [BACKEND] Stackelberg sequencing module — leader-follower analysis
 - Filed: 2026-05-09 by Claude (from game-theory recommendation)
@@ -274,7 +274,7 @@ target state. Each is tagged for ownership.
   this structure.
 - Depends on: SPEC_028 war-game adversaries.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — see specs/SPEC_025_game_theoretic_simulation.md, migration 057, services/game_theory.py, api/routes/game_theory.py, 25 tests green)
 
 ### [BACKEND] POMDP value-of-information service
 - Filed: 2026-05-09 by Claude (from game-theory recommendation)
@@ -288,7 +288,7 @@ target state. Each is tagged for ownership.
   next earnings call?" Today this is intuition; the POMDP gives a principled
   answer with explicit assumptions.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — see specs/SPEC_025_game_theoretic_simulation.md, migration 057, services/game_theory.py, api/routes/game_theory.py, 25 tests green)
 
 ---
 
