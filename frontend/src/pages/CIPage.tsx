@@ -11,6 +11,7 @@ import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
+import { ThemeToggle } from '../components/primitives/ThemeToggle';
 
 type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
@@ -91,7 +92,7 @@ export default function CIPage() {
           >
             <ArrowLeft size={16} />
           </button>
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1">
             <span className="font-display text-[15px] font-medium tracking-tight" style={{ color: 'var(--color-ink)' }}>
               {PRODUCT_NAME}
             </span>
@@ -99,6 +100,7 @@ export default function CIPage() {
               Cockpit
             </span>
           </div>
+          <ThemeToggle />
         </div>
 
         {/* Navigation Tabs */}

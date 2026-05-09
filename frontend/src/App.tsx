@@ -8,6 +8,7 @@ import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
 import CIPage from './pages/CIPage';
 import DecisionDetailPage from './components/ci/decisions/DecisionDetailPage';
+import { ThemeProvider } from './hooks/useTheme';
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ function AppRoutes() {
               key="landing"
               onEnter={() => navigate('/workspace')}
               onSearch={() => navigate('/search')}
+              onCI={() => navigate('/ci')}
             />
           }
         />
@@ -55,7 +57,7 @@ function AppRoutes() {
         <Route path="/ci" element={<CIPage key="ci" />} />
         <Route path="/ci/decisions/:id" element={<DecisionDetailPage key="decision-detail" />} />
         {/* Catch-all → landing */}
-        <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} />} />
+        <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} onCI={() => navigate('/ci')} />} />
       </Routes>
     </AnimatePresence>
   );
@@ -63,10 +65,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
