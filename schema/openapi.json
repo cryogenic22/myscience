@@ -1297,6 +1297,87 @@
         "title": "MechanismIsolationRequest",
         "type": "object"
       },
+      "POMDPBody": {
+        "properties": {
+          "brief_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief Id"
+          },
+          "discount_rate_per_day": {
+            "default": 0.005,
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Discount Rate Per Day",
+            "type": "number"
+          },
+          "options": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "maxProperties": 20,
+            "minProperties": 1,
+            "title": "Options",
+            "type": "object"
+          },
+          "upcoming_signals": {
+            "items": {
+              "$ref": "#/components/schemas/POMDPSignalBody"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Upcoming Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "options",
+          "upcoming_signals"
+        ],
+        "title": "POMDPBody",
+        "type": "object"
+      },
+      "POMDPSignalBody": {
+        "properties": {
+          "arrival_days": {
+            "maximum": 3650.0,
+            "minimum": 0.0,
+            "title": "Arrival Days",
+            "type": "integer"
+          },
+          "expected_info_value": {
+            "title": "Expected Info Value",
+            "type": "number"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "posterior_shifts": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Posterior Shifts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arrival_days",
+          "expected_info_value",
+          "posterior_shifts"
+        ],
+        "title": "POMDPSignalBody",
+        "type": "object"
+      },
       "PatchBriefBody": {
         "properties": {
           "confidence_to_proceed": {
@@ -2244,6 +2325,86 @@
           "provenance"
         ],
         "title": "SearchResultItem",
+        "type": "object"
+      },
+      "StackelbergBody": {
+        "properties": {
+          "brief_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief Id"
+          },
+          "opponent_payoff": {
+            "items": {
+              "$ref": "#/components/schemas/StackelbergCellBody"
+            },
+            "minItems": 1,
+            "title": "Opponent Payoff",
+            "type": "array"
+          },
+          "opponent_responses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Opponent Responses",
+            "type": "array"
+          },
+          "our_payoff": {
+            "items": {
+              "$ref": "#/components/schemas/StackelbergCellBody"
+            },
+            "minItems": 1,
+            "title": "Our Payoff",
+            "type": "array"
+          },
+          "timing_grid": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Timing Grid",
+            "type": "array"
+          }
+        },
+        "required": [
+          "timing_grid",
+          "opponent_responses",
+          "our_payoff",
+          "opponent_payoff"
+        ],
+        "title": "StackelbergBody",
+        "type": "object"
+      },
+      "StackelbergCellBody": {
+        "properties": {
+          "payoff": {
+            "title": "Payoff",
+            "type": "number"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "timing": {
+            "title": "Timing",
+            "type": "number"
+          }
+        },
+        "required": [
+          "timing",
+          "response",
+          "payoff"
+        ],
+        "title": "StackelbergCellBody",
         "type": "object"
       },
       "SubgraphResponse": {
@@ -7299,6 +7460,335 @@
         "summary": "Update Feedback",
         "tags": [
           "feedback"
+        ]
+      }
+    },
+    "/api/v1/game-theory/bayesian": {
+      "post": {
+        "operationId": "bayesian_api_v1_game_theory_bayesian_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayesianBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bayesian",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/api/v1/game-theory/pomdp": {
+      "post": {
+        "operationId": "pomdp_api_v1_game_theory_pomdp_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/POMDPBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pomdp",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/api/v1/game-theory/runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_game_theory_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/api/v1/game-theory/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_game_theory_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/api/v1/game-theory/stackelberg": {
+      "post": {
+        "operationId": "stackelberg_api_v1_game_theory_stackelberg_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StackelbergBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stackelberg",
+        "tags": [
+          "game-theory"
         ]
       }
     },
@@ -16941,6 +17431,335 @@
         "summary": "Update Feedback",
         "tags": [
           "feedback"
+        ]
+      }
+    },
+    "/game-theory/bayesian": {
+      "post": {
+        "operationId": "bayesian_game_theory_bayesian_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayesianBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bayesian",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/game-theory/pomdp": {
+      "post": {
+        "operationId": "pomdp_game_theory_pomdp_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/POMDPBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pomdp",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/game-theory/runs": {
+      "get": {
+        "operationId": "list_runs_game_theory_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/game-theory/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_game_theory_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "game-theory"
+        ]
+      }
+    },
+    "/game-theory/stackelberg": {
+      "post": {
+        "operationId": "stackelberg_game_theory_stackelberg_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StackelbergBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stackelberg",
+        "tags": [
+          "game-theory"
         ]
       }
     },
