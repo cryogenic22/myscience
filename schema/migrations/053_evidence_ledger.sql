@@ -54,8 +54,11 @@ CREATE TABLE IF NOT EXISTS evidence_records (
 );
 
 -- Dedup: same content from same source on same day = same evidence
+-- Note: cast retrieved_at to UTC date so the index expression is IMMUTABLE.
+-- A bare ::date cast on timestamptz is STABLE (depends on session TZ),
+-- which Postgres rejects in index expressions.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_evidence_dedup
-    ON evidence_records (source_content_hash, source_id, (retrieved_at::date));
+    ON evidence_records (source_content_hash, source_id, ((retrieved_at AT TIME ZONE 'UTC')::date));
 
 CREATE INDEX IF NOT EXISTS idx_evidence_source
     ON evidence_records (source_id, retrieved_at DESC);

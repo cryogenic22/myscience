@@ -41,9 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_llm_call_log_prompt_id
     ON llm_call_log (prompt_id)
     WHERE prompt_id IS NOT NULL;
 
+-- created_at::date is STABLE (TZ-dependent); cast at UTC for IMMUTABLE.
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_caller_day
-    ON llm_call_log (caller, (created_at::date));
+    ON llm_call_log (caller, ((created_at AT TIME ZONE 'UTC')::date));
 
 CREATE INDEX IF NOT EXISTS idx_llm_call_log_user_day
-    ON llm_call_log (user_id, (created_at::date))
+    ON llm_call_log (user_id, ((created_at AT TIME ZONE 'UTC')::date))
     WHERE user_id IS NOT NULL;
