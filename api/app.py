@@ -98,6 +98,14 @@ except Exception as _e:
     logger.error("Failed to import decision_briefs router (SPEC_023): %s", _e)
     _DECISION_BRIEFS_ROUTER_OK = False
 
+# SPEC_024 evidence ledger router (claims + evidence + snapshots)
+try:
+    from api.routes import evidence_ledger as evidence_ledger_route
+    _EVIDENCE_LEDGER_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import evidence_ledger router (SPEC_024): %s", _e)
+    _EVIDENCE_LEDGER_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -195,6 +203,9 @@ def create_app() -> FastAPI:
             all_routers.append(inbox_route.insights_router)
     if _DECISION_BRIEFS_ROUTER_OK:
         all_routers.append(decision_briefs_route.router)
+    if _EVIDENCE_LEDGER_ROUTER_OK:
+        all_routers.append(evidence_ledger_route.claims_router)
+        all_routers.append(evidence_ledger_route.snapshots_router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
