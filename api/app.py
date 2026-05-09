@@ -121,6 +121,13 @@ except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
 
+# SPEC_035 /ask graph traversal router
+try:
+    from api.routes import ask as ask_route
+    _ASK_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import ask router (SPEC_035): %s", _e)
+    _ASK_ROUTER_OK = False
 # SPEC_034 Decision Signing router
 try:
     from api.routes import decision_signing as decision_signing_route
@@ -275,6 +282,8 @@ def create_app() -> FastAPI:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _ASK_ROUTER_OK:
+        all_routers.append(ask_route.router)
     if _DECISION_SIGNING_ROUTER_OK:
         all_routers.append(decision_signing_route.router)
     if _RECOMMENDATIONS_ROUTER_OK:

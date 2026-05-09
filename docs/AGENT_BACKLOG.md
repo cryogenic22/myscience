@@ -241,7 +241,7 @@ target state. Each is tagged for ownership.
 - Why: Spec persistent overlay; every page can ask "show me every product in
   my TA whose payer access has degraded in the last 90 days."
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_035_ask_graph.md, migration 063, services/ask_engine.py, api/routes/ask.py, 32 tests green. 6 NL patterns; LLM-fallback parsing deferred to follow-up.)
 
 ---
 
