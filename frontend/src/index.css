@@ -74,6 +74,41 @@
   /* brand aliases */
   --color-brand:        #1C6EF7;
   --color-brand-dark:   #1558D6;
+
+  /* ── SPEC_029 §4.6 — extra tokens (motion, density, radii) ── */
+  --shadow-glow:        0 0 0 1px var(--color-accent-soft), 0 8px 32px rgba(28,110,247,0.18);
+  --motion-out:         cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-in:          cubic-bezier(0.32, 0, 0.67, 0);
+  --radius-pill:        999px;
+  --radius-input:       12px;
+  --radius-card:        12px;
+  --radius-panel:       16px;
+
+  /* Spacious by default; [data-density="compact"] halves these. */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --space-panel-pad:    24px;
+  --space-panel-gap:    16px;
+  --space-row-gap:      12px;
+
+  /* ── SPEC_030 §8.6 — brief-state palette ── */
+  --color-state-draft:        var(--color-ink-3);
+  --color-state-review:       #B45309;
+  --color-state-sim:          var(--color-accent);
+  --color-state-decide:       #7C3AED;
+  --color-state-committed:    var(--color-green);
+  --color-state-review-out:   #0EA5E9;
+  --color-state-closed:       var(--color-ink-4);
+
+  /* SPEC_030-specific shadow alias */
+  --shadow-workspace-panel:   var(--shadow-sm);
+}
+
+/* SPEC_029 §4.5 / §8.8 — compact density scope. */
+[data-density="compact"] {
+  --space-panel-pad: 12px;
+  --space-panel-gap:  8px;
+  --space-row-gap:    6px;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -102,6 +137,15 @@ html.dark {
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 8px 24px rgba(0,0,0,0.4);
   --shadow-lg:  0 20px 60px rgba(0,0,0,0.5);
+
+  /* SPEC_029 §4.6 dark-mode overrides */
+  --shadow-glow:        0 0 0 1px var(--color-accent-soft), 0 8px 32px rgba(88,166,255,0.22);
+  --shadow-workspace-panel: 0 0 0 1px var(--color-line), 0 4px 16px rgba(0,0,0,0.35);
+
+  /* SPEC_030 §8.6 dark state palette — slightly brighter than light */
+  --color-state-review:       #f0883e;
+  --color-state-decide:       #a371f7;
+  --color-state-review-out:   #38bdf8;
 }
 
 /* ══════════════════════════════════════════════════════

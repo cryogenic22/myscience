@@ -8,7 +8,21 @@ import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
 import CIPage from './pages/CIPage';
 import DecisionDetailPage from './components/ci/decisions/DecisionDetailPage';
+import DecisionWorkspace from './components/ci/decisions/DecisionWorkspace';
 import { ThemeProvider } from './hooks/useTheme';
+
+/**
+ * SPEC_030 Q1 sign-off — legacy `/decisions` escape hatch.
+ * `localStorage.mz_legacy_decisions === 'true'` routes /ci/decisions/:id
+ * to the SPEC-021 DecisionDetailPage so users can still hit the
+ * outcome-capture flow. Default routes to the SPEC_023 DecisionWorkspace.
+ */
+function DecisionRouteSelector() {
+  const useLegacy =
+    typeof window !== 'undefined' &&
+    window.localStorage.getItem('mz_legacy_decisions') === 'true';
+  return useLegacy ? <DecisionDetailPage /> : <DecisionWorkspace />;
+}
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -55,7 +69,8 @@ function AppRoutes() {
         <Route path="/newui" element={<NewWorkspace key="newui" />} />
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
         <Route path="/ci" element={<CIPage key="ci" />} />
-        <Route path="/ci/decisions/:id" element={<DecisionDetailPage key="decision-detail" />} />
+        <Route path="/ci/decisions/:id" element={<DecisionRouteSelector key="decision-route" />} />
+        <Route path="/ci/legacy-decisions/:id" element={<DecisionDetailPage key="decision-legacy" />} />
         {/* Catch-all → landing */}
         <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} onCI={() => navigate('/ci')} />} />
       </Routes>

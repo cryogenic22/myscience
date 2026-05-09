@@ -8,6 +8,7 @@ import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
 import DecisionsTab from '../components/ci/decisions/DecisionsTab';
+import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
@@ -172,12 +173,24 @@ export default function CIPage() {
               ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
               : <WarRoomsList onOpen={openWarRoom} />
           )}
-          {tab === 'decisions' && (
-            <DecisionsTab
-              onOpenWarRoom={openWarRoom}
-              onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
-            />
-          )}
+          {tab === 'decisions' && (() => {
+            // SPEC_030 Q1 sign-off — flag-gated escape hatch keeps the legacy
+            // SPEC-021 DecisionsTab visible at `/ci?tab=decisions` when
+            // mz_legacy_decisions === 'true'. Default routes to BriefsTab
+            // (SPEC-023 contract).
+            const useLegacy =
+              typeof window !== 'undefined' &&
+              window.localStorage.getItem('mz_legacy_decisions') === 'true';
+            if (useLegacy) {
+              return (
+                <DecisionsTab
+                  onOpenWarRoom={openWarRoom}
+                  onOpenDecision={(id) => navigate(`/ci/legacy-decisions/${id}`)}
+                />
+              );
+            }
+            return <BriefsTab onOpen={(briefId) => navigate(`/ci/decisions/${briefId}`)} />;
+          })()}
           {tab === 'insights' && (
             <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
           )}
