@@ -121,6 +121,13 @@ except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
 
+# SPEC_033 Counter-Recommendation router
+try:
+    from api.routes import recommendations as recommendations_route
+    _RECOMMENDATIONS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import recommendations router (SPEC_033): %s", _e)
+    _RECOMMENDATIONS_ROUTER_OK = False
 # SPEC_032 Learning Service router
 try:
     from api.routes import learning as learning_route
@@ -261,6 +268,8 @@ def create_app() -> FastAPI:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _RECOMMENDATIONS_ROUTER_OK:
+        all_routers.append(recommendations_route.router)
     if _LEARNING_ROUTER_OK:
         all_routers.append(learning_route.router)
     if _MATERIALITY_ROUTER_OK:
