@@ -231,7 +231,7 @@ target state. Each is tagged for ownership.
 - Why: Spec "every decision is reproducible." Required for audit/compliance.
 - Depends on: Evidence ledger (above) + LLM Gateway (above).
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_034_decision_signing.md, migration 062, services/decision_signing.py, api/routes/decision_signing.py, 33 tests green. HMAC-SHA256 + immutable evidence_snapshot + replay endpoint. Asymmetric PKI deferred.)
 
 ### [BACKEND] /ask graph-traversal natural-language endpoint
 - Filed: 2026-05-09 by Claude (from spec §9.2.4 "Ask-Anything")
