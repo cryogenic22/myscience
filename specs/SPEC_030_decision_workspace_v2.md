@@ -1,6 +1,6 @@
 # SPEC_030: Decision Workspace v2 — consume `/decision-briefs` (SPEC_023)
 
-Status: Stage 6 complete (FIX-ALL closed 2026-05-09); DEPLOY opens next
+Status: **Shipped 2026-05-09** (Stage 7 closed; Loop #1 complete)
 Owner: Frontend Lead (Claude in Antigravity's seat)
 Parent: `specs/SPEC_029_app_aesthetics_upgrade.md` §9, §5 row CI-5/CI-6
 Loop: `docs/runbooks/RALPH_LOOP.md`
