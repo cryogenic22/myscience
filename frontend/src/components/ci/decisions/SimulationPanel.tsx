@@ -10,6 +10,13 @@ import type { DecisionBrief } from '../../../api';
 
 const RUN_STATES = new Set(['simulation_pending', 'simulation_complete']);
 const ARCHIVE_STATES = new Set(['committed', 'in_review', 'closed']);
+const RAN_STATES = new Set([
+  'simulation_complete',
+  'decision_pending',
+  'committed',
+  'in_review',
+  'closed',
+]);
 
 interface Props {
   brief: DecisionBrief;
@@ -18,6 +25,22 @@ interface Props {
 export default function SimulationPanel({ brief }: Props) {
   const showRunControls = RUN_STATES.has(brief.state);
   const archived = ARCHIVE_STATES.has(brief.state);
+  const ran = RAN_STATES.has(brief.state);
+
+  // Stage 6 fix #8: simulation_complete and beyond report results, not
+  // "No scenario run yet". Without an output payload from the backend
+  // simulation engine, we show a neutral "results pending UI" line —
+  // the lie was rendering the *pre-run* copy after a real run.
+  const scenarioCopy = archived
+    ? 'Scenario archived.'
+    : ran
+    ? 'Scenario complete — results UI ships in SPEC-032.'
+    : 'No scenario run yet.';
+  const monteCarloCopy = archived
+    ? 'Monte Carlo archived.'
+    : ran
+    ? 'Monte Carlo complete — distribution UI ships in SPEC-032.'
+    : 'Monte Carlo: not run.';
 
   return (
     <section
@@ -74,7 +97,7 @@ export default function SimulationPanel({ brief }: Props) {
             padding: '12px 14px',
           }}
         >
-          {archived ? 'Scenario archived.' : 'No scenario run yet.'}
+          {scenarioCopy}
         </div>
       </div>
 
@@ -100,7 +123,7 @@ export default function SimulationPanel({ brief }: Props) {
             padding: '12px 14px',
           }}
         >
-          {archived ? 'Monte Carlo archived.' : 'Monte Carlo: not run.'}
+          {monteCarloCopy}
         </div>
       </div>
 

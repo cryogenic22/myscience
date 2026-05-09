@@ -190,12 +190,23 @@ interface RowProps {
 }
 
 function BriefRow({ brief, selected, onClick, onHover }: RowProps) {
+  // Stage 6 fix #3: rows must be Tab-reachable. The selected row gets
+  // tabIndex=0; non-selected rows get -1 so screen-reader users move
+  // through the listbox via arrow keys (managed by the parent listbox)
+  // rather than each row taking a Tab stop.
   return (
     <article
       role="option"
       aria-selected={selected}
+      tabIndex={selected ? 0 : -1}
       onClick={onClick}
       onMouseEnter={onHover}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         background: 'var(--color-surface)',
         borderRadius: 'var(--radius-card, 12px)',
@@ -204,6 +215,7 @@ function BriefRow({ brief, selected, onClick, onHover }: RowProps) {
           : 'var(--shadow-xs)',
         padding: '14px 16px',
         cursor: 'pointer',
+        outline: 'none',
         transition: 'transform 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1)',
         display: 'flex',
         flexDirection: 'column',

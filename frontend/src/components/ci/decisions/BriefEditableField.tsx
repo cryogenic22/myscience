@@ -38,6 +38,10 @@ export default function BriefEditableField({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [busy, setBusy] = useState(false);
+  // Stage 6 fix #7 — surface save errors. When onSave rejects we keep
+  // the field in edit mode, render the error message inline, and keep
+  // the user's draft so they can retry without retyping.
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -51,11 +55,13 @@ export default function BriefEditableField({
   const enter = () => {
     if (locked) return;
     setDraft(value);
+    setError(null);
     setEditing(true);
   };
 
   const exit = () => {
     setEditing(false);
+    setError(null);
   };
 
   const commit = async () => {
@@ -64,10 +70,13 @@ export default function BriefEditableField({
       exit();
       return;
     }
+    setBusy(true);
+    setError(null);
     try {
-      setBusy(true);
       await onSave(draft);
-      exit();
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -86,31 +95,51 @@ export default function BriefEditableField({
 
   if (!editing) {
     const display = value || placeholder;
+    // Stage 6 fix #4: a non-locked field is keyboard-activatable. We
+    // render a real <button> with neutral styling so Tab reaches it,
+    // Enter/Space enters edit mode, and AT announce it as "<label>,
+    // button". Locked fields remain a static <span>. (Fix #14 also:
+    // removed invalid role="text".)
+    if (locked) {
+      return (
+        <span
+          aria-label={label}
+          style={{
+            color: value ? 'var(--color-ink)' : 'var(--color-ink-4)',
+            display: 'inline',
+          }}
+        >
+          {display}
+        </span>
+      );
+    }
     return (
-      <span
+      <button
+        type="button"
         onClick={enter}
-        role="text"
-        aria-label={label}
+        aria-label={`${label} (click to edit)`}
         style={{
-          cursor: locked ? 'default' : 'pointer',
+          cursor: 'pointer',
           color: value ? 'var(--color-ink)' : 'var(--color-ink-4)',
-          borderBottom: locked
-            ? 'none'
-            : '1px dotted transparent',
+          background: 'transparent',
+          border: 'none',
+          borderBottom: '1px dotted transparent',
           transition: 'border-color 140ms linear',
+          padding: 0,
+          margin: 0,
+          font: 'inherit',
+          textAlign: 'inherit',
           display: 'inline',
         }}
         onMouseEnter={(e) => {
-          if (!locked) {
-            (e.currentTarget as HTMLElement).style.borderBottomColor = 'var(--color-ink-4)';
-          }
+          (e.currentTarget as HTMLElement).style.borderBottomColor = 'var(--color-ink-4)';
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLElement).style.borderBottomColor = 'transparent';
         }}
       >
         {display}
-      </span>
+      </button>
     );
   }
 
@@ -168,6 +197,24 @@ export default function BriefEditableField({
           }}
         >
           ...saving
+        </span>
+      )}
+      {error && !busy && (
+        <span
+          role="alert"
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            marginTop: 4,
+            fontSize: 11,
+            color: 'var(--color-red, #C0392B)',
+            background: 'var(--color-red-soft, #FEF2F2)',
+            padding: '4px 8px',
+            borderRadius: 'var(--radius-pill, 999px)',
+          }}
+        >
+          {error} — press Esc to revert
         </span>
       )}
     </span>

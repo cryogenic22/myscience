@@ -84,7 +84,7 @@ export default function BriefPanel({ brief, onPatch, onAddOption, onRemoveOption
           fontFamily: 'var(--font-body)',
         }}
       >
-        <StateMachineChip state={brief.state} />
+        <StateMachineChip state={brief.state} announce />
         {brief.time_horizon_days != null && (
           <span>
             <span style={{ color: 'var(--color-ink-3)' }}>Time horizon: </span>

@@ -36,6 +36,28 @@ const ALLOWED_TRANSITIONS: Record<BriefState, BriefState[]> = {
   closed:              [],
 };
 
+// SPEC_030 Stage 6 fix #5 — `cmd+enter` advances forward only.
+// Stage rank: lower number = earlier in the flywheel. The forward
+// transition is the smallest rank greater than the current state's rank.
+const STATE_RANK: Record<BriefState, number> = {
+  draft: 0,
+  human_review: 1,
+  simulation_pending: 2,
+  simulation_complete: 3,
+  decision_pending: 4,
+  committed: 5,
+  in_review: 6,
+  closed: 7,
+};
+
+export function nextForwardTransition(state: BriefState): BriefState | null {
+  const rank = STATE_RANK[state];
+  const candidates = ALLOWED_TRANSITIONS[state]
+    .filter((to) => STATE_RANK[to] > rank)
+    .sort((a, b) => STATE_RANK[a] - STATE_RANK[b]);
+  return candidates[0] ?? null;
+}
+
 interface Props {
   state: BriefState;
   /** When true, the chip is a button and clicking opens the transitions popover. */
@@ -47,6 +69,12 @@ interface Props {
    * to also disable transitions blocked by external rules (e.g. requires
    * ≥2 options). */
   allowed?: BriefState[];
+  /** When true, the chip becomes a polite live region — its text is
+   * announced when the brief.state value changes. Default false (#9 fix:
+   * lists of chips no longer spam screen readers on mount). The workspace
+   * sets announce={true} on its primary chip so reviewers hear state
+   * changes. */
+  announce?: boolean;
 }
 
 export default function StateMachineChip({
@@ -54,6 +82,7 @@ export default function StateMachineChip({
   interactive = false,
   onTransition,
   allowed,
+  announce = false,
 }: Props) {
   const meta = STATE_META[state];
   const [open, setOpen] = useState(false);
@@ -99,11 +128,20 @@ export default function StateMachineChip({
     cursor: interactive ? 'pointer' : 'default',
   };
 
-  const labelText = `${meta.glyph} ${meta.label}`;
-
   if (!interactive) {
+    // #9 fix: only the workspace's primary chip should announce. Lists
+    // of chips (BriefsTab rows) render plain spans so screen readers
+    // don't spam announcements on mount. #26 fix: dropped dead labelText.
+    if (announce) {
+      return (
+        <span role="status" aria-live="polite" aria-label={`brief state: ${meta.label}`} style={chipStyle}>
+          <span aria-hidden="true">{meta.glyph}</span>
+          <span>{meta.label}</span>
+        </span>
+      );
+    }
     return (
-      <span role="status" aria-live="polite" style={chipStyle}>
+      <span style={chipStyle}>
         <span aria-hidden="true">{meta.glyph}</span>
         <span>{meta.label}</span>
       </span>

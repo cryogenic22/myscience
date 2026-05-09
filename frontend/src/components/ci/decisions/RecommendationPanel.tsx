@@ -25,10 +25,14 @@ interface Props {
 
 export default function RecommendationPanel({ brief, onCommit }: Props) {
   const ready = READY_STATES.has(brief.state);
+  // Stage 6 fix #13: SPEC_023 does not yet expose a post-simulation rank.
+  // We can only show options in their stored ordinal order and label
+  // them "Top" / "Counter" — never "Primary" — to avoid implying a rank
+  // model that does not exist. Real ranking ships with SPEC-032.
   const sortedOptions = brief.options.slice().sort((a, b) => a.ordinal - b.ordinal);
-  const primary = sortedOptions[0];
+  const top = sortedOptions[0];
   const counter = sortedOptions[sortedOptions.length - 1];
-  const showDissent = sortedOptions.length > 1;
+  const showCounter = sortedOptions.length > 1;
 
   return (
     <section
@@ -70,7 +74,7 @@ export default function RecommendationPanel({ brief, onCommit }: Props) {
         </p>
       )}
 
-      {ready && primary && (
+      {ready && top && (
         <div
           style={{
             background: 'var(--color-accent-soft, rgba(28,110,247,0.08))',
@@ -88,20 +92,20 @@ export default function RecommendationPanel({ brief, onCommit }: Props) {
               marginBottom: 6,
             }}
           >
-            Primary
+            Top option
           </div>
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-ink)' }}>
-            {primary.label}
+            {top.label}
           </div>
-          {primary.predicted_outcome && (
+          {top.predicted_outcome && (
             <div style={{ fontSize: 12, color: 'var(--color-ink-2)', marginTop: 4 }}>
-              {primary.predicted_outcome}
+              {top.predicted_outcome}
             </div>
           )}
         </div>
       )}
 
-      {ready && showDissent && counter && counter.option_id !== primary?.option_id && (
+      {ready && showCounter && counter && counter.option_id !== top?.option_id && (
         <div
           style={{
             background: 'var(--color-surface-2)',
@@ -120,7 +124,7 @@ export default function RecommendationPanel({ brief, onCommit }: Props) {
               marginBottom: 6,
             }}
           >
-            Dissent / counter-recommendation
+            Counter option
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-ink)' }}>{counter.label}</div>
           {counter.predicted_outcome && (
@@ -129,6 +133,19 @@ export default function RecommendationPanel({ brief, onCommit }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {ready && sortedOptions.length > 0 && (
+        <p
+          style={{
+            fontSize: 11,
+            color: 'var(--color-ink-3)',
+            margin: 0,
+            fontStyle: 'italic',
+          }}
+        >
+          Order reflects ordinal, not simulation rank. Ranking ships in SPEC-032.
+        </p>
       )}
 
       {brief.state === 'decision_pending' && (

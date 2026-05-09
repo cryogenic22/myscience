@@ -12,7 +12,7 @@ import EvidencePanel from './EvidencePanel';
 import SimulationPanel from './SimulationPanel';
 import RecommendationPanel from './RecommendationPanel';
 import ReasoningTraceDrawer from './ReasoningTraceDrawer';
-import { ALLOWED_TRANSITIONS } from './StateMachineChip';
+import { nextForwardTransition } from './StateMachineChip';
 
 /**
  * SPEC_030 §8.2 — 5-panel composite.
@@ -104,15 +104,13 @@ export default function DecisionWorkspace() {
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
 
-      // Cmd / Ctrl + Enter — advance state if there's a single allowed
-      // forward transition.
+      // Cmd / Ctrl + Enter — advance state forward (rank-aware) only.
+      // Fixed in Stage 6 (#5): previous code picked transitions[0] which
+      // for human_review was 'draft' — a backward transition.
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         if (brief && brief.state) {
-          const transitions = ALLOWED_TRANSITIONS[brief.state] ?? [];
-          // Pick the first non-back transition. Heuristic: not "human_review" if
-          // we're past it. For draft → human_review, that's the natural one.
-          const target = transitions[0];
+          const target = nextForwardTransition(brief.state);
           if (target) void onTransition(target);
         }
         return;
