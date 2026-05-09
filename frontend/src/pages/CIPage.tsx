@@ -71,6 +71,15 @@ export default function CIPage() {
     setParams(next, { replace: false });
   };
 
+  // Auto-login as demo for CI Cockpit to bypass login walls
+  useEffect(() => {
+    if (!localStorage.getItem('mz_auth_token')) {
+      localStorage.setItem('mz_auth_token', 'demo-token');
+      localStorage.setItem('mz_auth_role', 'enterprise');
+      window.location.reload();
+    }
+  }, []);
+
   useEffect(() => {
     const t = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
     if (t !== tab) setTabState(t);
@@ -146,38 +155,40 @@ export default function CIPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
-        {tab === 'inbox' && (
-          <InboxTab
-            onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
-            onOpenWarRoom={openWarRoom}
-            onOpenSignals={() => setTab('signals')}
-            onOpenInsights={() => setTab('insights')}
-          />
-        )}
-        {tab === 'digest' && <DigestTab />}
-        {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
-        {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
-        {tab === 'rooms' && (
-          activeRoom
-            ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
-            : <WarRoomsList onOpen={openWarRoom} />
-        )}
-        {tab === 'decisions' && (
-          <DecisionsTab
-            onOpenWarRoom={openWarRoom}
-            onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
-          />
-        )}
-        {tab === 'insights' && (
-          <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
-        )}
-        {tab === 'reviewer' && isEnterprise && (
-          <SignalsTab
-            reviewerMode
-            initialStatus="candidate"
-            onOpenWarRoom={openWarRoom}
-          />
-        )}
+        <div className="w-full max-w-6xl mx-auto py-6 px-4 md:px-10 flex flex-col flex-1">
+          {tab === 'inbox' && (
+            <InboxTab
+              onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
+              onOpenWarRoom={openWarRoom}
+              onOpenSignals={() => setTab('signals')}
+              onOpenInsights={() => setTab('insights')}
+            />
+          )}
+          {tab === 'digest' && <DigestTab />}
+          {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
+          {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+          {tab === 'rooms' && (
+            activeRoom
+              ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
+              : <WarRoomsList onOpen={openWarRoom} />
+          )}
+          {tab === 'decisions' && (
+            <DecisionsTab
+              onOpenWarRoom={openWarRoom}
+              onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
+            />
+          )}
+          {tab === 'insights' && (
+            <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
+          )}
+          {tab === 'reviewer' && isEnterprise && (
+            <SignalsTab
+              reviewerMode
+              initialStatus="candidate"
+              onOpenWarRoom={openWarRoom}
+            />
+          )}
+        </div>
       </main>
 
       {/* Bottom Navigation (Mobile Only) */}
