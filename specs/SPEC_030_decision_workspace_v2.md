@@ -1,6 +1,6 @@
 # SPEC_030: Decision Workspace v2 — consume `/decision-briefs` (SPEC_023)
 
-Status: Stage 1 complete (✓ signed off by user 2026-05-09); proceeding to Stage 2 DESIGN
+Status: Stage 2 complete (DESIGN notes appended 2026-05-09); ready for Stage 3 TDD
 Owner: Frontend Lead (Claude in Antigravity's seat)
 Parent: `specs/SPEC_029_app_aesthetics_upgrade.md` §9, §5 row CI-5/CI-6
 Loop: `docs/runbooks/RALPH_LOOP.md`
@@ -239,18 +239,209 @@ SPEC_029 §4.4).
   text label.
 - Lighthouse a11y target: ≥95 on both routes, light AND dark.
 
-## 8. Design notes (Stage 2 will fill in)
+## 8. Design notes (Stage 2 — completed 2026-05-09)
 
-Stage 2 (DESIGN) will add:
-- ASCII wireframes for each state of each panel (or Figma exports under
-  `docs/screenshots/SPEC_030/design/`).
-- Token call-outs (which `--color-*`, `--shadow-*`, `--radius-*`, etc.).
-- State diagram for BriefState → editable affordances.
-- Light + dark thumbnails per panel state.
-- Reference frames from Linear's "Issue page", Stripe Atlas, Apple Health
-  decision flows.
+### 8.1 Reference frames — what we're stealing from
 
-This section is intentionally empty for sign-off; Stage 2 fills it in.
+| Surface | Lift from | What |
+|---|---|---|
+| List (BriefsTab) | **Linear inbox** | Dense single-line rows, leading state-glyph, trailing meta. Hover reveals quick actions. ⌘K palette. |
+| Workspace shell | **Linear issue page** | Top-bar with state chip + actions; right meta column; left/center content split. |
+| Panel rhythm | **Apple Health "Browse"** | Big serif eyebrows, generous spacing, rounded surfaces, no hard borders. |
+| Editable fields | **Stripe Dashboard** | Inline-edit affordance: faint underline on hover, expands to input on click, save on blur. |
+| State machine | **Vercel deployment statuses** | Pill chip + shape-glyph; popover on click shows allowed transitions and the reason for the current state. |
+| Reasoning trace drawer | **Sentry breadcrumbs** | Right-side dialog, vertical timeline, monospace metadata, expandable rows. |
+| Empty states | **Notion** | One short sentence + one CTA, no illustration. |
+
+References are public products the team can pull up; no exported assets in
+this loop. Stage 7 will commit our own screenshots to
+`docs/screenshots/SPEC_030/`.
+
+### 8.2 Layout grid — DecisionWorkspace at 1440px (default spacious density)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  ⌘ TopBar 52h  |  ← back   |  Brief #b7ca…  ◯ draft                [t] trace  │
+├────────────────────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────────── BriefPanel (full width) ───────────────────────┐ │
+│ │  Question — Syne 28/600, editable inline                                  │ │
+│ │   "Should we accelerate Phase III readout in 2L NSCLC?"                   │ │
+│ │ ─────────────────────────────────────────────────────────────────────────  │ │
+│ │  ◯ draft  →  ▶ human_review  →  ⟳ sim_pending  →  ⊕ decide  →  ✓ committed │ │
+│ │  Time horizon: 14 days · Stakeholders: Commercial · Medical · R&D         │ │
+│ │  Trigger: manual · Confidence to proceed: 0.65                            │ │
+│ │ ─────────────────────────────────────────────────────────────────────────  │ │
+│ │  Options (2 / 5)                                          [+ add option]  │ │
+│ │   1. Accelerate readout — 8–12% share gain · ~$5M cost                    │ │
+│ │   2. Hold position — preserves data quality · $0                          │ │
+│ └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│ ┌── EvidencePanel ─────┐ ┌── SimulationPanel ─────┐ ┌── RecommendationPanel ─┐ │
+│ │  Linked evidence (4) │ │  No simulation yet      │ │  Awaiting simulation    │ │
+│ │                       │ │                          │ │                          │ │
+│ │  KBQ-3 Clinical (1)  │ │  ┌──────────────────────┐│ │                          │ │
+│ │   • NCT04567890      │ │  │  ⊘ Start war-game    ││ │                          │ │
+│ │                       │ │  │  Disabled — SPEC-032 ││ │                          │ │
+│ │  Signals (2)         │ │  └──────────────────────┘│ │                          │ │
+│ │   • s_8a3…           │ │                          │ │                          │ │
+│ │   • s_b7c…           │ │  Monte Carlo: not run    │ │                          │ │
+│ │                       │ │                          │ │                          │ │
+│ │  Documents (1)       │ │                          │ │                          │ │
+│ │   • doc:filing_8K…   │ │                          │ │                          │ │
+│ └───────────────────────┘ └─────────────────────────┘ └──────────────────────────┘ │
+│                                                                                  │
+│  [⌘↵ Send to review]              [g e] Evidence  [g s] Sim  [g r] Rec  [t] Trace│
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+At ≤1024px the three middle panels collapse into a tab strip
+("Evidence / Simulation / Recommendation") and BriefPanel becomes a sticky
+top card. ReasoningTraceDrawer slides over the right 38% on tablet,
+full-width on mobile.
+
+### 8.3 Per-state affordance matrix
+
+Cell key: ✏️ editable · 🔒 locked · ⏵ primary CTA · ⊘ disabled CTA · — n/a
+
+| State                | BriefPanel | Options    | Evidence | Sim run | Recommend | Primary CTA |
+|----------------------|------------|------------|----------|---------|-----------|-------------|
+| `draft`              | ✏️ all     | ✏️ add/del | ✏️ add   | —       | —         | ⏵ "Send to review" |
+| `human_review`       | ✏️ all     | ✏️ add/del | ✏️ add   | —       | —         | ⏵ "Send to simulation" (requires ≥2 options) |
+| `simulation_pending` | 🔒         | 🔒         | 🔒       | ⏵ start | —         | ⊘ "Start war-game" until SPEC-032 |
+| `simulation_complete`| 🔒         | 🔒         | 🔒       | view    | view      | ⏵ "Send to decision" |
+| `decision_pending`   | 🔒         | 🔒         | 🔒       | view    | ⏵ commit  | ⊘ "Commit decision" until backend `/decisions/from-brief` |
+| `committed`          | 🔒         | 🔒         | 🔒       | archive | view      | View linked decision |
+| `in_review`          | 🔒         | 🔒         | 🔒       | archive | view      | (read-only banner) |
+| `closed`             | 🔒         | 🔒         | 🔒       | archive | archive   | "Restore" (uploader+) |
+
+### 8.4 State-machine visual
+
+`StateMachineChip` renders as a horizontal pill with a shape-glyph + label.
+Click opens a popover showing the full DAG; the current state pulses;
+allowed transitions are clickable.
+
+```
+  ◯ draft  →  ▶ human_review  →  ⟳ sim_pending  →  ⟳ sim_complete
+                    ↑                                    │
+                    │                                    ↓
+                    └───── (back) ──────  ⊕ decision_pending
+                                                  │
+                                                  ↓
+              ◆ closed  ←  ⊕ in_review  ←──  ✓ committed
+```
+
+Glyph dictionary:
+- ◯ open, accepting edits (`draft`, `human_review`)
+- ▶ accepting input (`human_review` waiting on options ≥ 2)
+- ⟳ in-flight, async (`simulation_*`)
+- ⊕ awaiting human (`decision_pending`, `in_review`)
+- ✓ committed, immutable
+- ◆ terminal (`closed`)
+
+Each state has a paired color token in §8.6.
+
+### 8.5 BriefsTab — row anatomy
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ ◯ DRAFT      Should we accelerate Phase III readout in 2L NSCLC?      │
+│              ↳ trigger: manual · 14d horizon · 2 options              │
+│              Pfizer Oncology · NSCLC · 2 evidence refs                │
+│ ────────────────────────────────────────────────────────────────────── │
+│ ▶ HUMAN_REVIEW   Drop tier-2 formulary in 4 plans?                    │
+│              ↳ trigger: cluster (3 signals) · 7d horizon · 3 options  │
+│              CVS Caremark · multi-product                             │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+Per-row composition: `[state-glyph + state-label]` (8ch column) ·
+`question` (1-line truncate, full on hover/focus) · meta-row
+(small caps DM Sans 11px, `--color-ink-3`). Hover lifts the row 1px and
+reveals `[open ↗]` `[archive 🗑]` quick actions on the right.
+
+Empty: spacious card with eyebrow "No briefs yet" + DM Sans body
+"Frame a signal as a decision, or create a manual draft." + primary
+button "+ New brief".
+
+### 8.6 Token call-outs
+
+New tokens added under this spec live in `frontend/src/index.css` next to
+existing ones; the `@theme` block holds light values; `html.dark`
+overrides dark values.
+
+```css
+/* New tokens (add to @theme + html.dark) */
+
+/* State-machine palette — one chip color per BriefState */
+--color-state-draft:        var(--color-ink-3);          /* neutral grey */
+--color-state-review:       #B45309;                     /* warm amber */
+--color-state-sim:          var(--color-accent);         /* blue, in-flight */
+--color-state-decide:       #7C3AED;                     /* violet */
+--color-state-committed:    var(--color-green);          /* green */
+--color-state-review-out:   #0EA5E9;                     /* sky */
+--color-state-closed:       var(--color-ink-4);          /* muted */
+
+/* Density tokens (spacious is default; compact halves these) */
+--space-panel-pad:          24px;     /* compact: 12px */
+--space-panel-gap:          16px;     /* compact: 8px */
+--space-row-gap:            12px;     /* compact: 6px */
+
+/* SPEC_030-specific */
+--shadow-workspace-panel:   var(--shadow-sm);            /* light */
+                            /* dark uses var(--shadow-glow) when in-flight */
+```
+
+Existing tokens consumed (no changes):
+`--color-ink/-2/-3/-4`, `--color-surface/-2/-3`, `--color-accent`,
+`--color-accent-soft`, `--color-line`, `--color-divider`, `--shadow-xs/sm/md`,
+`--shadow-glow` (from SPEC_029 §4.6), `--font-display` (Syne) for question
+and section eyebrows, `--font-body` (DM Sans) for prose, `--font-mono`
+(DM Mono) for IDs/timestamps/state-log lines.
+
+### 8.7 Motion specs
+
+| Element | Trigger | Animation | Duration | Easing |
+|---|---|---|---|---|
+| Page enter | mount | stagger fade-up children at 30ms | 240ms total | `--motion-out` |
+| State change | brief.state change | morph chip color + glyph | 220ms | `--motion-out` |
+| Reasoning trace drawer | toggle | slide-in from right | 280ms | `--motion-out` |
+| Inline-edit reveal | field hover/focus | underline 0→1px + width pulse | 140ms | linear |
+| Optimistic save | PATCH in flight | content opacity 1.0→0.6, spinner fade-in | 120ms | linear |
+| State-machine popover | click chip | scale 0.96→1 + opacity 0→1 | 180ms | `--motion-out` |
+| Row hover (list) | hover | translateY(-1px) + shadow bloom | 160ms | `--motion-out` |
+
+All motion gated by `prefers-reduced-motion: reduce`: animations become
+`opacity` only, durations halved, transforms suppressed.
+
+### 8.8 Density scoping
+
+1. On `<DecisionWorkspace>` mount, read `localStorage.mz_density`.
+2. Wrap the workspace tree in `<div data-density={density}>`.
+3. CSS scope picks up `[data-density="compact"]` overrides:
+
+```css
+[data-density="compact"] {
+  --space-panel-pad: 12px;
+  --space-panel-gap:  8px;
+  --space-row-gap:    6px;
+}
+```
+
+Read-once on mount (no live-toggle in v1) — keeps the implementation
+simple and avoids ResizeObserver work.
+
+### 8.9 Self-review checklist (gate to Stage 3)
+
+- [x] Every state in §5 has a layout/affordance line (see §8.3).
+- [x] Every interactive element has a keyboard story (§6 + §8.2).
+- [x] Light + dark token plan documented (§8.6).
+- [x] Motion respects `prefers-reduced-motion` (§8.7).
+- [x] Density story documented (§8.8).
+- [x] Reference frames cited (§8.1).
+- [x] State-machine diagram drawn (§8.4).
+- [x] Empty / loading / error / locked / fixture states all addressed (§5 + §8.3).
+
+Self-review passes. **Stage 3 (TDD) opens.**
 
 ## 9. Definition of Done (the Stage 7 checklist)
 
