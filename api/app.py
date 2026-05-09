@@ -121,6 +121,13 @@ except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
 
+# SPEC_029 Framing Triggers router
+try:
+    from api.routes import framing_triggers as framing_triggers_route
+    _FRAMING_TRIGGERS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import framing_triggers router (SPEC_029): %s", _e)
+    _FRAMING_TRIGGERS_ROUTER_OK = False
 # SPEC_028 War-Game Adversaries router
 try:
     from api.routes import war_games as war_games_route
@@ -240,6 +247,8 @@ def create_app() -> FastAPI:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _FRAMING_TRIGGERS_ROUTER_OK:
+        all_routers.append(framing_triggers_route.router)
     if _WAR_GAMES_ROUTER_OK:
         all_routers.append(war_games_route.router)
     if _GAME_THEORY_ROUTER_OK:
