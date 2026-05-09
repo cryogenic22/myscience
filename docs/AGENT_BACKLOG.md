@@ -203,7 +203,7 @@ target state. Each is tagged for ownership.
   feed them back into source weights or prompt selection.
 - Depends on: Source registry (above) + LLM Gateway (above).
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_032_learning_service.md, migration 060, services/learning_service.py, api/routes/learning.py, 24 tests green. EWMA source.predictive_accuracy update + prompt flagging. Sync run; APScheduler wiring deferred.)
 
 ### [BACKEND] Counter-recommendation enforcement
 - Filed: 2026-05-09 by Claude (from spec §6.4.1)
