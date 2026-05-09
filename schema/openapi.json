@@ -1926,6 +1926,73 @@
         "title": "ScanPIIBody",
         "type": "object"
       },
+      "ScoreBody": {
+        "properties": {
+          "age_days": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Days"
+          },
+          "claim_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Type"
+          },
+          "entity_criticality": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Criticality"
+          },
+          "signal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Id"
+          },
+          "source_tier": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Tier"
+          }
+        },
+        "title": "ScoreBody",
+        "type": "object"
+      },
       "SearchRequest": {
         "properties": {
           "date_range": {
@@ -2194,6 +2261,57 @@
           "to_state"
         ],
         "title": "TransitionBody",
+        "type": "object"
+      },
+      "UpdateWeightsBody": {
+        "properties": {
+          "claim_type_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "minProperties": 1,
+            "title": "Claim Type Values",
+            "type": "object"
+          },
+          "criticality_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "minProperties": 1,
+            "title": "Criticality Values",
+            "type": "object"
+          },
+          "recency_half_life_days": {
+            "default": 30.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 3650.0,
+            "title": "Recency Half Life Days",
+            "type": "number"
+          },
+          "tier_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "minProperties": 1,
+            "title": "Tier Values",
+            "type": "object"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "minProperties": 1,
+            "title": "Weights",
+            "type": "object"
+          }
+        },
+        "required": [
+          "weights",
+          "tier_values",
+          "claim_type_values",
+          "criticality_values"
+        ],
+        "title": "UpdateWeightsBody",
         "type": "object"
       },
       "UserMeResponse": {
@@ -8135,6 +8253,165 @@
         "summary": "Scan Pii Endpoint",
         "tags": [
           "llm-gateway"
+        ]
+      }
+    },
+    "/api/v1/materiality/score": {
+      "post": {
+        "operationId": "score_api_v1_materiality_score_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoreBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Score",
+        "tags": [
+          "materiality"
+        ]
+      }
+    },
+    "/api/v1/materiality/weights": {
+      "get": {
+        "operationId": "get_weights_api_v1_materiality_weights_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Weights",
+        "tags": [
+          "materiality"
+        ]
+      },
+      "put": {
+        "operationId": "update_weights_api_v1_materiality_weights_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWeightsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Weights",
+        "tags": [
+          "materiality"
         ]
       }
     },
@@ -17309,6 +17586,165 @@
         "summary": "Scan Pii Endpoint",
         "tags": [
           "llm-gateway"
+        ]
+      }
+    },
+    "/materiality/score": {
+      "post": {
+        "operationId": "score_materiality_score_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoreBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Score",
+        "tags": [
+          "materiality"
+        ]
+      }
+    },
+    "/materiality/weights": {
+      "get": {
+        "operationId": "get_weights_materiality_weights_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Weights",
+        "tags": [
+          "materiality"
+        ]
+      },
+      "put": {
+        "operationId": "update_weights_materiality_weights_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWeightsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Weights",
+        "tags": [
+          "materiality"
         ]
       }
     },
