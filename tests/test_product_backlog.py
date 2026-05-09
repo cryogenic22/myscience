@@ -50,7 +50,7 @@ class TestProductBacklogSchema:
             - **Priority**: high
             - **Owner**: frontend-claude
             - **Source**: spec
-            - **Source ref**: SPEC-041
+            - **Source ref**: SPEC-022
             - **Created**: 2026-05-09
             - **Last touched**: 2026-05-09
             - **Notes**: An example.

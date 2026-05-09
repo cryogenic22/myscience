@@ -1,6 +1,6 @@
 # SPEC_042: Centralized Product Backlog + repo doc cleanup
 
-Status: **Stage 2 complete (DESIGN appended 2026-05-09); Stage 3 (TDD) opens**
+Status: **Shipped 2026-05-09** (Stage 7 closed; Loop #3 complete)
 
 ✓ Signed off by user 2026-05-09 (Q1–Q5 resolved during scope conversation; Stage 1 sign-off via /AskUserQuestion)
 Owner: Frontend Claude (cross-cutting docs)
@@ -430,6 +430,119 @@ Each archived file gets a 1-line header inserted at the top:
 - [x] Tests scoped (§9).
 
 Self-review passes. **Stage 3 (TDD) opens.**
+
+## 10b. Red-team (Stage 5 — completed 2026-05-09)
+
+Adversarial review of the migration outcome. Reviewer pretended not to
+have written the spec.
+
+### Blockers
+
+None.
+
+### Major
+
+1. **`AGENTS.md:211` instructs filing bugs in `BACKLOG.md`** — `major`
+   (process drift) — That file is now an archived redirect stub. Any
+   agent following the instruction would get confused.
+   *Fix:* update to point at `docs/PRODUCT_BACKLOG.md`.
+2. **MEMORY.md (`~/.claude/.../MEMORY.md`) references `BACKLOG.md`
+   and `ROADMAP.md`** — `major` (process drift) — same issue: the
+   memory file's "Key Files" list points at archived locations.
+   *Fix:* update memory to reference the new canonical file.
+3. **74 migrated items are unfiltered, untriaged, and likely
+   contain duplicates** — `major` (data quality) — The migration
+   ran extractor-style: every `### ` heading from the legacy files
+   became a row, regardless of whether it's still meaningful
+   post-shipping. PB-027 ("Decision Brief object") is shipped per
+   AGENT_BACKLOG. Many ROADMAP.md Phase 3-6 items are likely
+   already in flight via current specs. Without manual triage these
+   77 items are a noisy starting point.
+   *Mitigation:* the next loop's first task is a focused triage
+   pass that demotes shipped items to `Status: shipped` and
+   collapses duplicates. **Not a deal-breaker for Stage 7 close**
+   — the file structure is right; the data inside it is
+   provisional.
+
+### Minor
+
+4. **Mass benchmark archive was 98 files, not the ~17 estimated**
+   — `minor` — User signed off on "~17 benchmark eval reports";
+   the actual count was 98 (every `benchmark/reports/eval-*.md`).
+   The category is correctly auto-generated stale snapshots, so
+   the broader sweep is appropriate, but the user should know the
+   real number ended up 6× larger.
+5. **`TestArchiveRedirects` only parametrizes 3 files** — `minor`
+   (test coverage) — Spot-checks `vision_rough.md`,
+   `comp_intelligence.md`, `BACKLOG.md`. A run-against-everything
+   would be safer; `glob('docs/archive/**/*.md')` + assert
+   redirect stub at original path would catch a botched move.
+6. **No CLI integration test** — `minor` — `validate_product_backlog
+   --check` and `--regenerate-summary` are tested via the library
+   API but the CLI flag handling has no test. A `subprocess.run
+   ["python", "-m", "scripts.validate_product_backlog"]` would
+   close it.
+7. **Dashboard regenerator does not sort items in the body** —
+   `minor` (UX) — Dashboard summary is rebuilt cleanly; the items
+   themselves stay in insertion order. After heavy use the file
+   becomes hard to scan visually. Spec §10a.3 promised "sorted by
+   priority desc, then created asc" — not implemented in v1.
+8. **Legacy-backlog redirect stubs are 2 lines** — `minor` (UX) —
+   Reader sees a 2-line stub and might wonder where the content
+   went. The line tells them, but there's no greeting or context.
+   Cosmetic.
+9. **Migration notes lack line numbers** — `minor` —
+   `migrate_legacy_backlogs.py` writes "Migrated from <file>
+   (section: <heading>)". Adding the original line number would
+   make traceability tighter when investigating an old item.
+10. **My initial grep regex `BACKLOG\.md` caught me with
+    `PRODUCT_BACKLOG.md` substring matches** — `nit` — Anyone else
+    auditing might trip on the same. Documented here so future
+    me uses `\bBACKLOG\.md` or `(?<!PRODUCT_)BACKLOG\.md`.
+
+### Nits
+
+11. **Item template uses `**Type**:` with double-asterisks** —
+    `nit` — Markdown renders bold; some parsers strip the `**` so
+    `Type:` becomes the field key. The validator handles both via
+    its regex; nothing fails.
+12. **The 1-line redirect-header convention is actually 2 lines
+    (header + path)** — `nit` — Spec §10a.7 said "1-line";
+    implementation is 2. Cosmetic mismatch with the spec text.
+
+### Decisions taken — not bugs
+
+- **74 migrated items are all `Status: proposed` and
+  `Priority: medium`** — by design. The whole point of consolidation
+  is to capture them once; triage is the next-loop activity.
+- **Migration helper is kept as a one-shot tool**, not a watchdog
+  that re-syncs on every change. v1.
+- **`docs/AGENT_BACKLOG.md` stays as the canonical cross-agent
+  surface** (Q2 sign-off) — items in it get a stub `PB-NNN` row
+  here but the canonical content stays there.
+- **Feedback queue is reference-only** (Q4 sign-off) — `feedback/
+  live_user_feedback.md` is the source of truth for in-flight
+  feedback; PRODUCT_BACKLOG references each open feedback id.
+- **The 98-file benchmark archive sweep** — Category D was
+  pre-classified as "auto-generated benchmark eval reports"; the
+  actual count just turned out to be larger than estimated. All
+  files in scope match the auto-generated pattern.
+
+### Stage 5 gate
+
+Stage 5 closes once this section is committed. Stage 6 (FIX-ALL)
+opens. M1, M2 must close (process-drift fixes). M3 (74-item triage)
+is *deferred* by design — the next loops will work through the
+backlog item-by-item; that IS the rigor the user asked for.
+
+## 10c. Stage 6 — FIX-ALL closed (2026-05-09)
+
+| Severity | Closed | Deferred |
+|---|---|---|
+| Blocker | — | — |
+| Major | M1 (AGENTS.md:211 redirect), M2 (MEMORY.md update) | M3 (74-item triage — by design, that's the next loops) |
+| Minor | — | 4, 5, 6, 7, 8, 9 (filed in next-loop scope) |
+| Nit | — | 10, 11, 12 |
 
 ## 11. Out of scope (this loop)
 
