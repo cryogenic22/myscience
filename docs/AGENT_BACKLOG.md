@@ -103,7 +103,7 @@ target state. Each is tagged for ownership.
   Auto-framing closes the signal-to-decision latency gap (spec target: <24h).
 - Depends on: Decision Brief object above.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_029_framing_triggers.md, migration 059, services/framing_triggers.py, api/routes/framing_triggers.py, 34 tests green. Threshold + cluster + calendar evaluators with dedup rules and isolated failures.)
 
 ### [BACKEND] Materiality scoring — learned model with calibration
 - Filed: 2026-05-09 by Claude (from spec §6.1.2)

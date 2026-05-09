@@ -114,6 +114,14 @@ except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
 
+# SPEC_029 Framing Triggers router
+try:
+    from api.routes import framing_triggers as framing_triggers_route
+    _FRAMING_TRIGGERS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import framing_triggers router (SPEC_029): %s", _e)
+    _FRAMING_TRIGGERS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -215,6 +223,8 @@ def create_app() -> FastAPI:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _FRAMING_TRIGGERS_ROUTER_OK:
+        all_routers.append(framing_triggers_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
