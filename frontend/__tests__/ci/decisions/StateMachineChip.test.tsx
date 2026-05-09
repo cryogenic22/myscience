@@ -14,22 +14,29 @@ describe('StateMachineChip', () => {
   describe('renders every BriefState without crashing', () => {
     it.each(ALL_STATES)('state=%s', (state) => {
       render(<StateMachineChip state={state} />);
-      // Each state's label is visible (uppercase, lowercased compare)
-      const node = screen.getByRole('status');
-      expect(node.textContent?.toLowerCase()).toContain(state.replace('_', ' ').toLowerCase());
+      // Each state's label is visible (lowercased compare; chip is a plain
+      // span by default after Stage 6 fix #9)
+      expect(
+        screen
+          .getByText(new RegExp(state.replace('_', ' '), 'i'))
+      ).toBeInTheDocument();
     });
   });
 
-  it('uses aria-live="polite" so state changes are announced', () => {
-    render(<StateMachineChip state="draft" />);
+  it('aria-live="polite" only when announce=true (Stage 6 fix #9)', () => {
+    const { unmount } = render(<StateMachineChip state="draft" />);
+    // Default: NOT a live region — lists of chips do not spam screen readers
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    unmount();
+
+    render(<StateMachineChip state="draft" announce />);
     const node = screen.getByRole('status');
     expect(node.getAttribute('aria-live')).toBe('polite');
   });
 
   it('has a shape-glyph (color is not the only meaning carrier)', () => {
-    render(<StateMachineChip state="committed" />);
+    render(<StateMachineChip state="committed" announce />);
     const node = screen.getByRole('status');
-    // ✓ for committed, ◯ draft, ▶ review, ⟳ sim_*, ⊕ decide/in_review, ◆ closed
     expect(node.textContent).toMatch(/[✓◯▶⟳⊕◆]/);
   });
 
@@ -43,17 +50,16 @@ describe('StateMachineChip', () => {
   it('does not render as a button when interactive=false', () => {
     render(<StateMachineChip state="draft" />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('renders consistently in light and dark themes', () => {
     applyTheme('light');
     const { unmount } = render(<StateMachineChip state="committed" />);
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByText(/committed/i)).toBeInTheDocument();
     unmount();
     applyTheme('dark');
     render(<StateMachineChip state="committed" />);
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByText(/committed/i)).toBeInTheDocument();
   });
 
   it.todo('clicking an allowed transition in the popover invokes onTransition(toState)');

@@ -414,6 +414,58 @@ target state. Each is tagged for ownership.
 
 ---
 
+### [FRONTEND] SPEC-030 deferred items — minor a11y/UX backlog
+- Filed: 2026-05-09 by Frontend Claude (from SPEC-030 §14 red-team)
+- Items deferred from Stage 6 FIX-ALL to a future loop:
+  - **#12 Reuse `<Drawer>` primitive in `ReasoningTraceDrawer`** —
+    `frontend/src/components/ui/Drawer.tsx` has a fixed
+    title/subtitle/children API that doesn't fit a timeline; refactor
+    Drawer to expose a slot-style API first, then port. Anti-slop
+    issue, not a UX bug.
+  - **#15 `getRole()` × 4 across codebase** — extract to
+    `frontend/src/hooks/useRole.ts`; touches CIPage, BriefPanel,
+    SignalDetail, ConnectorPermissionsTab. Low risk; out of scope
+    for SPEC-030 (changes pre-existing files outside the spec).
+  - **#16 Three modal patterns rolled separately** — build a shared
+    `<Modal>` primitive in `components/ui/`, port NewBriefDialog,
+    KeyboardHintDialog, OptionEditor.
+  - **#17 "Options (N / 5)" hardcoded max** — pull cap from a single
+    constant; align UI with backend invariant.
+  - **#18 Edit-option flow not wired** — OptionEditor supports
+    `mode="edit"`+`onRemove`; BriefPanel only invokes create.
+  - **#19 No add-evidence affordance for editable states** — spec
+    §8.3 calls for it; ships with SPEC-032 (war-game evidence flow).
+  - **#20 Destructive remove-option without confirm** — small
+    UX-only backlog item.
+  - **#21 Mouse hover sets selected index** — list keyboard/mouse
+    interaction polish; Linear has the same UX, deemed acceptable.
+  - **#22 Pagination silently truncates at 50** — `it.todo` exists.
+    Build cursor scroll + state filter chip group together.
+  - **#23 Filter chip group not implemented** — pairs with #22.
+  - **#24 Commit decision button has no on-button help** — minor.
+  - **#25 War-game `title` attribute is poor a11y** — minor; the
+    sibling `aria-describedby` span already covers screen readers.
+  - **Nits #27/#28** — redundant `role="textbox"`,
+    `STATE_META` re-export — cosmetic.
+- Priority: medium (cosmetic + small UX); none block Stage 7.
+- Status: open
+
+### [FRONTEND] SPEC-030 deploy gate — Lighthouse a11y on changed surfaces
+- Filed: 2026-05-09 by Frontend Claude
+- Need: run `npx lighthouse <route> --only-categories=accessibility`
+  on `/ci?tab=decisions` and `/ci/decisions/:id`, light + dark.
+  Target ≥95. RALPH_LOOP §5 mandates this; Stage 5 environment had no
+  headless Chromium so the score is unverified.
+- Status: open (must clear before Stage 7 closes)
+
+### [FRONTEND] 401 redirect destination needs a real /login surface
+- Filed: 2026-05-09 by Frontend Claude (from SPEC-030 fix #11)
+- Stage 6 wired `expectJson` to dispatch `mz:auth-expired` and
+  `App.tsx` redirects to `/?session=expired`. Landing page does not
+  yet read `?session=expired` and show a banner; this is the missing
+  follow-up.
+- Status: open
+
 # 2026-05-09 — Frontend takeover (Frontend Claude in Antigravity's seat)
 
 The previous frontend agent (Antigravity) was unable to continue. A second

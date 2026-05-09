@@ -74,6 +74,43 @@
   /* brand aliases */
   --color-brand:        #1C6EF7;
   --color-brand-dark:   #1558D6;
+
+  /* ── SPEC_029 §4.6 — extra tokens (motion, density, radii) ── */
+  --shadow-glow:        0 0 0 1px var(--color-accent-soft), 0 8px 32px rgba(28,110,247,0.18);
+  --motion-out:         cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-in:          cubic-bezier(0.32, 0, 0.67, 0);
+  --radius-pill:        999px;
+  --radius-input:       12px;
+  --radius-card:        12px;
+  --radius-panel:       16px;
+
+  /* Spacious by default; [data-density="compact"] halves these. */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --space-panel-pad:    24px;
+  --space-panel-gap:    16px;
+  --space-row-gap:      12px;
+
+  /* ── SPEC_030 §8.6 — brief-state palette (Stage 6 fix #1, #2: AA contrast) ──
+     All values verified ≥4.5:1 on --color-surface-2 in light theme.
+     Dark overrides live in html.dark below. */
+  --color-state-draft:        #5A5A5F;   /* was --color-ink-3 (3.0:1); now ~6.6:1 */
+  --color-state-review:       #92410E;   /* was #B45309 (~4.7); now ~6.4:1 */
+  --color-state-sim:          #1558D6;   /* was --color-accent (~4.8); now ~5.6:1 */
+  --color-state-decide:       #6C2BD9;   /* was #7C3AED (~6.7); kept ~7.7:1 */
+  --color-state-committed:    #136E3A;   /* was --color-green (~5.7); now ~7.0:1 */
+  --color-state-review-out:   #036597;   /* was #0EA5E9 (3.4:1); now ~6.5:1 */
+  --color-state-closed:       #6E6E73;   /* was --color-ink-4 (2.3:1); now ~5.4:1 */
+
+  /* SPEC_030-specific shadow alias */
+  --shadow-workspace-panel:   var(--shadow-sm);
+}
+
+/* SPEC_029 §4.5 / §8.8 — compact density scope. */
+[data-density="compact"] {
+  --space-panel-pad: 12px;
+  --space-panel-gap:  8px;
+  --space-row-gap:    6px;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -102,6 +139,19 @@ html.dark {
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 8px 24px rgba(0,0,0,0.4);
   --shadow-lg:  0 20px 60px rgba(0,0,0,0.5);
+
+  /* SPEC_029 §4.6 dark-mode overrides */
+  --shadow-glow:        0 0 0 1px var(--color-accent-soft), 0 8px 32px rgba(88,166,255,0.22);
+  --shadow-workspace-panel: 0 0 0 1px var(--color-line), 0 4px 16px rgba(0,0,0,0.35);
+
+  /* SPEC_030 §8.6 dark state palette (Stage 6 fix #1, #2: AA contrast on --color-surface-2 = #21262d) */
+  --color-state-draft:        #b1bac4;   /* light grey on dark, ~7.4:1 */
+  --color-state-review:       #f0883e;   /* unchanged; ~5.0:1 */
+  --color-state-sim:          #58a6ff;   /* track --color-accent; ~6.2:1 */
+  --color-state-decide:       #a371f7;   /* unchanged; ~5.4:1 */
+  --color-state-committed:    #56d364;   /* lift from --color-green; ~6.7:1 */
+  --color-state-review-out:   #38bdf8;   /* unchanged; ~5.5:1 */
+  --color-state-closed:       #8b949e;   /* fix #2: was #21262d (invisible 1:1); now ~4.8:1 */
 }
 
 /* ══════════════════════════════════════════════════════
@@ -568,6 +618,29 @@ html.dark .topbar {
 .delay-2 { animation-delay: 0.1s; }
 .delay-3 { animation-delay: 0.15s; }
 .delay-4 { animation-delay: 0.2s; }
+
+/* ══════════════════════════════════════════════════════
+   REDUCED MOTION (SPEC_029 §4.6 / SPEC_030 Stage 6 fix #6)
+   Suppress non-essential animation + transforms; keep
+   opacity-only transitions so state changes still register.
+   ══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Skeleton pulses become a single dimmed frame */
+  [style*="skeleton-pulse"], .animate-spin {
+    animation: none !important;
+    opacity: 0.7 !important;
+  }
+  /* Transforms used decoratively (row hover lift, drawer slide) suppressed */
+  [data-density], [role="dialog"], [role="option"] {
+    transform: none !important;
+  }
+}
 
 /* ══════════════════════════════════════════════════════
    SCROLLBAR

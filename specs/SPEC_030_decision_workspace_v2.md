@@ -1,6 +1,6 @@
 # SPEC_030: Decision Workspace v2 — consume `/decision-briefs` (SPEC_023)
 
-Status: Stage 2 complete (DESIGN notes appended 2026-05-09); ready for Stage 3 TDD
+Status: **Shipped 2026-05-09** (Stage 7 closed; Loop #1 complete)
 Owner: Frontend Lead (Claude in Antigravity's seat)
 Parent: `specs/SPEC_029_app_aesthetics_upgrade.md` §9, §5 row CI-5/CI-6
 Loop: `docs/runbooks/RALPH_LOOP.md`
@@ -528,3 +528,218 @@ Once accepted, Stage 2 (DESIGN) opens.
   legacy page handles it for now.
 - Auto-creating briefs from threshold/cluster triggers (SPEC_029
   framing-trigger backlog item, backend-blocked).
+
+## 14. Red-team (Stage 5 — completed 2026-05-09)
+
+Adversarial review of the diff `main..claude-fe/spec-029-aesthetics`
+(commits `053dce1..78c8b3f`). Reviewer pretended not to have written the
+spec. Findings are numbered, with severity and one-line repro. Every
+`blocker` and `major` must be closed in Stage 6 (FIX-ALL); `minor`/`nit`
+either fixed or filed under `[FRONTEND]` in `docs/AGENT_BACKLOG.md`.
+
+### Blockers
+
+1. ~~**WCAG-AA contrast failure on three state chips**~~ — `blocker` —
+   ✅ closed Stage 6. Tokens `--color-state-{draft,closed,review-out}`
+   bumped to ≥4.5:1 in light theme; matched dark overrides added.
+2. ~~**Dark-mode `closed` chip is invisible**~~ — `blocker` —
+   ✅ closed Stage 6. Dark `--color-state-closed` lifted from
+   `#21262d` (1.0:1) to `#8b949e` (~4.8:1).
+3. ~~**Brief rows are not Tab-reachable**~~ — `blocker` (a11y) —
+   ✅ closed Stage 6. Selected row gets `tabIndex={0}` + `onKeyDown`
+   for Enter/Space; non-selected rows get `-1` (managed roving
+   tabindex pattern, ARIA-Practices §3.18 listbox).
+4. ~~**Inline-editable fields are not keyboard-activatable**~~ —
+   `blocker` (a11y) — ✅ closed Stage 6. Non-locked field is now a
+   real `<button>` so Tab reaches it and Enter/Space activates;
+   locked field is a static `<span>` (no fake-button affordance).
+   Also fixes #14 (invalid `role="text"`) by removing it.
+5. ~~**`cmd+enter` advances backwards from `human_review`**~~ —
+   `blocker` (UX) — ✅ closed Stage 6. New
+   `nextForwardTransition(state)` walks the state-rank table and
+   picks the smallest forward transition; backward picks are
+   impossible.
+
+### Major
+
+6. ~~**No `prefers-reduced-motion` honoring anywhere**~~ — `major`
+   (a11y) — ✅ closed Stage 6. Global
+   `@media (prefers-reduced-motion: reduce)` block in `index.css`
+   neutralizes animation/transition durations, suppresses transforms
+   on dialog/option/density-scoped trees, and dims skeleton loops.
+7. ~~**Save errors swallowed silently**~~ — `major` (UX/correctness) —
+   ✅ closed Stage 6. `BriefEditableField` and `OptionEditor` now
+   `try/catch` around `onSave`, render the error inline as
+   `role="alert"`, and keep the field/modal open so users can retry
+   without losing the draft.
+8. ~~**`SimulationPanel` lies in `simulation_complete`**~~ — `major`
+   (correctness) — ✅ closed Stage 6. State-aware copy: ran-states
+   render "Scenario complete — results UI ships in SPEC-032";
+   archive-states render "Scenario archived"; pre-run states keep
+   "No scenario run yet."
+9. ~~**`aria-live="polite"` on every chip → announce-storm**~~ —
+   `major` (a11y) — ✅ closed Stage 6. `<StateMachineChip>` accepts
+   an `announce` prop (default `false`) — list rows are silent;
+   `BriefPanel` flips `announce` on its single primary chip so the
+   workspace still announces state changes.
+10. ~~**`ReasoningTraceDrawer` doesn't focus-trap or take focus**~~ —
+    `major` (a11y) — ✅ closed Stage 6. On open we stash the previous
+    `activeElement`, focus the close button, trap Tab inside the
+    drawer (Shift+Tab from first → last; Tab from last → first), and
+    restore focus on close.
+11. ~~**No 401 → redirect; raw status leaks to UI**~~ — `major` —
+    ✅ closed Stage 6. `expectJson()` clears the stored token+role
+    and dispatches `mz:auth-expired` on 401; `App.tsx` listens and
+    `navigate('/?session=expired', { replace: true })`. Landing-page
+    banner for `?session=expired` is filed as a follow-up.
+12. **`ReasoningTraceDrawer` rolls its own drawer** — `major`
+    (anti-slop) — **deferred to backlog** with reason: existing
+    `<Drawer>` primitive's title/subtitle/children API doesn't fit
+    timeline content; refactoring Drawer to a slot API first is the
+    cleaner path. Anti-slop, not UX. See AGENT_BACKLOG `[FRONTEND]
+    SPEC-030 deferred items` #12.
+13. ~~**"Primary / Dissent" picked by ordinal — semantically wrong**~~
+    — `major` (correctness) — ✅ closed Stage 6. Renamed labels to
+    "Top option" / "Counter option"; added an italic disclaimer
+    "Order reflects ordinal, not simulation rank. Ranking ships in
+    SPEC-032." Removes the false "Primary" claim until SPEC_023 grows
+    a rank column.
+
+### Minor
+
+14. **`role="text"` is not a valid ARIA role** — `minor` (a11y) —
+    `BriefEditableField.tsx:92`. Browsers ignore it; AT will fall back
+    to the implicit role of the `<span>` (none). Should be removed.
+15. **`getRole()` duplicated 4× in the codebase** — `minor`
+    (anti-slop) — three pre-existing copies (`CIPage`,
+    `ConnectorPermissionsTab`, `SignalDetail`); SPEC_030 added a fourth
+    in `BriefPanel`. Should consolidate into a hook (e.g.
+    `frontend/src/hooks/useRole.ts`).
+16. **Three modal patterns rolled separately** — `minor` (anti-slop) —
+    `NewBriefDialog`, `KeyboardHintDialog`, `OptionEditor` each
+    reimplement backdrop + centered card + esc-to-close + click-out
+    -to-close. No shared `<Modal>` primitive in `components/ui/`.
+17. **"Options (N / 5)" hardcoded max** — `minor` — UI shows
+    "Options (6 / 5)" if backend returns 6 options. Either the cap is
+    a backend invariant (then pull it from a constant) or it isn't
+    and the slash UI is misleading.
+18. **No edit-option flow wired** — `minor` — `OptionEditor` supports
+    `mode="edit"` + `onRemove`, but `BriefPanel` only invokes it with
+    `mode="create"`. Users can add and delete (via `×` button) but not
+    edit fields once added.
+19. **No add-evidence affordance in editable states** — `minor` —
+    Spec §8.3 affordance matrix lists ✏️ for `draft` and
+    `human_review` evidence cells. UI is read-only across all states.
+20. **Destructive remove-option without confirm** — `minor` (UX) —
+    `BriefPanel` delete button calls `onRemoveOption(opt.option_id)`
+    immediately. No confirm; no undo.
+21. **Mouse hover sets selected index** — `minor` (UX) —
+    `BriefRow.onMouseEnter` calls `onHover()` which calls
+    `setSelectedIdx(i)`. A user steering with `j/k` can have selection
+    yanked away by an incidental mouse move.
+22. **Pagination silently truncates at 50** — `minor` —
+    `BriefsTab.load` always passes `{ limit: 50 }` and ignores
+    `next_cursor`. List with 51+ briefs has no UX path to subsequent
+    pages. `it.todo` exists; should be filed in backlog with a
+    deferred reason.
+23. **Filter chip group not implemented** — `minor` — Spec §8.5
+    showed a state-filter strip and §11 listed filtering by state /
+    owner / trigger as locked-in tests; only `it.todo` exists.
+24. **"Commit decision" button has no on-button help** — `minor`
+    (a11y) — disabled button shows tooltip via `title` only; no
+    `aria-describedby` to a visible note like the war-game tooltip
+    does. Screen readers may skip `title`.
+25. **War-game tooltip is `title` + sibling span** — `minor` (a11y) —
+    `title="Multi-adversary war-games ship in SPEC_032"` is widely
+    inaccessible (mouseover-only, varies by AT). The
+    `aria-describedby` does point to a visible italic span — that
+    half is fine, but the `title` should be redundant or removed.
+
+### Nits
+
+26. **Dead variable** — `nit` — `StateMachineChip.tsx:102` declares
+    `const labelText = …` and never uses it.
+27. **Redundant `role="textbox"`** — `nit` — `BriefEditableField` sets
+    `role="textbox"` on `<input>` and `<textarea>`, both of which
+    have implicit textbox role.
+28. **`STATE_META` re-exported via `BriefsTab`** — `nit` — already
+    exported by `StateMachineChip`. The trailing
+    `export { STATE_META }` in `BriefsTab.tsx:439` is dead.
+29. **`confidence_to_proceed.toFixed(2)` does not guard NaN** — `nit`
+    — defensive, but `toFixed(2)` of `NaN` returns `"NaN"`; backend
+    invariants make this unreachable today.
+30. **`fmtTime` catch is unreachable** — `nit` —
+    `new Date('garbage').toLocaleString()` returns `"Invalid Date"`,
+    it does not throw. The `try/catch` cannot fire.
+
+### Lighthouse / screenshot diff
+
+- Lighthouse not run in this loop (no headless Chromium in current
+  environment). **Filing as `[FRONTEND] SPEC-030 deploy gate: run
+  Lighthouse a11y on `/ci?tab=decisions` and `/ci/decisions/:id`,
+  light + dark, target ≥95** in `docs/AGENT_BACKLOG.md` to be
+  satisfied before Stage 7 (DEPLOY).
+- Screenshot diff vs. legacy `DecisionDetailPage` deferred to Stage 7
+  alongside the spec's required `docs/screenshots/SPEC_030/` set.
+
+### Decisions taken — not bugs
+
+The following were considered during red-team and explicitly accepted:
+
+- **Density read-once on mount, no live toggle** — Q4 sign-off /
+  §8.8. Live toggling would need a global density context; deferred.
+- **"Commit decision" button always disabled** — Q2 sign-off; backend
+  `/decisions/from-brief` not yet shipped (filed as `[BACKEND]` in
+  AGENT_BACKLOG).
+- **"Start war-game" button always disabled** — Q3 sign-off;
+  SPEC_032 will wire the click handler.
+- **Legacy `DecisionDetailPage` lives behind
+  `mz_legacy_decisions === 'true'`** — Q1 sign-off. Not deleted in
+  this loop.
+- **Demo auto-login as `enterprise` (CIPage:79)** — pre-existing in
+  `cryogenic22/myscience` main; out of scope for SPEC_030. Real
+  authentication is filed under SPEC_021 follow-ups, not here.
+- **Backend role enum is `viewer/uploader/enterprise`, not the
+  `viewer/editor/enterprise` that AGENTS.md §7 documents** — verified
+  against `services/auth.py:31`. AGENTS.md is stale; filing
+  `[PROTOCOL]` note rather than aligning here.
+- **`role="listbox"` with `<article role="option">` rows** — kept
+  despite article-as-option being unusual; ARIA attribute roles
+  override implicit roles for AT, and the visual semantics of an
+  article (heading + meta) match what we want. The Tab-reachability
+  problem (#3) is what's broken, not the role.
+- **`mz_fixture_mode` only renders chip on error path** — by design
+  (RALPH_LOOP §"No silent fakes" honors the *visible-on-failure*
+  contract; the chip's job is to keep demos honest, not annoy the
+  default success path).
+- **`it.todo` test stubs intentionally left red** — pagination,
+  filter chips, save-error toast: each has a documented future loop.
+
+### Stage 5 gate
+
+Stage 5 closes once this section is appended and committed. Stage 6
+(FIX-ALL) opens. Items 1–5 (blockers) and 6–13 (majors) are the FIX-
+ALL backlog; items 14–25 (minors) and 26–30 (nits) are candidates for
+deferral via AGENT_BACKLOG; the Lighthouse run is itself a deploy-gate
+backlog item.
+
+### Stage 6 — FIX-ALL closed (2026-05-09)
+
+| Severity | Closed in Stage 6 | Deferred to backlog |
+|---|---|---|
+| Blocker | 1, 2, 3, 4, 5 (5/5) | — |
+| Major   | 6, 7, 8, 9, 10, 11, 13 (7/8) | 12 (Drawer reuse — anti-slop) |
+| Minor   | 14, 26 (also closed as a side-effect of #4 / #9) | 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 |
+| Nit     | 26, 27, 28, 29, 30 | 27, 28, 29, 30 |
+
+Regression tests added at
+`frontend/__tests__/ci/decisions/_stage6_regressions.test.tsx`
+(16 cases, one or more per fix). Final gate:
+`npx tsc --noEmit && npx vitest run` ⇒ **39 test files, 256 cases
+passing, 19 it.todo, zero failures, zero regressions** (was 240 at
+end of Stage 4 — net +16).
+
+Deferred items live under `[FRONTEND] SPEC-030 deferred items` in
+`docs/AGENT_BACKLOG.md` with one-line defensible reasons each.
+
+Stage 7 (DEPLOY) opens next.

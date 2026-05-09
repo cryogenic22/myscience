@@ -13,10 +13,11 @@ import SimulationPanel from '../../../src/components/ci/decisions/SimulationPane
 
 describe('SimulationPanel', () => {
   it('renders three sections: Scenario, Monte Carlo, War-game', () => {
-    render(<SimulationPanel brief={makeBrief()} />);
-    expect(screen.getByText(/scenario/i)).toBeInTheDocument();
-    expect(screen.getByText(/monte carlo/i)).toBeInTheDocument();
-    expect(screen.getByText(/war.game/i)).toBeInTheDocument();
+    // simulation_pending shows all three (war-game only renders in run states)
+    render(<SimulationPanel brief={makeBrief({ state: 'simulation_pending' })} />);
+    expect(screen.getAllByText(/scenario/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/monte carlo/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/war.game/i).length).toBeGreaterThan(0);
   });
 
   it('"Start war-game" button is disabled until SPEC_032', () => {
