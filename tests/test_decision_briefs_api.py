@@ -744,3 +744,46 @@ def test_redteam_a4_uuid_confusion_via_to_state_field():
         headers=_hdr(tok),
     )
     assert r.status_code == 422
+
+
+# ════════════════════════════════════════════════════════════════════
+# Regression tests for prod bugs B1
+# ════════════════════════════════════════════════════════════════════
+
+def test_b1_postgres_array_literal_string_doesnt_split_chars():
+    """Regression for prod bug: psycopg2 sometimes returns Postgres array
+    literals as the string '{}' instead of a list []. The hydrator must
+    detect and treat as empty (not split into ['{', '}'])."""
+    from services.decision_brief import _row_to_brief
+    from datetime import datetime, timezone
+    row = {
+        "brief_id": "brf-x", "question": "x", "trigger_kind": "manual",
+        "trigger_signal_ids": "{}",  # string, not list
+        "trigger_metadata": {}, "stakeholders": [], "time_horizon_days": None,
+        "evidence_refs": [], "constraints": [], "success_criteria": None,
+        "confidence_to_proceed": None, "state": "draft",
+        "owner_user_id": None, "war_room_id": None, "decision_id": None,
+        "archived_at": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    brief = _row_to_brief(row)
+    assert brief.trigger_signal_ids == []  # NOT ["{", "}"]
+
+
+def test_b1_populated_array_literal_string_parses_uuids():
+    from services.decision_brief import _row_to_brief
+    from datetime import datetime, timezone
+    row = {
+        "brief_id": "brf-x", "question": "x", "trigger_kind": "manual",
+        "trigger_signal_ids": "{aaaa-1111,bbbb-2222}",
+        "trigger_metadata": {}, "stakeholders": [], "time_horizon_days": None,
+        "evidence_refs": [], "constraints": [], "success_criteria": None,
+        "confidence_to_proceed": None, "state": "draft",
+        "owner_user_id": None, "war_room_id": None, "decision_id": None,
+        "archived_at": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    brief = _row_to_brief(row)
+    assert brief.trigger_signal_ids == ["aaaa-1111", "bbbb-2222"]

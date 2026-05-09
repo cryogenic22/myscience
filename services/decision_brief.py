@@ -206,6 +206,22 @@ def _row_to_brief(row: dict, options: list[DecisionBriefOption] | None = None,
         return default
 
     def _stringify_uuids(arr):
+        if arr is None:
+            return []
+        # Some psycopg2 cursor configs return Postgres array literals as
+        # the string "{}" or "{uuid1,uuid2}" instead of a Python list.
+        # Detect and parse those rather than splitting char-by-char (which
+        # would yield ["{", "}"] for an empty array).
+        if isinstance(arr, str):
+            stripped = arr.strip()
+            if stripped in ("", "{}"):
+                return []
+            if stripped.startswith("{") and stripped.endswith("}"):
+                inner = stripped[1:-1]
+                if not inner:
+                    return []
+                return [x.strip().strip('"') for x in inner.split(",") if x.strip()]
+            return []
         if not arr:
             return []
         return [str(x) for x in arr]

@@ -306,21 +306,54 @@ class AskEngine:
 
     # ── Executors (all parameterized; user input never inlined) ──
 
+    # Per-entity-type maps. Production schema reference (migration 001 + 037):
+    #   drugs: id UUID, generic_name TEXT NOT NULL, brand_name, mechanism_id,
+    #          therapeutic_area_id, company_id, approval_date
+    #   companies: id UUID, name TEXT NOT NULL
+    #   clinical_trials: id TEXT (NCT), drug_id, sponsor_name, status, phase
+    #   therapeutic_areas: id UUID, name TEXT
+    #   mechanisms_of_action: id UUID, name TEXT (NOT 'mechanisms')
+    #   entity_links: source_entity_id/source_entity_type/target_entity_id/
+    #                 target_entity_type/link_type (NOT from/to)
+    _ENTITY_TABLE = {
+        "drug": "drugs", "company": "companies",
+        "trial": "clinical_trials", "indication": "therapeutic_areas",
+        "mechanism": "mechanisms_of_action",
+        "therapeutic_area": "therapeutic_areas",
+    }
+    _ENTITY_NAME_COLUMN = {
+        "drug": "generic_name", "company": "name",
+        "trial": "id",  # NCT id is the trial label
+        "indication": "name", "mechanism": "name",
+        "therapeutic_area": "name",
+    }
+
+    def _table_for(self, entity_type: str) -> str:
+        return self._ENTITY_TABLE.get(entity_type, f"{entity_type}s")
+
+    def _name_col(self, entity_type: str) -> str:
+        return self._ENTITY_NAME_COLUMN.get(entity_type, "name")
+
     def _exec_filter_entities_by_area(self, db, params: dict) -> tuple[GraphResult, str]:
         entity_type = self._safe_entity_type(params.get("entity_type"))
         area = (params.get("area") or "").strip()
-        # Entity-table names match the `entity_type` enum; whitelisted via _safe_entity_type
-        rows = db.fetch_all(
-            f"""
-            SELECT e.id, e.name
-              FROM {entity_type}s e
-         LEFT JOIN therapeutic_areas ta ON ta.id = e.therapeutic_area_id
-             WHERE LOWER(ta.name) ILIKE %s
-                OR LOWER(ta.id::text) = LOWER(%s)
-             LIMIT %s
-            """,
-            (f"%{area.lower()}%", area, MAX_NODES),
-        ) or []
+        table = self._table_for(entity_type)
+        name_col = self._name_col(entity_type)
+        # Drugs/trials reference therapeutic_area via FK; for other types the
+        # join either no-ops (no therapeutic_area_id) or trivially matches.
+        if entity_type in ("drug",):
+            rows = db.fetch_all(
+                f"""
+                SELECT e.id::text AS id, e.{name_col} AS name
+                  FROM {table} e
+             LEFT JOIN therapeutic_areas ta ON ta.id = e.therapeutic_area_id
+                 WHERE LOWER(ta.name) ILIKE %s
+                 LIMIT %s
+                """,
+                (f"%{area.lower()}%", MAX_NODES),
+            ) or []
+        else:
+            rows = []
         graph = GraphResult()
         for r in rows:
             graph.nodes.append(GraphNode(id=str(r["id"]), type=entity_type,
@@ -330,58 +363,71 @@ class AskEngine:
                                           type="in_area"))
         graph.nodes.append(GraphNode(id=f"ta:{area}", type="therapeutic_area",
                                       label=area))
-        return graph, f"SELECT FROM {entity_type}s JOIN therapeutic_areas WHERE name ILIKE '%{area}%'"
+        return graph, f"SELECT FROM {table} JOIN therapeutic_areas WHERE name ILIKE '%{area}%'"
 
     def _exec_linked_entities(self, db, params: dict) -> tuple[GraphResult, str]:
         relation = (params.get("relation") or "").lower().strip()
         entity_name = (params.get("entity_name") or "").strip()
-        # Map the natural-language relation to a target entity type
         relation_to_target = {
             "trials": "trial", "competitors": "company",
             "sponsors": "company", "drugs": "drug",
             "companies": "company", "mechanisms": "mechanism",
             "indications": "indication",
         }
-        target_type = relation_to_target.get(relation, "entity")
-
+        target_type = relation_to_target.get(relation, "drug")
+        # entity_links uses source/target (not from/to). We look up the
+        # source-side entity in the relevant entity table by name to find
+        # its id, then return all links of that source to the target type.
+        # For simplicity, search drugs+companies for the source name.
         rows = db.fetch_all(
             """
-            SELECT el.from_entity_id, el.from_entity_type,
-                   el.to_entity_id, el.to_entity_type, el.link_type
+            SELECT el.source_entity_id::text AS source_entity_id,
+                   el.source_entity_type     AS source_entity_type,
+                   el.target_entity_id::text AS target_entity_id,
+                   el.target_entity_type     AS target_entity_type,
+                   el.link_type              AS link_type
               FROM entity_links el
-              JOIN entities e ON e.id = el.from_entity_id
-             WHERE LOWER(e.name) ILIKE %s
-               AND el.to_entity_type = %s
+             WHERE el.target_entity_type = %s
+               AND el.source_entity_id IN (
+                 SELECT id FROM drugs WHERE LOWER(generic_name) ILIKE %s
+                 UNION
+                 SELECT id FROM companies WHERE LOWER(name) ILIKE %s
+               )
              LIMIT %s
             """,
-            (f"%{entity_name.lower()}%", target_type, MAX_NODES),
+            (target_type, f"%{entity_name.lower()}%",
+             f"%{entity_name.lower()}%", MAX_NODES),
         ) or []
         graph = GraphResult()
         seen_nodes: set[str] = set()
         for r in rows:
-            from_id = str(r["from_entity_id"])
-            to_id = str(r["to_entity_id"])
-            if from_id not in seen_nodes:
-                graph.nodes.append(GraphNode(id=from_id, type=r["from_entity_type"],
+            s_id = str(r["source_entity_id"])
+            t_id = str(r["target_entity_id"])
+            if s_id not in seen_nodes:
+                graph.nodes.append(GraphNode(id=s_id, type=r["source_entity_type"],
                                               label=entity_name))
-                seen_nodes.add(from_id)
-            if to_id not in seen_nodes:
-                graph.nodes.append(GraphNode(id=to_id, type=r["to_entity_type"],
-                                              label=to_id))
-                seen_nodes.add(to_id)
-            graph.edges.append(GraphEdge(source=from_id, target=to_id,
+                seen_nodes.add(s_id)
+            if t_id not in seen_nodes:
+                graph.nodes.append(GraphNode(id=t_id, type=r["target_entity_type"],
+                                              label=t_id))
+                seen_nodes.add(t_id)
+            graph.edges.append(GraphEdge(source=s_id, target=t_id,
                                           type=r["link_type"]))
-        return graph, f"SELECT FROM entity_links WHERE from~ILIKE '%{entity_name}%' AND to_type='{target_type}'"
+        return graph, (
+            f"SELECT FROM entity_links WHERE source name ILIKE '%{entity_name}%' "
+            f"AND target_type='{target_type}'"
+        )
 
     def _exec_competitors_of(self, db, params: dict) -> tuple[GraphResult, str]:
         company_name = (params.get("company_name") or "").strip()
         rows = db.fetch_all(
             """
-            SELECT el.from_entity_id, el.to_entity_id,
-                   c1.name AS from_name, c2.name AS to_name
+            SELECT el.source_entity_id::text AS source_entity_id,
+                   el.target_entity_id::text AS target_entity_id,
+                   c1.name AS source_name, c2.name AS target_name
               FROM entity_links el
-              JOIN companies c1 ON c1.id = el.from_entity_id
-              JOIN companies c2 ON c2.id = el.to_entity_id
+              JOIN companies c1 ON c1.id = el.source_entity_id
+              JOIN companies c2 ON c2.id = el.target_entity_id
              WHERE el.link_type = 'COMPETES_WITH'
                AND LOWER(c1.name) ILIKE %s
              LIMIT %s
@@ -391,17 +437,17 @@ class AskEngine:
         graph = GraphResult()
         seen: set[str] = set()
         for r in rows:
-            from_id = str(r["from_entity_id"])
-            to_id = str(r["to_entity_id"])
-            if from_id not in seen:
-                graph.nodes.append(GraphNode(id=from_id, type="company",
-                                              label=r.get("from_name") or from_id))
-                seen.add(from_id)
-            if to_id not in seen:
-                graph.nodes.append(GraphNode(id=to_id, type="company",
-                                              label=r.get("to_name") or to_id))
-                seen.add(to_id)
-            graph.edges.append(GraphEdge(source=from_id, target=to_id,
+            s_id = str(r["source_entity_id"])
+            t_id = str(r["target_entity_id"])
+            if s_id not in seen:
+                graph.nodes.append(GraphNode(id=s_id, type="company",
+                                              label=r.get("source_name") or s_id))
+                seen.add(s_id)
+            if t_id not in seen:
+                graph.nodes.append(GraphNode(id=t_id, type="company",
+                                              label=r.get("target_name") or t_id))
+                seen.add(t_id)
+            graph.edges.append(GraphEdge(source=s_id, target=t_id,
                                           type="COMPETES_WITH"))
         return graph, f"SELECT competitors of '{company_name}'"
 
@@ -411,11 +457,16 @@ class AskEngine:
         unit = (params.get("unit") or "day").lower()
         unit_days = {"day": 1, "week": 7, "month": 30, "year": 365}.get(unit, 1)
         days = n * unit_days
+        table = self._table_for(entity_type)
+        name_col = self._name_col(entity_type)
         time_col = "approval_date" if entity_type == "drug" else "created_at"
+        # For trials, the time column is start_date; for others, default created_at
+        if entity_type == "trial":
+            time_col = "start_date"
         rows = db.fetch_all(
             f"""
-            SELECT id, name, {time_col} AS event_at
-              FROM {entity_type}s
+            SELECT id::text AS id, {name_col} AS name, {time_col} AS event_at
+              FROM {table}
              WHERE {time_col} > NOW() - (%s || ' days')::interval
              ORDER BY {time_col} DESC
              LIMIT %s
@@ -430,17 +481,20 @@ class AskEngine:
                 props={"event_at": r["event_at"].isoformat()
                        if hasattr(r.get("event_at"), "isoformat") else None},
             ))
-        return graph, f"SELECT recent {entity_type}s past {days} days"
+        return graph, f"SELECT recent {table} past {days} days"
 
     def _exec_entities_by_mechanism(self, db, params: dict) -> tuple[GraphResult, str]:
         entity_type = self._safe_entity_type(params.get("entity_type"))
         mechanism_name = (params.get("mechanism_name") or "").strip()
-        # Look up mechanism, then entities linked to it
+        table = self._table_for(entity_type)
+        name_col = self._name_col(entity_type)
+        # Mechanisms table is `mechanisms_of_action` on prod
         rows = db.fetch_all(
             f"""
-            SELECT e.id, e.name, m.id AS mechanism_id, m.name AS mechanism_name
-              FROM {entity_type}s e
-              JOIN mechanisms m ON m.id = e.mechanism_id
+            SELECT e.id::text AS id, e.{name_col} AS name,
+                   m.id::text AS mechanism_id, m.name AS mechanism_name
+              FROM {table} e
+              JOIN mechanisms_of_action m ON m.id = e.mechanism_id
              WHERE LOWER(m.name) ILIKE %s
              LIMIT %s
             """,
@@ -458,17 +512,17 @@ class AskEngine:
                 seen_mechs.add(mid)
             graph.edges.append(GraphEdge(source=str(r["id"]), target=mid,
                                           type="targets"))
-        return graph, f"SELECT {entity_type}s targeting mechanism '%{mechanism_name}%'"
+        return graph, f"SELECT {table} targeting mechanism '%{mechanism_name}%'"
 
     def _exec_sponsor_of_drug(self, db, params: dict) -> tuple[GraphResult, str]:
         drug_name = (params.get("drug_name") or "").strip()
         rows = db.fetch_all(
             """
-            SELECT d.id AS drug_id, d.name AS drug_name,
-                   c.id AS company_id, c.name AS company_name
+            SELECT d.id::text AS drug_id, d.generic_name AS drug_name,
+                   c.id::text AS company_id, c.name AS company_name
               FROM drugs d
               JOIN companies c ON c.id = d.company_id
-             WHERE LOWER(d.name) ILIKE %s
+             WHERE LOWER(d.generic_name) ILIKE %s
              LIMIT %s
             """,
             (f"%{drug_name.lower()}%", MAX_NODES),
