@@ -1675,3 +1675,192 @@ export const REACTION_TYPE_META: Record<ReactionType, { label: string; color: st
   exit_segment:       { label: 'Exit Segment',         color: '#52525B' },
   differentiate:      { label: 'Differentiate',        color: '#2563EB' },
 };
+
+// ────────────────────────────────────────────────────────────────────
+// SPEC-023 — Decision Briefs (consumed by SPEC-030 Decision Workspace v2)
+// ────────────────────────────────────────────────────────────────────
+
+export type BriefState =
+  | 'draft'
+  | 'human_review'
+  | 'simulation_pending'
+  | 'simulation_complete'
+  | 'decision_pending'
+  | 'committed'
+  | 'in_review'
+  | 'closed';
+
+export type TriggerKind = 'manual' | 'threshold' | 'cluster' | 'calendar';
+
+export type EvidenceRefType = 'kbq_view' | 'signal' | 'entity' | 'document';
+
+export interface EvidenceRef {
+  type: EvidenceRefType;
+  id: string;
+  snapshot_at?: string;
+}
+
+export interface DecisionBriefOption {
+  option_id: string;
+  brief_id: string;
+  ordinal: number;
+  label: string;
+  description: string | null;
+  predicted_outcome: string | null;
+  cost_estimate: string | null;
+  risk_notes: string | null;
+  created_at: string;
+}
+
+export interface BriefStateLogEntry {
+  log_id: string;
+  brief_id: string;
+  from_state: string | null;
+  to_state: BriefState;
+  actor_user_id: string | null;
+  reason: string | null;
+  transitioned_at: string;
+}
+
+export interface DecisionBrief {
+  brief_id: string;
+  question: string;
+  trigger_kind: TriggerKind;
+  trigger_signal_ids: string[];
+  trigger_metadata: Record<string, unknown>;
+  stakeholders: string[];
+  time_horizon_days: number | null;
+  evidence_refs: EvidenceRef[];
+  constraints: string[];
+  success_criteria: string | null;
+  confidence_to_proceed: number | null;
+  state: BriefState;
+  owner_user_id: string | null;
+  war_room_id: string | null;
+  decision_id: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  options: DecisionBriefOption[];
+  state_log: BriefStateLogEntry[];
+}
+
+export interface DecisionBriefListFilters {
+  state?: BriefState;
+  owner_user_id?: string;
+  trigger_kind?: TriggerKind;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface DecisionBriefList {
+  briefs: DecisionBrief[];
+  next_cursor: string | null;
+  count: number;
+}
+
+export type DecisionBriefCreateBody = Partial<
+  Pick<
+    DecisionBrief,
+    | 'trigger_kind'
+    | 'trigger_signal_ids'
+    | 'trigger_metadata'
+    | 'stakeholders'
+    | 'time_horizon_days'
+    | 'evidence_refs'
+    | 'constraints'
+    | 'success_criteria'
+    | 'confidence_to_proceed'
+    | 'war_room_id'
+  >
+> & { question: string };
+
+export type DecisionBriefPatchBody = Partial<
+  Pick<
+    DecisionBrief,
+    | 'question'
+    | 'stakeholders'
+    | 'time_horizon_days'
+    | 'evidence_refs'
+    | 'constraints'
+    | 'success_criteria'
+    | 'confidence_to_proceed'
+  >
+>;
+
+export type DecisionBriefOptionInput = Pick<
+  DecisionBriefOption,
+  'label' | 'description' | 'predicted_outcome' | 'cost_estimate' | 'risk_notes'
+>;
+
+async function expectJson<T>(r: Response): Promise<T> {
+  if (!r.ok) {
+    const text = await r.text().catch(() => r.statusText);
+    throw new Error(`${r.status}: ${text}`);
+  }
+  return r.json();
+}
+
+export const decisionBriefsApi = {
+  list: (filters: DecisionBriefListFilters = {}): Promise<DecisionBriefList> => {
+    const qs = new URLSearchParams();
+    if (filters.state) qs.set('state', filters.state);
+    if (filters.owner_user_id) qs.set('owner_user_id', filters.owner_user_id);
+    if (filters.trigger_kind) qs.set('trigger_kind', filters.trigger_kind);
+    if (filters.cursor) qs.set('cursor', filters.cursor);
+    if (filters.limit !== undefined) qs.set('limit', String(filters.limit));
+    const url = qs.toString() ? `${BASE}/decision-briefs?${qs}` : `${BASE}/decision-briefs`;
+    return fetch(url, { headers: { ...authHeaders() } }).then((r) => expectJson<DecisionBriefList>(r));
+  },
+
+  get: (briefId: string): Promise<DecisionBrief> =>
+    fetch(`${BASE}/decision-briefs/${encodeURIComponent(briefId)}`, {
+      headers: { ...authHeaders() },
+    }).then((r) => expectJson<DecisionBrief>(r)),
+
+  create: (body: DecisionBriefCreateBody): Promise<DecisionBrief> =>
+    fetch(`${BASE}/decision-briefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then((r) => expectJson<DecisionBrief>(r)),
+
+  patch: (briefId: string, patch: DecisionBriefPatchBody): Promise<DecisionBrief> =>
+    fetch(`${BASE}/decision-briefs/${encodeURIComponent(briefId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(patch),
+    }).then((r) => expectJson<DecisionBrief>(r)),
+
+  archive: (briefId: string): Promise<{ ok: true }> =>
+    fetch(`${BASE}/decision-briefs/${encodeURIComponent(briefId)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then((r) => expectJson<{ ok: true }>(r)),
+
+  addOption: (briefId: string, opt: DecisionBriefOptionInput): Promise<DecisionBriefOption> =>
+    fetch(`${BASE}/decision-briefs/${encodeURIComponent(briefId)}/options`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(opt),
+    }).then((r) => expectJson<DecisionBriefOption>(r)),
+
+  removeOption: (briefId: string, optionId: string): Promise<{ ok: true }> =>
+    fetch(
+      `${BASE}/decision-briefs/${encodeURIComponent(briefId)}/options/${encodeURIComponent(optionId)}`,
+      { method: 'DELETE', headers: { ...authHeaders() } },
+    ).then(async (r) => {
+      if (r.status === 204) return { ok: true } as const;
+      return expectJson<{ ok: true }>(r);
+    }),
+
+  transition: (briefId: string, toState: BriefState, reason?: string): Promise<DecisionBrief> => {
+    const body: { to_state: BriefState; reason?: string } = { to_state: toState };
+    if (reason !== undefined) body.reason = reason;
+    return fetch(`${BASE}/decision-briefs/${encodeURIComponent(briefId)}/transitions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then((r) => expectJson<DecisionBrief>(r));
+  },
+};

@@ -98,6 +98,13 @@ except Exception as _e:
     logger.error("Failed to import decision_briefs router (SPEC_023): %s", _e)
     _DECISION_BRIEFS_ROUTER_OK = False
 
+# SPEC_024 evidence ledger router (claims + evidence + snapshots)
+try:
+    from api.routes import evidence_ledger as evidence_ledger_route
+    _EVIDENCE_LEDGER_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import evidence_ledger router (SPEC_024): %s", _e)
+    _EVIDENCE_LEDGER_ROUTER_OK = False
 # SPEC_026 LLM Gateway router (prompt registry + PII filter + cost summary)
 try:
     from api.routes import llm_gateway as llm_gateway_route
@@ -113,6 +120,63 @@ try:
 except Exception as _e:
     logger.error("Failed to import sources router (SPEC_027): %s", _e)
     _SOURCES_ROUTER_OK = False
+
+# SPEC_035 /ask graph traversal router
+try:
+    from api.routes import ask as ask_route
+    _ASK_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import ask router (SPEC_035): %s", _e)
+    _ASK_ROUTER_OK = False
+# SPEC_034 Decision Signing router
+try:
+    from api.routes import decision_signing as decision_signing_route
+    _DECISION_SIGNING_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import decision_signing router (SPEC_034): %s", _e)
+    _DECISION_SIGNING_ROUTER_OK = False
+# SPEC_033 Counter-Recommendation router
+try:
+    from api.routes import recommendations as recommendations_route
+    _RECOMMENDATIONS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import recommendations router (SPEC_033): %s", _e)
+    _RECOMMENDATIONS_ROUTER_OK = False
+# SPEC_032 Learning Service router
+try:
+    from api.routes import learning as learning_route
+    _LEARNING_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import learning router (SPEC_032): %s", _e)
+    _LEARNING_ROUTER_OK = False
+# SPEC_031 Materiality Scoring router
+try:
+    from api.routes import materiality as materiality_route
+    _MATERIALITY_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import materiality router (SPEC_031): %s", _e)
+    _MATERIALITY_ROUTER_OK = False
+# SPEC_029 Framing Triggers router
+try:
+    from api.routes import framing_triggers as framing_triggers_route
+    _FRAMING_TRIGGERS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import framing_triggers router (SPEC_029): %s", _e)
+    _FRAMING_TRIGGERS_ROUTER_OK = False
+# SPEC_028 War-Game Adversaries router
+try:
+    from api.routes import war_games as war_games_route
+    _WAR_GAMES_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import war_games router (SPEC_028): %s", _e)
+    _WAR_GAMES_ROUTER_OK = False
+# SPEC_025 Game-Theoretic Simulation router
+try:
+    from api.routes import game_theory as game_theory_route
+    _GAME_THEORY_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import game_theory router (SPEC_025): %s", _e)
+    _GAME_THEORY_ROUTER_OK = False
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -211,10 +275,29 @@ def create_app() -> FastAPI:
             all_routers.append(inbox_route.insights_router)
     if _DECISION_BRIEFS_ROUTER_OK:
         all_routers.append(decision_briefs_route.router)
+    if _EVIDENCE_LEDGER_ROUTER_OK:
+        all_routers.append(evidence_ledger_route.claims_router)
+        all_routers.append(evidence_ledger_route.snapshots_router)
     if _LLM_GATEWAY_ROUTER_OK:
         all_routers.append(llm_gateway_route.router)
     if _SOURCES_ROUTER_OK:
         all_routers.append(sources_route.router)
+    if _ASK_ROUTER_OK:
+        all_routers.append(ask_route.router)
+    if _DECISION_SIGNING_ROUTER_OK:
+        all_routers.append(decision_signing_route.router)
+    if _RECOMMENDATIONS_ROUTER_OK:
+        all_routers.append(recommendations_route.router)
+    if _LEARNING_ROUTER_OK:
+        all_routers.append(learning_route.router)
+    if _MATERIALITY_ROUTER_OK:
+        all_routers.append(materiality_route.router)
+    if _FRAMING_TRIGGERS_ROUTER_OK:
+        all_routers.append(framing_triggers_route.router)
+    if _WAR_GAMES_ROUTER_OK:
+        all_routers.append(war_games_route.router)
+    if _GAME_THEORY_ROUTER_OK:
+        all_routers.append(game_theory_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
