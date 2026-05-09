@@ -165,7 +165,11 @@ target state. Each is tagged for ownership.
 - Cross-cutting: write `specs/SPEC_024_adversary_war_game.md`. Frontend
   War-Room mode (real-time multi-user with adversary transcripts) depends.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — `specs/SPEC_028_war_game_adversaries.md`,
+  migration 056, `services/war_game_adversary.py`,
+  `api/routes/war_games.py`, 22 tests green. Grounding rule enforced at
+  DB level via NOT NULL FK on grounding_evidence_id. StubReactor produces
+  deterministic grounded actions; LLMGatewayReactor is a ~50-line swap.)
 
 ### [BACKEND] Monte Carlo simulation service
 - Filed: 2026-05-09 by Claude (from spec §6.3.1)
