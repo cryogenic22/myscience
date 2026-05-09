@@ -1,6 +1,6 @@
 # SPEC_030: Decision Workspace v2 — consume `/decision-briefs` (SPEC_023)
 
-Status: Stage 5 complete (RED-TEAM appended 2026-05-09); FIX-ALL opens next
+Status: Stage 6 complete (FIX-ALL closed 2026-05-09); DEPLOY opens next
 Owner: Frontend Lead (Claude in Antigravity's seat)
 Parent: `specs/SPEC_029_app_aesthetics_upgrade.md` §9, §5 row CI-5/CI-6
 Loop: `docs/runbooks/RALPH_LOOP.md`
@@ -539,110 +539,71 @@ either fixed or filed under `[FRONTEND]` in `docs/AGENT_BACKLOG.md`.
 
 ### Blockers
 
-1. **WCAG-AA contrast failure on three state chips** — `blocker` —
-   `--color-state-draft` (`#8E8E93` on `#F8F8F6`) ≈ 3.0:1; `closed`
-   (`#AEAEB2` on `#F8F8F6`) ≈ 2.3:1; `review-out` (`#0EA5E9` on
-   `#F8F8F6`) ≈ 3.4:1. Chip text is `font-size: 11px font-weight: 600`
-   — counts as small text, requires ≥4.5:1.
-   *Repro:* render any brief in `draft` or `closed`; inspect the chip;
-   `(getContrast(text, surface-2) < 4.5)`.
-2. **Dark-mode `closed` chip is invisible** — `blocker` —
-   `--color-state-closed = --color-ink-4 = #21262d` on
-   `--color-surface-2 = #21262d` → 1.0:1 contrast. Text and background
-   are byte-identical.
-   *Repro:* set `html.dark`, archive a brief, render the row; chip
-   reads only as a faint outline.
-3. **Brief rows are not Tab-reachable** — `blocker` (a11y) —
-   `<article role="option">` rows in `BriefsTab` carry no `tabIndex`.
-   The window-bound `j/k/Enter` listener works but a keyboard-only user
-   who Tabs through the page never lands on the listbox; screen
-   readers see the listbox but cannot move into options without aria
-   focus management.
-   *Repro:* keyboard `Tab` repeatedly on `/ci?tab=decisions` — focus
-   skips from the sidebar straight to the bottom nav.
-4. **Inline-editable fields are not keyboard-activatable** —
-   `blocker` (a11y) — `BriefEditableField` renders a `<span onClick>`
-   with no `tabIndex`/`onKeyDown`. A keyboard user cannot enter edit
-   mode at all; click is mouse-only. Compounds with #3 because the
-   workspace's only path to mutation is via these spans.
-   *Repro:* on `/ci/decisions/:id`, Tab through; the question never
-   receives focus; pressing Enter on it does nothing.
-5. **`cmd+enter` advances backwards from `human_review`** —
-   `blocker` (UX) — `DecisionWorkspace` picks
-   `ALLOWED_TRANSITIONS[state][0]`. For `human_review` that array is
-   `['draft', 'simulation_pending', 'closed']` — index 0 is `draft`,
-   the back-transition. Pressing the documented "advance" shortcut
-   regresses the state machine.
-   *Repro:* mock a brief in `human_review`, mount workspace, press
-   `cmd+enter`; brief becomes `draft`.
+1. ~~**WCAG-AA contrast failure on three state chips**~~ — `blocker` —
+   ✅ closed Stage 6. Tokens `--color-state-{draft,closed,review-out}`
+   bumped to ≥4.5:1 in light theme; matched dark overrides added.
+2. ~~**Dark-mode `closed` chip is invisible**~~ — `blocker` —
+   ✅ closed Stage 6. Dark `--color-state-closed` lifted from
+   `#21262d` (1.0:1) to `#8b949e` (~4.8:1).
+3. ~~**Brief rows are not Tab-reachable**~~ — `blocker` (a11y) —
+   ✅ closed Stage 6. Selected row gets `tabIndex={0}` + `onKeyDown`
+   for Enter/Space; non-selected rows get `-1` (managed roving
+   tabindex pattern, ARIA-Practices §3.18 listbox).
+4. ~~**Inline-editable fields are not keyboard-activatable**~~ —
+   `blocker` (a11y) — ✅ closed Stage 6. Non-locked field is now a
+   real `<button>` so Tab reaches it and Enter/Space activates;
+   locked field is a static `<span>` (no fake-button affordance).
+   Also fixes #14 (invalid `role="text"`) by removing it.
+5. ~~**`cmd+enter` advances backwards from `human_review`**~~ —
+   `blocker` (UX) — ✅ closed Stage 6. New
+   `nextForwardTransition(state)` walks the state-rank table and
+   picks the smallest forward transition; backward picks are
+   impossible.
 
 ### Major
 
-6. **No `prefers-reduced-motion` honoring anywhere** — `major` (a11y) —
-   `index.css` adds new keyframes (`skeleton-pulse`, `slide-in-right`)
-   and inline `transition` / `animation` declarations on row hover,
-   panel mount, drawer open — but no
-   `@media (prefers-reduced-motion: reduce)` block reduces them.
-   §8.7 of this spec explicitly promised this gate.
-   *Repro:* enable OS-level reduced-motion; drawer still slides in
-   over 280ms; rows still translateY on hover; skeleton still pulses.
-7. **Save errors swallowed silently** — `major` (UX/correctness) —
-   `BriefEditableField.commit()` has `try {…} finally`, no `catch`;
-   the rejection is unhandled (`void commit()` callers fire-and-forget).
-   `OptionEditor.submit()` likewise has no error UI when `onSave`
-   throws. `DecisionWorkspace.onAddOption` re-fetches blindly without
-   surfacing failures.
-   *Repro:* mock `decisionBriefsApi.patch` to reject 500; edit the
-   question; blur — no toast, no inline error, the field collapses
-   showing the unsaved state.
-8. **`SimulationPanel` lies in `simulation_complete`** — `major`
-   (correctness) — Scenario projection card always reads "No scenario
-   run yet" unless `archived` is true. Once a brief reaches
-   `simulation_complete` (`archived = false, showRunControls = true`),
-   users see "No scenario run yet" alongside the "completed" state
-   chip. Direct contradiction.
-   *Repro:* render a brief in `simulation_complete`; both the state
-   chip and the scenario card are visible; the card's text disagrees.
-9. **`aria-live="polite"` on every chip → announce-storm** — `major`
-   (a11y) — every `<StateMachineChip>` in non-interactive mode is a
-   `<span role="status" aria-live="polite">`. `BriefsTab` mounts ~20
-   chips simultaneously; screen readers are configured to read each
-   live region on insertion. User hears every state label in turn on
-   list load.
-   *Repro:* VoiceOver on, navigate to `/ci?tab=decisions`; ~20 state
-   labels speak in sequence.
-10. **`ReasoningTraceDrawer` doesn't focus-trap or take focus** —
-    `major` (a11y) — pressing `t` opens the drawer but focus stays on
-    the toggle button. Screen-reader users get no announcement that a
-    dialog opened. Tab from the drawer escapes back to the workspace
-    behind it (no focus trap), defeating `aria-modal="true"`.
-    *Repro:* press `t`; Tab; focus moves to underlying back-button
-    rather than the drawer's close button.
-11. **No 401 → redirect; raw status leaks to UI** — `major` —
-    `expectJson()` throws `Error("401: <text>")`. AGENTS.md §7
-    explicitly mandates "401 → redirect to login". Currently a stale
-    session shows `"401: authentication required"` in the error card,
-    no recovery path.
-    *Repro:* expire `mz_auth_token` (delete from localStorage); reload
-    `/ci/decisions/:id`; raw 401 string is rendered.
+6. ~~**No `prefers-reduced-motion` honoring anywhere**~~ — `major`
+   (a11y) — ✅ closed Stage 6. Global
+   `@media (prefers-reduced-motion: reduce)` block in `index.css`
+   neutralizes animation/transition durations, suppresses transforms
+   on dialog/option/density-scoped trees, and dims skeleton loops.
+7. ~~**Save errors swallowed silently**~~ — `major` (UX/correctness) —
+   ✅ closed Stage 6. `BriefEditableField` and `OptionEditor` now
+   `try/catch` around `onSave`, render the error inline as
+   `role="alert"`, and keep the field/modal open so users can retry
+   without losing the draft.
+8. ~~**`SimulationPanel` lies in `simulation_complete`**~~ — `major`
+   (correctness) — ✅ closed Stage 6. State-aware copy: ran-states
+   render "Scenario complete — results UI ships in SPEC-032";
+   archive-states render "Scenario archived"; pre-run states keep
+   "No scenario run yet."
+9. ~~**`aria-live="polite"` on every chip → announce-storm**~~ —
+   `major` (a11y) — ✅ closed Stage 6. `<StateMachineChip>` accepts
+   an `announce` prop (default `false`) — list rows are silent;
+   `BriefPanel` flips `announce` on its single primary chip so the
+   workspace still announces state changes.
+10. ~~**`ReasoningTraceDrawer` doesn't focus-trap or take focus**~~ —
+    `major` (a11y) — ✅ closed Stage 6. On open we stash the previous
+    `activeElement`, focus the close button, trap Tab inside the
+    drawer (Shift+Tab from first → last; Tab from last → first), and
+    restore focus on close.
+11. ~~**No 401 → redirect; raw status leaks to UI**~~ — `major` —
+    ✅ closed Stage 6. `expectJson()` clears the stored token+role
+    and dispatches `mz:auth-expired` on 401; `App.tsx` listens and
+    `navigate('/?session=expired', { replace: true })`. Landing-page
+    banner for `?session=expired` is filed as a follow-up.
 12. **`ReasoningTraceDrawer` rolls its own drawer** — `major`
-    (anti-slop) — `frontend/src/components/ui/Drawer.tsx` already
-    exists with backdrop, esc-handling, slide-in-right animation, and
-    title/subtitle slots. `ReasoningTraceDrawer` reimplements all of
-    that inline. Anti-slop catalogue lists `Drawer` as a known
-    primitive.
-    *Repro:* `grep -n 'animation:.*slide-in-right' frontend/src` shows
-    both the primitive and our reimplementation.
-13. **"Primary / Dissent" picked by ordinal — semantically wrong** —
-    `major` (correctness) — `RecommendationPanel` sets
-    `primary = sortedOptions[0]` (lowest ordinal) and
-    `counter = sortedOptions[length-1]`. Ordinal is a creation-order
-    field, not a post-simulation rank. SPEC_023 §rank does not yet
-    expose a `rank` column, so we can't compute it correctly — but
-    rendering the lowest-ordinal option as "Primary" with the accent
-    chip falsely implies the simulation chose it.
-    *Repro:* create a brief with options A (ord 1, weak) and B (ord 2,
-    strong); UI labels A "Primary" regardless of any sim outcome.
+    (anti-slop) — **deferred to backlog** with reason: existing
+    `<Drawer>` primitive's title/subtitle/children API doesn't fit
+    timeline content; refactoring Drawer to a slot API first is the
+    cleaner path. Anti-slop, not UX. See AGENT_BACKLOG `[FRONTEND]
+    SPEC-030 deferred items` #12.
+13. ~~**"Primary / Dissent" picked by ordinal — semantically wrong**~~
+    — `major` (correctness) — ✅ closed Stage 6. Renamed labels to
+    "Top option" / "Counter option"; added an italic disclaimer
+    "Order reflects ordinal, not simulation rank. Ranking ships in
+    SPEC-032." Removes the false "Primary" claim until SPEC_023 grows
+    a rank column.
 
 ### Minor
 
@@ -761,3 +722,24 @@ Stage 5 closes once this section is appended and committed. Stage 6
 ALL backlog; items 14–25 (minors) and 26–30 (nits) are candidates for
 deferral via AGENT_BACKLOG; the Lighthouse run is itself a deploy-gate
 backlog item.
+
+### Stage 6 — FIX-ALL closed (2026-05-09)
+
+| Severity | Closed in Stage 6 | Deferred to backlog |
+|---|---|---|
+| Blocker | 1, 2, 3, 4, 5 (5/5) | — |
+| Major   | 6, 7, 8, 9, 10, 11, 13 (7/8) | 12 (Drawer reuse — anti-slop) |
+| Minor   | 14, 26 (also closed as a side-effect of #4 / #9) | 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 |
+| Nit     | 26, 27, 28, 29, 30 | 27, 28, 29, 30 |
+
+Regression tests added at
+`frontend/__tests__/ci/decisions/_stage6_regressions.test.tsx`
+(16 cases, one or more per fix). Final gate:
+`npx tsc --noEmit && npx vitest run` ⇒ **39 test files, 256 cases
+passing, 19 it.todo, zero failures, zero regressions** (was 240 at
+end of Stage 4 — net +16).
+
+Deferred items live under `[FRONTEND] SPEC-030 deferred items` in
+`docs/AGENT_BACKLOG.md` with one-line defensible reasons each.
+
+Stage 7 (DEPLOY) opens next.
