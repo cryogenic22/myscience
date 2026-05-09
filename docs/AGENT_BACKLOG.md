@@ -593,5 +593,7 @@ append-only; resolved entries stay for audit.
 | 038 | Search reskin | Frontend Claude | (planned) | reserved |
 | 039 | Catalog reskin | Frontend Claude | (planned) | reserved |
 | 040 | Auth surfaces | Frontend Claude | (planned) | reserved |
-| 041+ | (free — backend please claim from here) | — | — | available |
+| 041 | User Feedback Loop (in-app widget + autonomous triage) | Frontend Claude (cross-cutting) | `claude-fe/spec-041-feedback-loop` | in PR #35 (Stage 7 closed; pending merge) |
+| 042 | Centralized Product Backlog (consolidate four legacy backlogs) | Frontend Claude (docs) | `claude-fe/spec-042-product-backlog` | claimed 2026-05-09 |
+| 043+ | (free — either side may claim) | — | — | available |
 
