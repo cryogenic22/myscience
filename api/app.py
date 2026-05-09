@@ -106,6 +106,14 @@ except Exception as _e:
     logger.error("Failed to import llm_gateway router (SPEC_026): %s", _e)
     _LLM_GATEWAY_ROUTER_OK = False
 
+# SPEC_027 Source Registry router
+try:
+    from api.routes import sources as sources_route
+    _SOURCES_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import sources router (SPEC_027): %s", _e)
+    _SOURCES_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -205,6 +213,8 @@ def create_app() -> FastAPI:
         all_routers.append(decision_briefs_route.router)
     if _LLM_GATEWAY_ROUTER_OK:
         all_routers.append(llm_gateway_route.router)
+    if _SOURCES_ROUTER_OK:
+        all_routers.append(sources_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.

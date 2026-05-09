@@ -126,7 +126,10 @@ target state. Each is tagged for ownership.
 - Why: Today connectors are hard-coded; no learned weighting. Spec target:
   source weights influence materiality scoring + evidence ranking.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — `specs/SPEC_027_source_registry.md`,
+  migration 055, `services/source_registry.py`, `api/routes/sources.py`,
+  36 tests green. 5-dim scoring with documented weights + license-health
+  linear degradation. `predictive_accuracy` placeholder until SPEC-028.)
 
 ### [BACKEND] Evidence ledger — content-addressed claim provenance
 - Filed: 2026-05-09 by Claude (from spec §8.2)
