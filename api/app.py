@@ -98,6 +98,14 @@ except Exception as _e:
     logger.error("Failed to import decision_briefs router (SPEC_023): %s", _e)
     _DECISION_BRIEFS_ROUTER_OK = False
 
+# SPEC_026 LLM Gateway router (prompt registry + PII filter + cost summary)
+try:
+    from api.routes import llm_gateway as llm_gateway_route
+    _LLM_GATEWAY_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import llm_gateway router (SPEC_026): %s", _e)
+    _LLM_GATEWAY_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -195,6 +203,8 @@ def create_app() -> FastAPI:
             all_routers.append(inbox_route.insights_router)
     if _DECISION_BRIEFS_ROUTER_OK:
         all_routers.append(decision_briefs_route.router)
+    if _LLM_GATEWAY_ROUTER_OK:
+        all_routers.append(llm_gateway_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.

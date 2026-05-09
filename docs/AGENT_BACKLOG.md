@@ -183,7 +183,10 @@ target state. Each is tagged for ownership.
   "non-negotiable" for cost visibility, prompt versioning, provider
   portability, and PII safety.
 - Priority: medium
-- Status: open
+- Status: **done** (2026-05-09 — `specs/SPEC_026_llm_gateway.md`,
+  migration 054, `services/llm_gateway.py`, `api/routes/llm_gateway.py`,
+  46 tests green. Prompt registry + PII filter (email/SSN/phone/Luhn-CC) +
+  cost summary endpoint. Provider abstraction deferred to follow-up.)
 
 ### [BACKEND] Learning Service — source-weight + agent-strategy updates
 - Filed: 2026-05-09 by Claude (from spec §6.5.2)
