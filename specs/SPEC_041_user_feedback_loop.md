@@ -1,6 +1,6 @@
 # SPEC_041: User Feedback Loop — in-app widget + autonomous triage
 
-Status: **Stage 2 complete (DESIGN appended 2026-05-09); Stage 3 (TDD) opens**
+Status: **Stage 5 complete (RED-TEAM appended 2026-05-09); FIX-ALL opens next**
 
 ✓ Signed off by user 2026-05-09 (recommended defaults selected for Q1–Q4)
 Owner: Frontend Claude (cross-cutting — backend already shipped)
@@ -540,6 +540,150 @@ Self-review passes. **Stage 3 (TDD) opens.**
   + the codebase-side tracker).
 - E2E test against a real Postgres — backend tests already cover
   CRUD; frontend tests use `vi.stubGlobal('fetch', ...)`.
+
+## 13a. Red-team (Stage 5 — completed 2026-05-09)
+
+Adversarial review of the diff `main..claude-fe/spec-041-feedback-loop`
+(commits cca77be → 626bdbf). Reviewer pretended not to have written
+the spec.
+
+### Blockers
+
+None.
+
+### Major
+
+1. **Diagnostic auto-attach has no PII filter** — `major`
+   (privacy/security) — `collectDiagnostics()` ships every captured
+   `console.error` message + every failed-fetch URL/body verbatim.
+   A user reporting a UI bug while logged into a customer account
+   could leak email, customer IDs, signed URLs, query parameters
+   like `?api_key=…`, or stack traces with PII inside.
+   *Mitigation needed:* a denylist of URL patterns (`?token=`,
+   `?api_key=`, `Authorization` mentions) + a body truncation that
+   strips obvious secrets.
+2. **No focus trap inside the open feedback widget** — `major`
+   (a11y) — Tab from "Submit feedback" inside the dialog escapes to
+   the underlying `/ci` page (focus reaches background buttons).
+   `aria-modal="true"` is set but not enforced. Screen-reader users
+   with keyboard-only navigation lose track of the dialog boundary.
+3. **Esc closes widget mid-typing → user's draft is lost** — `major`
+   (UX) — pressing Escape while a 200-character bug description is
+   half-written discards the draft. The widget reopens at greeting,
+   not at the in-progress state. Two paths forward: (a) confirm-
+   before-close when there's unsaved input, or (b) preserve draft in
+   sessionStorage and restore on next open.
+4. **No DELETE endpoint for mistakenly-submitted feedback** — `major`
+   (privacy) — backend exposes POST/GET/PATCH but no DELETE. A user
+   who pastes a screenshot containing PII has no path to retract.
+   GDPR / customer trust concern. Mitigation needed: backend
+   `DELETE /feedback/{id}` (or PATCH-to-archived); admin-only.
+
+### Minor
+
+5. **Console.error wrap captures dev-mode noise** — `minor` —
+   React StrictMode warnings, third-party deprecations, jsdom
+   warnings all land in the buffer. By submit time the most relevant
+   error may already have been evicted by 50 React internal noise
+   entries. Consider filtering by message-pattern or by stack-trace
+   originating in our own code.
+6. **Hover state mutates DOM imperatively** — `minor` — `FeedbackButton`
+   uses `onMouseEnter` / `onMouseLeave` to set `boxShadow` /
+   `transform` directly. Fine functionally but bypasses React's
+   render path; CSS `:hover` would be cleaner.
+7. **No focus-ring polish on the pill** — `minor` (a11y) — relies on
+   the browser's default focus outline. Should match SPEC_022 focus
+   token (`box-shadow: 0 0 0 3px rgba(28,110,247,0.15)`).
+8. **No idempotency key on submit** — `minor` — if the network
+   responds slowly and the user double-clicks "Submit feedback",
+   two identical entries land. The widget disables the button via
+   `busy` state but only after the first click has dispatched. Add a
+   client-side id + retry semantics.
+9. **No drag-and-drop attachment path** — `minor` — only paste +
+   click-to-pick are wired. Scriptiva's reference implementation
+   supports drag-drop. Backlog item.
+10. **No size cap on description text** — `minor` — a user can paste
+    a 500 KB stack trace. Backend accepts arbitrary JSONB text. Cap
+    at 10 KB client-side (with a "Trim" button) and 64 KB server-side.
+11. **`mz_feedback_disabled` only respected by the pill, not the
+    widget** — `minor` (consistency) — anyone who manually fires
+    `window.dispatchEvent(new CustomEvent('mz:open-feedback'))` (e.g.
+    from an ErrorBoundary CTA) would open the widget regardless of
+    the disable flag. Both should check.
+12. **Category and priority pickers are mouse-only** — `minor` (a11y)
+    — no `1`–`6` shortcut for category, no `←`/`→` for priority. §6
+    promised these as v2; they're not in v1.
+13. **Q4 placement assumption needs visual verification** — `minor` —
+    pill bottom-LEFT on `/workspace` was chosen on the assumption
+    that the chat send-button is bottom-right. Stage 7 must include
+    a screenshot confirming.
+14. **No client-side payload size cap** — `minor` — 5 attachments at
+    2 MB each = 10 MB JSONB blob. Backend has no guard. Network
+    bandwidth + parse cost + storage. Cap at 5 MB total client-side.
+15. **`sync.sh` requires bash** — `minor` (portability) — Windows
+    operators need WSL or Git Bash. Document in
+    `feedback/README.md` (already mentioned).
+16. **`python` vs `python3` portability** — `minor` — `sync.sh`
+    pipes to `python -c …`. On many Linux distros that's
+    Python 2 (deprecated). Use `python3` explicitly or detect.
+17. **`git log -30` in `/triage-feedback` may miss older fixes** —
+    `minor` — a deep repo with hundreds of unrelated commits could
+    bury a relevant earlier fix. Increase to `-200` or use
+    `--all --since=6mo`.
+18. **Human-mode `/process-feedback` has no rate cap** — `minor` —
+    cron-mode caps at 5 items per tick; human-mode loops until the
+    queue is empty. A 50-item backlog ticked all at once is a lot
+    of code to review.
+19. **Modal pattern rolled separately for the 4th time** — `minor`
+    (anti-slop) — `NewBriefDialog`, `KeyboardHintDialog`,
+    `OptionEditor`, and now `FeedbackWidget`'s panel all reimplement
+    backdrop + centered card + esc-to-close. SPEC-030 backlog #16
+    already calls for a shared `<Modal>` primitive; this loop adds
+    a 4th caller without consolidating.
+
+### Nits
+
+20. **`origError.apply(console, args as [])` type cast** — `nit` —
+    `unknown[]` cast to `[]`; cosmetic.
+21. **`fileToDataUri` not shared with Scriptiva-style other future
+    use cases** — `nit` (anti-slop, premature abstraction).
+22. **Chat state literals are stringly-typed** — `nit` — TypeScript
+    string literal union is fine; no real bug.
+23. **Errors before App mount aren't captured** — `nit` — already
+    acknowledged in `it.todo` of `diagnostics.test.ts:128`.
+24. **3 pre-existing parallel-mode test flakes** — `nit` (env) —
+    `__tests__/primitives/{DisagreementPanel,EvidenceAffordance}` and
+    `src/components/__tests__/GraphContextMenu` flake under
+    `npx vitest run` parallel mode (timing issue near 5s timeouts).
+    All pass under `--no-file-parallelism`. Pre-existing; not
+    introduced by SPEC-041. Filed as backlog `[FRONTEND] vitest
+    parallel-mode flakes`.
+
+### Decisions taken — not bugs
+
+- **Public-write `POST /feedback`** — Q3 sign-off; zero-friction
+  reports beat anonymous-spam risk.
+- **Pill bottom-LEFT on `/workspace`** — Q4 sign-off; needs visual
+  verification (#13).
+- **Cron auto-fix gate `bug + S + no protected labels`** — Q2 sign-off.
+  Conservative on purpose.
+- **6 categories** (`bug`, `issue`, `enhancement`, `feature`,
+  `data_quality`, `data_request`) — backend enforces; matches user's
+  pre-existing memory note.
+- **No "my feedback" page** — Q3 sign-off (option 1 selected).
+- **Diagnostics auto-attach (always-on)** — no opt-out toggle in v1
+  per spec §5; the PII filter (M1) is the mitigation.
+- **Cron commits one item per `chore(feedback-cron):` commit** —
+  audit + revert friendliness explicitly chosen over batching.
+- **Reset of diagnostic wrap is wrap-identity-aware** — preserves
+  test-side `vi.stubGlobal('fetch', mock)` calls; not a bug.
+
+### Stage 5 gate
+
+Stage 5 closes once this section is committed. Stage 6 (FIX-ALL)
+opens. M1–M4 (4 majors) must close before Stage 7 — those are the
+FIX-ALL backlog. Minors + nits are candidates for deferral via
+`docs/AGENT_BACKLOG.md`.
 
 ## 14. Acceptance for Stage 1
 
