@@ -1,543 +1,249 @@
+No. It's marginally better in one dimension (brand name resolved to semaglutide) and still broken in every other dimension that matters. Let me be specific about what's wrong.
 
-MARKET ZERO
-Sprint Plan & Technical Assessment
-Next 3 Sprints: From Infrastructure to Intelligence Experience
+**Ozempic is already approved.** FDA approved it in December 2017. A response that says "heavily weighted towards late-stage development, indicating a focus on advancing towards regulatory approval" about a drug that has been on the market for nearly nine years is factually wrong in a way that would destroy credibility with any pharma professional. The system doesn't surface the most basic fact about this entity — its regulatory status.
 
-Architecture Review — 5 April 2026
-CONFIDENTIAL
- 
-1. Where We Stand Today
-After 40 commits, the codebase has grown to 145 source files, 1,078 backend tests, 29 database migrations, and a React 19.2 frontend with 50+ components. The session delivered genuine value across Entity Library redesign, Concept Registry integration, scorer tightening, data pipeline fixes, and the Agent Harness architecture. However, three structural gaps remain that will limit the platform’s trajectory if not addressed in the next cycle.
-1.1 Scorecard
-Area	Status	Quality	Gap
-Entity Library redesign	Shipped	Solid	No frontend tests
-Agent Harness (7 components)	Shipped	Excellent	Not wired into production
-Concept Registry (15 concepts)	Shipped	Solid	In-memory only, no DB
-Scorer tightening	Shipped	Solid	Need adversarial queries
-FAIR Scorer	Shipped	Good	Integrated via DI
-CTX value report	Shipped	Good	Requires telemetry data
-Insight Engine (3 signals)	Shipped	Good	No UI integration
-Entity Agents (4 types)	Shipped	Good	Not harness-managed
-Benchmark v3	Live	Honest	81.6% — dossier needs work
-Data pipeline fixes	Shipped	Solid	NADAC API deprecated
-Frontend tests	Missing	—	0 tests on 50+ components
-Graph consolidation	Needed	—	4 overlapping components
+**"Single Phase 4 trial and no active trials in earlier phases" is a data completeness artefact presented as a finding.** Semaglutide has 300+ trials on ClinicalTrials.gov across every phase. Your database has captured one Phase 4 trial. The response treats that as the complete picture rather than flagging that it's seeing a sliver of reality. This is exactly failure mode F4 from the lead review — building confident conclusions on top of sparse retrieval.
 
-1.2 The Three Structural Gaps
-Gap 1 — The Harness is shelf-ware. The session’s largest investment (7 components, 102 tests, migration 029) is never called in production. Chat handlers invoke LangGraph directly. DataSteward runs independently. No DI registration exists. Every week this sits unintegrated makes it harder to justify.
+**"Semaglutide Auto-Injector" is a formulation, not the drug.** The entity resolution landed on a specific dosage form rather than the canonical molecule. A pharma user asking about Ozempic's pipeline wants the full semaglutide development programme across all formulations (Ozempic injectable, Rybelsus oral, Wegovy for obesity), not a single auto-injector SKU. The canonicalisation resolved one layer (brand → generic) but missed the next layer (formulation → molecule).
 
-Gap 2 — Zero frontend test coverage. 50+ React components, several over 1,000 lines, with no Vitest/RTL tests despite the project’s own testing guide mandating them. A single regression in DataCatalogPanel (1,484 lines) or ChatMessage (906 lines) would ship to production uncaught.
+**"Pipeline score of 4" is the raw phase weight, not a meaningful score.** Looking at your `drug_pipeline_strength()` formula, Phase 4 carries a weight of 1.0 (not 4.0 — that's Phase 3). A single Phase 4 trial should produce a pipeline score of 1.0, not 4. If the response says 4, either the scoring formula is being misapplied or the LLM invented the number. Either way, it's ungrounded.
 
-Gap 3 — The UX is five tools in tabs, not one intelligence platform. Chat, Search, Graph, Feed, and Entity Library operate independently. Entity mentions in chat don’t link to graph context. Graph insights don’t feed back into chat. The knowledge graph—Market Zero’s core differentiator—is hidden behind a tab most users never click.
+**"Typical benchmark for later phases remains around 60%" is a hallucinated statistic.** That number doesn't come from your database, your materialised views, or your evidence retrieval. The LLM generated a plausible-sounding industry figure because the system prompt doesn't constrain it to only cite retrieved data. This is precisely the kind of invented confidence that the lead review flagged.
 
-2. Sprint 1: Wire, Test, Stabilise (2 Weeks)
-This sprint closes the infrastructure gaps from the last session. No new features. Every item here is about making what we built actually work in production and protecting it with tests.
-2.1 Wire the Agent Harness
-The harness needs three integration points to become production infrastructure rather than shelf-ware.
-Task 1A: Add DI Registration
-Add get_harness() to api/deps.py following the existing pattern (db+config constructor, @lru_cache). This is the entry point for all production usage.
-Task 1B: Register Tool Executors
-The ToolRegistry has 13 tool metadata declarations but zero executors. Register executor functions that delegate to existing services: sql_query delegates to QueryEngine, rag_search to HybridSearch, metrics_query to PharmaMetrics, steward_curate to DataSteward. The executor functions are thin wrappers—the logic already exists.
-Task 1C: Route DataSteward Through Harness
-Replace the direct DataSteward.run_loop() call in api/app.py’s background loop with harness.run(agent_type="data_steward", steps=[...]). This gives us session tracking, event logging, permission enforcement, and checkpoint recovery for the steward’s 2-hour autonomous cycle. The steward’s existing logic stays untouched—the harness wraps it.
-Task 1D: Route LangGraph Agents Through Harness
-In services/chat_handlers/handlers.py, replace direct get_query_graph().invoke() calls with harness.run(agent_type="query", steps=[...]). This activates the permission engine for chat queries and writes to agent_events so we have observability over what the LLM is doing.
-Acceptance Criteria
-•	agent_sessions and agent_events tables populated after a chat query
-•	DataSteward background loop creates session records with checkpoints
-•	GET /agent/events returns real production events, not empty arrays
-•	All 1,078 existing tests still pass
-2.2 Add Frontend Test Infrastructure
-Task 2A: Vitest + RTL Setup
-Install Vitest, @testing-library/react, and jsdom. Configure vitest.config.ts for the existing Vite + Tailwind + React 19 stack. Add a test script to package.json.
-Task 2B: Tests for Critical Components
-Write tests for the 5 highest-risk components based on line count and user impact:
-1.	ChatMessage.tsx (906 lines) — test citation rendering, entity highlighting, chart embedding, error states
-2.	DataCatalogPanel.tsx (1,484 lines) — test entity type filtering, FAIR bar rendering, profile drawer opening
-3.	EntityProfileCard.tsx (751 lines) — test FAIR score display, connection rendering, loading/error states
-4.	SearchResults.tsx (617 lines) — test result rendering, filter interactions, empty states
-5.	KnowledgeGraph.tsx (774 lines) — test node rendering, zoom/pan interactions, tooltip display
-Acceptance Criteria
-•	vitest --run passes with ≥15 frontend test cases
-•	Test coverage reported for the 5 critical components
-•	CI can run frontend + backend tests in parallel
-2.3 Global Error Boundary
-Add a top-level ErrorBoundary component in App.tsx that catches unhandled exceptions, shows a user-friendly fallback (“Something went wrong. Refresh to continue.”), and logs the error to /feedback endpoint for tracking. This is a 2-hour task with outsized production impact—currently a single component crash kills the entire application.
-2.4 Graph Component Consolidation
-Merge GraphMini.tsx and ModernGraph.tsx into KnowledgeGraph.tsx with a mode prop (compact | full | explorer). Remove the two deprecated components. Update all import sites (EntityPreview, CanvasPanel, SearchResults). This eliminates 900+ lines of duplicate canvas-rendering code and establishes a single graph renderer the team can invest in.
-2.5 Dossier Score to 85%
-Dossier is at 70.3%—the weakest of the core intents. The lead notes correctly identify few-shot examples as the fix. Add 5–8 exemplar dossier responses to the system prompt in handle_dossier(), covering: drug dossier with citations, company dossier with portfolio metrics, mechanism dossier with competitive context. Re-run benchmark targeting ≥85% dossier score. Also add 3 adversarial dossier queries to the golden dataset that test for hallucinated numbers.
- 
-3. Sprint 2: Intelligence Experience (2 Weeks)
-With the infrastructure stable and tested, this sprint focuses on the UX gap: making graph-based insights visible on every surface rather than hidden behind a tab.
-3.1 Entity Mention Popovers in Chat
-When the user hovers over a highlighted entity name in a chat response (drug: blue, company: amber, mechanism: violet), show a compact popover card with: entity type icon, FAIR score bar, top 3 connections with link types, and a “View Profile” action. This brings graph context into the reading flow. Implementation: extend EntityMention.tsx with a delayed hover trigger that fetches /graph/summary/{type}/{id} and renders a positioned popover. Use Framer Motion for smooth enter/exit.
-3.2 Evidence Provenance Chips
-Replace bare [1] [2] citation markers in NarrativeMessage.tsx with clickable chips showing the source type icon (PubMed beaker, ClinicalTrials.gov shield, FDA flag) and a confidence dot (green/amber/red based on source tier). Clicking a chip expands the evidence card inline beneath the paragraph. This makes trust visible without requiring users to scroll to a separate evidence section.
-3.3 Chat ↔ Graph Bidirectional Handoff
-Two complementary features that connect the chat and graph experiences:
-•	Chat → Graph: After each response that mentions entities, show a “View in Graph” button. Clicking it opens GraphExplorer pre-seeded with those entities at 1-hop expansion.
-•	Graph → Chat: Right-clicking a graph node offers “Ask about this”, “Compare with...”, and “Generate dossier”. These inject pre-formed questions into the chat input. The user sees the question and can edit before sending.
-3.4 Inline Mini-Graph in Responses
-For landscape, compare, and pipeline intent responses, embed a compact (300×200px) KnowledgeGraph directly in the chat message body. The graph shows the entities discussed and their relationships as a visual summary of the answer. Use KnowledgeGraph in compact mode (no controls, fixed layout, click-to-expand). This is the single highest-impact UX change—it makes the knowledge graph visible without requiring users to navigate away from chat.
-3.5 Search Graph View Mode
-Add a fourth view mode button (list | grid | detail | graph) to SearchResults.tsx. In graph mode, search results render as a force-directed graph where nodes are results (sized by influence, coloured by entity type) and edges show relationships between them. Users can see at a glance how their search results connect—which is the core value proposition of a knowledge graph platform. Uses KnowledgeGraph in full mode with the search result entities as seed nodes.
-3.6 Entity Activity Feed
-Add a “Recent Activity” section to EntityProfileCard.tsx showing the last 10 events for that entity: new trials, articles, safety signals, phase changes, steward actions. Source from the intelligence_events table via a new /catalog/entity-events/{type}/{id} endpoint. This transforms entity profiles from static data sheets into living intelligence cards.
-Sprint 2 Acceptance Criteria
-•	Entity hover popovers render within 200ms on cached data
-•	Citation chips show correct source type icons for PubMed, ClinicalTrials.gov, and FDA sources
-•	Chat-to-Graph button opens GraphExplorer with correct pre-seeded entities
-•	Graph right-click menu correctly injects questions into chat input
-•	Inline mini-graphs render for landscape/compare/pipeline responses
-•	Search graph view shows entity relationships between results
-•	Entity profiles show real activity events with timestamps
- 
-4. Sprint 3: Data Quality & Proactive Intelligence (2 Weeks)
-This sprint focuses on two themes: making the data better and making the system proactively surface insights rather than waiting for users to ask.
-4.1 Concept Registry Database Backing
-The Concept Registry is currently 15 hardcoded concepts loaded in-memory. Move to database-backed storage with migration 030 creating a concepts table (id, name, description, computation_path, intents, entity_types, staleness_days, weight, active, created_at, updated_at). Modify ConceptRegistry to load from DB with in-memory cache and cache invalidation on write. This enables: adding concepts without deploys, A/B testing concept weights, tracking which concepts get activated most, and preparing for the feedback loop where query patterns adjust concept weights.
-4.2 Feedback Loop: Query Patterns → Concept Weights
-The query_telemetry table already captures every question, detected intent, and response quality. Build a scheduled job (hourly) that analyses the last 7 days of telemetry to identify: which concepts are activated most frequently, which concept activations correlate with high benchmark scores, and which intents have declining quality. Output: adjusted concept weights written to the concepts table. This is the first real feedback loop in the semantic layer vision—the system learns which analytical primitives are most valuable from actual usage.
-4.3 Proactive Intelligence Feed
-The InsightEngine (services/insight_engine.py) detects 3 signal types but the IntelligenceFeed component (151 lines) only renders them as a flat list. Upgrade to contextualised, actionable cards:
-1.	Graph-enriched cards: each feed item includes a mini-graph showing the affected entity’s neighbourhood, so users see context without navigating away
-2.	Impact indicators: wire InsightEngine’s severity scoring into visual pulses (critical=red pulse, high=amber, medium=blue)
-3.	Actionable buttons: “View affected landscape”, “Compare before/after”, “Ask AI” on every card
-4.	Digest mode: group related signals (e.g. 3 new trials for GLP-1 drugs) into a single summary card with expandable details
-4.4 Temporal Graph Layer
-Add a timeline slider to GraphExplorer that filters edges by date. Users scrub through time to see how the competitive landscape evolved: which drugs entered clinical trials, which companies made acquisitions, which mechanisms gained traction. Edges fade in/out based on their created_at timestamp. This transforms the graph from a static snapshot into a time-series visualisation of the pharma landscape. Requires: created_at on entity_links (already present), a date range filter parameter on /graph/traverse, and a slider UI component.
-4.5 Scenario Primitives
-Wire the existing ScenarioEngine into the graph UI. A “What if” toggle in GraphExplorer lets users remove an entity and see the graph recalculate: pipeline scores, competitive positions, market concentration (HHI). Removed entities render as dashed outlines with their former connections shown as dotted lines. This is the first step towards the decision digital twin vision—deterministic graph operations for “what if Drug X is withdrawn” reasoning without requiring causal modelling.
-4.6 Benchmark CI Integration
-Wire eval_runner.py --offline into the CI pipeline. On every push to main: capture responses from the staging environment, score with the honest scorers, fail the build if composite drops below 75%, and publish the report as a CI artefact. Add per-dimension regression alerts: if any single dimension drops more than 8 percentage points from the previous run, flag it even if the composite is stable. This prevents the scenario where one dimension silently degrades while others compensate.
-Sprint 3 Acceptance Criteria
-•	Concept Registry loads from DB with < 50ms cache hit
-•	Feedback job adjusts at least 1 concept weight after 7 days of telemetry
-•	Feed cards show mini-graphs for ≥80% of critical/high severity events
-•	Timeline slider correctly filters edges by date range with smooth animation
-•	Scenario removal recalculates pipeline scores within 2 seconds
-•	CI benchmark gate rejects a PR that drops composite below 75%
- 
-5. Data Quality Priorities Across All Sprints
-Data quality improvements should run in parallel with feature work. These are not sprint-specific—they’re continuous improvements that compound over time.
-5.1 NADAC Pricing Connector Recovery
-The NADAC API returned 404 (CMS migrated platforms). Investigate the new CMS Drug Spending Dashboard API or the NADAC data files published on data.cms.gov. The drug_pricing table and migration 022 are ready—only the connector needs updating. Until resolved, the Price Agent has no data source.
-5.2 Open Targets Target Associations
-Drug search works but target associations need a GraphQL query fix. This blocks molecular-level competitive analysis (which drugs target the same proteins). Fix the query and add 5 golden queries testing mechanism-level comparisons.
-5.3 Entity Resolution Monitoring
-The unresolved_entities queue needs a dashboard metric exposed through the FAIR scorer’s resolution rate dimension. Currently resolution failures are silent—the steward curates but there’s no alert when the queue grows beyond a threshold. Add: a /metrics/unresolved-count endpoint, an InsightEngine signal for unresolved queue > 50, and a feed card that surfaces it.
-5.4 Evidence Freshness
-The FAIR scorer computes freshness as “% records updated within 30 days.” For a pharma intelligence platform, 30 days is too generous. Differentiate by entity type: clinical trials should be stale after 7 days, PubMed articles after 14 days, company data after 30 days, drug master data after 60 days. Adjust the FAIR scorer’s freshness dimension to use entity-type-specific thresholds.
-5.5 Materialised View Refresh Telemetry
-The competitive_landscape fallback fires when MVs return ≤2 rows. Track fallback frequency: add a counter to the CTX telemetry or a dedicated mv_fallback_events table. If fallback fires on >20% of landscape queries, the MV refresh schedule needs attention. The new /metrics/refresh-views-with-timestamp endpoint helps but doesn’t track individual method fallbacks.
- 
-6. Benchmark Targets
-Intent	Current	Sprint 1	Sprint 2	Sprint 3
-Overall	81.6%	≥83%	≥86%	≥90%
-Dossier	70.3%	≥85%	≥88%	≥90%
-Landscape	79.5%	≥80%	≥85%	≥90%
-Compare	100%	100%	100%	100%
-Portfolio	100%	100%	100%	100%
-Pipeline	~80%	≥82%	≥85%	≥88%
-Structured Query	100%	100%	100%	100%
-General	~85%	≥85%	≥88%	≥90%
+**No provenance whatsoever.** Which Phase 4 trial? What's the NCT ID? Who's the sponsor? What's the primary endpoint? When did it start? A response about a drug's pipeline that doesn't name a single trial is useless for decision-making.
 
-The 100% scores on Compare, Portfolio, and Structured Query should be treated with scepticism until adversarial queries are added for those intents. When adversarial queries are introduced, expect a 5–10 point drop—this is healthy and honest.
-7. Test Coverage Targets
-Area	Current	Sprint 1	Sprint 2	Sprint 3
-Backend tests	1,078	1,120+	1,180+	1,250+
-Frontend tests	0	15+	40+	80+
-Golden queries	57	65+	70+	80+
-Adversarial queries	7	15+	20+	25+
+---
 
-8. Risk Register
-Risk	Severity	Impact	Mitigation
-Harness stays unwired	High	40% of session effort wasted	Sprint 1 priority 1
-Frontend regression	High	No tests catch breaking changes	Sprint 1 Vitest setup
-NADAC API permanent loss	Medium	Pricing feature has no US data	Investigate CMS alternatives
-Graph perf at scale	Medium	Custom canvas chokes on 500+ nodes	Evaluate d3-force adoption
-Benchmark score inflation	Medium	100% intents mask weak scorers	Add adversarial queries
-CTX integration deferred too long	Low	Hydrator/ContextGuard not wired	Sprint 3 backlog item
+Here's what a good response to "Show pipeline for Ozempic" would actually look like:
 
-9. Summary
-The team delivered a strong session with genuine engineering quality across 40 commits. The Concept Registry, scorer tightening, Entity Library redesign, FAIR scorer integration, and CTX telemetry are all solid, production-integrated work. The benchmark’s honest trajectory (86.9% → 75.6% → 81.6%) reflects a team that values measurement over optics.
-The next three sprints follow a deliberate sequence: Sprint 1 stabilises the infrastructure by wiring the harness, adding tests, and consolidating graph components. Sprint 2 transforms the UX from five separate tools into one connected intelligence experience by weaving graph context into every surface. Sprint 3 invests in data quality and proactive intelligence—feedback loops, temporal graphs, and scenario reasoning.
-The north star is clear: Market Zero should feel like LinkedIn for pharma intelligence—a platform where every interaction reveals one more layer of the knowledge graph, where relationships are discovered naturally, and where the system proactively surfaces insights before users think to ask. The foundation is solid. The next 6 weeks determine whether it becomes a product.
+> **Semaglutide (marketed as Ozempic, Wegovy, Rybelsus)**
+>
+> Semaglutide is an approved GLP-1 receptor agonist, first approved by the FDA in December 2017 for type 2 diabetes (Ozempic) and subsequently for chronic weight management (Wegovy, 2021) and oral administration (Rybelsus, 2019).
+>
+> **Our database contains 8 trials for semaglutide**, including 3 in Phase 3 and 1 in Phase 4. Note: ClinicalTrials.gov lists approximately 320 trials for semaglutide — our coverage is approximately 2.5%. The data below may not reflect the full development programme.
+>
+> **Active Phase 3 trials:**
+> - NCT04816643 — BARI-STEP: Weight loss after bariatric surgery (double-blind, placebo-controlled)
+> - NCT05123456 — Obesity in adults (multicentre, open-label)
+> - NCT05234567 — Add-on to metformin in T2DM (vs placebo and liraglutide)
+>
+> **Phase 4:**
+> - NCT06345678 — Real-world efficacy in severe obesity (SEMASEARCH)
+>
+> Pipeline score: 13.0 (3 × Phase 3 weight 4.0 + 1 × Phase 4 weight 1.0)
+>
+> *Sources: ClinicalTrials.gov (last refreshed: 12 April 2026), FDA Orange Book*
 
+Notice what's different: it states regulatory status upfront, names specific trials with NCT IDs, quantifies data coverage, explains the pipeline score computation, and cites sources. Every claim is traceable. The response acknowledges what it doesn't know instead of editorialising around the gaps.
 
+That gap between what your system produced and what it should produce is exactly what the seven workstreams in the remediation spec address — canonicalisation at the molecule level (not formulation), coverage diagnostics, numeric grounding, provenance, and the constraint that the LLM may only state what the data supports.
 
-MARKET ZERO
-Intelligence Layer Deep Analysis
-How Questions Become Answers: From Intent to Insight
+I'll be direct: the 15 public sources are not a moat. The knowledge graph built on top of them could be, but isn't yet.
 
-Architecture Review — 5 April 2026
-CONFIDENTIAL
- 
-1. Executive Summary
-This document traces exactly how Market Zero transforms a user’s question into an intelligence response—from the first regex match in intent detection through to the final citation-validated narrative. The analysis identifies where the pipeline is strong, where it leaks quality, and what must change to make the intelligence layer genuinely trustworthy for pharma decision-making.
-Core Finding: The pipeline’s deterministic data assembly (SQL → graph → metrics → materialised views) is excellent. The weakness is at the two boundaries: question interpretation (regex-driven, brittle on compound/ambiguous queries) and answer generation (post-hoc hallucination detection rather than pre-generation grounding). The data layer is approximately 70% AI-ready—good graph structure and MV coverage, but sparse embeddings and flat confidence scoring limit retrieval quality.
+---
 
-2. Question Interpretation: How Intent Is Determined
-2.1 The Current Pipeline
-Intent detection is a regex cascade in intent.py with fixed priority ordering. The system evaluates each question against pattern groups in sequence: title guard → compare → landscape → portfolio → pipeline → structured query → dossier → bare entity → general. The first match wins. Entity extraction happens inside each regex group via capture groups.
-2.2 What Works
-•	Compare detection is robust with 4 independent patterns covering “vs”, “versus”, “differences between”, “stack up against”, and “which X or Y”
-•	Title guard prevents academic paper titles (containing “vs”) from false-triggering compare
-•	Landscape topic extraction has 3 fallback strategies (direct match, prefix match, filler strip)
-•	Compound intent detection splits on “and also” / “plus” / “then” and evaluates each clause independently
-•	Bare entity fallback catches 1–4 word queries without question markers (e.g. “semaglutide” alone routes to dossier)
-2.3 What’s Broken
-Problem 1: Regex Intent Is Brittle on Real-World Queries
-The patterns assume clean, well-formed queries. Real pharma analysts ask questions like “What’s happening with GLP-1s in obesity and how does Novo’s pipeline compare to Lilly’s?” This is a compound query crossing landscape + compare + portfolio intents. The compound detector caps at 2 intents and can’t handle nested references (“Novo’s pipeline” requires entity resolution before intent classification).
-Problem 2: Topic Extraction Loses Context
-When a landscape query says “Show me the obesity market segments,” the topic extractor produces “obesity”. But this strips the signal that the user wants market segmentation, not just a list of obesity drugs. The topic string is then passed to competitive_landscape() as a plain ILIKE filter—the nuance of “segments” vs “drugs” vs “companies” is lost entirely.
-Problem 3: No Confidence Signal on Intent Match
-The intent detector returns a hard classification with no confidence score. A query like “Tell me about semaglutide and tirzepatide” could be dossier (multi-entity) or compare. The system picks one with no signal to the downstream handler about ambiguity. The handler can’t hedge its response or ask for clarification.
-Problem 4: Coreference Resolution Is String-Based
-Follow-up resolution in context.py replaces pronouns (“this drug”, “their pipeline”) with the last mentioned topic—extracted from bold markers in the prior response. This is fragile: if the prior response mentions semaglutide in paragraph 1 and tirzepatide in paragraph 3, “this drug” resolves to whichever appeared first in bold, not whichever was the focus of the user’s interest.
-2.4 Recommendations
-1.	Add an intent confidence score (0–1.0) based on pattern specificity. Multi-pattern matches (e.g. compare has 4 patterns and the query matches 3 of them) should score higher than single-pattern matches.
-2.	Replace bare-string topic extraction with structured topic objects: {topic: “obesity”, query_type: “segmentation”, entities_mentioned: [“Novo Nordisk”, “Eli Lilly”]}. This preserves the user’s analytical framing.
-3.	For ambiguous queries (E09: “Tell me about semaglutide and tirzepatide”), detect multi-entity dossier vs compare using a lightweight heuristic: if both entities share the same type and no comparative language exists, default to compare but flag ambiguity.
-4.	Move coreference resolution from string extraction to entity ID tracking. The conversation memory already maintains _entity_counts—use the most-discussed entity ID rather than the first bold match.
- 
-3. Data Retrieval: How Evidence Is Assembled
-3.1 The Three-Source Architecture
-Every handler assembles evidence from three independent sources before the LLM sees anything: hybrid search (vector + keyword), graph traversal (SQL CTEs over entity_links), and materialised view metrics (pre-computed KPIs). This deterministic-first design is the pipeline’s greatest strength—it means the LLM receives only verified, database-sourced facts.
-3.2 Hybrid Search Assessment
-Model: OpenAI text-embedding-3-small (1536 dimensions). Scoring: cosine similarity via pgvector’s <=> operator, multiplied by a recency score (1.0 for <30 days, declining to 0.2 for >1 year). Results ranked by combined score.
-Strength: Record-Status Filtering
-Search excludes merged and excluded records, ensuring only golden-record entities appear in results. This prevents hallucination from duplicate or retired entities.
-Weakness: Sparse Embedding Coverage
-Vector columns exist on 10 tables, but population is unverified for most. knowledge_chunks and therapeutic_areas (MeSH scope notes) are likely populated. But drug molecule_embeddings, trial protocol_embeddings, and company strategy_embeddings may be sparse or empty—which means vector search silently returns no results for those entity types, falling back to keyword-only matching with no signal to the user.
-Weakness: Recency Bias Suppresses Foundational Evidence
-The recency multiplier (similarity × recency_score) means a landmark Phase 3 trial paper from 2023 with 0.95 similarity gets scored 0.38 (0.95 × 0.4), while a minor 2026 blog post with 0.60 similarity scores 0.60 (0.60 × 1.0). For pharma intelligence, foundational evidence should not be penalised by age. Recommendation: apply recency only to news/events, not to trial or literature evidence.
-3.3 Graph Traversal Assessment
-Graph traversal uses a stored procedure (traverse_graph) with recursive CTEs supporting 1–4 hop expansion. Path finding uses a separate BFS CTE with cycle prevention (path array exclusion) capped at 6 hops.
-Strength: Link Type Semantics
-The entity_links table carries 11+ relationship types (OWNS, SPONSORS, INVESTIGATES, TARGETS_MECHANISM, IN_THERAPEUTIC_AREA, EVIDENCE_FOR, COMPETES_WITH, etc.) with provenance tracking per link. This enables meaningful traversal: “which companies sponsor trials for drugs that target GLP-1 receptors?” resolves via SPONSORS → INVESTIGATES → TARGETS_MECHANISM.
-Weakness: Flat Confidence Scoring
-All entity_links default to confidence=1.0 regardless of discovery method. A link created by exact_id match (FDA Orange Book confirms Company X owns Drug Y) has the same confidence as one created by LLM extraction from a news article. The graph traversal applies no confidence-weighted filtering—all edges are treated as equally reliable. This means an LLM-extracted “COMPETES_WITH” link (potentially spurious) ranks equally with an FDA-confirmed “OWNS” link.
-Weakness: Truncation Is Silent
-When traversal hits the max_nodes cap (default 100), results are silently truncated. detect_truncation() exists but is informational only—the LLM receives a partial graph with no signal that critical connections may be missing. For high-connectivity entities like semaglutide (potentially hundreds of connections), this means the LLM synthesises from an incomplete picture.
-3.4 Materialised View Assessment
-Five MVs cover the core pharma KPI space: pipeline strength (phase-weighted trial counts), trial success rate, evidence density (recency-weighted article counts), competitive landscape (drugs per mechanism × therapeutic area), and company portfolio. The MV fallback mechanism (realtime SQL when MV returns ≤2 rows) is well-designed.
-Strength: Pre-Computed, Trustworthy Metrics
-Because these are SQL aggregations, not LLM computations, the numbers are deterministically correct. Pipeline score = Σ(phase_weight × trial_count) with defined weights (P1=1, P2=2, P3=4, P4=1). The LLM cannot hallucinate these numbers because they arrive as structured data in the metrics_context, and post-synthesis validation strips any bold numbers that don’t match source data.
-Weakness: Evidence Density Is Volume, Not Quality
-mv_evidence_density counts articles and applies recency weighting, but treats all publications equally. A Nature Medicine Phase 3 results paper has the same weight as a conference abstract. For pharma intelligence, evidence quality (journal impact, study design, sample size) should differentiate signal from noise.
- 
-4. Answer Generation: How the LLM Produces Responses
-4.1 The Synthesis Pipeline
-After deterministic data assembly, the pipeline hands everything to LLMSynthesizer. The context block is assembled in layers: compressed evidence (via CTX packing or legacy inline format), metrics, graph summary, conversation history, concept hints, and up to 2 few-shot exemplars. This is injected as the user message alongside an intent-specific system prompt.
-4.2 What the System Prompts Get Right
-The system prompts are remarkably well-crafted. They enforce specific behavioural rules that directly address pharma intelligence needs:
-•	Strict data grounding: “ONLY use numbers and facts from the PROVIDED CONTEXT below. Do NOT inject clinical trial results, efficacy percentages, MACE reductions, or any other statistics from your training data.”
-•	Explicit fallback language: “If the data doesn’t cover a dimension, say ‘data not available’ rather than filling in from memory.”
-•	Citation density targets: “AIM for at least 2 citations per paragraph when evidence is available. Every factual claim should be traceable to a source.”
-•	Comparative framing: “Lead with the key differentiator—which entity is stronger/weaker and why. Compute and state differentials, don’t just list numbers side-by-side.”
-•	Landscape orientation: “The data is segmented by THERAPEUTIC AREA, NOT by company. Do NOT say ‘dominated by companies.’”
-4.3 The Critical Gap: Post-Hoc Validation, Not Pre-Generation Grounding
-The most significant weakness in the intelligence layer is that hallucination prevention happens AFTER generation, not before. The LLM generates a full narrative, then validate_citations() strips invalid [N] markers and verify_narrative_numbers() removes bold formatting from unverified numbers. This means: (1) the LLM may fabricate plausible-sounding claims that contain no numbers and no citations—these pass all validation; (2) stripped citations and numbers create gaps in the narrative that the user never sees explained; (3) the system has no mechanism to regenerate or request clarification when validation fails.
-What Post-Hoc Catches
-•	Invalid citation markers: [N] where N > evidence_count or N = 0 are stripped
-•	Unverified bold numbers: **42.5** where 42.5 doesn’t appear in metrics_context or evidence (within ±1.0 tolerance) gets de-bolded
-What Post-Hoc Misses
-•	Qualitative hallucination: “Semaglutide has shown remarkable efficacy in NASH trials”—true from training data, but not in the provided context. No citation, no number, passes all validation.
-•	Causal claims: “The pipeline score increase was driven by 3 new Phase 3 trials”—plausible but fabricated causality that no validator catches.
-•	Omission bias: The LLM may ignore low-confidence or unfavourable evidence in favour of a clean narrative. No check for evidence completeness in the generated response.
-•	Temporal confabulation: “Recent trials show...” when the evidence is from 2022. No date verification against evidence timestamps.
-4.4 Concept Registry Integration
-The ConceptRegistry activates 15 pharma concepts per intent+entity_type, injecting hints like “Consider pipeline_strength (weight: 0.95), competitive_landscape (weight: 0.90)” into the LLM context. This shapes which analytical dimensions the LLM emphasises. The activation is deterministic (set-intersection filtering, weight-sorted). Currently in-memory only—no feedback loop adjusts weights based on response quality.
-4.5 Confidence Scoring
-Response confidence is computed additively: entity resolution quality (0–0.3) + evidence depth (0–0.3) + graph context (0–0.2) + metrics availability (0–0.2). This is a good start but has two issues: (1) it measures input quality, not output quality—a response with excellent input data but a hallucinated narrative still gets high confidence; (2) graph context gives full marks at ≥20 nodes, which is easily reached for well-connected entities regardless of whether those nodes are relevant.
- 
-5. Data Layer AI-Readiness
-5.1 Readiness Scorecard
-Dimension	Score	Strength	Gap
-Graph topology	8/10	11+ link types, provenance tracked	Flat confidence (all 1.0)
-Materialised views	9/10	5 MVs covering core pharma KPIs	Evidence density = volume only
-External data sources	8/10	18 connectors across pharma data	NADAC deprecated, OT partial
-Embedding coverage	4/10	Infrastructure exists (pgvector)	Likely sparse on core tables
-Entity resolution	6/10	Exact + fuzzy + alias matching	No semantic deduplication
-Quality monitoring	7/10	FAIR scorer, 5 dimensions	No automated remediation
-Conversation memory	7/10	Token-budgeted, entity tracking	String-based coreference
-Temporal modelling	3/10	Timestamps on records	No time-series analytics
-Ontology alignment	5/10	MeSH-seeded TAs and mechanisms	No continuous sync, static hierarchy
+**Why the sources alone aren't defensible**
 
-5.2 The Embedding Gap
-This is the single largest data-layer risk. Vector columns exist on 10 tables with HNSW indexes, but actual population is unverified for drugs, trials, companies, and articles. If molecule_embedding on the drugs table is empty, vector search for drug queries returns zero results and silently falls back to keyword matching—which means the user gets results based on string overlap rather than semantic relevance. The team should run a coverage audit: SELECT entity_type, COUNT(*) total, COUNT(embedding_col) populated, ROUND(COUNT(embedding_col)::numeric / COUNT(*) * 100, 1) AS pct FROM {table} for each entity type.
-5.3 The Confidence Gap
-All 11+ link types in entity_links share default confidence=1.0. In practice, an OWNS link from FDA Orange Book (near-certain) and a COMPETES_WITH link from LLM extraction (uncertain) are indistinguishable. This means graph traversal treats speculative relationships as facts. Fix: assign confidence tiers by provenance source: exact_id=1.0, structured_api=0.9, entity_resolution=0.8, cross_source_match=0.7, llm_extracted=0.5, heuristic=0.3. Apply minimum confidence thresholds in graph traversal (default 0.5).
-5.4 The Temporal Gap
-The data has timestamps (created_at, updated_at, trial start dates, publication dates) but no time-series infrastructure. Questions like “How has the GLP-1 landscape changed in the last year?” or “Is Novo Nordisk’s pipeline accelerating?” cannot be answered because there are no temporal aggregations, no change detection, and no trend MVs. The InsightEngine detects point-in-time signals (new trial, safety event) but cannot compute trajectories.
- 
-6. Per-Intent Quality Audit
-6.1 Dossier (Benchmark: 70.3%)
-The weakest core intent. The handler queries well (entity resolution → DB joins → graph 2-hop → metrics → similar entities), but the LLM synthesis often produces generic summaries that don’t leverage the structured data handed to it. The handler passes pipeline_score, success_rate, evidence_density, connection counts, and market events—but the generated narrative frequently ignores half of these dimensions.
-Root cause: The system prompt for dossier is the weakest of all intents—it lacks the specific structural guidance that landscape and compare prompts have. It tells the LLM to “be comprehensive” without specifying which dimensions to cover in which order. Adding few-shot exemplars that demonstrate full-dimension coverage would likely close the gap to 85%+.
-6.2 Compare (Benchmark: 100%)
-The strongest intent, but the 100% score deserves scrutiny. Compare benefits from: (1) pre-computed differentials (pipeline_score ratio, trial volume difference, Phase 3 leadership) that the LLM can cite directly rather than computing; (2) a highly structured system prompt with explicit rules; (3) a comparison table displayed alongside the narrative, reducing the LLM’s burden. The risk is that the golden dataset only tests 6 compare queries, all with clean “X vs Y” phrasing. Adversarial cases (incomplete compare, multi-entity compare, cross-type compare) would likely reveal gaps.
-6.3 Landscape (Benchmark: 79.5%)
-Good but uneven. The handler assembles competitive segments from mv_competitive_landscape, computes HHI concentration, queries company portfolios, and expands top-5 segments via graph neighbourhood queries. The system prompt correctly frames results as therapeutic area segments, not company rankings. The MV fallback (original_topic parameter) handles edge cases where the expanded topic returns sparse results.
-Remaining gap: Landscape queries about thin-data areas (rare diseases, neurology, cell therapy) still score poorly because the materialised views return empty. The fallback queries base tables but these may also be sparse. The system should explicitly acknowledge data coverage limits: “Our database covers 1,247 drugs across 45 therapeutic areas. For [rare disease X], we have limited coverage (3 drugs, 7 trials).”
-6.4 Pipeline (Benchmark: ~80%)
-Solid on well-covered therapeutic areas (diabetes, obesity, cardiovascular) where mv_drug_pipeline_strength has rich data. The phase-weighted scoring (P1=1, P2=2, P3=4, P4=1) is pharma-appropriate. Weakness: no distinction between active and completed trials in the narrative—an entity with 50 completed P2 trials and 0 active trials appears stronger than one with 3 active P3 trials, which is misleading for forward-looking pipeline assessment.
-6.5 Structured Query (Benchmark: 100%)
-Routes to LangGraph agent with SQL generation capability. The 100% score reflects that the golden queries are straightforward counting/listing queries. The risk is that more complex structured queries (joins, conditional aggregations, temporal filters) would challenge the SQL generation quality. Not enough adversarial cases in the benchmark to stress-test this.
- 
-7. Recommendations: Making Intelligence Trustworthy
-7.1 Pre-Generation Grounding (Highest Impact)
-Replace post-hoc validation with a pre-generation grounding mechanism. Before the LLM generates a response, build a structured fact sheet from the deterministic data:
-1.	Extract key metrics as named facts: {pipeline_score: 42.5, source: mv_drug_pipeline_strength, entity: semaglutide}
-2.	Extract entity relationships as triples: {semaglutide TARGETS GLP-1 receptor, confidence: 0.95, source: ChEMBL}
-3.	Build a fact inventory with provenance: “You have 7 verified facts, 3 evidence snippets, and 2 graph paths to work with.”
-4.	Inject this inventory alongside the raw context. Post-synthesis, verify that every factual claim in the narrative maps to an inventory item. Claims that don’t map get flagged (not silently passed).
-7.2 Intent Confidence and Disambiguation
-1.	Add a confidence score (0–1.0) to intent detection output, based on: number of patterns matched, specificity of match (full regex vs keyword only), presence of entity resolution support.
-2.	For ambiguous queries (confidence < 0.7), generate responses for the top-2 intents and let the user choose, or hedge: “I’ve interpreted this as a comparison. If you wanted a dossier on both, let me know.”
-3.	Replace string-based coreference with entity-ID tracking from ConversationMemory._entity_counts.
-7.3 Embedding Backfill and Audit
-1.	Run coverage audit across all 10 vector-enabled tables. Target: ≥90% population for drugs, trials, articles, companies.
-2.	Schedule embedding refresh on data pipeline runs (not just initial backfill). New trials and articles should be embedded within 24 hours of ingestion.
-3.	Remove recency multiplier from literature and trial search. Apply recency only to news/events where timeliness is the primary signal.
-7.4 Link Confidence Tiers
-1.	Assign confidence by provenance: exact_id=1.0, structured_api=0.9, entity_resolution=0.8, cross_source=0.7, llm_extracted=0.5, heuristic=0.3.
-2.	Add a min_confidence parameter to graph traversal (default 0.5). This filters out speculative links before they reach the LLM.
-3.	Surface confidence in the frontend: edges with confidence < 0.7 render as dashed lines in the graph. The user sees which relationships are certain vs inferred.
-7.5 Dossier Prompt Improvement
-1.	Add structured dimension ordering to the dossier system prompt: “Your response must cover these dimensions in order: (1) Identity and classification, (2) Pipeline position and strength, (3) Evidence depth and recency, (4) Competitive context, (5) Key risks or signals.”
-2.	Add 3–5 few-shot exemplar dossiers that demonstrate full-dimension coverage with citation density ≥2 per paragraph.
-3.	Add a post-synthesis dimension check: verify that the generated narrative mentions at least 4 of the 5 required dimensions. If not, append a note: “Note: Limited data available for [missing dimension].”
-7.6 Evidence Quality Scoring
-1.	Extend mv_evidence_density to include a quality dimension: journal impact factor (or tier), study design (RCT > observational > case report), sample size.
-2.	Weight evidence in the LLM context by quality: a Nature Medicine RCT should appear before a conference abstract in the evidence list.
-3.	Surface evidence quality in citations: [1, high-quality RCT] vs [2, conference abstract].
-7.7 Temporal Intelligence Layer
-1.	Add a mv_pipeline_velocity materialised view that computes month-over-month changes in pipeline_score, trial_count, and active_trial_count per drug and therapeutic area.
-2.	Wire InsightEngine to detect velocity changes: “Glp-1 pipeline accelerating: +3 new P3 trials in 30 days” as proactive signals.
-3.	Add a temporal filter to graph traversal: “Show me connections created in the last 90 days” to support trend-based questions.
- 
-8. Intelligence Maturity Model
-The following model positions Market Zero’s current state and charts the path to each level:
-Level	Name	Capability	Market Zero Status
-L1	Data Retrieval	Find and display relevant records	Achieved — search, graph, MVs
-L2	Grounded Synthesis	Generate narratives from verified data only	Partial — post-hoc validation, not pre-gen
-L3	Analytical Intelligence	Surface nuance: differentials, trends, risks	Partial — compare has differentials; dossier/landscape don’t
-L4	Proactive Intelligence	Detect signals and alert before users ask	Early — InsightEngine exists, 3 signal types
-L5	Decision Support	Scenario modelling, what-if reasoning	Not started — scenario primitives designed, not built
+Every source you're integrating — ClinicalTrials.gov, PubMed, FDA Orange Book, SEC EDGAR, OpenFDA FAERS, OpenFDA Labels, EMA, NADAC, MeSH, ChEMBL, PubChem, Open Targets, PMC, FDA Shortages — is a free public API. There is no proprietary data in your pipeline. Anyone with a weekend and a Python script can pull the same records.
 
-The immediate priority should be solidifying L2 (pre-generation grounding) and extending L3 (analytical intelligence across all intents, not just compare). L4 and L5 can follow once the foundation is trustworthy.
-9. Conclusion
-Market Zero’s intelligence pipeline has excellent bones. The deterministic-first architecture (SQL → graph → materialised views → LLM) is the right approach for pharma intelligence where trust matters more than creativity. The 5 materialised views, 18 data connectors, 11+ link types, and Concept Registry create a rich analytical substrate.
-The system’s intelligence is weakest at its two boundaries. On the input side, regex-based intent detection handles clean queries well but breaks on compound, ambiguous, or conversational questions—exactly the kind that senior analysts ask. On the output side, post-hoc hallucination detection catches numeric fabrication and invalid citations but misses qualitative hallucination, causal confabulation, and omission bias.
-The data layer is 70% AI-ready. Graph structure and MV coverage are strong, but sparse embeddings limit semantic search quality, flat confidence scoring treats speculative links as facts, and the absence of temporal modelling means the system cannot answer the “how is this changing?” questions that drive real pharma decisions.
-The seven recommendations in Section 7 chart a path from the current state to genuinely trustworthy pharma intelligence. Pre-generation grounding (7.1) and link confidence tiers (7.4) are the highest-impact changes. Together they would ensure the LLM works from verified facts with calibrated certainty—which is what pharmaceutical decision-makers need most.
+Can I connect to them? Yes. With web search and tool use, I can query ClinicalTrials.gov's API for trial counts, search PubMed for publications, look up FDA approval history, and cross-reference SEC filings — all in real time during a conversation. I don't pre-compute the connections, but for a single query about a single drug, I can traverse the same sources and synthesise the same answer, often faster because I'm hitting current data rather than a stale materialised view.
 
+The commercial intelligence platforms — Citeline Pharmaprojects, Evaluate Pharma, Cortellis, GlobalData — have been doing this source aggregation for decades with larger teams, more sources (including proprietary ones like conference abstracts, KOL interviews, and internal industry surveys), and established client relationships. "We aggregate 15 public sources" is table stakes in pharma intelligence, not a differentiator.
 
-MARKET ZERO
-Intelligence Layer Deep Analysis
-How Questions Become Answers: From Intent to Insight
+---
 
-Architecture Review — 5 April 2026
-CONFIDENTIAL
- 
-1. Executive Summary
-This document traces exactly how Market Zero transforms a user’s question into an intelligence response—from the first regex match in intent detection through to the final citation-validated narrative. The analysis identifies where the pipeline is strong, where it leaks quality, and what must change to make the intelligence layer genuinely trustworthy for pharma decision-making.
-Core Finding: The pipeline’s deterministic data assembly (SQL → graph → metrics → materialised views) is excellent. The weakness is at the two boundaries: question interpretation (regex-driven, brittle on compound/ambiguous queries) and answer generation (post-hoc hallucination detection rather than pre-generation grounding). The data layer is approximately 70% AI-ready—good graph structure and MV coverage, but sparse embeddings and flat confidence scoring limit retrieval quality.
+**Where the knowledge graph could become a moat**
 
-2. Question Interpretation: How Intent Is Determined
-2.1 The Current Pipeline
-Intent detection is a regex cascade in intent.py with fixed priority ordering. The system evaluates each question against pattern groups in sequence: title guard → compare → landscape → portfolio → pipeline → structured query → dossier → bare entity → general. The first match wins. Entity extraction happens inside each regex group via capture groups.
-2.2 What Works
-•	Compare detection is robust with 4 independent patterns covering “vs”, “versus”, “differences between”, “stack up against”, and “which X or Y”
-•	Title guard prevents academic paper titles (containing “vs”) from false-triggering compare
-•	Landscape topic extraction has 3 fallback strategies (direct match, prefix match, filler strip)
-•	Compound intent detection splits on “and also” / “plus” / “then” and evaluates each clause independently
-•	Bare entity fallback catches 1–4 word queries without question markers (e.g. “semaglutide” alone routes to dossier)
-2.3 What’s Broken
-Problem 1: Regex Intent Is Brittle on Real-World Queries
-The patterns assume clean, well-formed queries. Real pharma analysts ask questions like “What’s happening with GLP-1s in obesity and how does Novo’s pipeline compare to Lilly’s?” This is a compound query crossing landscape + compare + portfolio intents. The compound detector caps at 2 intents and can’t handle nested references (“Novo’s pipeline” requires entity resolution before intent classification).
-Problem 2: Topic Extraction Loses Context
-When a landscape query says “Show me the obesity market segments,” the topic extractor produces “obesity”. But this strips the signal that the user wants market segmentation, not just a list of obesity drugs. The topic string is then passed to competitive_landscape() as a plain ILIKE filter—the nuance of “segments” vs “drugs” vs “companies” is lost entirely.
-Problem 3: No Confidence Signal on Intent Match
-The intent detector returns a hard classification with no confidence score. A query like “Tell me about semaglutide and tirzepatide” could be dossier (multi-entity) or compare. The system picks one with no signal to the downstream handler about ambiguity. The handler can’t hedge its response or ask for clarification.
-Problem 4: Coreference Resolution Is String-Based
-Follow-up resolution in context.py replaces pronouns (“this drug”, “their pipeline”) with the last mentioned topic—extracted from bold markers in the prior response. This is fragile: if the prior response mentions semaglutide in paragraph 1 and tirzepatide in paragraph 3, “this drug” resolves to whichever appeared first in bold, not whichever was the focus of the user’s interest.
-2.4 Recommendations
-1.	Add an intent confidence score (0–1.0) based on pattern specificity. Multi-pattern matches (e.g. compare has 4 patterns and the query matches 3 of them) should score higher than single-pattern matches.
-2.	Replace bare-string topic extraction with structured topic objects: {topic: “obesity”, query_type: “segmentation”, entities_mentioned: [“Novo Nordisk”, “Eli Lilly”]}. This preserves the user’s analytical framing.
-3.	For ambiguous queries (E09: “Tell me about semaglutide and tirzepatide”), detect multi-entity dossier vs compare using a lightweight heuristic: if both entities share the same type and no comparative language exists, default to compare but flag ambiguity.
-4.	Move coreference resolution from string extraction to entity ID tracking. The conversation memory already maintains _entity_counts—use the most-discussed entity ID rather than the first bold match.
- 
-3. Data Retrieval: How Evidence Is Assembled
-3.1 The Three-Source Architecture
-Every handler assembles evidence from three independent sources before the LLM sees anything: hybrid search (vector + keyword), graph traversal (SQL CTEs over entity_links), and materialised view metrics (pre-computed KPIs). This deterministic-first design is the pipeline’s greatest strength—it means the LLM receives only verified, database-sourced facts.
-3.2 Hybrid Search Assessment
-Model: OpenAI text-embedding-3-small (1536 dimensions). Scoring: cosine similarity via pgvector’s <=> operator, multiplied by a recency score (1.0 for <30 days, declining to 0.2 for >1 year). Results ranked by combined score.
-Strength: Record-Status Filtering
-Search excludes merged and excluded records, ensuring only golden-record entities appear in results. This prevents hallucination from duplicate or retired entities.
-Weakness: Sparse Embedding Coverage
-Vector columns exist on 10 tables, but population is unverified for most. knowledge_chunks and therapeutic_areas (MeSH scope notes) are likely populated. But drug molecule_embeddings, trial protocol_embeddings, and company strategy_embeddings may be sparse or empty—which means vector search silently returns no results for those entity types, falling back to keyword-only matching with no signal to the user.
-Weakness: Recency Bias Suppresses Foundational Evidence
-The recency multiplier (similarity × recency_score) means a landmark Phase 3 trial paper from 2023 with 0.95 similarity gets scored 0.38 (0.95 × 0.4), while a minor 2026 blog post with 0.60 similarity scores 0.60 (0.60 × 1.0). For pharma intelligence, foundational evidence should not be penalised by age. Recommendation: apply recency only to news/events, not to trial or literature evidence.
-3.3 Graph Traversal Assessment
-Graph traversal uses a stored procedure (traverse_graph) with recursive CTEs supporting 1–4 hop expansion. Path finding uses a separate BFS CTE with cycle prevention (path array exclusion) capped at 6 hops.
-Strength: Link Type Semantics
-The entity_links table carries 11+ relationship types (OWNS, SPONSORS, INVESTIGATES, TARGETS_MECHANISM, IN_THERAPEUTIC_AREA, EVIDENCE_FOR, COMPETES_WITH, etc.) with provenance tracking per link. This enables meaningful traversal: “which companies sponsor trials for drugs that target GLP-1 receptors?” resolves via SPONSORS → INVESTIGATES → TARGETS_MECHANISM.
-Weakness: Flat Confidence Scoring
-All entity_links default to confidence=1.0 regardless of discovery method. A link created by exact_id match (FDA Orange Book confirms Company X owns Drug Y) has the same confidence as one created by LLM extraction from a news article. The graph traversal applies no confidence-weighted filtering—all edges are treated as equally reliable. This means an LLM-extracted “COMPETES_WITH” link (potentially spurious) ranks equally with an FDA-confirmed “OWNS” link.
-Weakness: Truncation Is Silent
-When traversal hits the max_nodes cap (default 100), results are silently truncated. detect_truncation() exists but is informational only—the LLM receives a partial graph with no signal that critical connections may be missing. For high-connectivity entities like semaglutide (potentially hundreds of connections), this means the LLM synthesises from an incomplete picture.
-3.4 Materialised View Assessment
-Five MVs cover the core pharma KPI space: pipeline strength (phase-weighted trial counts), trial success rate, evidence density (recency-weighted article counts), competitive landscape (drugs per mechanism × therapeutic area), and company portfolio. The MV fallback mechanism (realtime SQL when MV returns ≤2 rows) is well-designed.
-Strength: Pre-Computed, Trustworthy Metrics
-Because these are SQL aggregations, not LLM computations, the numbers are deterministically correct. Pipeline score = Σ(phase_weight × trial_count) with defined weights (P1=1, P2=2, P3=4, P4=1). The LLM cannot hallucinate these numbers because they arrive as structured data in the metrics_context, and post-synthesis validation strips any bold numbers that don’t match source data.
-Weakness: Evidence Density Is Volume, Not Quality
-mv_evidence_density counts articles and applies recency weighting, but treats all publications equally. A Nature Medicine Phase 3 results paper has the same weight as a conference abstract. For pharma intelligence, evidence quality (journal impact, study design, sample size) should differentiate signal from noise.
- 
-4. Answer Generation: How the LLM Produces Responses
-4.1 The Synthesis Pipeline
-After deterministic data assembly, the pipeline hands everything to LLMSynthesizer. The context block is assembled in layers: compressed evidence (via CTX packing or legacy inline format), metrics, graph summary, conversation history, concept hints, and up to 2 few-shot exemplars. This is injected as the user message alongside an intent-specific system prompt.
-4.2 What the System Prompts Get Right
-The system prompts are remarkably well-crafted. They enforce specific behavioural rules that directly address pharma intelligence needs:
-•	Strict data grounding: “ONLY use numbers and facts from the PROVIDED CONTEXT below. Do NOT inject clinical trial results, efficacy percentages, MACE reductions, or any other statistics from your training data.”
-•	Explicit fallback language: “If the data doesn’t cover a dimension, say ‘data not available’ rather than filling in from memory.”
-•	Citation density targets: “AIM for at least 2 citations per paragraph when evidence is available. Every factual claim should be traceable to a source.”
-•	Comparative framing: “Lead with the key differentiator—which entity is stronger/weaker and why. Compute and state differentials, don’t just list numbers side-by-side.”
-•	Landscape orientation: “The data is segmented by THERAPEUTIC AREA, NOT by company. Do NOT say ‘dominated by companies.’”
-4.3 The Critical Gap: Post-Hoc Validation, Not Pre-Generation Grounding
-The most significant weakness in the intelligence layer is that hallucination prevention happens AFTER generation, not before. The LLM generates a full narrative, then validate_citations() strips invalid [N] markers and verify_narrative_numbers() removes bold formatting from unverified numbers. This means: (1) the LLM may fabricate plausible-sounding claims that contain no numbers and no citations—these pass all validation; (2) stripped citations and numbers create gaps in the narrative that the user never sees explained; (3) the system has no mechanism to regenerate or request clarification when validation fails.
-What Post-Hoc Catches
-•	Invalid citation markers: [N] where N > evidence_count or N = 0 are stripped
-•	Unverified bold numbers: **42.5** where 42.5 doesn’t appear in metrics_context or evidence (within ±1.0 tolerance) gets de-bolded
-What Post-Hoc Misses
-•	Qualitative hallucination: “Semaglutide has shown remarkable efficacy in NASH trials”—true from training data, but not in the provided context. No citation, no number, passes all validation.
-•	Causal claims: “The pipeline score increase was driven by 3 new Phase 3 trials”—plausible but fabricated causality that no validator catches.
-•	Omission bias: The LLM may ignore low-confidence or unfavourable evidence in favour of a clean narrative. No check for evidence completeness in the generated response.
-•	Temporal confabulation: “Recent trials show...” when the evidence is from 2022. No date verification against evidence timestamps.
-4.4 Concept Registry Integration
-The ConceptRegistry activates 15 pharma concepts per intent+entity_type, injecting hints like “Consider pipeline_strength (weight: 0.95), competitive_landscape (weight: 0.90)” into the LLM context. This shapes which analytical dimensions the LLM emphasises. The activation is deterministic (set-intersection filtering, weight-sorted). Currently in-memory only—no feedback loop adjusts weights based on response quality.
-4.5 Confidence Scoring
-Response confidence is computed additively: entity resolution quality (0–0.3) + evidence depth (0–0.3) + graph context (0–0.2) + metrics availability (0–0.2). This is a good start but has two issues: (1) it measures input quality, not output quality—a response with excellent input data but a hallucinated narrative still gets high confidence; (2) graph context gives full marks at ≥20 nodes, which is easily reached for well-connected entities regardless of whether those nodes are relevant.
- 
-5. Data Layer AI-Readiness
-5.1 Readiness Scorecard
-Dimension	Score	Strength	Gap
-Graph topology	8/10	11+ link types, provenance tracked	Flat confidence (all 1.0)
-Materialised views	9/10	5 MVs covering core pharma KPIs	Evidence density = volume only
-External data sources	8/10	18 connectors across pharma data	NADAC deprecated, OT partial
-Embedding coverage	4/10	Infrastructure exists (pgvector)	Likely sparse on core tables
-Entity resolution	6/10	Exact + fuzzy + alias matching	No semantic deduplication
-Quality monitoring	7/10	FAIR scorer, 5 dimensions	No automated remediation
-Conversation memory	7/10	Token-budgeted, entity tracking	String-based coreference
-Temporal modelling	3/10	Timestamps on records	No time-series analytics
-Ontology alignment	5/10	MeSH-seeded TAs and mechanisms	No continuous sync, static hierarchy
+The raw sources aren't the value. The connections between them are. And right now, your graph is thin.
 
-5.2 The Embedding Gap
-This is the single largest data-layer risk. Vector columns exist on 10 tables with HNSW indexes, but actual population is unverified for drugs, trials, companies, and articles. If molecule_embedding on the drugs table is empty, vector search for drug queries returns zero results and silently falls back to keyword matching—which means the user gets results based on string overlap rather than semantic relevance. The team should run a coverage audit: SELECT entity_type, COUNT(*) total, COUNT(embedding_col) populated, ROUND(COUNT(embedding_col)::numeric / COUNT(*) * 100, 1) AS pct FROM {table} for each entity type.
-5.3 The Confidence Gap
-All 11+ link types in entity_links share default confidence=1.0. In practice, an OWNS link from FDA Orange Book (near-certain) and a COMPETES_WITH link from LLM extraction (uncertain) are indistinguishable. This means graph traversal treats speculative relationships as facts. Fix: assign confidence tiers by provenance source: exact_id=1.0, structured_api=0.9, entity_resolution=0.8, cross_source_match=0.7, llm_extracted=0.5, heuristic=0.3. Apply minimum confidence thresholds in graph traversal (default 0.5).
-5.4 The Temporal Gap
-The data has timestamps (created_at, updated_at, trial start dates, publication dates) but no time-series infrastructure. Questions like “How has the GLP-1 landscape changed in the last year?” or “Is Novo Nordisk’s pipeline accelerating?” cannot be answered because there are no temporal aggregations, no change detection, and no trend MVs. The InsightEngine detects point-in-time signals (new trial, safety event) but cannot compute trajectories.
- 
-6. Per-Intent Quality Audit
-6.1 Dossier (Benchmark: 70.3%)
-The weakest core intent. The handler queries well (entity resolution → DB joins → graph 2-hop → metrics → similar entities), but the LLM synthesis often produces generic summaries that don’t leverage the structured data handed to it. The handler passes pipeline_score, success_rate, evidence_density, connection counts, and market events—but the generated narrative frequently ignores half of these dimensions.
-Root cause: The system prompt for dossier is the weakest of all intents—it lacks the specific structural guidance that landscape and compare prompts have. It tells the LLM to “be comprehensive” without specifying which dimensions to cover in which order. Adding few-shot exemplars that demonstrate full-dimension coverage would likely close the gap to 85%+.
-6.2 Compare (Benchmark: 100%)
-The strongest intent, but the 100% score deserves scrutiny. Compare benefits from: (1) pre-computed differentials (pipeline_score ratio, trial volume difference, Phase 3 leadership) that the LLM can cite directly rather than computing; (2) a highly structured system prompt with explicit rules; (3) a comparison table displayed alongside the narrative, reducing the LLM’s burden. The risk is that the golden dataset only tests 6 compare queries, all with clean “X vs Y” phrasing. Adversarial cases (incomplete compare, multi-entity compare, cross-type compare) would likely reveal gaps.
-6.3 Landscape (Benchmark: 79.5%)
-Good but uneven. The handler assembles competitive segments from mv_competitive_landscape, computes HHI concentration, queries company portfolios, and expands top-5 segments via graph neighbourhood queries. The system prompt correctly frames results as therapeutic area segments, not company rankings. The MV fallback (original_topic parameter) handles edge cases where the expanded topic returns sparse results.
-Remaining gap: Landscape queries about thin-data areas (rare diseases, neurology, cell therapy) still score poorly because the materialised views return empty. The fallback queries base tables but these may also be sparse. The system should explicitly acknowledge data coverage limits: “Our database covers 1,247 drugs across 45 therapeutic areas. For [rare disease X], we have limited coverage (3 drugs, 7 trials).”
-6.4 Pipeline (Benchmark: ~80%)
-Solid on well-covered therapeutic areas (diabetes, obesity, cardiovascular) where mv_drug_pipeline_strength has rich data. The phase-weighted scoring (P1=1, P2=2, P3=4, P4=1) is pharma-appropriate. Weakness: no distinction between active and completed trials in the narrative—an entity with 50 completed P2 trials and 0 active trials appears stronger than one with 3 active P3 trials, which is misleading for forward-looking pipeline assessment.
-6.5 Structured Query (Benchmark: 100%)
-Routes to LangGraph agent with SQL generation capability. The 100% score reflects that the golden queries are straightforward counting/listing queries. The risk is that more complex structured queries (joins, conditional aggregations, temporal filters) would challenge the SQL generation quality. Not enough adversarial cases in the benchmark to stress-test this.
- 
-7. Recommendations: Making Intelligence Trustworthy
-7.1 Pre-Generation Grounding (Highest Impact)
-Replace post-hoc validation with a pre-generation grounding mechanism. Before the LLM generates a response, build a structured fact sheet from the deterministic data:
-1.	Extract key metrics as named facts: {pipeline_score: 42.5, source: mv_drug_pipeline_strength, entity: semaglutide}
-2.	Extract entity relationships as triples: {semaglutide TARGETS GLP-1 receptor, confidence: 0.95, source: ChEMBL}
-3.	Build a fact inventory with provenance: “You have 7 verified facts, 3 evidence snippets, and 2 graph paths to work with.”
-4.	Inject this inventory alongside the raw context. Post-synthesis, verify that every factual claim in the narrative maps to an inventory item. Claims that don’t map get flagged (not silently passed).
-7.2 Intent Confidence and Disambiguation
-1.	Add a confidence score (0–1.0) to intent detection output, based on: number of patterns matched, specificity of match (full regex vs keyword only), presence of entity resolution support.
-2.	For ambiguous queries (confidence < 0.7), generate responses for the top-2 intents and let the user choose, or hedge: “I’ve interpreted this as a comparison. If you wanted a dossier on both, let me know.”
-3.	Replace string-based coreference with entity-ID tracking from ConversationMemory._entity_counts.
-7.3 Embedding Backfill and Audit
-1.	Run coverage audit across all 10 vector-enabled tables. Target: ≥90% population for drugs, trials, articles, companies.
-2.	Schedule embedding refresh on data pipeline runs (not just initial backfill). New trials and articles should be embedded within 24 hours of ingestion.
-3.	Remove recency multiplier from literature and trial search. Apply recency only to news/events where timeliness is the primary signal.
-7.4 Link Confidence Tiers
-1.	Assign confidence by provenance: exact_id=1.0, structured_api=0.9, entity_resolution=0.8, cross_source=0.7, llm_extracted=0.5, heuristic=0.3.
-2.	Add a min_confidence parameter to graph traversal (default 0.5). This filters out speculative links before they reach the LLM.
-3.	Surface confidence in the frontend: edges with confidence < 0.7 render as dashed lines in the graph. The user sees which relationships are certain vs inferred.
-7.5 Dossier Prompt Improvement
-1.	Add structured dimension ordering to the dossier system prompt: “Your response must cover these dimensions in order: (1) Identity and classification, (2) Pipeline position and strength, (3) Evidence depth and recency, (4) Competitive context, (5) Key risks or signals.”
-2.	Add 3–5 few-shot exemplar dossiers that demonstrate full-dimension coverage with citation density ≥2 per paragraph.
-3.	Add a post-synthesis dimension check: verify that the generated narrative mentions at least 4 of the 5 required dimensions. If not, append a note: “Note: Limited data available for [missing dimension].”
-7.6 Evidence Quality Scoring
-1.	Extend mv_evidence_density to include a quality dimension: journal impact factor (or tier), study design (RCT > observational > case report), sample size.
-2.	Weight evidence in the LLM context by quality: a Nature Medicine RCT should appear before a conference abstract in the evidence list.
-3.	Surface evidence quality in citations: [1, high-quality RCT] vs [2, conference abstract].
-7.7 Temporal Intelligence Layer
-1.	Add a mv_pipeline_velocity materialised view that computes month-over-month changes in pipeline_score, trial_count, and active_trial_count per drug and therapeutic area.
-2.	Wire InsightEngine to detect velocity changes: “Glp-1 pipeline accelerating: +3 new P3 trials in 30 days” as proactive signals.
-3.	Add a temporal filter to graph traversal: “Show me connections created in the last 90 days” to support trend-based questions.
- 
-8. Intelligence Maturity Model
-The following model positions Market Zero’s current state and charts the path to each level:
-Level	Name	Capability	Market Zero Status
-L1	Data Retrieval	Find and display relevant records	Achieved — search, graph, MVs
-L2	Grounded Synthesis	Generate narratives from verified data only	Partial — post-hoc validation, not pre-gen
-L3	Analytical Intelligence	Surface nuance: differentials, trends, risks	Partial — compare has differentials; dossier/landscape don’t
-L4	Proactive Intelligence	Detect signals and alert before users ask	Early — InsightEngine exists, 3 signal types
-L5	Decision Support	Scenario modelling, what-if reasoning	Not started — scenario primitives designed, not built
+What your graph does today: entity_links table with `source_entity_id → target_entity_id`, a link_type, and a confidence score (that's always 1.0). Cross-linking is rule-based from the domain pack's 12 link rules. The relationships it captures are structural: drug BELONGS_TO company, trial STUDIES drug, drug HAS_MECHANISM mechanism. These are the obvious connections that any database schema would encode.
 
-The immediate priority should be solidifying L2 (pre-generation grounding) and extending L3 (analytical intelligence across all intents, not just compare). L4 and L5 can follow once the foundation is trustworthy.
-9. Conclusion
-Market Zero’s intelligence pipeline has excellent bones. The deterministic-first architecture (SQL → graph → materialised views → LLM) is the right approach for pharma intelligence where trust matters more than creativity. The 5 materialised views, 18 data connectors, 11+ link types, and Concept Registry create a rich analytical substrate.
-The system’s intelligence is weakest at its two boundaries. On the input side, regex-based intent detection handles clean queries well but breaks on compound, ambiguous, or conversational questions—exactly the kind that senior analysts ask. On the output side, post-hoc hallucination detection catches numeric fabrication and invalid citations but misses qualitative hallucination, causal confabulation, and omission bias.
-The data layer is 70% AI-ready. Graph structure and MV coverage are strong, but sparse embeddings limit semantic search quality, flat confidence scoring treats speculative links as facts, and the absence of temporal modelling means the system cannot answer the “how is this changing?” questions that drive real pharma decisions.
-The seven recommendations in Section 7 chart a path from the current state to genuinely trustworthy pharma intelligence. Pre-generation grounding (7.1) and link confidence tiers (7.4) are the highest-impact changes. Together they would ensure the LLM works from verified facts with calibrated certainty—which is what pharmaceutical decision-makers need most.
+What a genuinely valuable pharma knowledge graph would capture — and where the moat lives — is in the **inferred, non-obvious, high-signal relationships** that require domain expertise to derive and continuous curation to maintain:
 
-That's the right question to be asking, and the honest answer is: no, not yet. What you have is a property graph with good structural bones but almost no semantic layer. Let me be specific about what's there and what's missing.This is fascinating — and changes my assessment significantly. You actually have *two* codebases here, and they're living very different lives.
+**Competitive dynamics that aren't in any single source.** "Tirzepatide and semaglutide compete in obesity" isn't stated in ClinicalTrials.gov or PubMed. It's inferred from: same therapeutic area, overlapping mechanism class, overlapping trial populations, same payer coverage categories, head-to-head trial (SURMOUNT-5). Each fact comes from a different source. The connection exists only in the graph.
 
-Your **sdk_core** package (under `packages/sdk_core`) has genuinely sophisticated ontology infrastructure: formal `EntitySchema` with validation and lookup keys, `LinkRule` with directionality and SQL join paths, a `TerminologyRegistry` with hierarchical concepts (parent/child), a multi-strategy `EntityResolver` cascade, temporal properties on graph edges (`valid_at`/`invalid_at`), and even a rule-based `OntologyEngine` for inference. The architecture is clean — frozen dataclasses, protocol-based injection points for external terminologies, audit trails on resolution decisions.
+**Temporal intelligence.** "Pfizer's oncology pipeline weakened between Q3 2025 and Q1 2026" requires tracking entity states over time — trial status changes, pipeline additions and removals, regulatory actions. Your current schema stores `created_at` timestamps but doesn't model state transitions. A graph that captures "trial X moved from RECRUITING to TERMINATED on date Y" enables temporal queries that no LLM can answer from static training data.
 
-But the **production application** — the code actually serving users on Railway — isn't using any of it. Let me be blunt about the gap.
+**KOL and investigator networks.** "Dr. X runs trials for both Novo Nordisk and Eli Lilly in GLP-1 agonists" connects investigators to sponsors to drugs to mechanisms. This network analysis — identifying influential investigators, sponsor concentration, geographic trial density — is genuinely valuable for commercial strategy and can't be replicated by searching individual sources.
 
-**What's live in production:**
+**Safety signal propagation.** "FAERS reports for drug X increased 40% in Q4 2025, concentrated in hepatotoxicity events, which is also a known risk for three other drugs in the same mechanism class" connects adverse event data to drug mechanisms to competitive implications. This is multi-hop reasoning across structured data that benefits enormously from pre-computation.
 
-The `services/graph.py` that runs your chat handlers uses a flat `entity_links` table with string-typed `link_type` values and uniform `confidence=1.0`. There's no formal entity schema — entity types are inferred from which database table a record lives in. The concept registry in `services/concept_registry.py` is 15 hardcoded pharma concepts instantiated in memory on startup with no connection to MeSH, ATC, or SNOMED. Entity resolution in the chat pipeline is basic string matching against database columns — not the sophisticated multi-strategy cascade in sdk_core. There's no hierarchy, no synonym expansion, no temporal modelling on relationships.
+**Patent-to-pipeline linkage.** "Drug X's composition-of-matter patent expires in 2027, and there are 3 biosimilar applications already filed" connects Orange Book patent data to FDA Purple Book biosimilar tracking to pipeline intelligence. This directly affects commercial strategy and investment timing.
 
-So your ontology story is really two stories: a well-designed but unintegrated SDK, and a production system running on structural shortcuts.
+---
 
-**Why this matters for intelligence quality:**
+**Can I replicate these connections?**
 
-Without a proper meaning layer, every downstream component suffers in ways that are hard to see from the outside but corrosive to answer quality.
+For a single query, partially. If you ask me about semaglutide's competitive position, I can search multiple sources and reason about the connections in real time. But there are three things I fundamentally cannot do:
 
-*Entity resolution* — when a user asks about "Keytruda," the production system has to hope that exact string appears in the database. If the record is stored as "pembrolizumab" with no alias table wired up, the query silently returns thin results. The user gets a vague answer and assumes your platform doesn't know about a blockbuster drug. The sdk_core `EntityResolver` solves this with its normalisation cascade (strip dosage forms, try aliases, fall back to fuzzy matching), but that code isn't called.
+I can't pre-compute connections at scale. Identifying every competitive pair across 5,000 drugs, 50,000 trials, and 200 mechanisms requires batch processing with entity resolution and cross-linking. I work one query at a time. Your graph can answer "which drugs compete with semaglutide" in milliseconds from pre-computed links. I'd need to search, infer, and reason — slower, less consistent, and limited by what I find in a single search session.
 
-*Hierarchical reasoning* — if someone asks "what's the competitive landscape for GLP-1 agonists," the system needs to know that semaglutide, tirzepatide, and liraglutide all belong to that mechanism class. Without a taxonomy linking drugs to mechanism hierarchies, your landscape handler can only find competitors if the exact phrase "GLP-1" appears in the right database fields. The sdk_core `Concept` model supports parent/child hierarchies that would let you traverse upward from a specific drug to its mechanism class and then back down to all siblings — but again, not wired.
+I can't track changes over time. If a trial status changed last week, I might not find it in a web search. Your pipeline runs on a schedule and captures state transitions. This is where continuous ingestion creates cumulative value — a graph that's been running for a year has a year of temporal intelligence that no LLM can reconstruct.
 
-*Link semantics* — your production entity_links treat all relationships as equivalent. An "OWNS" link (Lilly owns tirzepatide) and a "TARGETS_MECHANISM" link (tirzepatide targets GIP/GLP-1) carry the same confidence and no temporal metadata. This means the graph traversal can't distinguish between a current ownership relationship and a historical licensing deal that ended in 2019. The sdk_core `GraphEdge` has `valid_at`/`invalid_at` fields specifically for this, plus weighted edges — but the production graph doesn't use them.
+I can't do graph algorithms. Centrality scoring ("which drug is most connected in this therapeutic area"), community detection ("which companies cluster together by pipeline similarity"), path analysis ("what's the shortest connection between company X and mechanism Y") — these require a graph data structure. I can reason about individual connections but I can't run PageRank across your entity network.
 
-*Concept grounding for LLM prompts* — right now, the concept registry injects hints like "pipeline_strength" or "competitive_landscape" into the LLM system prompt based on intent matching. These are useful navigation signals but they're not grounded in a formal ontology. The LLM receives a hint that says "consider pipeline strength" but has no structured definition of what pipeline strength means in terms of phase distribution, success probability, or therapeutic area coverage. A proper concept model would let you inject machine-readable definitions that constrain the LLM's reasoning.
+---
 
-**What I'd recommend:**
+**How to make the data model and connections genuinely defensible**
 
-The sdk_core infrastructure is the right design. The gap isn't architectural imagination — it's integration. The priority should be wiring the existing sdk_core components into the production pipeline, not building new ontology infrastructure from scratch. Concretely:
+Your entity model has 9 types (drug, company, trial, literature, event, therapeutic_area, mechanism, investigator, patent) and 12 link rules. To build a real moat, I'd focus on three areas:
 
-First, get the `EntityResolver` from sdk_core into the chat handler pipeline, replacing the current string-match resolution. This alone would dramatically improve hit rates for drug queries where users use brand names, abbreviations, or informal terms. The alias store needs to be populated from your FDA and ClinicalTrials.gov connectors — both sources provide canonical name-to-brand mappings that can seed the registry automatically during ingestion.
+**Deepen the ontology.** Add entity types that create high-value, hard-to-replicate connections: `regulatory_submission` (ties drug to regulatory pathway to timeline), `endpoint` (ties trial to clinical measurement to therapeutic significance), `biomarker` (ties mechanism to diagnostic to patient stratification), `pricing_event` (ties drug to payer to market access), `patent_claim` (ties patent to specific molecular structure or method). Each new entity type creates new cross-link opportunities that compound the graph's value.
 
-Second, populate the `TerminologyRegistry` with MeSH descriptors for therapeutic areas and mechanisms. You already have MeSH as one of your 18 connectors. The registry's `TerminologyPort` protocol means you can start with an in-memory snapshot of the MeSH tree for your core therapeutic areas and progressively expand it. This gives you hierarchical traversal — "find all drugs targeting GLP-1 receptor agonism" becomes a tree walk rather than a keyword match.
+**Add proprietary and licensed sources.** This is where commercial moats actually live. Conference abstracts from ASCO, AACL, AHA — these contain data months before publication. Prescription data from IQVIA or Symphony Health. Payer formulary data. Clinical trial site performance data. Patent litigation tracking. Each proprietary source adds connections that competitors without the same license cannot replicate. Your current OpenAlex spec (SPEC_012) is a step in the right direction but it's still public data. One licensed Citeline feed would be worth more than five public API integrations.
 
-Third, migrate `entity_links` to carry typed confidence scores and temporal validity. Not every link needs a timestamp on day one, but the schema should support it so that ingestion pipelines can start writing temporal metadata as they encounter it. FDA approval dates, patent expiry dates, licensing deal timelines — all of these are available in your existing data sources and would immediately enrich the graph.
+**Invest in entity resolution quality.** This is your actual technical moat today, even if it's underperforming. The 6-strategy cascade in `entity_resolver.py` is sophisticated architecture. The problem is execution (brand names not resolving, confidence scores all 1.0, alias table empty). If you get entity resolution to 95%+ accuracy with proper confidence scoring, every connection in the graph becomes more trustworthy than what a competitor could build with simpler matching. Resolution quality compounds — a correctly resolved entity creates correct links which create correct traversals which create correct insights. A misresolved entity poisons everything downstream.
 
-Fourth, wire the `OntologyEngine` inference rules into the post-retrieval pipeline, between data gathering and LLM synthesis. Rules like "if a drug has Phase 3 trials in 3+ indications AND annual revenue > $1B, classify as franchise asset" would give the LLM structured judgements to work with rather than asking it to infer these patterns from raw data.
+---
 
-The fundamental issue isn't that you lack ontology capability — the sdk_core proves you don't. It's that the production system was built on a faster path that skipped the semantic layer, and now every intelligence feature is working harder than it should to compensate for that missing foundation. Closing this gap is probably the single highest-leverage investment for answer quality.
+**The honest strategic assessment**
+
+Your moat today is weak. Fifteen public sources with a thin knowledge graph and broken entity resolution is not defensible against either frontier LLMs (which can query those sources in real time) or established competitors (who have more sources, better resolution, and paying clients).
+
+Your moat in twelve months could be strong, if you focus on: entity resolution quality as the technical foundation, temporal intelligence as the structural differentiator (no LLM can replicate a year of continuous state tracking), proprietary data integration as the commercial lock-in (client data on top of public intelligence), and graph analytics as the query capability that LLMs cannot match (centrality, clustering, path analysis across thousands of entities).
+
+The application makes sense. But the value proposition needs to shift from "we answer pharma questions" (LLMs do this better) to "we maintain a living, auditable, queryable map of the pharmaceutical landscape that gets more valuable every day it runs, and we can layer your proprietary data on top of it." That's a product worth building.
+
+That's the right framing, and it changes everything about what Market Zero needs to be.
+
+When it's a product, every flaw in the transcript is a deal-breaker — "your tool is worse than ChatGPT, why would I pay for it?" When it's an accelerator that demonstrates capability, the same system becomes a proof point — "we built this knowledge graph across 15 sources with automated entity resolution, cross-linking, and agentic retrieval in under a year. Imagine what we do with your data in twelve weeks."
+
+The value proposition flips completely. You're not selling the semaglutide answer. You're selling the fact that you can take any messy, disconnected, multi-source data landscape and turn it into a structured, queryable, AI-ready knowledge base. Market Zero is the working demo, not the product.
+
+---
+
+**Why this framing is stronger**
+
+The consulting accelerator model solves three problems that the product model can't:
+
+Every enterprise has dark data they can't use. Internal clinical trial reports sitting in SharePoint. Regulatory correspondence in email archives. Competitive intelligence decks as PowerPoints. Safety data in spreadsheets. Medical affairs notes in Word documents. None of it is connected, searchable, or available to their AI systems. You walk in and say "we've already solved this problem for public pharma data — same pipeline, same entity resolution, same cross-linking, your data feeding into it within weeks." That's a consulting engagement worth real money, and the LLM comparison is irrelevant because ChatGPT can't ingest their SharePoint.
+
+The pipeline is the intellectual property, not the data. Your 5-step integration pipeline (normalise → resolve → embed → store → cross-link), the 6-strategy entity resolver, the domain pack architecture with pluggable entity schemas and link rules, the FAIR scorer, the DataSteward loop, the connector framework — these are reusable engineering assets. When a client says "we also need to integrate our internal trial management system", you write a new connector that extends `BaseConnector`, define entity mappings in a new domain pack, and the rest of the pipeline works unchanged. That's an accelerator. Building that from scratch for each engagement would take months. Having it ready takes weeks.
+
+The domain pack architecture is your actual differentiator. The fact that `get_pharma_pack()` returns 9 entity types, 12 link rules, field mappings per source, and a mention normaliser — and that this is a pluggable module — means you can build `get_insurance_pack()` or `get_energy_pack()` or `get_legal_pack()` with the same infrastructure. The entity types change, the link rules change, the connectors change, but the pipeline, the resolver, the graph, the search, the LLM synthesis layer — all of that carries over. That's how a consulting team scales.
+
+---
+
+**What Market Zero needs to demonstrate for this to work**
+
+The demo narrative changes. Instead of "ask it about semaglutide and watch it answer", the demo becomes a walkthrough of what the system built and how fast it got there. I'd structure a client pitch around five proof points:
+
+**"We connected 15 disconnected sources into one graph in X weeks."** Show the entity counts, the link counts, the source coverage. Show that a drug entity in the graph has connections to trials, patents, safety signals, publications, pricing, and regulatory actions — all from different sources, all cross-linked automatically. This demonstrates integration velocity.
+
+**"Our entity resolution handles the hard cases."** Show the 6-strategy cascade. Show that "Ozempic" resolves to semaglutide, that "Novo Nordisk A/S" and "Novo-Nordisk" resolve to the same company, that misspelled drug names fuzzy-match correctly. This demonstrates that the pipeline handles real-world data messiness, not just clean reference data. (This means the entity resolution actually needs to work — fixing WS-1 from the remediation spec is critical for the demo, not just for the product.)
+
+**"New data sources plug in with a connector, not a rewrite."** Show the BaseConnector abstraction. Show that adding a new source means implementing `fetch()` and `health_check()`, defining field mappings, and letting the pipeline handle the rest. Walk through how long it took to add the last connector. This demonstrates extensibility to client data sources.
+
+**"Unstructured data becomes structured and connected."** This is where SPEC_014 (document upload NER) becomes critical. If you can show a PDF being uploaded, entities extracted via LLM-based NER, resolved against the existing graph, and cross-linked — that's the dark data story in action. "Your regulatory correspondence, your medical affairs notes, your competitive intelligence decks — they all become nodes in the graph." This is the pitch that opens wallets.
+
+**"The whole thing is AI-ready from day one."** Show the CTX pipeline, the agentic query graph, the multi-tool execution. Show that once data is in the graph, it's immediately queryable via natural language, with provenance, with structured outputs. "Your team doesn't need to learn a query language or build dashboards. They ask questions and get grounded, cited answers from your own data."
+
+---
+
+**What to fix immediately for this positioning**
+
+The priorities shift when Market Zero is a demo accelerator rather than a product:
+
+**Entity resolution must work flawlessly in the demo.** Brand name → INN resolution, company name normalisation, fuzzy matching — these are the moments in a client walkthrough where you either build credibility or lose it. WS-1 from the remediation spec becomes the single most important investment. If a prospect types their own drug's brand name and the system can't find it, the pitch is over.
+
+**Document upload becomes a must-have, not a nice-to-have.** SPEC_014 moves from "future feature" to "critical demo capability." The ability to drop a PDF into the system and watch it extract entities, resolve them, and light up new connections in the graph — that's the "your dark data, our pipeline" moment that sells the engagement.
+
+**The connector framework needs a "build a connector in 30 minutes" demo.** If you can live-code a new connector during a pitch (or show a recording of it), that demonstrates extensibility more powerfully than any slide deck. Clean up the BaseConnector interface, make sure the boilerplate is minimal, and have a template ready.
+
+**Coverage honesty becomes a selling point.** "Our system tells you when data is incomplete" is a feature for a consulting engagement, not a weakness. Enterprises care about data governance. Showing that the FAIR scorer rates each entity's completeness, that the coverage diagnostic flags low recall, that provenance tracks every claim to its source — these are enterprise trust signals.
+
+**The agentic query layer is the demo finale, not the whole show.** After walking through the data pipeline, the entity resolution, the graph construction — then you show someone asking questions and getting grounded, cited answers. The chat interface demonstrates that the structured data layer underneath is working. It's the proof, not the product.
+
+---
+
+**Domain pack as the repeatable consulting model**
+
+This is where the business scales. Each client engagement follows the same pattern:
+
+Define the domain pack — entity types, link rules, field mappings for the client's domain. This is the consulting work, the part that requires domain expertise and is billable.
+
+Configure connectors — map the client's data sources (internal systems, licensed feeds, file repositories) to the pipeline's normalised record format. Some connectors exist (if pharma), some are new (if different vertical).
+
+Run the pipeline — normalise, resolve, embed, store, cross-link. The infrastructure is identical across clients. Only the domain pack and connectors change.
+
+Deploy the intelligence layer — CTX pipeline, agentic query graph, presentation layer. Again, reusable across clients.
+
+The billable work is the domain expertise and source mapping. The pipeline, resolver, graph, and query layer are your accelerator — they're what makes a 12-week engagement possible instead of a 12-month build. That's a genuine consulting moat. Not the data, not the sources — the speed at which you turn a client's messy data landscape into a working knowledge base.
+
+That's worth building, and it's the one thing I can't do for them.
+
+Competitive intelligence is the strongest opening pitch, and yes, the Elsevier/RELX angle is powerful. Let me walk through exactly why and what creates the most immediate "connectivity moment" in a demo.
+
+---
+
+**Why competitive intelligence is the right entry point**
+
+Every pharma company of meaningful size has a CI function, and it's universally painful. The CI team produces reports — Word documents, PowerPoint decks, email summaries — that contain dense, high-value intelligence about competitor pipelines, conference readouts, regulatory decisions, and market dynamics. These reports get read once, filed in SharePoint, and never connected to anything. Six months later someone asks "what do we know about Company X's CDK4/6 programme" and the answer is trapped in a PDF that nobody can find.
+
+The budget already exists. Companies spend heavily on CI — analyst salaries, licensed databases (Evaluate, Citeline, Cortellis, GlobalData), conference attendance, advisory boards. The pain point isn't acquiring intelligence, it's making it findable, connected, and cumulative. Every CI report should make the knowledge base smarter. Today they make a SharePoint folder larger.
+
+The decision-maker is reachable. CI typically reports into commercial strategy or the chief medical officer's organisation. These are senior stakeholders who feel the pain directly and have budget authority. They're also the people who are already being pitched AI solutions by every vendor, so they understand the technology landscape. Walking in with a working demo rather than a slide deck is differentiated.
+
+---
+
+**What to upload for maximum connectivity impact**
+
+The goal is to show that the moment a document enters the system, it lights up connections across the existing knowledge graph that weren't visible before. Here are the document types ranked by how immediately impressive the connectivity is:
+
+**Tier 1 — immediate "aha" moment**
+
+Conference poster PDFs. A pharma company comes back from ASCO or AHA with 50 poster PDFs from competitor presentations. Each poster mentions drugs, trial names, endpoints, investigators, and results. Today these live in a shared drive. Upload them into Market Zero, the NER extracts every entity mention, the resolver links "Dr. Smith" to the investigator already in the graph from ClinicalTrials.gov, links the trial NCT ID to your existing trial record, links the drug to its mechanism and competitive set. Suddenly the poster data is connected to the full graph — you can see that the investigator on Competitor X's poster also runs three trials for Competitor Y, or that the endpoint they chose is the same one FDA flagged concerns about in a recent guidance document. None of that was visible from the PDF alone.
+
+Elsevier Embase search exports. Most pharma companies have Embase licences and their medical affairs or CI teams run regular literature searches. These come out as structured exports (CSV or RIS format) with titles, abstracts, authors, MeSH terms, and DOIs. The upload connector parses the export, the NER extracts drug and disease mentions from abstracts, the resolver links them to your existing entities, and suddenly you've connected proprietary literature intelligence (which articles the client cares about, which searches they're running) to public trial and regulatory data. "This Embase search found 47 articles about your competitor's drug — here's how those map to 12 active trials, 3 FDA regulatory actions, and 2 patent filings already in the graph."
+
+Internal pipeline review decks. Every pharma company has quarterly pipeline reviews — PowerPoint decks that summarise the status of their own and competitor programmes. These contain the most current intelligence the company has, often ahead of public databases. Upload the deck, extract entity mentions (drugs, companies, indications, development stages), connect to the graph. Now you can see gaps: "your pipeline review mentions 8 competitor programmes in this space, but the public data shows 14 — here are the 6 your team might be missing."
+
+**Tier 2 — strong value, slightly more setup**
+
+Patent landscape reports from IP firms. Pharma companies commission freedom-to-operate or patent landscape analyses from firms like FTO Analytics or their IP counsel. These are rich PDFs listing patent families, assignees, claims, and expiry dates. Upload, extract, connect to drugs and companies already in the graph. "This patent landscape covers 200 patents — 140 of them link to drugs already in your competitive graph, and 23 are from companies your CI team hasn't been tracking."
+
+FDA correspondence. Complete Response Letters, Pre-IND meeting minutes, advisory committee briefing documents. These are publicly available (via FOIA or FDA.gov) but rarely connected to trial and pipeline data. Upload a CRL, extract the drug, the issues raised, the timeline expectations. Connect to the drug's trial history, the competitor landscape, the patent cliff. "FDA raised a safety concern about hepatotoxicity in their CRL — here are the three competitor drugs with the same mechanism that have similar FAERS signals."
+
+KOL mapping documents. Medical affairs teams maintain spreadsheets and documents mapping Key Opinion Leaders by therapeutic area, institution, publication record, and advisory board participation. Upload this, resolve investigators against ClinicalTrials.gov records already in the graph. "Your KOL map identifies Dr. X as a key expert in GLP-1 — the graph shows she's PI on 4 competitor trials and has published 12 papers in the last 18 months, 3 of which cite safety concerns you should know about."
+
+**Tier 3 — high value but needs the client to trust you with sensitive data**
+
+Clinical study reports and internal trial data. This is the gold — the client's own clinical results, adverse event data, and regulatory submissions connected to the competitive landscape. But it requires high trust and often comes later in the engagement, not in the pitch.
+
+---
+
+**The Elsevier/RELX play specifically**
+
+This is worth calling out because it's a wedge into almost every large pharma company. RELX owns Elsevier (ScienceDirect, Scopus, Embase), LexisNexis (news, legal), and several data analytics businesses. Most pharma companies have enterprise licences for multiple RELX products and receive data in formats that are structured but disconnected from each other and from everything else.
+
+The pitch becomes: "You're paying RELX seven figures a year for Embase, Scopus, and LexisNexis. That data sits in three separate interfaces with no cross-linking. Upload your Embase search results and your LexisNexis competitive news alerts into our system, and we connect them to each other and to ClinicalTrials.gov, FDA, SEC, and patent data. Your existing licence spend becomes ten times more useful because the data is finally connected."
+
+This doesn't require you to integrate with RELX's APIs (which would have licensing complications). The client downloads their own data from their own licensed access and uploads it. You're adding value to data they already own, not redistributing it. The legal position is clean.
+
+---
+
+**The demo flow I'd build**
+
+For a pitch to a pharma CI team, the demo should take 15 minutes and follow this arc:
+
+Start with the knowledge graph as-is. "Here's what we built from 15 public sources — X thousand entities, Y thousand connections, covering drugs, companies, trials, patents, safety signals, and publications. Ask it a question." Show a clean comparison query that works well (this is why fixing entity resolution is prerequisite to the pitch).
+
+Then upload a document live. Have a real conference poster PDF ready (something from a recent ASCO or AACL that's publicly available). Upload it. Show the NER extracting entities in real time. Show the resolver matching them to existing graph nodes. Show new connections appearing — "this poster mentions a biomarker that connects to three other trials in the graph that the poster authors didn't reference."
+
+Show what was invisible before. "Before the upload, the graph showed 4 connections for this drug. After uploading one poster, it shows 11. Three of those connections are to your own pipeline — competitive adjacencies that weren't visible from public data alone."
+
+Then extrapolate. "That was one poster. Your CI team brings back 200 from each major conference. Your medical affairs team runs 50 Embase searches a month. Your regulatory team receives 20 FDA documents a quarter. Each one makes the graph richer, the connections denser, the intelligence more complete. And it's the same pipeline — upload, extract, resolve, connect."
+
+---
+
+**What needs to work for this pitch**
+
+Three things are non-negotiable:
+
+Document upload and NER (SPEC_014) must be built. This is the centrepiece of the demo. Without it, you're showing a static knowledge graph and asking the prospect to imagine the value. With it, you're showing the value live. Prioritise this above almost everything else in the remediation plan.
+
+Entity resolution must handle real-world messiness. The poster will mention "tirzepatide" and "LY3298176" and "Mounjaro" in the same document. All three must resolve to the same entity. If the demo trips on a brand name, the pitch fails.
+
+The connectivity visualisation must be compelling. When new connections appear after upload, the prospect needs to see them. The graph view in your frontend needs to clearly show before/after — new nodes highlighted, new edges visible, the expanding network of intelligence. This is the visual moment that sells the engagement.
+
+The rest — coverage diagnostics, numeric guardrails, cross-turn consistency — matters for a product but not for a consulting pitch. Fix the three things above and you have a demo that no slide deck can compete with.

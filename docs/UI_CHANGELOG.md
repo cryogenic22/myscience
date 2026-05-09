@@ -22,4 +22,11 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ### Open issues
 - **InboxTab login wall** (filed in `docs/AGENT_BACKLOG.md`). First PR target
-  for Antigravity to validate the workflow end-to-end.
+  for Antigravity to validate the workflow end-to-end. (RESOLVED)
+
+## 2026-05-09 (Inbox Login Wall Fix)
+
+### Surfaces
+- **CIPage**: Default tab for unauthenticated users is now `digest` (which works without auth).
+- **InboxTab**: Replaced the login-wall message with a real login CTA + button that routes to `/login`.
+

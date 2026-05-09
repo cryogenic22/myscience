@@ -36,7 +36,7 @@ export default function CIPage() {
   const isEnterprise = role === 'enterprise';
   const tabs = ALL_TABS.filter((t) => !t.enterprise || isEnterprise);
 
-  const initialTab = (params.get('tab') as TabKey) || 'inbox';
+  const initialTab = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
   const [tab, setTabState] = useState<TabKey>(initialTab);
   const activeRoom = params.get('room');
 
@@ -71,7 +71,7 @@ export default function CIPage() {
 
   // If room param disappears (back button), no-op — body already conditions on it
   useEffect(() => {
-    const t = (params.get('tab') as TabKey) || 'inbox';
+    const t = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
     if (t !== tab) setTabState(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);

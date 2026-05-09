@@ -46,11 +46,20 @@ export default function InboxTab({
   if (!authed) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ padding: '40px' }}>
-        <div
-          className="text-[13px] text-center max-w-md"
-          style={{ color: 'var(--color-ink-3)' }}
-        >
-          Log in (viewer or above) to see your decision inbox.
+        <div className="text-center max-w-md">
+          <div
+            className="text-[13px] mb-4"
+            style={{ color: 'var(--color-ink-3)' }}
+          >
+            Log in (viewer or above) to see your decision inbox.
+          </div>
+          <button
+            type="button"
+            onClick={() => { window.location.href = '/login'; }}
+            className="btn-primary"
+          >
+            Log In
+          </button>
         </div>
       </div>
     );
