@@ -60,12 +60,16 @@ NUL
 !README.md
 !CLAUDE.md
 !ROADMAP.md
+!AGENTS.md
 !specs/*.md
 !specs/**/*.md
 !ctxpack/**/*.md
 !.claude/**/*.md
 !docs/adrs/**/*.md
 !docs/runbooks/**/*.md
+!docs/API_CHANGELOG.md
+!docs/UI_CHANGELOG.md
+!docs/AGENT_BACKLOG.md
 !apps/**/README.md
 !packages/**/README.md
 
@@ -76,6 +80,10 @@ NUL
 *.gif
 *.backup
 *.docx
+!docs/screenshots/**/*.png
+!docs/screenshots/**/*.jpg
+!docs/screenshots/**/*.jpeg
+!docs/screenshots/**/*.gif
 
 # Temp files
 tmp_*.json
