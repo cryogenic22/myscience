@@ -1137,6 +1137,73 @@
         "title": "MechanismIsolationRequest",
         "type": "object"
       },
+      "OptionBody": {
+        "properties": {
+          "dimension_scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Scores"
+          },
+          "label": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "option_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Option Id",
+            "type": "string"
+          },
+          "predicted_outcome": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Outcome"
+          },
+          "risk_notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Notes"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "option_id",
+          "label",
+          "score"
+        ],
+        "title": "OptionBody",
+        "type": "object"
+      },
       "PatchBriefBody": {
         "properties": {
           "confidence_to_proceed": {
@@ -2146,6 +2213,40 @@
           }
         },
         "title": "SuggestMovesBody",
+        "type": "object"
+      },
+      "SynthesizeBody": {
+        "properties": {
+          "brief_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief Id"
+          },
+          "method": {
+            "default": "score_based",
+            "title": "Method",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/OptionBody"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "options"
+        ],
+        "title": "SynthesizeBody",
         "type": "object"
       },
       "ThresholdAlertRequest": {
@@ -9053,6 +9154,205 @@
         "summary": "Dossier",
         "tags": [
           "query"
+        ]
+      }
+    },
+    "/api/v1/recommendations": {
+      "get": {
+        "operationId": "list_recs_api_v1_recommendations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Recs",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    },
+    "/api/v1/recommendations/synthesize": {
+      "post": {
+        "operationId": "synthesize_api_v1_recommendations_synthesize_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynthesizeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synthesize",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}": {
+      "get": {
+        "operationId": "get_rec_api_v1_recommendations__recommendation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Rec",
+        "tags": [
+          "recommendations"
         ]
       }
     },
@@ -18243,6 +18543,205 @@
         "summary": "Dossier",
         "tags": [
           "query"
+        ]
+      }
+    },
+    "/recommendations": {
+      "get": {
+        "operationId": "list_recs_recommendations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Recs",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    },
+    "/recommendations/synthesize": {
+      "post": {
+        "operationId": "synthesize_recommendations_synthesize_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynthesizeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synthesize",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    },
+    "/recommendations/{recommendation_id}": {
+      "get": {
+        "operationId": "get_rec_recommendations__recommendation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Rec",
+        "tags": [
+          "recommendations"
         ]
       }
     },

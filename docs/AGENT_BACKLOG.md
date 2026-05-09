@@ -213,7 +213,7 @@ target state. Each is tagged for ownership.
 - Why: Cheap, high-trust win. Antigravity needs the dissent payload to render
   a "Dissent view" panel in the Decision Workspace.
 - Priority: low (cheap to add when Decision Workspace is being built)
-- Status: open
+- Status: **done** (2026-05-09 — specs/SPEC_033_counter_recommendation.md, migration 061, services/counter_recommendation.py, api/routes/recommendations.py, 31 tests green. score_based + dimension_split methods; <2 options returns 422 instead of faking dissent.)
 
 ### [BACKEND] Decision signing + immutable evidence_snapshot
 - Filed: 2026-05-09 by Claude (from spec §6.4.2 + §11.2)
