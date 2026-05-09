@@ -89,7 +89,9 @@ target state. Each is tagged for ownership.
 - Cross-cutting: write `specs/SPEC_023_decision_briefs.md` first (data contract
   blocks frontend Decision Workspace work).
 - Priority: high
-- Status: open
+- Status: **done** (2026-05-09 — `specs/SPEC_023_decision_briefs.md`,
+  migration 052, `services/decision_brief.py`, `api/routes/decision_briefs.py`,
+  31 tests green. Commits 1dace1c + b0e52b5.)
 
 ### [BACKEND] Triggers — threshold / cluster / calendar
 - Filed: 2026-05-09 by Claude (from spec §6.2.1)
