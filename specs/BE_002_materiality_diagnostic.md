@@ -87,13 +87,25 @@ Per BE-2:
   spread) — runs after deploy + backfill against prod data; capture
   in PR description.
 
-## 6 · Out of scope (deferred)
+## 6 · Red-team findings (Stage 5)
 
-- Wiring scorer into the live signal-creation path. Investigation
-  shows production signals are not inserted from any visible
-  `services/` path; the insert site appears to live outside the
-  current codebase (legacy or external). Once located, calling
-  `score_signal_row` at INSERT time is a one-line follow-up.
-- Frontend display — that's the FE Claude track. Once `materiality_*`
+| ID | Finding | Disposition |
+|---|---|---|
+| RT-1 | `_is_schema_error` could false-positive on a transient `connection does not exist` and falsely raise from `persist_score_to_signal`. | **Fixed** — message-pattern fallback now requires a relation-kind keyword (column / table / relation / type / function) before the "does not exist" trigger; new test pins the regression. |
+| RT-10 | `signals` table has no `source_tier` column, so `score_signal_row` defaults every legacy row to tier 3 (factor value 0.4). The fix unblocks the 1% bug, but range will be 25-65 not full 0-100 until the connector → tier lookup is wired. | Documented; tracked as follow-up below. |
+
+## 7 · Out of scope (deferred — filed as follow-ups)
+
+- **`source_tier` lookup from connectors** — `signals.source_tier` does not
+  exist; populating it requires joining `signals → market_events → connector → sources.tier`.
+  Worthwhile follow-up that lives naturally with BE-24 (source detail
+  FAIR endpoint), since both depend on the same source registry tier
+  field. Tracked at AGENT_BACKLOG#BE-2-FU1.
+- **Wiring scorer into the live signal-creation path** — production
+  signals are not inserted from any `services/` path visible in this
+  tree; the insert site appears to live outside the current codebase.
+  Once located, calling `score_signal_row` at INSERT time is a
+  one-line follow-up.
+- **Frontend display** — that's the FE Claude track. Once `materiality_*`
   fields land in the GET payload, FE renders correctly without
   further BE work.

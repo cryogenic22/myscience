@@ -59,6 +59,33 @@ class TestPersistRaisesOnSchemaError:
         with pytest.raises(_UndefinedColumnError):
             persist_score_to_signal(db, signal_id="sig-1", result=result)
 
+    def test_persist_does_not_misclassify_connection_does_not_exist(self):
+        """Red-team: an error like 'connection does not exist' must NOT
+        be treated as a schema error — that's a transient runtime
+        failure, not a missing column."""
+        from services.materiality import (
+            persist_score_to_signal,
+            MaterialityResult,
+            MaterialityFactor,
+        )
+
+        result = MaterialityResult(
+            score=50.0,
+            factors={
+                "source_tier": MaterialityFactor("source_tier", 2, 0.7, 0.30, 21.0),
+                "entity_criticality": MaterialityFactor("entity_criticality", "watched", 0.5, 0.30, 15.0),
+                "claim_type": MaterialityFactor("claim_type", "other", 0.3, 0.25, 7.5),
+                "recency": MaterialityFactor("recency", {"days": 30}, 0.5, 0.15, 7.5),
+            },
+        )
+
+        db = MagicMock()
+        db.execute.side_effect = RuntimeError("connection does not exist")
+
+        # Should NOT raise — runtime "does not exist" without a relation
+        # kind keyword is transient, not schema.
+        persist_score_to_signal(db, signal_id="sig-3", result=result)
+
     def test_persist_swallows_transient_errors(self):
         """Best-effort still applies for transient failures (deadlock, conn loss).
 

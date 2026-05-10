@@ -379,22 +379,29 @@ def replace_active_config(
 
 def _is_schema_error(exc: BaseException) -> bool:
     """True for errors caused by missing tables/columns/types — bugs that
-    must surface, not be swallowed (BE-2 RC-2)."""
+    must surface, not be swallowed (BE-2 RC-2).
+
+    Detection prefers the SQLSTATE pgcode (authoritative). The string
+    fallback is intentionally narrow — it requires the message to name
+    a relation kind (column / table / relation / etc.) so unrelated
+    "X does not exist" runtime messages (e.g. "connection does not
+    exist") do not get mis-classified as schema bugs.
+    """
     pgcode = getattr(exc, "pgcode", None) or getattr(exc, "sqlstate", None)
     if pgcode in {"42703", "42P01", "42P10", "42704"}:
         # 42703 undefined_column, 42P01 undefined_table,
         # 42P10 invalid_column_reference, 42704 undefined_object
         return True
     msg = str(exc).lower()
-    schema_signals = (
-        "does not exist",
-        "undefined column",
-        "undefined table",
-        "no such column",
-        "no such table",
-        "invalid column",
+    schema_kinds = ("column", "table", "relation", "type", "function")
+    if "does not exist" in msg and any(k in msg for k in schema_kinds):
+        return True
+    explicit_signals = (
+        "undefined column", "undefined table",
+        "no such column", "no such table",
+        "invalid column reference",
     )
-    return any(sig in msg for sig in schema_signals)
+    return any(sig in msg for sig in explicit_signals)
 
 
 def persist_score_to_signal(db, *, signal_id: str, result: MaterialityResult) -> None:
