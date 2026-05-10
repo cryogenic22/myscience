@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Market Zero — Future-state CI prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16;
+  --bg-2: #0E1320;
+  --surface: #141A2A;
+  --surface-2: #1B2236;
+  --surface-3: #232C44;
+  --ink: #E6EAF2;
+  --ink-2: #A3ACBD;
+  --ink-3: #6F7A91;
+  --ink-4: #4A5266;
+  --accent: #5B8CFF;
+  --accent-2: #7AA2FF;
+  --accent-soft: rgba(91, 140, 255, 0.12);
+  --amber: #F2A23B;
+  --amber-soft: rgba(242, 162, 59, 0.14);
+  --green: #5BC97D;
+  --green-soft: rgba(91, 201, 125, 0.12);
+  --red: #E36B6B;
+  --red-soft: rgba(227, 107, 107, 0.12);
+  --violet: #B68CFF;
+  --teal: #4ED4D0;
+  --line: rgba(255,255,255,0.06);
+  --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif;
+  --body: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.25);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-lg: 0 24px 64px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 12px 36px rgba(91,140,255,0.18);
+  --motion-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(91,140,255,0.06) 0%, transparent 40%),
+    radial-gradient(circle at 80% 100%, rgba(182,140,255,0.04) 0%, transparent 50%),
+    var(--bg);
+  min-height: 100vh;
+  padding-bottom: 80px;
+}
+
+/* ============ Layout shell ============ */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 32px 0;
+}
+
+.section-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-eyebrow .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.section-title {
+  font-family: var(--display);
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.section-sub {
+  font-size: 15px;
+  color: var(--ink-2);
+  max-width: 720px;
+  margin-bottom: 32px;
+}
+.frame {
+  background: var(--bg-2);
+  border-radius: 24px;
+  padding: 32px;
+  margin-bottom: 56px;
+  box-shadow: var(--shadow-md);
+  position: relative;
+}
+.frame-label {
+  position: absolute;
+  top: -12px;
+  left: 24px;
+  background: var(--bg);
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-3);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+/* ============ Top chrome / page hero ============ */
+.hero {
+  padding: 64px 32px 80px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  margin-bottom: 24px;
+}
+.hero-eyebrow .pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+.hero-title {
+  font-family: var(--display);
+  font-size: clamp(48px, 6vw, 84px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+  margin-bottom: 24px;
+  max-width: 1100px;
+}
+.hero-title em {
+  font-style: italic;
+  color: var(--accent-2);
+  font-weight: 400;
+}
+.hero-sub {
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 720px;
+  margin-bottom: 32px;
+}
+.hero-meta {
+  display: flex; gap: 32px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-3);
+}
+
+/* ============ Top bar mock ============ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  background: rgba(20, 26, 42, 0.7);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.topbar-left { display: flex; align-items: center; gap: 24px; }
+.topbar-brand {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.topbar-brand .accent { color: var(--accent-2); font-style: italic; }
+.topbar-nav {
+  display: flex; gap: 4px;
+}
+.topbar-nav button {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.topbar-nav button.active {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.cmd-k {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink-3);
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 280px;
+}
+.cmd-k:hover { border-color: var(--line-strong); color: var(--ink-2); }
+.cmd-k .k {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+/* ============ Live agent rail ============ */
+.agent-rail {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.agent-card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 10px;
+  transition: all 200ms var(--motion-out);
+}
+.agent-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.agent-head { display: flex; align-items: center; gap: 10px; }
+.agent-glyph {
+  width: 32px; height: 32px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+}
+.agent-glyph.sentinel { background: rgba(78, 212, 208, 0.12); color: var(--teal); }
+.agent-glyph.strategist { background: rgba(182, 140, 255, 0.12); color: var(--violet); }
+.agent-glyph.curator { background: rgba(91, 201, 125, 0.12); color: var(--green); }
+.agent-name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.agent-role { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.agent-status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--ink-2);
+}
+.agent-status .live {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.agent-activity {
+  font-size: 12px; color: var(--ink-3);
+  font-family: var(--mono);
+}
+.agent-activity .now { color: var(--ink-2); }
+.agent-progress {
+  height: 2px; background: var(--surface-2);
+  border-radius: 999px; overflow: hidden;
+}
+.agent-progress .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%);
+  border-radius: 999px;
+  animation: load 3.4s ease-in-out infinite;
+}
+@keyframes load {
+  0% { width: 5%; }
+  60% { width: 80%; }
+  100% { width: 100%; }
+}
+
+/* ============ Pulse hero (Sensing Feed) ============ */
+.pulse-grid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 24px;
+}
+.pulse-summary {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.pulse-ring {
+  width: 180px; height: 180px;
+  margin: 12px auto;
+  position: relative;
+}
+.pulse-ring svg { transform: rotate(-90deg); }
+.pulse-ring .center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+}
+.pulse-ring .num {
+  font-family: var(--display); font-weight: 500;
+  font-size: 48px; line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.04em;
+}
+.pulse-ring .label {
+  font-family: var(--mono); font-size: 9px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); margin-top: 6px;
+}
+.pulse-meta {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.pulse-meta .item .v {
+  font-family: var(--display);
+  font-size: 22px; font-weight: 500;
+  color: var(--ink); line-height: 1;
+}
+.pulse-meta .item .l {
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.signal-list { display: flex; flex-direction: column; gap: 12px; }
+.signal-card {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 20px;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: all 200ms var(--motion-out);
+  border: 1px solid transparent;
+}
+.signal-card:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  transform: translateX(2px);
+}
+.signal-card.unread { border-left: 3px solid var(--accent); }
+.signal-card.read { opacity: 0.6; }
+
+.signal-score {
+  text-align: center;
+}
+.signal-score .v {
+  font-family: var(--display);
+  font-size: 26px; font-weight: 500;
+  color: var(--ink);
+  line-height: 1;
+}
+.signal-score .l {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--ink-3); margin-top: 4px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.signal-body .meta {
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.signal-body .meta .source { color: var(--ink-2); }
+.signal-body .meta .dot { color: var(--ink-4); }
+.signal-body .headline {
+  font-family: var(--display);
+  font-size: 17px; font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink); margin-bottom: 6px;
+}
+.signal-body .summary {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.signal-body .quote {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink);
+}
+.signal-actions {
+  display: flex; flex-direction: column; gap: 6px;
+  align-items: flex-end;
+}
+.entity-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+.entity-pill .swatch { width: 6px; height: 6px; border-radius: 50%; }
+.entity-pill.drug .swatch { background: #5B8CFF; }
+.entity-pill.company .swatch { background: #F2A23B; }
+.entity-pill.trial .swatch { background: #4ED4D0; }
+.entity-pill.mechanism .swatch { background: #B68CFF; }
+.entity-pill.ta .swatch { background: #E36B6B; }
+
+.btn {
+  font-family: var(--body);
+  font-size: 12px; font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: all 150ms var(--motion-out);
+}
+.btn:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-2); }
+.btn.ghost { border-color: transparent; }
+.btn.amber { color: var(--amber); border-color: rgba(242,162,59,0.2); }
+
+/* ============ Materiality explainer ============ */
+.materiality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: center;
+}
+.materiality-bars { display: flex; flex-direction: column; gap: 14px; }
+.bar-row { display: grid; grid-template-columns: 140px 1fr 60px; align-items: center; gap: 14px; }
+.bar-row .factor { font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+.bar-row .bar-track {
+  height: 6px; background: var(--surface);
+  border-radius: 999px; overflow: hidden;
+  position: relative;
+}
+.bar-row .bar-fill {
+  position: absolute; left: 0; top: 0; height: 100%;
+  border-radius: 999px;
+  transition: width 800ms var(--motion-out);
+}
+.bar-row .v { font-family: var(--mono); font-size: 12px; color: var(--ink); text-align: right; }
+.materiality-explanation {
+  background: var(--surface);
+  padding: 24px;
+  border-radius: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.materiality-explanation .heading {
+  font-family: var(--display);
+  font-size: 18px; font-weight: 500;
+}
+.materiality-explanation .formula {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  padding: 12px 16px;
+  border-radius: 10px;
+  line-height: 1.7;
+}
+.materiality-explanation .body {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+/* ============ Entity Dossier ============ */
+.dossier-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 24px;
+  align-items: flex-start;
+}
+.dossier-rail {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.dossier-header { display: flex; flex-direction: column; gap: 4px; }
+.dossier-name {
+  font-family: var(--display);
+  font-size: 22px; font-weight: 500;
+  color: var(--ink);
+  line-height: 1.15;
+}
+.dossier-tag { display: flex; gap: 6px; flex-wrap: wrap; }
+.dossier-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dossier-stats .item { display: flex; flex-direction: column; gap: 2px; }
+.dossier-stats .v { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.dossier-stats .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.14em; text-transform: uppercase; }
+.dossier-watching { display: flex; align-items: center; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+.face-stack { display: flex; }
+.face-stack .face {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  margin-left: -6px;
+  display: grid; place-items: center;
+  font-size: 9px; font-weight: 600;
+  color: white;
+}
+.face-stack .face:first-child { margin-left: 0; }
+
+.dossier-main {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 28px;
+}
+.dossier-section { margin-bottom: 28px; }
+.dossier-section .label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.16em;
+  color: var(--ink-3);
+  margin-bottom: 12px;
+}
+.dossier-section .body p { color: var(--ink-2); margin-bottom: 8px; font-size: 14px; }
+.cite {
+  display: inline-flex; align-items: center;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--accent-2);
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin: 0 2px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cite:hover { background: var(--accent); color: white; }
+.dossier-timeline {
+  display: flex; flex-direction: column; gap: 14px;
+  position: relative;
+  padding-left: 22px;
+}
+.dossier-timeline::before {
+  content: '';
+  position: absolute; left: 5px; top: 6px; bottom: 6px;
+  width: 1px;
+  background: var(--line);
+}
+.timeline-item { position: relative; }
+.timeline-item::before {
+  content: '';
+  position: absolute; left: -22px; top: 6px;
+  width: 11px; height: 11px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--bg-2);
+}
+.timeline-item.lower::before { background: var(--ink-3); }
+.timeline-item .when {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.timeline-item .what {
+  font-size: 13.5px;
+  color: var(--ink); margin-top: 2px;
+}
+
+.dossier-evidence {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.evidence-card {
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 150ms var(--motion-out);
+}
+.evidence-card:hover { border-color: var(--line-strong); }
+.evidence-card .top {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+.evidence-card .src { color: var(--ink-2); }
+.evidence-card .tier {
+  background: var(--green-soft);
+  color: var(--green);
+  padding: 1px 6px; border-radius: 4px;
+}
+.evidence-card .title { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.evidence-card .snippet { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+
+/* ============ War-game board ============ */
+.wargame-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+.wargame-board {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px;
+  position: relative;
+  min-height: 500px;
+}
+.wargame-board .axis-y, .wargame-board .axis-x {
+  position: absolute;
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+.wargame-board .axis-y {
+  left: 12px; top: 50%;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: left center;
+  white-space: nowrap;
+}
+.wargame-board .axis-x {
+  bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+}
+
+.payoff-matrix {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr;
+  grid-template-rows: 40px 1fr 1fr;
+  gap: 10px;
+  height: 420px;
+  margin-top: 30px;
+  margin-left: 30px;
+}
+.payoff-matrix .corner { }
+.payoff-matrix .col-head, .payoff-matrix .row-head {
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-2);
+}
+.payoff-matrix .row-head { writing-mode: vertical-rl; transform: rotate(180deg); }
+.payoff-cell {
+  border-radius: 14px;
+  padding: 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  cursor: pointer;
+  transition: all 200ms var(--motion-out);
+}
+.payoff-cell:hover { transform: scale(1.02); box-shadow: var(--shadow-md); }
+.payoff-cell.win { background: linear-gradient(135deg, rgba(91,201,125,0.16) 0%, rgba(91,201,125,0.06) 100%); border: 1px solid rgba(91,201,125,0.25); }
+.payoff-cell.lose { background: linear-gradient(135deg, rgba(227,107,107,0.14) 0%, rgba(227,107,107,0.04) 100%); border: 1px solid rgba(227,107,107,0.22); }
+.payoff-cell.neutral { background: linear-gradient(135deg, rgba(242,162,59,0.12) 0%, rgba(242,162,59,0.04) 100%); border: 1px solid rgba(242,162,59,0.20); }
+.payoff-cell.recommended { box-shadow: var(--shadow-glow); }
+.payoff-cell .delta {
+  font-family: var(--display);
+  font-size: 30px; font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.payoff-cell .delta.up::after { content: ' ▲'; color: var(--green); font-size: 14px; }
+.payoff-cell .delta.down::after { content: ' ▼'; color: var(--red); font-size: 14px; }
+.payoff-cell .desc {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.payoff-cell .ribbon {
+  position: absolute; right: 14px; top: 14px;
+  font-family: var(--mono); font-size: 9px;
+  color: var(--accent-2);
+  background: var(--accent-soft);
+  padding: 2px 6px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.12em;
+}
+.payoff-cell { position: relative; }
+
+.wargame-side {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 22px;
+}
+.adversary {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.adversary .head { display: flex; align-items: center; gap: 10px; }
+.adversary .glyph {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--surface-2);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 600; font-size: 16px;
+  color: var(--ink);
+}
+.adversary .name { font-family: var(--display); font-size: 15px; font-weight: 500; }
+.adversary .archetype { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.posterior-bars {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface-2);
+  padding: 14px;
+  border-radius: 10px;
+}
+.posterior-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.posterior-row .lab { font-size: 11.5px; color: var(--ink-2); }
+.posterior-row .pct { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.posterior-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
+.posterior-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 800ms var(--motion-out); }
+.posterior-bar .fill.amber { background: var(--amber); }
+.posterior-bar .fill.violet { background: var(--violet); }
+
+/* ============ Brief composer ============ */
+.composer-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+.composer-doc {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 56px 64px;
+  min-height: 580px;
+  position: relative;
+}
+.composer-doc .doc-meta {
+  display: flex; gap: 16px; align-items: center;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.14em;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.composer-doc .doc-meta .state {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  padding: 2px 8px; border-radius: 4px;
+}
+.composer-doc h1 {
+  font-family: var(--display);
+  font-size: 32px; font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--ink);
+  margin-bottom: 24px;
+}
+.composer-doc h2 {
+  font-family: var(--display);
+  font-size: 18px; font-weight: 500;
+  color: var(--ink);
+  margin-top: 28px; margin-bottom: 12px;
+}
+.composer-doc p {
+  font-size: 15px; line-height: 1.7;
+  color: var(--ink); margin-bottom: 14px;
+}
+.composer-doc .ai-suggest {
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: var(--accent-soft);
+  border-radius: 10px;
+  border-left: 3px solid var(--accent);
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.composer-doc .ai-suggest .icon {
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 11px;
+  flex-shrink: 0;
+}
+.composer-doc .ai-suggest .body { flex: 1; }
+.composer-doc .ai-suggest .heading {
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--accent-2);
+  margin-bottom: 4px;
+}
+.composer-doc .ai-suggest p {
+  font-size: 13.5px; margin-bottom: 6px; color: var(--ink);
+}
+.composer-doc .ai-suggest .actions {
+  display: flex; gap: 6px; margin-top: 6px;
+}
+.composer-doc .options-list {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin: 16px 0;
+}
+.composer-doc .option-card {
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.composer-doc .option-card.recommended {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(91,201,125,0.10);
+}
+.composer-doc .option-card .ord {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em;
+}
+.composer-doc .option-card .ttl {
+  font-family: var(--display); font-size: 16px; font-weight: 500;
+  margin: 4px 0 8px;
+}
+.composer-doc .option-card .scoreline {
+  display: flex; gap: 12px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-2);
+}
+.composer-doc .option-card .scoreline .ok { color: var(--green); }
+.composer-doc .option-card .scoreline .alert { color: var(--amber); }
+
+.composer-side {
+  display: flex; flex-direction: column; gap: 16px;
+}
+.composer-card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.composer-card .label { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.composer-card .heading { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.composer-card .body { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.composer-card .row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0;
+}
+
+/* ============ Learning loop scoreboard ============ */
+.learning-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+}
+.learning-card {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.learning-num {
+  font-family: var(--display);
+  font-size: 56px; font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+.learning-num.amber { color: var(--amber); }
+.learning-num.green { color: var(--green); }
+.learning-num.red { color: var(--red); }
+.learning-label {
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+.learning-explain {
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.5;
+}
+.sparkline {
+  height: 56px; width: 100%;
+  margin-top: 8px;
+}
+.sparkline path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.sparkline .area { fill: var(--accent-soft); stroke: none; }
+
+.weights-table {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 24px;
+}
+.weights-table .row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.weights-table .row:last-child { border-bottom: none; }
+.weights-table .row.head {
+  font-family: var(--mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+.weights-table .row .name { font-size: 13px; }
+.weights-table .row .from, .weights-table .row .to {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-2);
+}
+.weights-table .delta {
+  font-family: var(--mono); font-size: 11px;
+  padding: 2px 6px; border-radius: 4px;
+}
+.weights-table .delta.up { color: var(--green); background: var(--green-soft); }
+.weights-table .delta.down { color: var(--red); background: var(--red-soft); }
+
+/* ============ Cmd-K overlay ============ */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 18, 0.7);
+  backdrop-filter: blur(12px);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16vh;
+  z-index: 100;
+}
+.cmdk-overlay.open { display: flex; }
+.cmdk-panel {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-2);
+  border-radius: 20px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: cmdkIn 200ms var(--motion-out);
+}
+@keyframes cmdkIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.cmdk-input {
+  display: flex; gap: 14px; align-items: center;
+  padding: 22px 26px;
+  border-bottom: 1px solid var(--line);
+}
+.cmdk-input input {
+  flex: 1;
+  background: transparent;
+  border: none; outline: none;
+  font-family: var(--display);
+  font-size: 22px;
+  color: var(--ink);
+  font-weight: 400;
+}
+.cmdk-input input::placeholder { color: var(--ink-3); font-style: italic; }
+.cmdk-results { padding: 12px; }
+.cmdk-section {
+  font-family: var(--mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--ink-3);
+  padding: 10px 14px 6px;
+}
+.cmdk-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.cmdk-row:hover, .cmdk-row.focused { background: var(--surface-2); }
+.cmdk-row .glyph {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent);
+}
+.cmdk-row .body { flex: 1; }
+.cmdk-row .ttl { font-weight: 500; }
+.cmdk-row .sub { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.cmdk-row .k {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--ink-3);
+  background: var(--surface);
+  padding: 2px 6px; border-radius: 4px;
+}
+.cmdk-foot {
+  padding: 12px 22px;
+  border-top: 1px solid var(--line);
+  display: flex; gap: 24px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+
+/* ============ Footer credit ============ */
+.proto-credit {
+  text-align: center;
+  padding: 64px 0;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.18em;
+}
+
+/* ============ Theme toggle ============ */
+.theme-toggle {
+  display: flex; gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.theme-toggle button {
+  width: 26px; height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 12px;
+}
+.theme-toggle button.active {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* ============ Light theme override ============ */
+[data-theme="light"] {
+  --bg: #FAFAF8;
+  --bg-2: #F4F4F0;
+  --surface: #FFFFFF;
+  --surface-2: #F8F8F4;
+  --surface-3: #EFEFE9;
+  --ink: #0A1F3D;
+  --ink-2: #3F516D;
+  --ink-3: #7A8AA0;
+  --ink-4: #B0B7C4;
+  --accent: #1C6EF7;
+  --accent-2: #1558D6;
+  --accent-soft: rgba(28,110,247,0.08);
+  --line: rgba(10,31,61,0.08);
+  --line-strong: rgba(10,31,61,0.16);
+  --shadow-md: 0 8px 24px rgba(10,31,61,0.06);
+}
+
+@media (max-width: 1100px) {
+  .pulse-grid, .dossier-grid, .wargame-grid, .composer-grid, .learning-grid, .materiality-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== TOP BAR ========== -->
+<div class="shell">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-brand">Market <em class="accent">Zero</em></span>
+      <div class="topbar-nav">
+        <button class="active">Pulse</button>
+        <button>Dossier</button>
+        <button>War Room</button>
+        <button>Briefs</button>
+        <button>Learning</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="cmd-k" onclick="openCmdK()">
+        Ask anything across your sources <span class="k">⌘ K</span>
+      </div>
+      <div class="theme-toggle">
+        <button onclick="setTheme('light')">☀</button>
+        <button class="active" onclick="setTheme('dark')">☾</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<div class="hero">
+  <span class="hero-eyebrow"><span class="pulse"></span>Future-state prototype · Live data · 9 May 2026</span>
+  <h1 class="hero-title">
+    The competitive intelligence layer<br/>that <em>thinks alongside you.</em>
+  </h1>
+  <p class="hero-sub">
+    Three named agents — Sentinel, Strategist and Curator — sense the world, frame what matters, run game-theoretic simulations, draft the brief, and learn from every outcome. You stay in the editor's seat.
+  </p>
+  <div class="hero-meta">
+    <span>↳ Scroll to walk the seven surfaces</span>
+    <span>· Pulse · Dossier · War Room · Brief · Materiality · Learning · Ask</span>
+  </div>
+</div>
+
+<!-- ========== AGENT RAIL ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Live agent plane · Always on</div>
+  <div class="section-title">The agents are working right now.</div>
+  <p class="section-sub">Three named, addressable, observable agents. Each shows what it is doing, what it just did, and what it will do next. You can nudge them, override them, or pause them. They are colleagues, not chatbots.</p>
+
+  <div class="agent-rail">
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph sentinel">SE</div>
+        <div>
+          <div class="agent-name">Sentinel</div>
+          <div class="agent-role">Sense · 24 sources</div>
+        </div>
+        <div style="margin-left:auto" class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">
+        Scanning <span class="now">FDA Orange Book</span> for label changes on EGFR inhibitors · last hit 4m ago
+      </div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph strategist">ST</div>
+        <div>
+          <div class="agent-name">Strategist</div>
+          <div class="agent-role">Frame · Simulate</div>
+        </div>
+        <div style="margin-left:auto" class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">
+        Running 1,200 Monte Carlo trials for <span class="now">Q3 launch — Compound Y</span>
+      </div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph curator">CU</div>
+        <div>
+          <div class="agent-name">Curator</div>
+          <div class="agent-role">Learn · Recalibrate</div>
+        </div>
+        <div style="margin-left:auto" class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">
+        Adjusted source weight: <span class="now">Reuters 0.78 → 0.82</span> after 4 outcome matches
+      </div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PULSE / SENSING FEED ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The morning ritual</div>
+  <div class="section-title">Your Pulse for Tuesday.</div>
+  <p class="section-sub">Three signals worth your attention, ranked by materiality and grounded in the sources you trust. The number is one click from being explained. The headline is one click from the evidence.</p>
+
+  <div class="frame">
+    <span class="frame-label">/pulse · 08:40</span>
+    <div class="pulse-grid">
+
+      <div class="pulse-summary">
+        <div>
+          <div class="agent-role" style="margin-bottom:8px">Sentinel · Last refresh 32s ago</div>
+          <div style="font-family:var(--display);font-size:18px;font-weight:500;color:var(--ink);line-height:1.3;">3 signals scored above your attention threshold overnight.</div>
+        </div>
+        <div class="pulse-ring">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <circle cx="90" cy="90" r="76" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
+            <circle cx="90" cy="90" r="76" fill="none" stroke="url(#grad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="478" stroke-dashoffset="120"/>
+            <defs>
+              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#5B8CFF"/>
+                <stop offset="100%" stop-color="#7AA2FF"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="center">
+            <div class="num">87</div>
+            <div class="label">Top signal</div>
+          </div>
+        </div>
+        <div class="pulse-meta">
+          <div class="item"><div class="v">3</div><div class="l">Above threshold</div></div>
+          <div class="item"><div class="v">12</div><div class="l">Tracked overnight</div></div>
+          <div class="item"><div class="v">71%</div><div class="l">30-day calibration</div></div>
+          <div class="item"><div class="v">4</div><div class="l">Sources active</div></div>
+        </div>
+      </div>
+
+      <div class="signal-list">
+
+        <div class="signal-card unread">
+          <div class="signal-score">
+            <div class="v">87</div>
+            <div class="l">Materiality</div>
+          </div>
+          <div class="signal-body">
+            <div class="meta">
+              <span class="source">FDA · Reuters</span><span class="dot">•</span><span>6h ago</span><span class="dot">•</span><span>Regulatory readout</span><span class="dot">•</span><span style="color:var(--green)">High confidence</span>
+            </div>
+            <div class="headline">Lilly receives FDA Complete Response Letter on tirzepatide oncology label expansion</div>
+            <div class="summary">Validates the second-line CRL pattern your watchlist flagged in March. Affects three competitor assets in your space — Pfizer's amivantamab and AstraZeneca's osimertinib both have similar second-line filings due in Q3.</div>
+            <div class="quote">"Sentinel surfaced this 6 hours before Reuters because it cross-referenced an FDA docket update with a pattern from your March watchlist."</div>
+          </div>
+          <div class="signal-actions">
+            <span class="entity-pill drug"><span class="swatch"></span>Tirzepatide</span>
+            <span class="entity-pill company"><span class="swatch"></span>Eli Lilly</span>
+            <button class="btn primary">Open dossier →</button>
+            <button class="btn">Frame as decision</button>
+          </div>
+        </div>
+
+        <div class="signal-card unread">
+          <div class="signal-score">
+            <div class="v">74</div>
+            <div class="l">Materiality</div>
+          </div>
+          <div class="signal-body">
+            <div class="meta">
+              <span class="source">SEC EDGAR · 8-K</span><span class="dot">•</span><span>11h ago</span><span class="dot">•</span><span>Corporate guidance</span>
+            </div>
+            <div class="headline">AstraZeneca cuts FY26 oncology revenue guidance 4–6% on osimertinib pricing pressure</div>
+            <div class="summary">First downward revision in 11 quarters. Curator flagged similar guidance language to Roche's 2024 pre-divestiture filing. Strategist suggests stress-testing the "AZ retreats from US oncology" scenario.</div>
+          </div>
+          <div class="signal-actions">
+            <span class="entity-pill company"><span class="swatch"></span>AstraZeneca</span>
+            <span class="entity-pill ta"><span class="swatch"></span>Oncology</span>
+            <button class="btn">Add to watchlist</button>
+            <button class="btn">View thread</button>
+          </div>
+        </div>
+
+        <div class="signal-card read">
+          <div class="signal-score">
+            <div class="v">62</div>
+            <div class="l">Materiality</div>
+          </div>
+          <div class="signal-body">
+            <div class="meta">
+              <span class="source">ClinicalTrials.gov</span><span class="dot">•</span><span>17h ago</span><span class="dot">•</span><span>Read 09:12</span>
+            </div>
+            <div class="headline">KEYNOTE-869 enrolment update: Pfizer adds 4 EU sites, completion shifts to Q1 2027</div>
+            <div class="summary">Two-quarter delay on the trial you have been tracking since November. Doesn't change your Q3 launch window.</div>
+          </div>
+          <div class="signal-actions">
+            <span class="entity-pill trial"><span class="swatch"></span>KEYNOTE-869</span>
+            <button class="btn ghost">Mark as actioned</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MATERIALITY EXPLAINER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Trust as a primitive</div>
+  <div class="section-title">Why is the top signal scored 87?</div>
+  <p class="section-sub">Materiality is never a black box. Click any score and see the four factors, the weights, and the source registry that produced it. Adjustable by your admin. Auditable forever.</p>
+
+  <div class="frame">
+    <span class="frame-label">/pulse · materiality drawer</span>
+    <div class="materiality-grid">
+      <div class="materiality-bars">
+        <div class="bar-row">
+          <div class="factor">Source tier</div>
+          <div class="bar-track"><div class="bar-fill" style="width:95%; background: var(--green);"></div></div>
+          <div class="v">0.95</div>
+        </div>
+        <div class="bar-row">
+          <div class="factor">Entity criticality</div>
+          <div class="bar-track"><div class="bar-fill" style="width:100%; background: var(--accent);"></div></div>
+          <div class="v">1.00</div>
+        </div>
+        <div class="bar-row">
+          <div class="factor">Claim type</div>
+          <div class="bar-track"><div class="bar-fill" style="width:85%; background: var(--violet);"></div></div>
+          <div class="v">0.85</div>
+        </div>
+        <div class="bar-row">
+          <div class="factor">Recency decay</div>
+          <div class="bar-track"><div class="bar-fill" style="width:92%; background: var(--teal);"></div></div>
+          <div class="v">0.92</div>
+        </div>
+        <div class="bar-row" style="margin-top:10px;border-top:1px solid var(--line);padding-top:14px;">
+          <div class="factor" style="color:var(--ink)">Composite score</div>
+          <div class="bar-track" style="height:10px"><div class="bar-fill" style="width:87%; background: linear-gradient(90deg, var(--accent), var(--accent-2));"></div></div>
+          <div class="v" style="color:var(--ink); font-weight:600;">87</div>
+        </div>
+      </div>
+
+      <div class="materiality-explanation">
+        <div class="agent-role">Curator · explained the score</div>
+        <div class="heading">Source = FDA primary docket. Entity = focal compound. Claim = primary endpoint readout. Posted 6h ago.</div>
+        <div class="formula">87 = 0.95 × 0.40 + 1.00 × 0.30 + 0.85 × 0.20 + 0.92 × 0.10<br>     = 0.38 + 0.30 + 0.17 + 0.09</div>
+        <div class="body">Source tier is weighted highest because tier-1 regulatory filings were 78% predictive of meaningful market reactions in your past 90 days. Entity criticality reflects that tirzepatide is on your top-5 watchlist. Claim type is "primary endpoint readout", which the Curator promoted from 0.78 to 0.85 last week after three correct calibrations.</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn primary">View source registry</button>
+          <button class="btn">Tune weights</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ENTITY DOSSIER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The unit of thought</div>
+  <div class="section-title">The Tirzepatide dossier — everything we know, in one place.</div>
+  <p class="section-sub">Maya thinks in compounds, companies, mechanisms — not in signals or briefs. The dossier is the spine: identity, status, recent moves, decisions taken, evidence pile, related entities, and the analysts watching. Every claim cites its source inline.</p>
+
+  <div class="frame">
+    <span class="frame-label">/dossier/drug/tirzepatide</span>
+    <div class="dossier-grid">
+
+      <div class="dossier-rail">
+        <div class="dossier-header">
+          <div class="agent-role">Drug · Eli Lilly · INN</div>
+          <div class="dossier-name">Tirzepatide</div>
+          <div class="dossier-tag">
+            <span class="entity-pill mechanism"><span class="swatch"></span>GIP/GLP-1</span>
+            <span class="entity-pill ta"><span class="swatch"></span>Oncology</span>
+          </div>
+        </div>
+        <div class="dossier-stats">
+          <div class="item"><div class="v">Phase 3</div><div class="l">Status</div></div>
+          <div class="item"><div class="v">Q3 26</div><div class="l">Next catalyst</div></div>
+          <div class="item"><div class="v">14</div><div class="l">Open trials</div></div>
+          <div class="item"><div class="v">8</div><div class="l">Tracked signals</div></div>
+        </div>
+        <div class="dossier-watching">
+          <div class="face-stack">
+            <span class="face" style="background:#5B8CFF">M</span>
+            <span class="face" style="background:#F2A23B">D</span>
+            <span class="face" style="background:#B68CFF">R</span>
+            <span class="face" style="background:#4ED4D0">+2</span>
+          </div>
+          <span>5 analysts watching</span>
+        </div>
+        <button class="btn primary" style="margin-top:8px">Add to my watchlist</button>
+      </div>
+
+      <div class="dossier-main">
+
+        <div class="dossier-section">
+          <div class="label">Synthesis · written by Strategist · edited by you</div>
+          <div class="body">
+            <p>Tirzepatide is Lilly's lead asset in second-line oncology, with primary endpoint readout in the EU and an FDA filing under review. As of 6 hours ago<a class="cite">FDA-001</a>, the FDA issued a Complete Response Letter citing manufacturing chemistry, not safety or efficacy. The signal validates the second-line CRL pattern your team flagged in March<a class="cite">internal-mar26</a>, and threatens the Q3 launch window for the asset.</p>
+            <p>Comparable assets — Pfizer's amivantamab<a class="cite">PFE-K-869</a> and AstraZeneca's osimertinib<a class="cite">AZN-FY26</a> — have second-line filings due in the same window. If Lilly resolves the CMC concerns within 60 days (Lilly's stated target<a class="cite">LLY-PR-09May</a>), the launch shifts by one quarter; if longer, Pfizer is positioned to lead.</p>
+          </div>
+        </div>
+
+        <div class="dossier-section">
+          <div class="label">Recent moves · Last 30 days</div>
+          <div class="dossier-timeline">
+            <div class="timeline-item">
+              <div class="when">6 hours ago · FDA CRL</div>
+              <div class="what">Complete Response Letter — manufacturing chemistry citation, no safety / efficacy concerns</div>
+            </div>
+            <div class="timeline-item">
+              <div class="when">11 days ago · Phase 3 readout</div>
+              <div class="what">Primary endpoint hit on EU pivotal trial; PFS HR 0.61, p&lt;0.001</div>
+            </div>
+            <div class="timeline-item lower">
+              <div class="when">19 days ago · Investor day</div>
+              <div class="what">CFO reaffirmed Q3 26 launch target; $2.4B peak guidance maintained</div>
+            </div>
+            <div class="timeline-item lower">
+              <div class="when">28 days ago · Patent grant</div>
+              <div class="what">USPTO grants composition-of-matter through 2041</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dossier-section">
+          <div class="label">Open decisions · Your team</div>
+          <div class="evidence-card" style="background:var(--accent-soft);border-color:var(--accent);">
+            <div class="top">
+              <span class="src" style="color:var(--accent-2)">Decision draft</span>
+              <span style="color:var(--ink-3)">Owner: you · Started 14:00 today</span>
+            </div>
+            <div class="title">Should we accelerate our Q3 launch in response to the Lilly CRL?</div>
+            <div class="snippet">3 options · Strategist running 1,200 Monte Carlo trials · 0/3 stakeholder reviews</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="dossier-evidence">
+        <div class="agent-role">Evidence pile · 14 items · grounded</div>
+
+        <div class="evidence-card">
+          <div class="top"><span class="src">FDA.gov · Docket</span><span class="tier">TIER 1</span><span>09 May, 03:42 GMT</span></div>
+          <div class="title">FDA-2026-D-1842 — Complete Response Letter, Application 217488</div>
+          <div class="snippet">"...the application cannot be approved in its current form. Specific deficiencies in Chemistry, Manufacturing, and Controls (CMC) are outlined in the attached..."</div>
+        </div>
+
+        <div class="evidence-card">
+          <div class="top"><span class="src">Reuters Health</span><span class="tier">TIER 2</span><span>09 May, 04:12 GMT</span></div>
+          <div class="title">Lilly's tirzepatide hits regulatory snag in oncology label push</div>
+          <div class="snippet">"The Indianapolis-based drugmaker said the Complete Response Letter cited manufacturing concerns rather than safety..."</div>
+        </div>
+
+        <div class="evidence-card">
+          <div class="top"><span class="src">SEC EDGAR · Lilly 10-Q</span><span class="tier">TIER 1</span><span>04 May</span></div>
+          <div class="title">Q1 26 Quarterly Report — Risk factors, oncology pipeline</div>
+          <div class="snippet">"...regulatory delays in expansion indications could materially affect FY revenue guidance for the oncology segment..."</div>
+        </div>
+
+        <button class="btn ghost">+ 11 more items</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== WAR-GAME BOARD ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The strategic surface</div>
+  <div class="section-title">The war-game board.</div>
+  <p class="section-sub">A 2x2 payoff matrix you can actually look at. Strategist runs the simulation; the board tells the story. Each cell shows the modelled market-share delta and a confidence band. The recommended cell glows. Adversary belief on the side updates as evidence arrives.</p>
+
+  <div class="frame">
+    <span class="frame-label">/war-room/q3-launch-compound-y</span>
+    <div class="wargame-grid">
+
+      <div class="wargame-board">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;">
+          <div>
+            <div class="agent-role">Strategist · 1,200 Monte Carlo trials · 87% confidence</div>
+            <div style="font-family:var(--display);font-size:20px;font-weight:500;margin-top:4px;">If Lilly resolves the CRL by Q3 vs Q4 — and Pfizer responds aggressively or holds back</div>
+          </div>
+          <button class="btn">Re-run with new data</button>
+        </div>
+
+        <div class="payoff-matrix">
+          <div class="corner"></div>
+          <div class="col-head">Pfizer aggressive</div>
+          <div class="col-head">Pfizer holds back</div>
+
+          <div class="row-head">Lilly Q3</div>
+          <div class="payoff-cell lose">
+            <div class="ribbon">Worst case</div>
+            <div class="delta down">−4.2%</div>
+            <div class="desc">If Lilly recovers fast and Pfizer launches first, we lose share to both. Strategist confidence: 71%</div>
+          </div>
+          <div class="payoff-cell neutral">
+            <div class="delta">+0.8%</div>
+            <div class="desc">Lilly recovers but Pfizer waits. We hold share. Strategist confidence: 64%</div>
+          </div>
+
+          <div class="row-head">Lilly Q4+</div>
+          <div class="payoff-cell win recommended">
+            <div class="ribbon">Recommended · counter shown →</div>
+            <div class="delta up">+6.4%</div>
+            <div class="desc">Lilly delayed, Pfizer pre-empts our segment. We accelerate launch, capture share before either rival. Strategist confidence: 82%</div>
+          </div>
+          <div class="payoff-cell win">
+            <div class="delta up">+3.1%</div>
+            <div class="desc">Both rivals slow. We launch on schedule and consolidate.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wargame-side">
+
+        <div class="adversary">
+          <div class="head">
+            <div class="glyph">PF</div>
+            <div>
+              <div class="name">Pfizer</div>
+              <div class="archetype">Adversary type · posterior</div>
+            </div>
+          </div>
+          <div class="posterior-bars">
+            <div class="posterior-row"><span class="lab">Aggressive growth</span><span class="pct">61%</span></div>
+            <div class="posterior-bar"><div class="fill" style="width:61%;"></div></div>
+            <div class="posterior-row"><span class="lab">Defensive consolidator</span><span class="pct">28%</span></div>
+            <div class="posterior-bar"><div class="fill amber" style="width:28%;"></div></div>
+            <div class="posterior-row"><span class="lab">Cash-constrained</span><span class="pct">11%</span></div>
+            <div class="posterior-bar"><div class="fill violet" style="width:11%;"></div></div>
+          </div>
+          <div class="agent-activity" style="font-size:11px;">Updated 14m ago after KEYNOTE-869 enrolment expansion <span class="now">+4 EU sites</span></div>
+        </div>
+
+        <div class="adversary">
+          <div class="head">
+            <div class="glyph">LY</div>
+            <div>
+              <div class="name">Lilly</div>
+              <div class="archetype">Recovery scenarios</div>
+            </div>
+          </div>
+          <div class="posterior-bars">
+            <div class="posterior-row"><span class="lab">Resolves in Q3 (60d)</span><span class="pct">38%</span></div>
+            <div class="posterior-bar"><div class="fill" style="width:38%;"></div></div>
+            <div class="posterior-row"><span class="lab">Slips to Q4</span><span class="pct">47%</span></div>
+            <div class="posterior-bar"><div class="fill amber" style="width:47%;"></div></div>
+            <div class="posterior-row"><span class="lab">Slips to 2027</span><span class="pct">15%</span></div>
+            <div class="posterior-bar"><div class="fill violet" style="width:15%;"></div></div>
+          </div>
+        </div>
+
+        <div style="background:var(--accent-soft); border-radius:12px; padding:14px 16px; border:1px solid var(--accent);">
+          <div class="agent-role" style="color:var(--accent-2);margin-bottom:6px;">Strategist · counter-argument</div>
+          <div style="font-size:12.5px;color:var(--ink); line-height:1.55;">If you discount the FDA CRL recovery time below 90 days, the recommended cell flips to the bottom-right. Worth stress-testing with your CMC contacts before committing.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== BRIEF COMPOSER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Writing-first</div>
+  <div class="section-title">Compose the brief by writing it.</div>
+  <p class="section-sub">Not a five-panel form. A document, with the agents suggesting evidence, options, dissent and stakeholders inline as you type. The state machine runs underneath.</p>
+
+  <div class="frame">
+    <span class="frame-label">/briefs/d_q3_launch_response · Draft · 14:08</span>
+    <div class="composer-grid">
+
+      <div class="composer-doc">
+        <div class="doc-meta">
+          <span>Decision brief · D-2026-0247</span>
+          <span class="state">Draft</span>
+          <span>Owner · Maya Chen</span>
+          <span>Updated 4 minutes ago · Strategist suggesting</span>
+        </div>
+
+        <h1>Should we accelerate our Q3 launch in response to the Lilly CRL?</h1>
+
+        <p>The Lilly Complete Response Letter on tirzepatide<a class="cite">FDA-001</a> creates a 60-90 day window in which our Q3 launch can either pre-empt Pfizer or be pre-empted by Pfizer's KEYNOTE-869 readout<a class="cite">PFE-K-869</a>. The Strategist's modelled payoff matrix shows the highest expected value in the bottom-left cell — accelerating our launch and counting on Lilly delaying past Q3.</p>
+
+        <div class="ai-suggest">
+          <div class="icon">ST</div>
+          <div class="body">
+            <div class="heading">Strategist suggests · 12s ago</div>
+            <p>You haven't named the dissenting view. Pfizer's posterior shifted to 61% "aggressive growth" 14 minutes ago. Want me to draft a counter-recommendation?</p>
+            <div class="actions">
+              <button class="btn primary">Yes, draft it</button>
+              <button class="btn ghost">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <h2>Options under consideration</h2>
+        <div class="options-list">
+          <div class="option-card recommended">
+            <div class="ord">Option 1 · Strategist recommended</div>
+            <div class="ttl">Accelerate Q3 launch</div>
+            <div class="scoreline">
+              <span class="ok">+6.4% share</span>
+              <span class="alert">+$22M opex</span>
+              <span>82% confidence</span>
+            </div>
+          </div>
+          <div class="option-card">
+            <div class="ord">Option 2 · Counter-recommendation</div>
+            <div class="ttl">Hold Q3, accelerate marketing</div>
+            <div class="scoreline">
+              <span class="ok">+2.1% share</span>
+              <span class="ok">+$4M opex</span>
+              <span>76% confidence</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-suggest">
+          <div class="icon">CU</div>
+          <div class="body">
+            <div class="heading">Curator notes · evidence completeness 4/5</div>
+            <p>You're missing CMC commentary from Lilly's CFO. I have an investor-day transcript snippet that may close that gap.</p>
+            <div class="actions">
+              <button class="btn primary">Insert with citation</button>
+              <button class="btn ghost">Not relevant</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="composer-side">
+
+        <div class="composer-card">
+          <div class="label">Stakeholders to brief</div>
+          <div class="body">Brand lead (Sasha), R&D portfolio (Dev), CCO office (one-pager only)</div>
+          <button class="btn">Schedule round-robin</button>
+        </div>
+
+        <div class="composer-card">
+          <div class="label">Materiality of this decision</div>
+          <div class="heading" style="font-family:var(--display);font-size:30px;font-weight:500;color:var(--accent);">High</div>
+          <div class="body">Affects $180M of Q3 revenue forecast. Locks brand resourcing for 2 quarters.</div>
+        </div>
+
+        <div class="composer-card">
+          <div class="label">State · what happens next</div>
+          <div class="row">
+            <span style="font-size:12.5px;color:var(--ink);">Draft</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--green);">Now</span>
+          </div>
+          <div class="row">
+            <span style="font-size:12.5px;color:var(--ink-2);">Stakeholder review</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink-3);">Next</span>
+          </div>
+          <div class="row">
+            <span style="font-size:12.5px;color:var(--ink-2);">Simulation refresh</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink-3);">Auto</span>
+          </div>
+          <div class="row">
+            <span style="font-size:12.5px;color:var(--ink-2);">Committed by CCO</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--ink-3);">Tue</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== LEARNING LOOP ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The flywheel closes here</div>
+  <div class="section-title">What did the system learn this week?</div>
+  <p class="section-sub">Every committed decision becomes an outcome. Every outcome shifts a weight. The weights are visible. The drift is visible. The flywheel is felt, not just claimed.</p>
+
+  <div class="frame">
+    <span class="frame-label">/learning · weekly retro</span>
+
+    <div class="learning-grid" style="margin-bottom:24px;">
+      <div class="learning-card">
+        <div class="learning-num amber">71%</div>
+        <div class="learning-label">Calibration · trailing 30 days</div>
+        <div class="learning-explain">Down 7 points from 78% three months ago. Strategist's miss on the AZ guidance call dragged the average. Curator is investigating whether the source-tier weight needs adjustment.</div>
+        <svg class="sparkline" viewBox="0 0 200 56" preserveAspectRatio="none">
+          <path class="area" d="M0,18 L20,12 L40,16 L60,8 L80,14 L100,10 L120,16 L140,22 L160,26 L180,30 L200,36 L200,56 L0,56 Z"/>
+          <path d="M0,18 L20,12 L40,16 L60,8 L80,14 L100,10 L120,16 L140,22 L160,26 L180,30 L200,36"/>
+        </svg>
+      </div>
+      <div class="learning-card">
+        <div class="learning-num green">14</div>
+        <div class="learning-label">Outcomes captured · this week</div>
+        <div class="learning-explain">11 verified, 2 missed, 1 cancelled. The missed predictions: AstraZeneca guidance (system: stable; reality: cut) and KEYNOTE-869 timing (system: on track; reality: delayed +2Q).</div>
+        <button class="btn">Open the misses</button>
+      </div>
+      <div class="learning-card">
+        <div class="learning-num">+0.04</div>
+        <div class="learning-label">Net source-weight delta</div>
+        <div class="learning-explain">Reuters and FDA Orange Book gained trust. Two industry blogs lost it. Curator updated the source registry 14 minutes ago.</div>
+        <button class="btn">View weight changes</button>
+      </div>
+    </div>
+
+    <div class="weights-table">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div class="agent-role">Curator · weight changes this week</div>
+          <div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">7 sources adjusted from outcome evidence</div>
+        </div>
+        <button class="btn">Pin to dashboard</button>
+      </div>
+
+      <div class="row head">
+        <span>Source</span><span>From</span><span>To</span><span>Δ</span>
+      </div>
+      <div class="row">
+        <span class="name">FDA Orange Book</span><span class="from">0.87</span><span class="to">0.92</span><span class="delta up">+0.05</span>
+      </div>
+      <div class="row">
+        <span class="name">Reuters Health</span><span class="from">0.78</span><span class="to">0.82</span><span class="delta up">+0.04</span>
+      </div>
+      <div class="row">
+        <span class="name">SEC 8-K filings</span><span class="from">0.84</span><span class="to">0.86</span><span class="delta up">+0.02</span>
+      </div>
+      <div class="row">
+        <span class="name">FiercePharma blog</span><span class="from">0.62</span><span class="to">0.55</span><span class="delta down">−0.07</span>
+      </div>
+      <div class="row">
+        <span class="name">Industry analyst (X)</span><span class="from">0.51</span><span class="to">0.42</span><span class="delta down">−0.09</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ASK-ANYTHING OVERLAY ========== -->
+<div class="cmdk-overlay" id="cmdk">
+  <div class="cmdk-panel">
+    <div class="cmdk-input">
+      <span style="font-family:var(--mono);font-size:14px;color:var(--accent);">⌘</span>
+      <input type="text" placeholder="Ask anything across your sources..." autofocus />
+      <span class="k">Esc to close</span>
+    </div>
+    <div class="cmdk-results">
+      <div class="cmdk-section">Suggested for your context</div>
+      <div class="cmdk-row focused">
+        <div class="glyph">?</div>
+        <div class="body">
+          <div class="ttl">What changed for tirzepatide overnight?</div>
+          <div class="sub">Ask · 3 sources, 11 documents</div>
+        </div>
+        <span class="k">↵</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">⤳</div>
+        <div class="body">
+          <div class="ttl">Compare Lilly's CRL pattern to Roche 2024</div>
+          <div class="sub">Ask · graph view</div>
+        </div>
+        <span class="k">↵</span>
+      </div>
+      <div class="cmdk-section">Open a dossier</div>
+      <div class="cmdk-row">
+        <div class="glyph">DR</div>
+        <div class="body">
+          <div class="ttl">Tirzepatide</div>
+          <div class="sub">Drug · Eli Lilly · Q3 catalyst</div>
+        </div>
+        <span class="k">⏎</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">CO</div>
+        <div class="body">
+          <div class="ttl">Pfizer</div>
+          <div class="sub">Company · 6 tracked assets · adversary type · aggressive (61%)</div>
+        </div>
+        <span class="k">⏎</span>
+      </div>
+      <div class="cmdk-section">Take an action</div>
+      <div class="cmdk-row">
+        <div class="glyph">+</div>
+        <div class="body">
+          <div class="ttl">New decision brief</div>
+          <div class="sub">Action · cmd-shift-N</div>
+        </div>
+        <span class="k">⌘⇧N</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">⚔</div>
+        <div class="body">
+          <div class="ttl">Open a war room for Q3 launch</div>
+          <div class="sub">Action · resumes most recent room</div>
+        </div>
+      </div>
+    </div>
+    <div class="cmdk-foot">
+      <span>↑↓ navigate</span><span>↵ select</span><span>esc close</span><span style="margin-left:auto">Powered by Sentinel + Strategist</span>
+    </div>
+  </div>
+</div>
+
+<div class="proto-credit">
+  Market Zero — Future-state CI prototype · Designed against the audit · 9 May 2026
+</div>
+
+<script>
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('.theme-toggle button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+function openCmdK() {
+  document.getElementById('cmdk').classList.add('open');
+  setTimeout(() => document.querySelector('.cmdk-input input').focus(), 50);
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('cmdk').classList.toggle('open');
+    if (document.getElementById('cmdk').classList.contains('open')) {
+      setTimeout(() => document.querySelector('.cmdk-input input').focus(), 50);
+    }
+  }
+  if (e.key === 'Escape') {
+    document.getElementById('cmdk').classList.remove('open');
+  }
+});
+document.getElementById('cmdk').addEventListener('click', (e) => {
+  if (e.target.id === 'cmdk') document.getElementById('cmdk').classList.remove('open');
+});
+</script>
+
+</body>
+</html>

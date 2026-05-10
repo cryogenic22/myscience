@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Data layer coverage — 15 connectors vs 8 KBQs vs 28-source roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --violet-soft: rgba(182,140,255,0.14);
+  --teal: #4ED4D0; --teal-soft: rgba(78,212,208,0.14);
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.35);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+body { background: radial-gradient(circle at 15% -10%, rgba(91,140,255,0.06) 0%, transparent 45%), var(--bg); padding-bottom: 120px; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+.status-bar { position: sticky; top: 0; z-index: 100; background: rgba(20,26,42,0.95); backdrop-filter: blur(24px); border-bottom: 1px solid var(--line); padding: 12px 32px; display: flex; gap: 24px; align-items: center; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.status-bar .live-tag { display: inline-flex; gap: 8px; align-items: center; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent); }
+.status-bar .live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.status-bar .nav { margin-left: auto; display: flex; gap: 14px; }
+.status-bar .nav a { color: var(--ink-3); text-decoration: none; }
+.status-bar .nav a:hover { color: var(--ink); }
+
+.hero { padding: 64px 32px 48px; max-width: 1400px; margin: 0 auto; }
+.eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--accent); display: inline-flex; gap: 10px; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); margin-bottom: 24px; }
+.eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.hero-title { font-family: var(--display); font-size: clamp(36px, 4.6vw, 56px); font-weight: 400; line-height: 1.1; letter-spacing: -0.035em; margin-bottom: 20px; max-width: 1080px; }
+.hero-title em { font-style: italic; color: var(--accent-2); }
+.hero-sub { font-size: 16.5px; line-height: 1.6; color: var(--ink-2); max-width: 880px; margin-bottom: 32px; }
+
+.kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+.kpi-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; border-top: 3px solid; }
+.kpi-card.shipped { border-top-color: var(--green); }
+.kpi-card.partial { border-top-color: var(--amber); }
+.kpi-card.gap { border-top-color: var(--red); }
+.kpi-card.future { border-top-color: var(--accent); }
+.kpi-card .num { font-family: var(--display); font-size: 30px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.kpi-card .num.shipped { color: var(--green); }
+.kpi-card .num.partial { color: var(--amber); }
+.kpi-card .num.gap { color: var(--red); }
+.kpi-card .num.future { color: var(--accent); }
+.kpi-card .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-top: 6px; }
+.kpi-card .desc { font-size: 12px; color: var(--ink-2); margin-top: 8px; line-height: 1.5; }
+
+/* Section */
+.section { padding: 56px 32px; max-width: 1400px; margin: 0 auto; }
+.section-eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.section-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.section-title { font-family: var(--display); font-size: 30px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; margin-bottom: 12px; }
+.section-sub { font-size: 15px; color: var(--ink-2); max-width: 880px; margin-bottom: 32px; }
+
+/* ========== KBQ COVERAGE SCORECARD ========== */
+.scorecard-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.kbq-card { background: var(--bg-2); border-radius: 16px; padding: 20px 22px; border-left: 4px solid; }
+.kbq-card.s4 { border-left-color: var(--green); }
+.kbq-card.s3 { border-left-color: var(--amber); }
+.kbq-card.s2 { border-left-color: var(--red); }
+.kbq-card.s1 { border-left-color: var(--red); background: linear-gradient(135deg, rgba(227,107,107,0.08) 0%, var(--bg-2) 60%); }
+.kbq-card .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.kbq-card .num { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; }
+.kbq-card .score { font-family: var(--display); font-size: 28px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.kbq-card .score.s4 { color: var(--green); }
+.kbq-card .score.s3 { color: var(--amber); }
+.kbq-card .score.s2 { color: var(--red); }
+.kbq-card .score.s1 { color: var(--red); }
+.kbq-card .name { font-family: var(--display); font-size: 16px; font-weight: 500; line-height: 1.2; margin-bottom: 6px; }
+.kbq-card .verdict { font-family: var(--mono); font-size: 10px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; }
+.kbq-card .verdict.strong { color: var(--green); }
+.kbq-card .verdict.moderate { color: var(--amber); }
+.kbq-card .verdict.thin { color: var(--red); }
+.kbq-card .desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin-bottom: 12px; }
+.kbq-card .source-list { font-family: var(--mono); font-size: 10px; color: var(--ink-3); line-height: 1.7; padding-top: 10px; border-top: 1px solid var(--line); }
+.kbq-card .source-list .src { color: var(--ink-2); }
+.kbq-card .source-list .miss { color: var(--red); }
+
+/* ========== COVERAGE MATRIX ========== */
+.matrix-shell { background: var(--bg-2); border-radius: 18px; padding: 24px; overflow-x: auto; }
+.matrix { display: grid; grid-template-columns: 220px repeat(8, minmax(80px, 1fr)); gap: 6px; min-width: 920px; }
+.mx-corner { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; padding: 8px; }
+.mx-col-head { display: flex; flex-direction: column; align-items: center; padding: 10px 6px; }
+.mx-col-head .knum { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.mx-col-head .kname { font-family: var(--display); font-size: 11px; font-weight: 500; text-align: center; line-height: 1.2; margin-top: 2px; }
+.mx-col-head .kscore { font-family: var(--mono); font-size: 9px; margin-top: 6px; padding: 2px 6px; border-radius: 3px; }
+.mx-col-head .kscore.s4 { background: var(--green-soft); color: var(--green); }
+.mx-col-head .kscore.s3 { background: var(--amber-soft); color: var(--amber); }
+.mx-col-head .kscore.s2 { background: var(--red-soft); color: var(--red); }
+.mx-col-head .kscore.s1 { background: var(--red-soft); color: var(--red); }
+.mx-row-head { display: flex; flex-direction: column; padding: 10px 12px; background: var(--surface); border-radius: 8px; justify-content: center; }
+.mx-row-head .src { font-family: var(--display); font-size: 12.5px; font-weight: 500; line-height: 1.2; }
+.mx-row-head .meta { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 3px; }
+.mx-row-head .meta .tier { padding: 1px 5px; border-radius: 3px; }
+.mx-row-head .meta .tier.t1 { background: var(--green-soft); color: var(--green); }
+.mx-row-head .meta .tier.t2 { background: var(--accent-soft); color: var(--accent-2); }
+.mx-row-head .meta .tier.t3 { background: var(--violet-soft); color: var(--violet); }
+.mx-row-head .meta .tier.tv { background: var(--surface-2); color: var(--ink-3); }
+.mx-cell { display: flex; align-items: center; justify-content: center; border-radius: 6px; min-height: 56px; cursor: pointer; transition: transform 150ms ease; }
+.mx-cell:hover { transform: scale(1.04); }
+.mx-cell.fill-3 { background: var(--green); }
+.mx-cell.fill-2 { background: rgba(91,201,125,0.45); }
+.mx-cell.fill-1 { background: rgba(91,201,125,0.20); }
+.mx-cell.fill-0 { background: var(--surface); border: 1px dashed var(--line); }
+.mx-cell .dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.6); }
+.mx-cell.fill-0 .dot { display: none; }
+
+.matrix-legend { display: flex; gap: 18px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; flex-wrap: wrap; }
+.matrix-legend .item { display: flex; gap: 6px; align-items: center; }
+.matrix-legend .swatch { width: 14px; height: 14px; border-radius: 4px; }
+.matrix-legend .swatch.s3 { background: var(--green); }
+.matrix-legend .swatch.s2 { background: rgba(91,201,125,0.45); }
+.matrix-legend .swatch.s1 { background: rgba(91,201,125,0.20); }
+.matrix-legend .swatch.s0 { background: var(--surface); border: 1px dashed var(--line); }
+
+/* ========== CRITICAL GAPS ========== */
+.gap-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.gap-card { background: var(--bg-2); border-radius: 16px; padding: 22px 24px; border-top: 4px solid var(--red); }
+.gap-card .lvl { font-family: var(--mono); font-size: 10px; color: var(--red); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; }
+.gap-card .nm { font-family: var(--display); font-size: 18px; font-weight: 500; margin-bottom: 8px; line-height: 1.3; }
+.gap-card .desc { font-size: 13px; color: var(--ink-2); line-height: 1.6; margin-bottom: 14px; }
+.gap-card .needs { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.gap-card .source-need { background: var(--surface); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; font-size: 12px; line-height: 1.5; display: flex; gap: 10px; align-items: flex-start; }
+.gap-card .source-need .nm { font-family: var(--display); font-size: 12.5px; font-weight: 500; flex-shrink: 0; }
+.gap-card .source-need .why { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.gap-card .source-need .typ { font-family: var(--mono); font-size: 9px; padding: 2px 5px; border-radius: 3px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.12em; }
+.gap-card .source-need .typ.free { background: var(--green-soft); color: var(--green); }
+.gap-card .source-need .typ.paid { background: var(--amber-soft); color: var(--amber); }
+
+/* ========== ROADMAP ========== */
+.roadmap-shell { background: var(--bg-2); border-radius: 18px; padding: 24px; }
+.phase-tabs { display: flex; gap: 6px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.phase-tab { padding: 8px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; font-family: var(--body); font-size: 12px; color: var(--ink-2); }
+.phase-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-2); }
+.phase-tab .ct { font-family: var(--mono); margin-left: 6px; opacity: 0.7; }
+
+.phase-grid { display: grid; grid-template-columns: 200px 1fr; gap: 24px; }
+.phase-summary { display: flex; flex-direction: column; gap: 16px; }
+.phase-summary .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; }
+.phase-summary .ttl { font-family: var(--display); font-size: 18px; font-weight: 500; line-height: 1.2; margin-bottom: 4px; }
+.phase-summary .qtr { font-family: var(--mono); font-size: 11px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 12px; }
+.phase-summary .desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.phase-summary .stat { padding: 6px 0; }
+.phase-summary .stat .v { font-family: var(--display); font-size: 20px; font-weight: 500; line-height: 1; }
+.phase-summary .stat .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 3px; }
+
+.connector-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.con-card { background: var(--surface); border-radius: 12px; padding: 14px 16px; border-left: 3px solid; }
+.con-card.free { border-left-color: var(--green); }
+.con-card.paid { border-left-color: var(--amber); }
+.con-card .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.con-card .nm { font-family: var(--display); font-size: 13px; font-weight: 500; line-height: 1.2; }
+.con-card .meta { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.con-card .badges { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.con-card .badge { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.con-card .badge.free { background: var(--green-soft); color: var(--green); }
+.con-card .badge.paid { background: var(--amber-soft); color: var(--amber); }
+.con-card .badge.s { background: var(--surface-2); color: var(--ink-2); }
+.con-card .badge.m { background: var(--accent-soft); color: var(--accent-2); }
+.con-card .badge.l { background: var(--violet-soft); color: var(--violet); }
+.con-card .badge.kbq { background: var(--accent-soft); color: var(--accent-2); }
+.con-card .desc { font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+
+/* Closing */
+.closing { padding: 48px 32px; max-width: 980px; margin: 0 auto; text-align: center; }
+.closing .quote { font-family: var(--display); font-size: 22px; font-weight: 400; font-style: italic; line-height: 1.5; color: var(--ink); margin-bottom: 18px; letter-spacing: -0.015em; }
+.closing .quote em { color: var(--accent-2); }
+.closing .body { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; }
+
+@media (max-width: 1100px) {
+  .scorecard-grid, .gap-grid { grid-template-columns: 1fr 1fr !important; }
+  .kpi-strip { grid-template-columns: 1fr 1fr; }
+  .phase-grid { grid-template-columns: 1fr; }
+  .connector-list { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="status-bar">
+  <span class="live-tag"><span class="dot"></span>DATA LAYER COVERAGE · LIVE</span>
+  <span>15 connectors today · 162k+ trials · 8 KBQs · 28-source roadmap</span>
+  <div class="nav">
+    <a href="#scorecard">Scorecard</a>
+    <a href="#matrix">Matrix</a>
+    <a href="#gaps">Gaps</a>
+    <a href="#roadmap">Roadmap</a>
+  </div>
+</div>
+
+<div class="hero">
+  <span class="eyebrow"><span class="pulse"></span>Data layer audit · CI Reimagined Spec · 8 KBQs · 9 May 2026</span>
+  <h1 class="hero-title">Three KBQs strong. Two moderate. <em>Three critically thin.</em></h1>
+  <p class="hero-sub">
+    The platform ingests 162,787 ClinicalTrials.gov records, 1,511 FDA Orange Book drugs, full PubMed/PMC, EMA, SEC EDGAR, OpenFDA FAERS + Labels, NADAC pricing, MeSH, ChEMBL, PubChem, Open Targets and a Pharma News scraper. That's a real backbone for clinical and indication intelligence — and a structural hole on the three KBQs that drive the largest commercial decisions: Positioning, Pricing, Access.
+  </p>
+
+  <div class="kpi-strip">
+    <div class="kpi-card shipped">
+      <div class="num shipped">3</div>
+      <div class="lab">KBQs strong (4 of 5)</div>
+      <div class="desc">Indications · Clinical · Competitors-public</div>
+    </div>
+    <div class="kpi-card partial">
+      <div class="num partial">2</div>
+      <div class="lab">KBQs moderate (3 of 5)</div>
+      <div class="desc">SWOT (computed) · Sales-public-only</div>
+    </div>
+    <div class="kpi-card gap">
+      <div class="num gap">3</div>
+      <div class="lab">KBQs critically thin (≤ 2 of 5)</div>
+      <div class="desc">Positioning · Pricing · Access</div>
+    </div>
+    <div class="kpi-card future">
+      <div class="num future">28</div>
+      <div class="lab">Connectors in roadmap</div>
+      <div class="desc">8 free this quarter · 6 paid · 14 international + speciality</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== KBQ COVERAGE SCORECARD ========== -->
+<section id="scorecard" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The 8-KBQ scorecard</div>
+  <div class="section-title">Per-KBQ readiness, with the sources that fed it and the sources missing.</div>
+  <p class="section-sub">Scoring rubric: 1 = stub or absent; 3 = answerable for major US public actors; 5 = comprehensive across geographies, public + private, with confidence chains. Eight KBQs from §5.3 of the CI Reimagined Spec.</p>
+
+  <div class="scorecard-grid">
+
+    <div class="kbq-card s4">
+      <div class="top"><span class="num">KBQ 1</span><span class="score s4">4 / 5</span></div>
+      <div class="name">Indications · landscape view</div>
+      <div class="verdict strong">STRONG</div>
+      <div class="desc">US/EU approved + pipeline indications well-covered. Disease ontology supports classification. International gaps + epidemiology absent.</div>
+      <div class="source-list">
+        <span class="src">CT.gov · FDA OB · OpenFDA Labels · EMA · MeSH · Open Targets</span><br>
+        <span class="miss">Missing: WHO ICTRP · disease prevalence · MONDO/DOID</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s3">
+      <div class="top"><span class="num">KBQ 2</span><span class="score s3">3 / 5</span></div>
+      <div class="name">Competitors · entity registry</div>
+      <div class="verdict moderate">MODERATE · public-biased</div>
+      <div class="desc">Strong for US/EU listed pharma. Weak for private biotechs, Chinese/Japanese/Indian generics, and the M&A/licensing dimension.</div>
+      <div class="source-list">
+        <span class="src">SEC EDGAR · FDA OB sponsors · CT.gov sponsors · EMA</span><br>
+        <span class="miss">Missing: GLEIF · Crunchbase · PR wires · NMPA/PMDA</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s4">
+      <div class="top"><span class="num">KBQ 3</span><span class="score s4">4 / 5</span></div>
+      <div class="name">Clinical · evidence layer</div>
+      <div class="verdict strong">STRONG</div>
+      <div class="desc">Trials + literature + AEs + mechanism + target evidence all covered. Two important gaps: preprints (6-12mo ahead of PubMed) and conference abstracts.</div>
+      <div class="source-list">
+        <span class="src">CT.gov · PubMed · PMC · OpenFDA FAERS · ChEMBL · Open Targets</span><br>
+        <span class="miss">Missing: bioRxiv/medRxiv · ASCO/ESMO/ASH abstracts · EU EudraVigilance</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s1">
+      <div class="top"><span class="num">KBQ 4</span><span class="score s1">1 / 5</span></div>
+      <div class="name">Positioning · messaging &amp; promotion</div>
+      <div class="verdict thin">UNCOVERED</div>
+      <div class="desc">Only drug labelling text (FDA Labels). No DTC ads, no FDA OPDP enforcement, no conference symposia, no KOL/HCP educational materials.</div>
+      <div class="source-list">
+        <span class="src">OpenFDA Labels (labelling only)</span><br>
+        <span class="miss">Missing: iSpot.tv · Kantar · OPDP letters · conference posters · Sermo/Doximity</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s2">
+      <div class="top"><span class="num">KBQ 5</span><span class="score s2">2 / 5</span></div>
+      <div class="name">Sales &amp; Sentiment · commercial</div>
+      <div class="verdict thin">PUBLIC-COMPANY HEADLINES ONLY</div>
+      <div class="desc">10-Q segment disclosures + Pharma News only. No prescription volumes, no analyst ratings, no transcripts, no sentiment.</div>
+      <div class="source-list">
+        <span class="src">SEC EDGAR · Pharma News scraper</span><br>
+        <span class="miss">Missing: IQVIA TRx/NRx · earnings transcripts · analyst reports · patient sentiment</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s3">
+      <div class="top"><span class="num">KBQ 6</span><span class="score s3">3 / 5</span></div>
+      <div class="name">SWOT · synthesised view</div>
+      <div class="verdict moderate">COMPUTED · only as good as 1-5</div>
+      <div class="desc">Comprehensive on Strengths/Weaknesses (clinical, pipeline). Thin on Opportunities/Threats (commercial, payer dynamics) because KBQs 4, 5, 7, 8 underfeed it.</div>
+      <div class="source-list">
+        <span class="src">Inherits from KBQs 1-5</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s1">
+      <div class="top"><span class="num">KBQ 7</span><span class="score s1">1.5 / 5</span></div>
+      <div class="name">Pricing · &amp; cost-effectiveness</div>
+      <div class="verdict thin">CRITICALLY THIN</div>
+      <div class="desc">NADAC (Medicaid acquisition cost only) is one slice of one channel of one country. WAC, AWP, IRP, HTA, ICER — all absent. The spec already flags this as subscription-dependent.</div>
+      <div class="source-list">
+        <span class="src">NADAC</span><br>
+        <span class="miss">Missing: WAC (RedBook) · AWP · NICE · ICER · IRA · 340B · IRP</span>
+      </div>
+    </div>
+
+    <div class="kbq-card s1">
+      <div class="top"><span class="num">KBQ 8</span><span class="score s1">1 / 5</span></div>
+      <div class="name">Access · coverage &amp; formulary</div>
+      <div class="verdict thin">UNCOVERED</div>
+      <div class="desc">Zero coverage. No formulary tiers, no PA, no step therapy, no plan-level data. The CI use case where "what tier is competitor X on the major plans" is a daily question is unanswerable today.</div>
+      <div class="source-list">
+        <span class="src">None directly</span><br>
+        <span class="miss">Missing: MMIT · Fingertip · CMS Part D · Medicaid PDLs · VA/DoD</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ========== COVERAGE MATRIX ========== -->
+<section id="matrix" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The 15 × 8 coverage matrix</div>
+  <div class="section-title">Which connector feeds which KBQ — at a glance.</div>
+  <p class="section-sub">Each cell shows how strongly a given connector feeds a given KBQ — empty (no contribution), light (peripheral), medium (substantial), full (primary). Read across a column to see which KBQs are well-fed; read down a row to see which sources are working hardest.</p>
+
+  <div class="matrix-shell">
+    <div class="matrix">
+      <div class="mx-corner">Source &nbsp;\&nbsp; KBQ →</div>
+      <div class="mx-col-head"><div class="knum">KBQ 1</div><div class="kname">Indications</div><div class="kscore s4">4/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 2</div><div class="kname">Competitors</div><div class="kscore s3">3/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 3</div><div class="kname">Clinical</div><div class="kscore s4">4/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 4</div><div class="kname">Positioning</div><div class="kscore s1">1/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 5</div><div class="kname">Sales</div><div class="kscore s2">2/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 6</div><div class="kname">SWOT</div><div class="kscore s3">3/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 7</div><div class="kname">Pricing</div><div class="kscore s1">1.5/5</div></div>
+      <div class="mx-col-head"><div class="knum">KBQ 8</div><div class="kname">Access</div><div class="kscore s1">1/5</div></div>
+
+      <div class="mx-row-head"><div class="src">MeSH Ontology</div><div class="meta"><span class="tier tv">VOCAB</span></div></div>
+      <div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">FDA Orange Book</div><div class="meta"><span class="tier t1">T1</span> · 1,511</div></div>
+      <div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">ClinicalTrials.gov</div><div class="meta"><span class="tier t1">T1</span> · 162,787</div></div>
+      <div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">FDA Shortages</div><div class="meta"><span class="tier t1">T1</span> · 547</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div>
+
+      <div class="mx-row-head"><div class="src">SEC EDGAR (8-K, 10-Q)</div><div class="meta"><span class="tier t1">T1/T2</span> · 3,424</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">OpenFDA FAERS</div><div class="meta"><span class="tier t1">T1</span> · 9,812</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div>
+
+      <div class="mx-row-head"><div class="src">OpenFDA Labels</div><div class="meta"><span class="tier t1">T1</span></div></div>
+      <div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">EMA</div><div class="meta"><span class="tier t1">T1</span> · 894</div></div>
+      <div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">CMS NADAC Pricing</div><div class="meta"><span class="tier t1">T1</span> · 22,847</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div>
+
+      <div class="mx-row-head"><div class="src">Pharma News (scraper)</div><div class="meta"><span class="tier t2">T2</span> · 24/d</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">PubMed</div><div class="meta"><span class="tier t3">T3</span> · 156/d</div></div>
+      <div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">PubMed Central</div><div class="meta"><span class="tier t3">T3</span></div></div>
+      <div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">ChEMBL</div><div class="meta"><span class="tier t3">T3</span> · partial</div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">PubChem</div><div class="meta"><span class="tier t3">T3</span></div></div>
+      <div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+      <div class="mx-row-head"><div class="src">Open Targets Genetics</div><div class="meta"><span class="tier t3">T3</span> · 14,562</div></div>
+      <div class="mx-cell fill-2"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-3"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-1"><div class="dot"></div></div><div class="mx-cell fill-0"></div><div class="mx-cell fill-0"></div>
+
+    </div>
+
+    <div class="matrix-legend">
+      <div class="item"><div class="swatch s3"></div>Primary feeder</div>
+      <div class="item"><div class="swatch s2"></div>Substantial</div>
+      <div class="item"><div class="swatch s1"></div>Peripheral</div>
+      <div class="item"><div class="swatch s0"></div>No contribution</div>
+      <div class="item" style="margin-left:auto;">Read across columns to see KBQ feedstock · read down rows to see source workload</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CRITICAL GAPS ========== -->
+<section id="gaps" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The three critical gaps</div>
+  <div class="section-title">KBQs 4, 7, 8 — Positioning, Pricing, Access — and exactly what's missing.</div>
+  <p class="section-sub">These are the three KBQs scoring ≤ 2 of 5. They're the hardest to close because two of them (Pricing, Access) require licensed data — but they're also the KBQs that drive the largest commercial decisions in pharma. The exec who asks "how is competitor X reimbursed in our segment?" today gets nothing back from the platform.</p>
+
+  <div class="gap-grid">
+
+    <div class="gap-card">
+      <div class="lvl">KBQ 4 · Positioning · 1 / 5</div>
+      <div class="nm">What is the competitor saying about their drug?</div>
+      <div class="desc">Today the platform sees only the drug label text — the most heavily-regulated piece of messaging. It cannot see what the competitor is actually saying to physicians or patients.</div>
+      <div class="needs">Sources to add</div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">FDA OPDP letters</div><div class="why">When FDA called out competitor advertising for over-claiming. Public.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">Conference symposia agendas + posters</div><div class="why">ASCO, ESMO, ASH publish session lists. Late-breakers matter most.</div></div></div>
+      <div class="source-need"><span class="typ paid">PAID</span><div><div class="nm">iSpot.tv + Kantar Media</div><div class="why">DTC TV ad spend, share of voice, creative library.</div></div></div>
+      <div class="source-need"><span class="typ paid">PAID</span><div><div class="nm">Sermo + Doximity HCP-network sentiment</div><div class="why">What HCPs are saying about each drug.</div></div></div>
+    </div>
+
+    <div class="gap-card">
+      <div class="lvl">KBQ 7 · Pricing · 1.5 / 5</div>
+      <div class="nm">How is the competitor priced — at what level, in what channels, in what countries?</div>
+      <div class="desc">NADAC alone covers Medicaid acquisition cost. WAC (the foundational US wholesale price), AWP, international reference pricing, IRA negotiated prices — all absent.</div>
+      <div class="needs">Sources to add</div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">CMS Medicare Part B + Part D pricing files</div><div class="why">Public US payer baseline beyond NADAC.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">NICE TA + ICER + IQWIG + CADTH + SMC HTA decisions</div><div class="why">Cost-effectiveness rulings across 5 jurisdictions. Shape commercial strategy.</div></div></div>
+      <div class="source-need"><span class="typ paid">PAID</span><div><div class="nm">RedBook (or FDB / Medi-Span) — WAC + AWP</div><div class="why">The foundational US price catalogue. Heart of pricing CI.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">CMS IRA negotiated prices</div><div class="why">First round priced in 2026. Unique to Medicare but a precedent-setter.</div></div></div>
+    </div>
+
+    <div class="gap-card">
+      <div class="lvl">KBQ 8 · Access · 1 / 5</div>
+      <div class="nm">What tier is the competitor on the major plans? With what restrictions?</div>
+      <div class="desc">Zero coverage today. Cannot answer the daily access question for a single US plan. The Reimagined Spec acknowledges this is "subscription-dependent" — meaning the canonical sources are all paid.</div>
+      <div class="needs">Sources to add</div>
+      <div class="source-need"><span class="typ paid">PAID</span><div><div class="nm">MMIT (Managed Markets Insight)</div><div class="why">The canonical US payer formulary database. Closes 90% of KBQ 8.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">CMS Medicare Part D plan formulary files</div><div class="why">Free CMS download — covers Medicare Part D plans nationally. Closes the largest free-tier gap.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">Medicaid PDLs (50 state preferred drug lists)</div><div class="why">State-by-state public files. Engineering-heavy but free.</div></div></div>
+      <div class="source-need"><span class="typ free">FREE</span><div><div class="nm">VA + DoD national formulary</div><div class="why">Government-payer access view. Useful for federal-channel CI.</div></div></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ========== ROADMAP ========== -->
+<section id="roadmap" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The 28-source roadmap</div>
+  <div class="section-title">Four phases. Sequenced by KBQ-impact and ingestion effort.</div>
+  <p class="section-sub">Phase 1 = free public sources we should already have (no licence cost). Phase 2 = the four paid sources whose licence cost is justified by the KBQ uplift. Phase 3 = international + private company depth. Phase 4 = the long tail of speciality + sentiment. Effort: S = 1-3 days, M = 1-2 weeks, L = 3+ weeks + ongoing licence.</p>
+
+  <div class="roadmap-shell">
+    <div class="phase-tabs">
+      <button class="phase-tab active">Phase 1 · Q3 2026 <span class="ct">8 free</span></button>
+      <button class="phase-tab">Phase 2 · Q4 2026 <span class="ct">6 paid</span></button>
+      <button class="phase-tab">Phase 3 · Q1 2027 <span class="ct">7 intl/private</span></button>
+      <button class="phase-tab">Phase 4 · Q2-Q3 2027 <span class="ct">7 speciality</span></button>
+    </div>
+
+    <div class="phase-grid">
+      <div class="phase-summary">
+        <div>
+          <div class="h">Phase 1 · the free wins</div>
+          <div class="ttl">Free public sources we should already have</div>
+          <div class="qtr">Target · Q3 2026</div>
+          <div class="desc">Eight sources that close the largest unfed gaps with engineering-only cost. Closes major pieces of KBQ 4, 7, 8 without a single licence negotiation.</div>
+        </div>
+        <div class="stat"><div class="v">8</div><div class="l">Connectors</div></div>
+        <div class="stat"><div class="v">£0</div><div class="l">Licence cost</div></div>
+        <div class="stat"><div class="v">~6 wk</div><div class="l">Eng effort</div></div>
+        <div class="stat"><div class="v">+2.5</div><div class="l">Avg KBQ uplift</div></div>
+      </div>
+
+      <div class="connector-list">
+        <div class="con-card free">
+          <div class="top"><div class="nm">USPTO PatentsView API</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ-10 Patent</span></div>
+          <div class="desc">Patent grants, assignees, claims, expiry. Closes the patent-cliff signal gap.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">EPO Patents (OPS API)</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ-10 Patent</span></div>
+          <div class="desc">EU patent counterparts. Pairs with USPTO for full IP picture.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">bioRxiv + medRxiv preprints</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ 3 Clinical</span></div>
+          <div class="desc">Early-clinical signals 6-12 months ahead of PubMed. Critical for first-mover CI.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">FDA OPDP warning letters</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ 4 Positioning</span></div>
+          <div class="desc">When FDA called out competitor advertising. Closes part of KBQ 4.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">CMS Medicare Part D formulary files</div><div class="meta">M effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge m">MEDIUM</span><span class="badge kbq">KBQ 8 Access</span></div>
+          <div class="desc">Plan-level formulary tiers + PA flags for Medicare Part D. Closes the biggest KBQ 8 piece for free.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">CMS Medicare B + D pricing files</div><div class="meta">M effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge m">MEDIUM</span><span class="badge kbq">KBQ 7 Pricing</span></div>
+          <div class="desc">Public US payer pricing baseline beyond NADAC.</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">WHO ICTRP global trials</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ 1 Indications · KBQ 3</span></div>
+          <div class="desc">Captures non-CT.gov trials globally (JapicCTI, CTRI, ChiCTR cross-walked).</div>
+        </div>
+        <div class="con-card free">
+          <div class="top"><div class="nm">VA / DoD national formulary</div><div class="meta">S effort</div></div>
+          <div class="badges"><span class="badge free">FREE</span><span class="badge s">SMALL</span><span class="badge kbq">KBQ 8 Access</span></div>
+          <div class="desc">Government-payer access view. Useful for federal-channel CI.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PHASE 2-4 SUMMARY ========== -->
+<section class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The licensed-data conversation</div>
+  <div class="section-title">Phase 2 · the four paid sources whose licence cost is justified.</div>
+  <p class="section-sub">Six paid sources in Phase 2; the four headline picks below turn KBQs 5, 7, 8 from "thin" to "comprehensive". Each is a six-figure annual commitment. The right move is to do the cost-benefit with the executive sponsor and pick the order based on the one TA where you most need full-stack CI.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+    <div class="con-card paid" style="border-left-width:4px;padding:22px 26px;">
+      <div class="top"><div class="nm" style="font-size:18px;">IQVIA — sales by drug by month</div><div class="meta">L effort + ongoing</div></div>
+      <div class="badges"><span class="badge paid">PAID · 6-figure</span><span class="badge l">LARGE</span><span class="badge kbq">KBQ 5 Sales</span></div>
+      <div class="desc" style="font-size:13.5px;line-height:1.6;margin-top:6px;">The canonical commercial input. TRx, NRx, share, by month, by geography. Closes 80% of KBQ 5 (Sales). Without it, "what share is the competitor gaining" is unanswerable. Most pharma companies already have it; integrating rather than re-implementing is the spec's stated approach.</div>
+    </div>
+    <div class="con-card paid" style="border-left-width:4px;padding:22px 26px;">
+      <div class="top"><div class="nm" style="font-size:18px;">MMIT — payer formularies + PA + step</div><div class="meta">L effort + ongoing</div></div>
+      <div class="badges"><span class="badge paid">PAID · 6-figure</span><span class="badge l">LARGE</span><span class="badge kbq">KBQ 8 Access</span></div>
+      <div class="desc" style="font-size:13.5px;line-height:1.6;margin-top:6px;">The canonical access intelligence database. Closes 90% of KBQ 8 (Access) by itself. Combined with the free CMS Part D + Medicaid PDLs from Phase 1, this gives plan-level formulary granularity nationally.</div>
+    </div>
+    <div class="con-card paid" style="border-left-width:4px;padding:22px 26px;">
+      <div class="top"><div class="nm" style="font-size:18px;">AlphaSense — earnings transcripts + analyst</div><div class="meta">L effort + ongoing</div></div>
+      <div class="badges"><span class="badge paid">PAID · 5-6 figure</span><span class="badge l">LARGE</span><span class="badge kbq">KBQ 5 Sales · KBQ 6 SWOT</span></div>
+      <div class="desc" style="font-size:13.5px;line-height:1.6;margin-top:6px;">Verbatim earnings call transcripts (Q&A) + sell-side analyst reports + sentiment. Closes the qualitative half of KBQ 5 that 8-K filings cannot. The Strategist agent's source-of-truth for "what is the CFO actually saying about Q3?".</div>
+    </div>
+    <div class="con-card paid" style="border-left-width:4px;padding:22px 26px;">
+      <div class="top"><div class="nm" style="font-size:18px;">RedBook (or FDB / Medi-Span) — WAC + AWP</div><div class="meta">L effort + ongoing</div></div>
+      <div class="badges"><span class="badge paid">PAID · 5-6 figure</span><span class="badge l">LARGE</span><span class="badge kbq">KBQ 7 Pricing</span></div>
+      <div class="desc" style="font-size:13.5px;line-height:1.6;margin-top:6px;">Foundational US wholesale pricing. Closes the biggest KBQ 7 gap. Pairs with the free CMS pricing files from Phase 1 and HTA decisions from Phase 4 to give a full pricing picture.</div>
+    </div>
+  </div>
+
+  <p style="font-size:13.5px;color:var(--ink-3);margin-top:18px;line-height:1.6;">Plus two smaller Phase 2 adds: <strong style="color:var(--ink-2);">Citeline</strong> (enriched trial + pipeline view, replaces some PubMed gap-filling, L effort) and <strong style="color:var(--ink-2);">Crunchbase / PitchBook</strong> (private-biotech financing for KBQ 2, M effort). Phase 3 adds 7 international sources (Health Canada, PMDA, TGA, NMPA, CDSCO, JapicCTI/CTRI/ChiCTR/ANZCTR, GLEIF). Phase 4 adds 7 speciality sources (ASCO/ESMO/ASH/AHA/ACC/AACR conference abstracts, Cochrane, EU EudraVigilance + WHO VigiBase, Sermo/Doximity, Drugs.com/AskAPatient/Reddit, iSpot.tv/Kantar, NICE/IQWIG/CADTH/SMC/ICER HTA). Full breakdown in the data-layer-audit.docx.</p>
+</section>
+
+<!-- Closing -->
+<section class="closing">
+  <div class="quote">
+    You have a strong evidence backbone for clinical and indication intelligence. To meet the Reimagined Spec's ambition of being a complete CI operating system, the next 28 connectors are not optional — <em>they are the substrate</em> that makes KBQs 4, 7, 8 answerable.
+  </div>
+  <div class="body">
+    Three concrete next moves. <strong>Ship Phase 1</strong> (the eight free public sources) before any new product surface — engineering-only, large unfed-KBQ uplift. <strong>Do the licence cost-benefit on the four Phase 2 sources</strong> with the executive sponsor — IQVIA, MMIT, AlphaSense, RedBook each turn one critically-thin KBQ comprehensive but each is six-figure annual. <strong>Write the source registry surface in parallel</strong> — every new connector needs to be visible, scoreable, and degradable in the Pulse, not buried in a JSON dump at /connectors.
+  </div>
+</section>
+
+</body>
+</html>

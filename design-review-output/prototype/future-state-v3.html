@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Market Zero — v3 platform-substrate prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --teal: #4ED4D0;
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.25); --shadow-md: 0 8px 24px rgba(0,0,0,0.35); --shadow-lg: 0 24px 64px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 12px 36px rgba(91,140,255,0.18);
+  --motion-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+body {
+  background: radial-gradient(circle at 20% -10%, rgba(91,140,255,0.06) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(182,140,255,0.04) 0%, transparent 50%), var(--bg);
+  min-height: 100vh; padding-bottom: 80px;
+}
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+@keyframes load { 0% { width: 5%; } 60% { width: 80%; } 100% { width: 100%; } }
+
+/* Mode banner with persona toggle */
+.mode-banner { position: sticky; top: 0; z-index: 200; background: rgba(20,26,42,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); padding: 10px 32px; display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; }
+.mode-banner .indicator { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent); }
+.mode-banner .indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+.mode-banner .url { color: var(--ink-2); font-size: 10px; text-transform: none; letter-spacing: 0.04em; font-family: var(--mono); }
+.mode-banner .url a { color: var(--accent-2); text-decoration: none; }
+.persona-toggle { margin-left: auto; display: inline-flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 999px; border: 1px solid var(--line); }
+.persona-toggle button { background: transparent; border: none; cursor: pointer; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; padding: 4px 14px; border-radius: 999px; color: var(--ink-3); }
+.persona-toggle button.active { background: var(--accent); color: white; }
+
+.shell { max-width: 1440px; margin: 0 auto; padding: 24px 32px 0; }
+.section-eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.section-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.section-title { font-family: var(--display); font-size: 36px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 12px; }
+.section-sub { font-size: 15px; color: var(--ink-2); max-width: 760px; margin-bottom: 32px; }
+
+.frame { background: var(--bg-2); border-radius: 24px; padding: 32px; margin-bottom: 56px; box-shadow: var(--shadow-md); position: relative; }
+.frame-label { position: absolute; top: -12px; left: 24px; background: var(--bg); padding: 6px 12px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); border-radius: 6px; border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 8px; }
+.frame-label .endpoint { color: var(--accent-2); background: var(--accent-soft); padding: 2px 8px; border-radius: 4px; font-size: 10px; text-transform: none; letter-spacing: 0.04em; }
+.frame-status { position: absolute; top: -12px; right: 24px; padding: 4px 10px; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); }
+.frame-status.live { color: var(--green); }
+.frame-status.aggregated { color: var(--violet); }
+.frame-status.new { color: var(--amber); }
+
+.persona-only { display: none; }
+.persona-only.active { display: block; }
+.persona-only.flex.active { display: flex; }
+.persona-only.grid.active { display: grid; }
+
+/* Hero */
+.hero { padding: 48px 32px 56px; max-width: 1440px; margin: 0 auto; }
+.hero-eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--accent); display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); margin-bottom: 24px; }
+.hero-eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.hero-title { font-family: var(--display); font-size: clamp(40px, 5.4vw, 68px); font-weight: 400; line-height: 1.05; letter-spacing: -0.035em; color: var(--ink); margin-bottom: 24px; max-width: 1100px; }
+.hero-title em { font-style: italic; color: var(--accent-2); font-weight: 400; }
+.hero-sub { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 780px; margin-bottom: 24px; }
+
+/* Substrate diagram */
+.substrate { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 32px; }
+.substrate-layer { background: var(--surface); border-radius: 14px; padding: 18px 20px; border: 1px solid var(--line); }
+.substrate-layer.products { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+.product-card { padding: 14px 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid transparent; }
+.product-card.ci { border-color: var(--accent); background: var(--accent-soft); }
+.product-card .pname { font-family: var(--display); font-size: 14px; font-weight: 500; color: var(--ink); }
+.product-card .ptag { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 2px; }
+.layer-head { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+.layer-name { font-family: var(--display); font-size: 16px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
+.layer-list { font-family: var(--mono); font-size: 11px; color: var(--ink-2); line-height: 1.7; }
+
+/* Top bar */
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; background: rgba(20,26,42,0.7); backdrop-filter: blur(20px); border-radius: 16px; border: 1px solid var(--line); margin-bottom: 24px; }
+.topbar-left { display: flex; align-items: center; gap: 24px; }
+.topbar-brand { font-family: var(--display); font-weight: 500; font-size: 16px; letter-spacing: -0.02em; }
+.topbar-brand .accent { color: var(--accent-2); font-style: italic; }
+.topbar-nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.topbar-nav button { background: transparent; border: none; padding: 6px 12px; border-radius: 8px; font-family: var(--body); font-size: 13px; color: var(--ink-3); cursor: pointer; }
+.topbar-nav button.active { color: var(--ink); background: var(--surface-2); }
+.cmd-k { display: flex; align-items: center; gap: 12px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--ink-3); font-size: 13px; cursor: pointer; min-width: 240px; }
+.cmd-k .k { font-family: var(--mono); font-size: 10px; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; margin-left: auto; }
+
+/* Agent rail */
+.agent-rail { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 32px; }
+.agent-card { background: var(--surface); border-radius: 14px; padding: 16px 18px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; transition: all 200ms var(--motion-out); }
+.agent-card:hover { border-color: var(--line-strong); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.agent-head { display: flex; align-items: center; gap: 10px; }
+.agent-glyph { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-family: var(--mono); font-size: 14px; font-weight: 500; }
+.agent-glyph.sentinel { background: rgba(78,212,208,0.12); color: var(--teal); }
+.agent-glyph.strategist { background: rgba(182,140,255,0.12); color: var(--violet); }
+.agent-glyph.curator { background: rgba(91,201,125,0.12); color: var(--green); }
+.agent-name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.agent-role { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.agent-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); margin-left: auto; }
+.agent-status .live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.6s ease-in-out infinite; }
+.agent-activity { font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
+.agent-activity .now { color: var(--ink-2); }
+.agent-progress { height: 2px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.agent-progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%); border-radius: 999px; animation: load 3.4s ease-in-out infinite; }
+
+/* Connector marketplace */
+.connector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.connector-card { background: var(--surface); border-radius: 12px; padding: 16px; border: 1px solid var(--line); cursor: pointer; transition: all 150ms var(--motion-out); }
+.connector-card:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.connector-card .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.connector-card .name { font-family: var(--display); font-size: 14px; font-weight: 500; line-height: 1.2; }
+.connector-card .badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.badge { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.12em; }
+.badge.tier1 { color: var(--green); background: var(--green-soft); }
+.badge.tier2 { color: var(--accent-2); background: var(--accent-soft); }
+.badge.tier3 { color: var(--amber); background: var(--amber-soft); }
+.badge.live { color: var(--green); background: var(--green-soft); }
+.badge.partial { color: var(--amber); background: var(--amber-soft); }
+.badge.failed { color: var(--red); background: var(--red-soft); }
+.connector-card .meta { font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between; align-items: baseline; }
+.connector-card .meta .records { font-family: var(--mono); color: var(--ink); font-size: 13px; font-weight: 500; }
+
+.byod-card { background: var(--surface); border-radius: 16px; padding: 28px; border: 1px dashed var(--line-strong); text-align: center; cursor: pointer; }
+.byod-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+.byod-card .glyph { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-family: var(--display); font-size: 24px; font-weight: 500; }
+.byod-card .heading { font-family: var(--display); font-size: 18px; font-weight: 500; margin-bottom: 6px; }
+.byod-card .body { font-size: 13px; color: var(--ink-2); margin-bottom: 14px; }
+
+/* Auto-annotation flow */
+.annotation-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: stretch; }
+.flow-step { background: var(--surface); border-radius: 14px; padding: 18px 20px; border: 1px solid var(--line); position: relative; }
+.flow-step .num { font-family: var(--mono); font-size: 9px; color: var(--accent-2); background: var(--accent-soft); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.14em; text-transform: uppercase; }
+.flow-step .title { font-family: var(--display); font-size: 15px; font-weight: 500; line-height: 1.25; margin-bottom: 6px; }
+.flow-step .body { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+.flow-step .arrow { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; background: var(--bg-2); border-radius: 50%; display: grid; place-items: center; color: var(--ink-3); z-index: 2; }
+
+/* KBQ library */
+.kbq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.kbq-card { background: var(--surface); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--line); cursor: pointer; transition: all 150ms var(--motion-out); }
+.kbq-card:hover { border-color: var(--accent); background: var(--surface-2); transform: translateX(2px); }
+.kbq-card .id { font-family: var(--mono); font-size: 9px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px; }
+.kbq-card .q { font-size: 13.5px; color: var(--ink); line-height: 1.4; margin-bottom: 6px; }
+.kbq-card .meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); display: flex; gap: 8px; }
+
+/* Search */
+.search-block { display: grid; grid-template-columns: 1fr 280px; gap: 24px; }
+.search-results { display: flex; flex-direction: column; gap: 10px; }
+.search-input { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.search-input input { flex: 1; background: transparent; border: none; outline: none; color: var(--ink); font-family: var(--display); font-size: 18px; }
+.search-result { background: var(--surface); border-radius: 12px; padding: 14px 18px; border-left: 3px solid var(--accent); cursor: pointer; transition: all 150ms var(--motion-out); }
+.search-result:hover { background: var(--surface-2); }
+.search-result .res-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 4px; display: flex; gap: 8px; }
+.search-result .res-title { font-family: var(--display); font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+.search-result .res-snippet { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.search-result .res-sim { font-family: var(--mono); font-size: 10px; color: var(--accent); float: right; }
+
+.facets { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.facets .facet-name { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.facets .facet-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12.5px; color: var(--ink-2); }
+.facets .facet-row .ct { font-family: var(--mono); color: var(--ink); }
+.facets .facet-block { margin-bottom: 18px; }
+
+/* Graph */
+.graph-block { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+.graph-canvas { background: var(--surface); border-radius: 16px; padding: 20px; min-height: 480px; position: relative; overflow: hidden; }
+.graph-side { background: var(--surface); border-radius: 16px; padding: 20px; }
+.graph-node-info { padding: 14px; background: var(--surface-2); border-radius: 10px; margin-bottom: 14px; }
+.graph-node-info .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.graph-node-info .nname { font-family: var(--display); font-size: 16px; font-weight: 500; }
+
+/* Catalog + curation */
+.catalog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.catalog-table { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.cat-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cat-row:last-child { border-bottom: none; }
+.cat-row.head { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.cat-row .ent-name { font-size: 13.5px; }
+.cat-row .ent-quality { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.cat-row .ent-quality.high { color: var(--green); background: var(--green-soft); }
+.cat-row .ent-quality.med { color: var(--amber); background: var(--amber-soft); }
+.cat-row .ent-quality.low { color: var(--red); background: var(--red-soft); }
+.cat-row .ent-source { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+.hitl-card { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border-left: 3px solid var(--amber); }
+.hitl-card .head { display: flex; gap: 8px; font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.hitl-card .head .review { color: var(--amber); }
+.hitl-card .desc { font-size: 13px; color: var(--ink); margin-bottom: 8px; }
+.hitl-card .actions { display: flex; gap: 6px; }
+
+/* Pulse / sensing */
+.pulse-grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
+.pulse-summary { background: var(--surface); border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+.pulse-ring { width: 180px; height: 180px; margin: 12px auto; position: relative; }
+.pulse-ring svg { transform: rotate(-90deg); }
+.pulse-ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.pulse-ring .num { font-family: var(--display); font-weight: 500; font-size: 48px; line-height: 1; color: var(--ink); letter-spacing: -0.04em; }
+.pulse-ring .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); margin-top: 6px; }
+.pulse-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pulse-meta .item .v { font-family: var(--display); font-size: 22px; font-weight: 500; color: var(--ink); line-height: 1; }
+.pulse-meta .item .l { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); margin-top: 4px; }
+.signal-list { display: flex; flex-direction: column; gap: 12px; }
+.signal-card { background: var(--surface); border-radius: 16px; padding: 18px 22px; display: grid; grid-template-columns: 56px 1fr auto; gap: 18px; align-items: flex-start; cursor: pointer; transition: all 200ms var(--motion-out); border: 1px solid transparent; }
+.signal-card:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.signal-card.unread { border-left: 3px solid var(--accent); }
+.signal-score { text-align: center; }
+.signal-score .v { font-family: var(--display); font-size: 24px; font-weight: 500; color: var(--ink); line-height: 1; }
+.signal-score .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); margin-top: 4px; letter-spacing: 0.14em; text-transform: uppercase; }
+.signal-body .meta { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.12em; flex-wrap: wrap; }
+.signal-body .meta .source { color: var(--ink-2); }
+.signal-body .meta .dot { color: var(--ink-4); }
+.signal-body .meta .kbq { color: var(--accent-2); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; }
+.signal-body .headline { font-family: var(--display); font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--ink); margin-bottom: 4px; }
+.signal-body .summary { font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+.entity-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.entity-pill .swatch { width: 6px; height: 6px; border-radius: 50%; }
+.entity-pill.drug .swatch { background: #5B8CFF; }
+.entity-pill.company .swatch { background: #F2A23B; }
+.entity-pill.trial .swatch { background: #4ED4D0; }
+.entity-pill.mechanism .swatch { background: #B68CFF; }
+.entity-pill.ta .swatch { background: #E36B6B; }
+
+.btn { font-family: var(--body); font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 150ms var(--motion-out); }
+.btn:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-2); }
+.btn.amber { color: var(--amber); border-color: rgba(242,162,59,0.3); }
+.btn.green { color: var(--green); border-color: rgba(91,201,125,0.3); }
+
+/* Materiality */
+.materiality-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.bar-row { display: grid; grid-template-columns: 160px 1fr 80px; align-items: center; gap: 14px; padding: 6px 0; }
+.bar-row .factor { font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+.bar-row .bar-track { height: 6px; background: var(--surface); border-radius: 999px; overflow: hidden; position: relative; }
+.bar-row .bar-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
+.bar-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); text-align: right; }
+.what-if-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.what-if-card .head { font-family: var(--display); font-size: 15px; font-weight: 500; margin-bottom: 10px; }
+.slider-row { display: grid; grid-template-columns: 100px 1fr 50px; gap: 12px; align-items: center; margin-bottom: 8px; }
+.slider-row .lab { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; }
+.slider-row input[type=range] { width: 100%; }
+.slider-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); text-align: right; }
+
+/* War-game */
+.wargame-grid { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+.wargame-board { background: var(--surface); border-radius: 16px; padding: 24px; min-height: 460px; }
+.payoff-matrix { display: grid; grid-template-columns: 80px 1fr 1fr; grid-template-rows: 36px 1fr 1fr; gap: 8px; height: 360px; margin-top: 18px; margin-left: 30px; }
+.payoff-matrix .col-head, .payoff-matrix .row-head { display: grid; place-items: center; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-2); }
+.payoff-matrix .row-head { writing-mode: vertical-rl; transform: rotate(180deg); }
+.payoff-cell { border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: all 200ms var(--motion-out); position: relative; }
+.payoff-cell.win { background: linear-gradient(135deg, rgba(91,201,125,0.16) 0%, rgba(91,201,125,0.06) 100%); border: 1px solid rgba(91,201,125,0.25); }
+.payoff-cell.lose { background: linear-gradient(135deg, rgba(227,107,107,0.14) 0%, rgba(227,107,107,0.04) 100%); border: 1px solid rgba(227,107,107,0.22); }
+.payoff-cell.neutral { background: linear-gradient(135deg, rgba(242,162,59,0.12) 0%, rgba(242,162,59,0.04) 100%); border: 1px solid rgba(242,162,59,0.20); }
+.payoff-cell.recommended { box-shadow: var(--shadow-glow); }
+.payoff-cell .delta { font-family: var(--display); font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--ink); }
+.payoff-cell .desc { font-size: 11px; color: var(--ink-2); line-height: 1.4; }
+.payoff-cell .ribbon { position: absolute; right: 12px; top: 12px; font-family: var(--mono); font-size: 9px; color: var(--accent-2); background: var(--accent-soft); padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.12em; }
+.wargame-side { background: var(--surface); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+.posterior-bars { display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); padding: 12px; border-radius: 10px; }
+.posterior-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.posterior-row .lab { font-size: 11.5px; color: var(--ink-2); }
+.posterior-row .pct { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.posterior-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
+.posterior-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.posterior-bar .fill.amber { background: var(--amber); }
+.posterior-bar .fill.violet { background: var(--violet); }
+
+/* Adversary leaderboard */
+.adv-table { background: var(--surface); border-radius: 14px; padding: 20px; }
+.adv-row { display: grid; grid-template-columns: 1fr 80px 80px 1fr; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.adv-row:last-child { border-bottom: none; }
+.adv-row.head { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.adv-row .acc { font-family: var(--mono); font-size: 12px; padding: 2px 6px; border-radius: 4px; text-align: center; }
+.adv-row .acc.high { color: var(--green); background: var(--green-soft); }
+.adv-row .acc.med { color: var(--amber); background: var(--amber-soft); }
+.adv-row .acc.low { color: var(--red); background: var(--red-soft); }
+.adv-row .trend { font-family: var(--mono); font-size: 11px; }
+.adv-row .trend.up { color: var(--green); }
+.adv-row .trend.down { color: var(--red); }
+.adv-row .last { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+/* Dissent dashboard */
+.dissent-row { background: var(--surface); border-radius: 12px; padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr 80px; gap: 16px; align-items: center; margin-bottom: 8px; cursor: pointer; }
+.dissent-row:hover { background: var(--surface-2); }
+.dissent-row .q { font-size: 13px; color: var(--ink); }
+.dissent-row .opts { font-size: 11.5px; color: var(--ink-2); }
+.dissent-row .opts span { font-family: var(--mono); }
+.dissent-row .gap { font-family: var(--mono); font-size: 13px; padding: 4px 8px; border-radius: 4px; text-align: center; background: var(--accent-soft); color: var(--accent-2); }
+
+/* Trigger feed */
+.trigger-feed { background: var(--surface); border-radius: 14px; padding: 18px; }
+.trigger-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.trigger-row:last-child { border-bottom: none; }
+.trigger-row .typ { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 4px; background: var(--surface-2); text-align: center; }
+.trigger-row .typ.threshold { color: var(--accent-2); background: var(--accent-soft); }
+.trigger-row .typ.cluster { color: var(--violet); background: rgba(182,140,255,0.12); }
+.trigger-row .typ.calendar { color: var(--teal); background: rgba(78,212,208,0.12); }
+.trigger-row .when { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+/* Prompt registry */
+.prompt-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.prompt-card { background: var(--surface); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--line); }
+.prompt-card.flagged { border-left: 3px solid var(--amber); }
+.prompt-card .pname { font-family: var(--mono); font-size: 11px; color: var(--ink); margin-bottom: 4px; }
+.prompt-card .pmeta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; }
+.prompt-card .calib { font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+.prompt-card .calib .high { color: var(--green); }
+.prompt-card .calib .low { color: var(--amber); }
+
+.proto-credit { text-align: center; padding: 64px 0 24px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.18em; }
+
+@media (max-width: 1100px) {
+  .pulse-grid, .wargame-grid, .composer-grid, .materiality-grid, .search-block, .graph-block, .catalog-grid, .substrate { grid-template-columns: 1fr !important; }
+  .annotation-flow { grid-template-columns: 1fr 1fr !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="mode-banner">
+  <span class="indicator"><span class="dot"></span>V3 PLATFORM PROTOTYPE</span>
+  <span class="url">Real connector data from <a href="https://marketzero.up.railway.app/connectors" target="_blank">marketzero.up.railway.app</a> · 15 sources live · 162k+ trials, 1.5k drugs ingested</span>
+  <div class="persona-toggle">
+    <button class="active" data-persona="executive" onclick="setPersona('executive')">EXEC</button>
+    <button data-persona="analyst" onclick="setPersona('analyst')">ANALYST</button>
+    <button data-persona="steward" onclick="setPersona('steward')">DATA STEWARD</button>
+  </div>
+</div>
+
+<!-- ========== HERO + SUBSTRATE ========== -->
+<div class="hero">
+  <span class="hero-eyebrow"><span class="pulse"></span>One platform · two products · live agentic substrate</span>
+  <h1 class="hero-title">
+    A shared intelligence substrate. Two products that <em>think alongside you.</em>
+  </h1>
+  <p class="hero-sub">
+    Public sources, internal connectors and your own uploads — auto-annotated, embedded, graphed and contextualised by the same agentic engine that powers Core Intelligence and Competitive Intelligence + War Gaming.
+  </p>
+
+  <div class="substrate">
+    <div class="substrate-layer products">
+      <div class="layer-head" style="grid-column:1/-1;"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>Products</div>
+      <div class="product-card ci">
+        <div class="pname">Core Intelligence</div>
+        <div class="ptag">Workspace · Ask · Dossier · Brief</div>
+      </div>
+      <div class="product-card ci">
+        <div class="pname">CI + War Gaming</div>
+        <div class="ptag">Sensing · Decisions · War Rooms · Learning</div>
+      </div>
+      <div class="product-card" style="grid-column:1/-1;background:transparent;border:1px dashed var(--line-strong);">
+        <div class="pname" style="color:var(--ink-3);font-style:italic;">Future products on same substrate</div>
+        <div class="ptag">Regulatory · Medical Affairs · BD &amp; Licensing</div>
+      </div>
+    </div>
+
+    <div class="substrate-layer">
+      <div class="layer-head"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--violet);"></span>Intelligence Layer</div>
+      <div class="layer-name">Sentinel · Strategist · Curator</div>
+      <div class="layer-list">CTX context assembly<br>pgvector + HNSW · 1536-dim<br>Bayesian + Stackelberg + POMDP<br>Counter-rec enforcement<br>Materiality factor scoring<br>Learning + recalibration loop<br>Prompt registry + versioning</div>
+    </div>
+
+    <div class="substrate-layer">
+      <div class="layer-head"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--teal);"></span>Data Substrate</div>
+      <div class="layer-name">15 live connectors · BYOD ready</div>
+      <div class="layer-list">FDA Orange Book + FAERS + Labels<br>ClinicalTrials.gov · 162k trials<br>SEC EDGAR · EMA · NADAC<br>PubMed · PMC · ChEMBL · PubChem<br>Open Targets · Pharma News<br>Upload PDF / DOCX / transcripts<br>Auto-NER + entity resolution + graph linking</div>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-brand">Market <em class="accent">Zero</em></span>
+      <div class="topbar-nav">
+        <button class="active">Pulse</button>
+        <button>Dossier</button>
+        <button>War Room</button>
+        <button>Briefs</button>
+        <button>Search</button>
+        <button>Graph</button>
+        <button>Catalog</button>
+        <button>Connectors</button>
+        <button>Learning</button>
+      </div>
+    </div>
+    <div class="cmd-k">Ask anything <span class="k">⌘ K</span></div>
+  </div>
+</div>
+
+<!-- ========== AGENT RAIL ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Live agent plane · Always on</div>
+  <div class="section-title">Sentinel, Strategist, Curator — three named agents working now.</div>
+  <p class="section-sub">Powered by <code>GET /agent/events</code> + <code>GET /steward/agents</code> (both exist today). Phase 9 wraps both behind <code>GET /agents/stream</code> as Server-Sent Events with reconnect.</p>
+
+  <div class="agent-rail">
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph sentinel">SE</div>
+        <div><div class="agent-name">Sentinel</div><div class="agent-role">Sense · 15 sources</div></div>
+        <div class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">Scanning <span class="now">FDA Orange Book + ClinicalTrials.gov</span> for label changes · 162,787 trials indexed · last hit 4m ago</div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph strategist">ST</div>
+        <div><div class="agent-name">Strategist</div><div class="agent-role">Frame · Simulate</div></div>
+        <div class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">Running 1,200 Bayesian Monte Carlo trials for <span class="now">tirzepatide Q3 launch scenario</span></div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+    <div class="agent-card">
+      <div class="agent-head">
+        <div class="agent-glyph curator">CU</div>
+        <div><div class="agent-name">Curator</div><div class="agent-role">Learn · Recalibrate</div></div>
+        <div class="agent-status"><span class="live"></span>Live</div>
+      </div>
+      <div class="agent-activity">Adjusted source weight: <span class="now">Reuters 0.78 → 0.82</span> after 4 outcome matches</div>
+      <div class="agent-progress"><div class="fill"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== CONNECTOR MARKETPLACE (live data from /connectors) ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Data substrate · 15 live connectors today</div>
+  <div class="section-title">A real connector marketplace. Plus your own.</div>
+  <p class="section-sub">The Railway production app already runs 15 connectors covering 162,787 clinical trials, 1,511 FDA Orange Book drugs, 547 shortages and the full PubMed, EMA, SEC, NADAC, ChEMBL, PubChem, Open Targets and FAERS feeds — but exposes them only as raw JSON at <code>/connectors</code>. The future state is a real marketplace where each source is browsable, configurable, schedule-tunable; and customers can add their own connectors and uploads alongside.</p>
+
+  <div class="frame">
+    <span class="frame-label">/connectors <span class="endpoint">GET /connectors</span> · <span class="endpoint">POST /connectors/{key}/run</span></span>
+    <span class="frame-status live">15 LIVE TODAY</span>
+
+    <div class="connector-grid" id="connector-grid"></div>
+
+    <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div class="byod-card">
+        <div class="glyph">↑</div>
+        <div class="heading">Upload documents</div>
+        <div class="body">PDF, DOCX, transcripts, decks. Auto-NER + entity resolution + chunking + embedding + graph linking. Ready in ~10s.</div>
+        <button class="btn primary">Drop a file</button>
+      </div>
+      <div class="byod-card">
+        <div class="glyph">+</div>
+        <div class="heading">Connect internal data</div>
+        <div class="body">SharePoint, Confluence, internal CRM, your licensed datasets. Per-tenant scope_key isolation. (SPEC-038)</div>
+        <button class="btn primary">Add a source</button>
+      </div>
+      <div class="byod-card">
+        <div class="glyph">⚡</div>
+        <div class="heading">Build a custom connector</div>
+        <div class="body">Inherit BaseConnector, set source_key + schedule. The framework handles fetch, normalise, resolve, embed, store, link.</div>
+        <button class="btn primary">Open the SDK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== AUTO-ANNOTATION FLOW ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>From upload to queryable in 10 seconds</div>
+  <div class="section-title">Auto-annotation: every document, every transcript, every connector record.</div>
+  <p class="section-sub">The same five-step pipeline (<code>integration/pipeline.py</code>) runs for an FDA filing, a SEC 8-K, a PubMed abstract, or a transcript you just uploaded. By the time it lands, it's a graph node with embeddings, citations, entity links and a quality score.</p>
+
+  <div class="frame">
+    <span class="frame-label">/upload + integration pipeline <span class="endpoint">POST /upload</span> · <span class="endpoint">5-stage pipeline</span></span>
+    <span class="frame-status live">EXISTS · integration/pipeline.py</span>
+
+    <div class="annotation-flow">
+      <div class="flow-step">
+        <div class="num">1 · Fetch</div>
+        <div class="title">Document arrives</div>
+        <div class="body">Upload via /upload · 10MB max · pdf/docx/html/txt · SHA-256 dedup hash · scope_key per tenant.</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="num">2 · Normalise</div>
+        <div class="title">Extract + chunk + NER</div>
+        <div class="body">Text extracted · 500-token overlapping chunks · LLM-driven entity recognition for drugs / companies / trials / mechanisms.</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="num">3 · Resolve</div>
+        <div class="title">Entity reconciliation</div>
+        <div class="body">6-strategy cascade: exact match → alias → fuzzy → embedding → LLM → auto-create. HITL queue for low-confidence resolutions.</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="num">4 · Embed + Link</div>
+        <div class="title">pgvector + cross-link</div>
+        <div class="body">1536-dim OpenAI embeddings · HNSW indexes · cross-link rules from domain pack · materiality scored · ready to query.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== KBQ LIBRARY ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The canonical questions</div>
+  <div class="section-title">KBQs — the library of questions the platform is opinionated about.</div>
+  <p class="section-sub">Every signal carries one or more KBQ tags. Every brief is framed against a KBQ. Every workflow starts from one. The library below shows the canonical 12 — your team can extend them. The active production app is filtered to diabetes/obesity, so the live examples below use that scope.</p>
+
+  <div class="frame">
+    <span class="frame-label">KBQ library <span class="endpoint">domain/pharma/pack.py · 12 KBQs</span></span>
+    <span class="frame-status live">EXISTS · spec_015 + comp_intel_2.md</span>
+
+    <div class="kbq-grid">
+      <div class="kbq-card"><div class="id">KBQ-1 · Clinical</div><div class="q">Phase 3 readout shifts the competitive landscape</div><div class="meta">128 tracked · 14 fired this month</div></div>
+      <div class="kbq-card"><div class="id">KBQ-2 · Pipeline</div><div class="q">New asset enters or exits a known mechanism class</div><div class="meta">96 tracked · 22 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-3 · Regulatory</div><div class="q">FDA / EMA action — approval, CRL, label change, withdrawal</div><div class="meta">204 tracked · 31 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-4 · Pricing</div><div class="q">Net price, formulary tier or PBM contract changes</div><div class="meta">87 tracked · 9 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-5 · Pipeline</div><div class="q">Trial enrolment delay, completion shift, site change</div><div class="meta">312 tracked · 47 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-6 · SWOT</div><div class="q">Competitive threat or opportunity — M&A, partnership, exit</div><div class="meta">68 tracked · 11 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-7 · Financial</div><div class="q">Guidance change, earnings surprise, investor signal</div><div class="meta">156 tracked · 18 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-8 · Safety</div><div class="q">Adverse event signal · FAERS spike · post-market issue</div><div class="meta">240 tracked · 7 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-9 · Executive</div><div class="q">Key personnel transition · CMO / CEO / R&D head change</div><div class="meta">42 tracked · 4 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-10 · Patent</div><div class="q">Patent grant, expiry, infringement, generic entry</div><div class="meta">76 tracked · 6 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-11 · Payer</div><div class="q">Coverage decision · NICE / ICER · NHS guideline</div><div class="meta">38 tracked · 3 fired</div></div>
+      <div class="kbq-card"><div class="id">KBQ-12 · Market</div><div class="q">Indication expansion · KOL position shift · conference takeaway</div><div class="meta">119 tracked · 16 fired</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEARCH (standout for analysts/stewards) ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Search — semantic, faceted, grounded</div>
+  <div class="section-title">Hybrid search across every entity, every claim, every evidence document.</div>
+  <p class="section-sub">pgvector HNSW + metadata filters + recency boost. Each result carries its source, similarity score, entity type, and provenance. Click into the entity to open its dossier; click the citation to see the supporting passage.</p>
+
+  <div class="frame">
+    <span class="frame-label">/search <span class="endpoint">POST /search</span> + <span class="endpoint">POST /search/faceted</span></span>
+    <span class="frame-status live">EXISTS · services/search.py + HNSW index</span>
+
+    <div class="search-input">
+      <span style="font-family:var(--mono);color:var(--accent);font-size:14px;">⌕</span>
+      <input value="GLP-1 receptor agonists with new oncology label expansion in 2026" />
+      <span style="font-family:var(--mono);font-size:10px;color:var(--ink-3);">7 entity types · 1,847 results · 142ms</span>
+    </div>
+
+    <div class="search-block">
+      <div class="search-results">
+        <div class="search-result">
+          <div class="res-meta"><span style="color:var(--accent-2)">DRUG</span><span>•</span><span>FDA Orange Book · tier 1</span><span>•</span><span>Approved 2017-12-13</span><span class="res-sim">sim 0.94</span></div>
+          <div class="res-title">Tirzepatide (Mounjaro / Zepbound)</div>
+          <div class="res-snippet">GIP / GLP-1 receptor agonist developed by Eli Lilly. 14 active oncology trials. Phase 3 readout positive May 2026; FDA CRL on label expansion 9 May 2026 (CMC, not safety/efficacy).</div>
+        </div>
+        <div class="search-result" style="border-left-color:var(--amber);">
+          <div class="res-meta"><span style="color:var(--amber)">DRUG</span><span>•</span><span>FDA Orange Book · tier 1</span><span>•</span><span>Approved 2017-12-13</span><span class="res-sim">sim 0.91</span></div>
+          <div class="res-title">Semaglutide (Ozempic / Wegovy)</div>
+          <div class="res-snippet">GLP-1 receptor agonist · Novo Nordisk · 156 trials · 34 active. Phase 3 oncology trial NCT04964220 paused for recruitment May 2025. Watchlist members: 4 analysts.</div>
+        </div>
+        <div class="search-result" style="border-left-color:var(--teal);">
+          <div class="res-meta"><span style="color:var(--teal)">TRIAL</span><span>•</span><span>ClinicalTrials.gov · tier 1</span><span>•</span><span>Updated 8 May 2026</span><span class="res-sim">sim 0.87</span></div>
+          <div class="res-title">NCT04964220 — Phase 3 semaglutide cardiovascular outcomes</div>
+          <div class="res-snippet">Sponsor Novo Nordisk · 1,547 of 2,500 enrolled · 142 sites in US/CA/MX · paused state. Cited by 2 of your watchlist signals in May 2026.</div>
+        </div>
+        <div class="search-result" style="border-left-color:var(--violet);">
+          <div class="res-meta"><span style="color:var(--violet)">MECHANISM</span><span>•</span><span>ChEMBL Bioactivity</span><span>•</span><span>tier 2</span><span class="res-sim">sim 0.84</span></div>
+          <div class="res-title">GIP / GLP-1 dual receptor agonism</div>
+          <div class="res-snippet">12 compounds in clinical development across 6 sponsors. Tirzepatide leads pipeline; competitor assets from Pfizer (PF-07081532), Lilly (retatrutide, triple agonist), Roche (CT-388).</div>
+        </div>
+      </div>
+
+      <div class="facets">
+        <div class="facet-block">
+          <div class="facet-name">Entity type</div>
+          <div class="facet-row"><span>Drug</span><span class="ct">428</span></div>
+          <div class="facet-row"><span>Trial</span><span class="ct">812</span></div>
+          <div class="facet-row"><span>Company</span><span class="ct">96</span></div>
+          <div class="facet-row"><span>Mechanism</span><span class="ct">22</span></div>
+          <div class="facet-row"><span>Literature</span><span class="ct">404</span></div>
+          <div class="facet-row"><span>TA</span><span class="ct">48</span></div>
+          <div class="facet-row"><span>Patent</span><span class="ct">37</span></div>
+        </div>
+        <div class="facet-block">
+          <div class="facet-name">Source tier</div>
+          <div class="facet-row"><span>Tier 1 (auth public)</span><span class="ct">982</span></div>
+          <div class="facet-row"><span>Tier 2 (disclosure)</span><span class="ct">512</span></div>
+          <div class="facet-row"><span>Tier 3 (scientific)</span><span class="ct">298</span></div>
+          <div class="facet-row"><span>Tier 4 (licensed)</span><span class="ct">55</span></div>
+        </div>
+        <div class="facet-block">
+          <div class="facet-name">Recency</div>
+          <div class="facet-row"><span>Last 24h</span><span class="ct">8</span></div>
+          <div class="facet-row"><span>Last 7d</span><span class="ct">62</span></div>
+          <div class="facet-row"><span>Last 30d</span><span class="ct">241</span></div>
+          <div class="facet-row"><span>This year</span><span class="ct">1,847</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== GRAPH ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Graph — every link is a question</div>
+  <div class="section-title">A live entity graph you can traverse, not a catalog page that pretends to be one.</div>
+  <p class="section-sub">SQL-based recursive traversal across SubgraphResponse. Click any node to pivot the focus, click any edge to see the underlying evidence and the link rule that produced it.</p>
+
+  <div class="frame">
+    <span class="frame-label">/graph/neighborhood/drug/tirzepatide <span class="endpoint">GET /graph/neighborhood/{type}/{id}</span></span>
+    <span class="frame-status live">EXISTS · services/graph.py</span>
+
+    <div class="graph-block">
+      <div class="graph-canvas">
+        <svg width="100%" height="460" viewBox="0 0 700 460" style="background:transparent">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#6F7A91"/></marker>
+          </defs>
+          <line x1="350" y1="220" x2="180" y2="120" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <line x1="350" y1="220" x2="540" y2="120" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <line x1="350" y1="220" x2="180" y2="340" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <line x1="350" y1="220" x2="540" y2="340" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <line x1="350" y1="220" x2="350" y2="60" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <line x1="350" y1="220" x2="350" y2="400" stroke="#6F7A91" stroke-width="1" marker-end="url(#arrow)" opacity="0.6"/>
+          <text x="245" y="170" fill="#6F7A91" font-family="DM Mono" font-size="9" text-anchor="middle">developed_by</text>
+          <text x="450" y="170" fill="#6F7A91" font-family="DM Mono" font-size="9" text-anchor="middle">tested_in</text>
+          <text x="245" y="290" fill="#6F7A91" font-family="DM Mono" font-size="9" text-anchor="middle">competes_with</text>
+          <text x="450" y="290" fill="#6F7A91" font-family="DM Mono" font-size="9" text-anchor="middle">competes_with</text>
+          <text x="365" y="135" fill="#6F7A91" font-family="DM Mono" font-size="9">has_mechanism</text>
+          <text x="365" y="370" fill="#6F7A91" font-family="DM Mono" font-size="9">covers_indication</text>
+
+          <g transform="translate(350,220)"><circle r="46" fill="#5B8CFF" opacity="0.25"/><circle r="38" fill="#5B8CFF" opacity="0.45"/><text fill="#E6EAF2" font-family="Syne" font-size="13" font-weight="500" text-anchor="middle" dy="-2">tirzepatide</text><text fill="#E6EAF2" font-family="DM Mono" font-size="8" text-anchor="middle" dy="12">drug · focal</text></g>
+          <g transform="translate(180,120)"><circle r="32" fill="#F2A23B" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">Eli Lilly</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">company</text></g>
+          <g transform="translate(540,120)"><circle r="32" fill="#4ED4D0" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">14 trials</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">trial · cluster</text></g>
+          <g transform="translate(180,340)"><circle r="30" fill="#F2A23B" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">Pfizer</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">competitor</text></g>
+          <g transform="translate(540,340)"><circle r="30" fill="#F2A23B" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">AstraZeneca</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">competitor</text></g>
+          <g transform="translate(350,60)"><circle r="30" fill="#B68CFF" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">GIP/GLP-1</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">mechanism</text></g>
+          <g transform="translate(350,400)"><circle r="30" fill="#E36B6B" opacity="0.20"/><text fill="#E6EAF2" font-family="Syne" font-size="11" text-anchor="middle" dy="-2">Oncology</text><text fill="#A3ACBD" font-family="DM Mono" font-size="8" text-anchor="middle" dy="10">therapeutic area</text></g>
+        </svg>
+      </div>
+
+      <div class="graph-side">
+        <div class="agent-role" style="margin-bottom:10px;">Selected node</div>
+        <div class="graph-node-info">
+          <div class="lab">Drug · focal</div>
+          <div class="nname">tirzepatide</div>
+          <div style="font-size:12px;color:var(--ink-2);margin-top:6px;">14 active trials · 412 graph connections · quality 9.1</div>
+        </div>
+        <div class="agent-role" style="margin-bottom:10px;">Outgoing edges</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-2);line-height:2;">
+          → developed_by · 1.00 · Eli Lilly<br>
+          → has_mechanism · 1.00 · GIP/GLP-1<br>
+          → tested_in · 1.00 · 14 trials<br>
+          → competes_with · 0.82 · Pfizer<br>
+          → competes_with · 0.78 · AstraZeneca<br>
+          → covers_indication · 0.95 · Oncology<br>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:14px;">
+          <button class="btn primary">Open dossier</button>
+          <button class="btn">Path to ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== DATA CATALOG + CURATION (standout for steward) ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Data catalog &amp; curation — for the data steward</div>
+  <div class="section-title">Quality scores, completeness, freshness, HITL queue.</div>
+  <p class="section-sub">Every entity carries a quality score, a freshness timestamp and a connection density. Low-confidence resolutions land in the HITL review queue for the data steward to approve, reject, or merge. The materialised view layer keeps the catalog snappy at 162k+ trials.</p>
+
+  <div class="frame">
+    <span class="frame-label">/catalog · curation <span class="endpoint">GET /catalog/entities/{type}</span> · <span class="endpoint">GET /catalog/hitl</span></span>
+    <span class="frame-status live">EXISTS · api/routes/catalog.py</span>
+
+    <div class="catalog-grid">
+      <div class="catalog-table">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div><div class="agent-role">Catalog · drugs (1,511)</div><div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">Top 5 by connection density</div></div>
+          <button class="btn">Filter sources</button>
+        </div>
+        <div class="cat-row head"><span>Entity</span><span>Quality</span><span>Source</span></div>
+        <div class="cat-row"><span class="ent-name">tirzepatide</span><span class="ent-quality high">9.1</span><span class="ent-source">FDA OB · CT.gov · ChEMBL</span></div>
+        <div class="cat-row"><span class="ent-name">semaglutide</span><span class="ent-quality high">8.7</span><span class="ent-source">FDA OB · CT.gov · ChEMBL</span></div>
+        <div class="cat-row"><span class="ent-name">retatrutide</span><span class="ent-quality med">7.2</span><span class="ent-source">CT.gov · ChEMBL</span></div>
+        <div class="cat-row"><span class="ent-name">CT-388</span><span class="ent-quality med">6.8</span><span class="ent-source">CT.gov · PubMed</span></div>
+        <div class="cat-row"><span class="ent-name">PF-07081532</span><span class="ent-quality low">4.1</span><span class="ent-source">CT.gov · sparse</span></div>
+      </div>
+
+      <div class="catalog-table">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div><div class="agent-role">Curator · HITL review queue · 14 items</div><div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">Awaiting your decision</div></div>
+          <button class="btn">Open all</button>
+        </div>
+
+        <div class="hitl-card">
+          <div class="head"><span class="review">REVIEW · MEDIUM CONFIDENCE</span><span>•</span><span>4h ago · entity merge</span></div>
+          <div class="desc">Merge "Eli Lilly &amp; Co" (from FDA Orange Book) with "Eli Lilly and Company" (from SEC EDGAR)? Embedding sim 0.94, alias overlap 3/4.</div>
+          <div class="actions"><button class="btn green">Approve merge</button><button class="btn amber">Keep separate</button><button class="btn">Skip</button></div>
+        </div>
+        <div class="hitl-card">
+          <div class="head"><span class="review">REVIEW · LOW CONFIDENCE</span><span>•</span><span>11h ago · new entity</span></div>
+          <div class="desc">Auto-create new mechanism "incretin co-agonist (GIP-GLP-1-glucagon)" from a Lilly investor day transcript? 1 evidence source, no ChEMBL match.</div>
+          <div class="actions"><button class="btn green">Approve</button><button class="btn amber">Map to existing</button><button class="btn">Reject</button></div>
+        </div>
+        <div class="hitl-card">
+          <div class="head"><span class="review">REVIEW · DRIFT</span><span>•</span><span>1d ago · schema</span></div>
+          <div class="desc">ClinicalTrials.gov added a new field <code>oversightHasDmc</code> on 8 trials this week. Map to existing schema or extend?</div>
+          <div class="actions"><button class="btn green">Map to data_monitoring_committee</button><button class="btn amber">Extend schema</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PULSE ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The morning ritual · for executives + analysts</div>
+  <div class="section-title">Your Pulse — synthesised from 15 sources.</div>
+  <p class="section-sub">Three signals worth your attention, ranked by materiality with the factor breakdown one click away. Real signals from the Daily Digest you saw on production today (Capricor, Pierre Fabre, FDA Neurology, Atriva) — but ranked by the <strong>full</strong> materiality formula instead of bare 1% scores.</p>
+
+  <div class="frame">
+    <span class="frame-label">/pulse <span class="endpoint">GET /signals?status=shipped&amp;impact=high</span> + <span class="endpoint">POST /materiality/score</span></span>
+    <span class="frame-status live">EXISTS · daily digest is live today</span>
+
+    <div class="pulse-grid">
+      <div class="pulse-summary">
+        <div>
+          <div class="agent-role" style="margin-bottom:8px">Sentinel · 571 unread overnight · 3 above threshold</div>
+          <div style="font-family:var(--display);font-size:18px;font-weight:500;color:var(--ink);line-height:1.3;">Top 3 of 571 ranked by materiality</div>
+        </div>
+        <div class="pulse-ring">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <circle cx="90" cy="90" r="76" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
+            <circle cx="90" cy="90" r="76" fill="none" stroke="url(#g3)" stroke-width="10" stroke-linecap="round" stroke-dasharray="478" stroke-dashoffset="120"/>
+            <defs><linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5B8CFF"/><stop offset="100%" stop-color="#7AA2FF"/></linearGradient></defs>
+          </svg>
+          <div class="center"><div class="num">87</div><div class="label">Top signal</div></div>
+        </div>
+        <div class="pulse-meta">
+          <div class="item"><div class="v">3</div><div class="l">Above threshold</div></div>
+          <div class="item"><div class="v">571</div><div class="l">Tracked overnight</div></div>
+          <div class="item"><div class="v">71%</div><div class="l">30-day calibration</div></div>
+          <div class="item"><div class="v">15</div><div class="l">Sources active</div></div>
+        </div>
+      </div>
+
+      <div class="signal-list">
+        <div class="signal-card unread">
+          <div class="signal-score"><div class="v">87</div><div class="l">Materiality</div></div>
+          <div class="signal-body">
+            <div class="meta"><span class="source">Fierce Pharma · tier 2</span><span class="dot">•</span><span>4h ago</span><span class="dot">•</span><span class="kbq">KBQ-3 Regulatory</span></div>
+            <div class="headline">Capricor Therapeutics files breach-of-contract lawsuit against US partner NS Pharma</div>
+            <div class="summary">Disrupts the deramiocel commercialisation path. Watchlist match: 2 of your tracked DMD assets. Sentinel flagged the partner-failure pattern from your March cluster.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+            <span class="entity-pill company"><span class="swatch"></span>Capricor</span>
+            <button class="btn primary">Open dossier</button>
+          </div>
+        </div>
+
+        <div class="signal-card unread">
+          <div class="signal-score"><div class="v">74</div><div class="l">Materiality</div></div>
+          <div class="signal-body">
+            <div class="meta"><span class="source">The Pharma Letter · tier 2</span><span class="dot">•</span><span>11h ago</span><span class="dot">•</span><span class="kbq">KBQ-3 Regulatory</span></div>
+            <div class="headline">Pierre Fabre outlines FDA path forward for tabelecleucel after setback</div>
+            <div class="summary">Following last quarter's CRL. Sentinel cross-referenced the FDA docket update with two patterns from your March watchlist.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+            <span class="entity-pill company"><span class="swatch"></span>Pierre Fabre</span>
+            <button class="btn">Add to watchlist</button>
+          </div>
+        </div>
+
+        <div class="signal-card">
+          <div class="signal-score"><div class="v">62</div><div class="l">Materiality</div></div>
+          <div class="signal-body">
+            <div class="meta"><span class="source">Stock Titan · tier 3</span><span class="dot">•</span><span>17h ago</span><span class="dot">•</span><span class="kbq">KBQ-1 Clinical</span></div>
+            <div class="headline">Artiva study: with 6 months' follow-up, 5 of 7 RA patients hit response mark</div>
+            <div class="summary">Cell therapy for refractory rheumatoid arthritis. Outside your TA but Curator flagged it as a mechanism-class precedent for your immunology portfolio.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+            <span class="entity-pill drug"><span class="swatch"></span>Cell therapy</span>
+            <button class="btn">View thread</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MATERIALITY EXPLAINER + WHAT-IF ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Trust as a primitive · for analysts</div>
+  <div class="section-title">Why is the top signal scored 87? Tune the weights and watch it move.</div>
+  <p class="section-sub">The Materiality service returns <code>materiality_factors</code> as a structured dict. The drawer renders it. The what-if panel lets the analyst move the weights live and see the score recompute (and a histogram of how the trailing 100 signals re-rank). One slider away from a recalibration.</p>
+
+  <div class="frame">
+    <span class="frame-label">/materiality drawer <span class="endpoint">POST /materiality/score</span> + <span class="endpoint">PUT /materiality/weights</span></span>
+    <span class="frame-status live">EXISTS · services/materiality.py</span>
+
+    <div class="materiality-grid">
+      <div>
+        <div class="agent-role" style="margin-bottom:14px;">Curator · explained the score · weights_config_id wc-2026-q2-001</div>
+        <div class="bar-row"><div class="factor">Source tier</div><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--green);"></div></div><div class="v">1.00 × 0.40</div></div>
+        <div class="bar-row"><div class="factor">Entity criticality</div><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--accent);"></div></div><div class="v">1.00 × 0.30</div></div>
+        <div class="bar-row"><div class="factor">Claim type</div><div class="bar-track"><div class="bar-fill" style="width:95%;background:var(--violet);"></div></div><div class="v">0.95 × 0.20</div></div>
+        <div class="bar-row"><div class="factor">Recency decay</div><div class="bar-track"><div class="bar-fill" style="width:99%;background:var(--teal);"></div></div><div class="v">0.99 × 0.10</div></div>
+        <div class="bar-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px;"><div class="factor" style="color:var(--ink);">Composite</div><div class="bar-track" style="height:10px;"><div class="bar-fill" style="width:87%;background:linear-gradient(90deg,var(--accent),var(--accent-2));"></div></div><div class="v" style="color:var(--ink);font-weight:600;">87</div></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-2);background:var(--surface-2);padding:12px 16px;border-radius:10px;margin-top:18px;line-height:1.7;">87 = 1.00×0.40 + 1.00×0.30 + 0.95×0.20 + 0.99×0.10<br>     = 0.40 + 0.30 + 0.19 + 0.10</div>
+      </div>
+
+      <div class="what-if-card">
+        <div class="head">What-if: re-tune the weights</div>
+        <div style="font-size:12px;color:var(--ink-2);margin-bottom:14px;">Slide the four weights below. The score above recomputes; the histogram shows how the trailing 100 signals re-rank.</div>
+        <div class="slider-row"><span class="lab">Source tier</span><input type="range" min="0" max="100" value="40"/><span class="v">0.40</span></div>
+        <div class="slider-row"><span class="lab">Entity</span><input type="range" min="0" max="100" value="30"/><span class="v">0.30</span></div>
+        <div class="slider-row"><span class="lab">Claim type</span><input type="range" min="0" max="100" value="20"/><span class="v">0.20</span></div>
+        <div class="slider-row"><span class="lab">Recency</span><input type="range" min="0" max="100" value="10"/><span class="v">0.10</span></div>
+
+        <div style="background:var(--surface-2);border-radius:10px;padding:14px;margin-top:14px;">
+          <div class="agent-role" style="margin-bottom:8px;">Preview · trailing 100 signals re-rank</div>
+          <svg width="100%" height="56" viewBox="0 0 280 56" preserveAspectRatio="none">
+            <path d="M0,42 L20,38 L40,40 L60,30 L80,32 L100,28 L120,24 L140,26 L160,28 L180,32 L200,36 L220,38 L240,42 L260,46 L280,48" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+            <path d="M0,42 L20,38 L40,40 L60,30 L80,32 L100,28 L120,24 L140,26 L160,28 L180,32 L200,36 L220,38 L240,42 L260,46 L280,48 L280,56 L0,56 Z" fill="var(--accent-soft)" stroke="none"/>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:4px;"><span>Score 0</span><span>50</span><span>100</span></div>
+        </div>
+        <button class="btn primary" style="margin-top:14px;width:100%;justify-content:center;">Apply new weights · Curator will recalibrate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== WAR-GAME ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The strategic surface · for executives</div>
+  <div class="section-title">War-game board — payoff matrix + adversary posteriors.</div>
+  <p class="section-sub">Powered today by <code>POST /game-theory/bayesian</code> (real Monte Carlo, 1,200 iterations, posterior statistics per option) plus <code>GET /war-rooms/{id}</code>. The board tells the story.</p>
+
+  <div class="frame">
+    <span class="frame-label">/war-rooms · payoff view <span class="endpoint">GET /war-rooms/{id}</span> + <span class="endpoint">POST /game-theory/bayesian</span></span>
+    <span class="frame-status live">EXISTS · services/game_theory.py</span>
+
+    <div class="wargame-grid">
+      <div class="wargame-board">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;">
+          <div>
+            <div class="agent-role">Strategist · 1,200 Monte Carlo · 87% confidence</div>
+            <div style="font-family:var(--display);font-size:17px;font-weight:500;margin-top:4px;line-height:1.3;">If Lilly resolves the CRL by Q3 vs Q4 — and Pfizer responds aggressively or holds back</div>
+          </div>
+        </div>
+        <div class="payoff-matrix">
+          <div></div><div class="col-head">Pfizer aggressive</div><div class="col-head">Pfizer holds back</div>
+          <div class="row-head">Lilly Q3</div>
+          <div class="payoff-cell lose"><div class="ribbon">Worst case</div><div class="delta">−4.2%</div><div class="desc">Lose share to both. Conf 71%.</div></div>
+          <div class="payoff-cell neutral"><div class="delta">+0.8%</div><div class="desc">Hold share. Conf 64%.</div></div>
+          <div class="row-head">Lilly Q4+</div>
+          <div class="payoff-cell win recommended"><div class="ribbon">Recommended →</div><div class="delta">+6.4%</div><div class="desc">Capture share before either rival. Conf 82%.</div></div>
+          <div class="payoff-cell win"><div class="delta">+3.1%</div><div class="desc">Both slow. We launch on schedule.</div></div>
+        </div>
+      </div>
+
+      <div class="wargame-side">
+        <div>
+          <div class="agent-role" style="margin-bottom:8px;">Pfizer · adversary type · posterior</div>
+          <div class="posterior-bars">
+            <div class="posterior-row"><span class="lab">Aggressive growth</span><span class="pct">61%</span></div>
+            <div class="posterior-bar"><div class="fill" style="width:61%;"></div></div>
+            <div class="posterior-row"><span class="lab">Defensive</span><span class="pct">28%</span></div>
+            <div class="posterior-bar"><div class="fill amber" style="width:28%;"></div></div>
+            <div class="posterior-row"><span class="lab">Cash-constrained</span><span class="pct">11%</span></div>
+            <div class="posterior-bar"><div class="fill violet" style="width:11%;"></div></div>
+          </div>
+        </div>
+        <div style="background:var(--accent-soft);border-radius:12px;padding:14px;border:1px solid var(--accent);">
+          <div class="agent-role" style="color:var(--accent-2);margin-bottom:6px;">Strategist · counter-argument</div>
+          <div style="font-size:12.5px;color:var(--ink);line-height:1.55;">If you discount the FDA CRL recovery time below 90 days, the recommended cell flips to bottom-right. Worth stress-testing with your CMC contacts.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ADVERSARY LEADERBOARD + DISSENT DASHBOARD (analyst standout) ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Adversarial robustness · for analysts</div>
+  <div class="section-title">Which adversaries are most accurate? Where does the system disagree with itself?</div>
+  <p class="section-sub">Two surfaces the spec backlog implies but no UI yet renders. Adversary leaderboard makes the war-room verdicts trustable; the dissent dashboard surfaces the decisions where the system found genuine disagreement (the moments worth pausing on).</p>
+
+  <div class="frame">
+    <span class="frame-label">/adversaries · /dissents <span class="endpoint aggregated">composes from existing /game-theory + /recommendations data</span></span>
+    <span class="frame-status aggregated">AGGREGATED · enabled by SPEC-028 + SPEC-032 + SPEC-033</span>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div class="adv-table">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div><div class="agent-role">Adversary leaderboard · 90-day calibration</div><div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">Trust accurate adversaries more</div></div>
+        </div>
+        <div class="adv-row head"><span>Adversary</span><span>Acc</span><span>Δ</span><span>Last war-game</span></div>
+        <div class="adv-row"><span>Pfizer Oncology</span><span class="acc high">73%</span><span class="trend up">↑ 12</span><span class="last">2d ago · b_q3_launch</span></div>
+        <div class="adv-row"><span>AZN Defensive</span><span class="acc high">68%</span><span class="trend up">↑ 8</span><span class="last">5d ago · b_amivantamab</span></div>
+        <div class="adv-row"><span>FDA Strict</span><span class="acc med">62%</span><span class="trend up">↑ 4</span><span class="last">1w ago · b_crl_pattern</span></div>
+        <div class="adv-row"><span>Roche Aggressive</span><span class="acc med">54%</span><span class="trend down">↓ 6</span><span class="last">2w ago · b_combo</span></div>
+        <div class="adv-row"><span>Generic Payer</span><span class="acc low">42%</span><span class="trend down">↓ 11</span><span class="last">3w ago · b_pricing</span></div>
+      </div>
+
+      <div>
+        <div style="background:var(--surface);border-radius:14px;padding:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div><div class="agent-role">Dissent dashboard · gap &gt; 50%</div><div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">Decisions where the system genuinely disagreed</div></div>
+          </div>
+          <div class="dissent-row"><div class="q">Accelerate Q3 launch vs hold</div><div class="opts">Top: <span>Accelerate (0.82)</span> · Counter: <span>Hold (0.45)</span></div><div class="gap">Δ 82</div></div>
+          <div class="dissent-row"><div class="q">License vs build EGFR asset</div><div class="opts">Top: <span>License (0.71)</span> · Counter: <span>Build (0.38)</span></div><div class="gap">Δ 67</div></div>
+          <div class="dissent-row"><div class="q">EU launch sequencing</div><div class="opts">Top: <span>UK first (0.66)</span> · Counter: <span>Germany (0.48)</span></div><div class="gap">Δ 53</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== TRIGGER ACTIVITY + PROMPT REGISTRY ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Behind the scenes · for the data steward</div>
+  <div class="section-title">Framing triggers fired. Prompts under review.</div>
+  <p class="section-sub">The platform's reasoning is interrogable everywhere. Every brief auto-created shows the trigger that fired it; every prompt under-calibrating shows up here for review. SPEC_029-framing + SPEC_032 made visible.</p>
+
+  <div class="frame">
+    <span class="frame-label">/framing-triggers + /llm-gateway <span class="endpoint">GET /framing-triggers/{id}/fires</span> + <span class="endpoint">GET /llm-gateway/prompts</span></span>
+    <span class="frame-status live">EXISTS · partially today, fully when SPEC-032 ships</span>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div class="trigger-feed">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div><div class="agent-role">Trigger fires · last 24h · 7 briefs auto-framed</div><div style="font-family:var(--display);font-size:16px;font-weight:500;margin-top:4px;">When the system noticed something for you</div></div>
+          <button class="btn">Tune triggers</button>
+        </div>
+        <div class="trigger-row"><span class="typ threshold">⚡ Threshold</span><span>"Capricor lawsuit" — materiality 87 ≥ 80 → brief b_capricor</span><span class="when">4h ago</span></div>
+        <div class="trigger-row"><span class="typ cluster">◌ Cluster</span><span>3 EGFR signals in 14d → brief b_egfr_cluster</span><span class="when">11h ago</span></div>
+        <div class="trigger-row"><span class="typ calendar">⌚ Calendar</span><span>Pre-ASCO quarterly review → brief b_ascopre26</span><span class="when">1d ago</span></div>
+        <div class="trigger-row"><span class="typ threshold">⚡ Threshold</span><span>"Pierre Fabre CRL update" — materiality 74 → brief b_tabelecleucel</span><span class="when">11h ago</span></div>
+        <div class="trigger-row"><span class="typ cluster">◌ Cluster</span><span>4 cell-therapy readouts in 7d → brief b_cell_cluster</span><span class="when">2d ago</span></div>
+      </div>
+
+      <div>
+        <div style="background:var(--surface);border-radius:14px;padding:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div><div class="agent-role">Prompt registry · 14 active versions · 2 flagged</div><div style="font-family:var(--display);font-size:16px;font-weight:500;margin-top:4px;">Versioned, costed, calibrated</div></div>
+            <button class="btn">Open registry</button>
+          </div>
+
+          <div class="prompt-list">
+            <div class="prompt-card"><div class="pname">briefing.synthesizer.v3</div><div class="pmeta"><span>v3</span><span>·</span><span>$0.04 avg</span><span>·</span><span>187ms</span></div><div class="calib">calib <span class="high">0.78</span> · 42 decisions</div></div>
+            <div class="prompt-card flagged"><div class="pname">strategist.competitor_reaction.v2</div><div class="pmeta"><span>v2</span><span>·</span><span>$0.07 avg</span><span>·</span><span>312ms</span></div><div class="calib">calib <span class="low">0.42</span> · flagged · 7 decisions</div></div>
+            <div class="prompt-card"><div class="pname">curator.evidence_completeness.v1</div><div class="pmeta"><span>v1</span><span>·</span><span>$0.02 avg</span><span>·</span><span>96ms</span></div><div class="calib">calib <span class="high">0.81</span> · 31 decisions</div></div>
+            <div class="prompt-card flagged"><div class="pname">sentinel.kbq_classifier.v4</div><div class="pmeta"><span>v4</span><span>·</span><span>$0.01 avg</span><span>·</span><span>72ms</span></div><div class="calib">calib <span class="low">0.38</span> · flagged · 12 decisions</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="proto-credit">Market Zero v3 · platform-substrate prototype · live data from production · 9 May 2026</div>
+
+<script>
+const CONNECTORS = [
+  { key:'mesh_ontology', label:'MeSH Ontology', schedule:'Monthly · 1st 05:00 UTC', records:0, license:'Public Domain', tier:'tier1', status:'live' },
+  { key:'fda_orange_book', label:'FDA Orange Book', schedule:'Weekly · Mon 04:00 UTC', records:1511, license:'Public Domain (US Gov)', tier:'tier1', status:'live' },
+  { key:'clinical_trials_gov', label:'ClinicalTrials.gov', schedule:'Daily · 02:00 UTC', records:160787, license:'Public Domain (US Gov)', tier:'tier1', status:'live' },
+  { key:'fda_shortages', label:'FDA Shortages', schedule:'Daily · 03:30 UTC', records:547, license:'Public Domain (US Gov)', tier:'tier1', status:'live' },
+  { key:'pubmed', label:'PubMed', schedule:'Daily · 02:30 UTC', records:156, license:'NLM Terms of Use', tier:'tier3', status:'live' },
+  { key:'sec_edgar', label:'SEC EDGAR', schedule:'Weekly · Wed 04:00 UTC', records:0, license:'Public Domain (US Gov)', tier:'tier1', status:'live' },
+  { key:'openfda_faers', label:'OpenFDA FAERS', schedule:'Weekly · Thu 04:00 UTC', records:0, license:'Public Domain', tier:'tier1', status:'live' },
+  { key:'openfda_labels', label:'OpenFDA Drug Labels', schedule:'Weekly · Tue 04:00 UTC', records:0, license:'Public Domain', tier:'tier1', status:'live' },
+  { key:'pmc', label:'PubMed Central', schedule:'Daily · 03:00 UTC', records:0, license:'NLM', tier:'tier3', status:'live' },
+  { key:'ema', label:'EMA (EU Medicines)', schedule:'Weekly · Fri 04:30 UTC', records:0, license:'Public Domain', tier:'tier1', status:'live' },
+  { key:'nadac', label:'CMS NADAC Pricing', schedule:'Weekly · Sat 05:00 UTC', records:0, license:'Public Domain', tier:'tier1', status:'live' },
+  { key:'pharma_news', label:'Pharma News & Events', schedule:'Daily · 06:00 UTC', records:24, license:'Various', tier:'tier2', status:'live' },
+  { key:'chembl', label:'ChEMBL Bioactivity', schedule:'Weekly · Sat 05:30 UTC', records:0, license:'CC BY-SA', tier:'tier3', status:'partial' },
+  { key:'pubchem', label:'PubChem Compounds', schedule:'Weekly · Sat 06:00 UTC', records:0, license:'Public Domain', tier:'tier3', status:'live' },
+  { key:'open_targets', label:'Open Targets Genetics', schedule:'Weekly · Sat 06:30 UTC', records:0, license:'CC0', tier:'tier3', status:'live' }
+];
+
+const tierLabels = { tier1:'TIER 1 · AUTHORITATIVE', tier2:'TIER 2 · DISCLOSURE', tier3:'TIER 3 · SCIENTIFIC' };
+const statusLabels = { live:'LIVE', partial:'PARTIAL', failed:'FAILED' };
+
+function renderConnectors() {
+  const html = CONNECTORS.map(c => `
+    <div class="connector-card">
+      <div class="top">
+        <div class="name">${c.label}</div>
+        <span class="badge ${c.status}">${statusLabels[c.status]}</span>
+      </div>
+      <div class="badges">
+        <span class="badge ${c.tier}">${tierLabels[c.tier]}</span>
+      </div>
+      <div class="meta">
+        <span>${c.schedule}</span>
+        <span class="records">${c.records.toLocaleString()} records</span>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('connector-grid').innerHTML = html;
+}
+
+function setPersona(p) {
+  document.querySelectorAll('.persona-toggle button').forEach(b => b.classList.toggle('active', b.dataset.persona === p));
+  document.querySelectorAll('.persona-only').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll(`.persona-only[data-persona="${p}"]`).forEach(el => el.classList.add('active'));
+}
+
+renderConnectors();
+</script>
+
+</body>
+</html>

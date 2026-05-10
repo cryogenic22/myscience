@@ -42,7 +42,8 @@ VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
 VALID_OWNERS = {"frontend-claude", "backend-claude", "shared", "unassigned"}
 VALID_SOURCES = {"spec", "feedback", "agent-ask", "roadmap", "brainstorm", "adhoc"}
 
-ITEM_HEADING_RE = re.compile(r"^### \[(PB-\d{3,})\]\s+(.*?)\s*$")
+# Items can be H3 or H4; ID is `PB-` + alphanumeric (e.g. PB-101, PB-A01, PB-104b).
+ITEM_HEADING_RE = re.compile(r"^#{3,4} \[(PB-[A-Za-z0-9]{2,})\]\s+(.*?)\s*$")
 FIELD_LINE_RE = re.compile(r"^- \*\*(?P<key>[A-Za-z][A-Za-z\s]*)\*\*:\s*(?P<value>.*?)\s*$")
 
 
@@ -76,8 +77,17 @@ def parse_items(text: str) -> list[Item]:
             continue
         if current is None:
             continue
-        # Stop accumulating fields once we hit the next H2/H3 unrelated.
-        if line.startswith("## ") or (line.startswith("### ") and not ITEM_HEADING_RE.match(line)):
+        # Stop accumulating fields once we hit any non-item heading
+        # (H1/H2 always terminates; H3/H4 terminates only if it isn't
+        # itself a `[PB-NNN]` item heading, since item headings can be
+        # H3 OR H4 and an epic-section H3 like `### E1 — Trust foundation`
+        # should close the previous item).
+        if (
+            line.startswith("# ")
+            or line.startswith("## ")
+            or (line.startswith("### ") and not ITEM_HEADING_RE.match(line))
+            or (line.startswith("#### ") and not ITEM_HEADING_RE.match(line))
+        ):
             items.append(current)
             current = None
             continue
@@ -179,7 +189,7 @@ def validate_text(text: str, repo_root: Path) -> Report:
         blocked_by = it.fields.get("Blocked by", "n/a")
         if blocked_by and blocked_by != "n/a":
             for ref in [s.strip() for s in blocked_by.split(",") if s.strip()]:
-                if not re.fullmatch(r"PB-\d{3,}", ref):
+                if not re.fullmatch(r"PB-[A-Za-z0-9]{2,}", ref):
                     report.warnings.append(
                         f"{it.item_id}: Blocked by '{ref}' does not look like a PB-NNN id"
                     )
