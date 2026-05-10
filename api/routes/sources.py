@@ -144,6 +144,82 @@ def health_summary(
     return SourceRegistryService.health_summary(db)
 
 
+@router.get("/licences")
+def list_licences(
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """BE-25 — Licence health panel data (PB-807).
+
+    Returns one row per source with annual_cost_usd / licence_type /
+    renewal_at / health (active/expiring/expired) plus aggregate
+    totals: ``total_today`` (everything currently in production) and
+    ``projected_after_phase2`` (sum once phase=phase1+phase2 is on).
+
+    Schema fields land via migration 070; pre-migration deployments
+    return zeros so PB-807 still renders an empty state.
+    """
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT source_id, display_name, tier,
+                   licence_type, license_status,
+                   annual_cost_usd, license_renewal_at,
+                   active, phase
+              FROM sources
+             ORDER BY annual_cost_usd DESC NULLS LAST, source_id
+            """
+        ) or []
+    except Exception:
+        logger.exception("list_licences: registry read failed; returning empty payload")
+        rows = []
+
+    items: list[dict] = []
+    total_today = 0.0
+    projected_after_phase2 = 0.0
+    today = datetime.utcnow()
+
+    for r in rows:
+        cost = float(r["annual_cost_usd"]) if r.get("annual_cost_usd") is not None else 0.0
+        renewal = r.get("license_renewal_at")
+        status = r.get("license_status") or "not_applicable"
+        # Health: active default; expired if past renewal; expiring if <60d.
+        health = "active"
+        if status in ("expired", "lapsed"):
+            health = "expired"
+        elif renewal and hasattr(renewal, "year"):
+            days_left = (renewal - today).days
+            if days_left < 0:
+                health = "expired"
+            elif days_left <= 60:
+                health = "expiring"
+        items.append({
+            "source_id":         r.get("source_id"),
+            "display_name":      r.get("display_name"),
+            "tier":              r.get("tier"),
+            "licence_type":      r.get("licence_type"),
+            "license_status":    status,
+            "annual_cost_usd":   cost,
+            "license_renewal_at":
+                renewal.isoformat() if renewal and hasattr(renewal, "isoformat") else None,
+            "phase":             r.get("phase") or "now",
+            "active":            bool(r.get("active") if r.get("active") is not None else True),
+            "health":            health,
+        })
+        phase = (r.get("phase") or "now").lower()
+        if phase in ("now", "phase1") and r.get("active") is not False:
+            total_today += cost
+        if phase in ("now", "phase1", "phase2"):
+            projected_after_phase2 += cost
+
+    return {
+        "sources": items,
+        "total_today": round(total_today, 2),
+        "projected_after_phase2": round(projected_after_phase2, 2),
+        "currency": "USD",
+    }
+
+
 @router.get("/{source_id}")
 def get_source(
     source_id: str,
