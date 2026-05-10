@@ -178,6 +178,14 @@ except Exception as _e:
     logger.error("Failed to import game_theory router (SPEC_025): %s", _e)
     _GAME_THEORY_ROUTER_OK = False
 
+# BE-19 — Why-this explanation endpoint
+try:
+    from api.routes import explainer as explainer_route
+    _EXPLAINER_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import explainer router (BE-19): %s", _e)
+    _EXPLAINER_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -298,6 +306,8 @@ def create_app() -> FastAPI:
         all_routers.append(war_games_route.router)
     if _GAME_THEORY_ROUTER_OK:
         all_routers.append(game_theory_route.router)
+    if _EXPLAINER_ROUTER_OK:
+        all_routers.append(explainer_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
