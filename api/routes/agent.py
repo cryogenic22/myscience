@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import time
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from typing import Optional
 
 from api.deps import get_db
@@ -11,6 +16,7 @@ from db import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["agent"])
+stream_router = APIRouter(prefix="/agents", tags=["agents"])  # BE-4
 
 
 # BE-3 — Phase 8 verification mandates the noun form for the public
@@ -171,3 +177,126 @@ def get_tool_registry():
         ],
         "total": len(tools),
     }
+
+
+# ════════════════════════════════════════════════════════════════════
+# BE-4 · GET /agents/stream — Server-Sent Events
+# ════════════════════════════════════════════════════════════════════
+
+DEFAULT_HEARTBEAT_S = 15
+DEFAULT_POLL_S = 3
+SSE_MAX_DURATION_S = 600  # 10-minute max stream so a stuck client doesn't pin a worker
+
+
+def _serialize_event_for_sse(row: dict) -> dict:
+    """Reshape an agent_events row for SSE consumption."""
+    ts = row.get("created_at")
+    iso = ts.isoformat() if hasattr(ts, "isoformat") else (ts or "")
+    refs = []
+    md = row.get("metadata") or {}
+    if isinstance(md, str):
+        try:
+            md = json.loads(md)
+        except (TypeError, ValueError):
+            md = {}
+    if isinstance(md, dict):
+        for key in ("entity_refs", "entity_ref", "entity"):
+            v = md.get(key)
+            if isinstance(v, list):
+                refs.extend(str(x) for x in v if x)
+            elif isinstance(v, str):
+                refs.append(v)
+    return {
+        "id":           str(row.get("id") or ""),
+        "agent":        _normalize_agent_name(row.get("agent_type")),
+        "agent_type":   row.get("agent_type"),
+        "kind":         row.get("event_type"),
+        "activity":     (md.get("activity") if isinstance(md, dict) else None) or row.get("tool_name") or "",
+        "ts":           iso,
+        "session_id":   row.get("session_id"),
+        "result_status": row.get("result_status"),
+        "entity_refs":  refs,
+    }
+
+
+@stream_router.get("/stream")
+async def stream_events(
+    since: Optional[str] = Query(None, description="ISO-8601 timestamp; only events created after"),
+    agents: Optional[str] = Query(None, description="comma-separated subset of sentinel,strategist,curator"),
+    db: Database = Depends(get_db),
+):
+    """SSE feed of agent events as they're persisted (BE-4 / PB-202).
+
+    Heartbeats every ``DEFAULT_HEARTBEAT_S`` seconds keep the connection
+    alive through proxies. Stream auto-closes after
+    ``SSE_MAX_DURATION_S`` so a hung client doesn't pin a worker — the
+    frontend's reconnect logic just opens a new stream.
+    """
+    requested_agents: set[str] | None = None
+    if agents:
+        requested_agents = {a.strip().lower() for a in agents.split(",") if a.strip()}
+        bad = requested_agents - set(VALID_AGENTS)
+        if bad:
+            requested_agents = requested_agents - bad
+            logger.info("stream_events: dropping unknown agents %s", sorted(bad))
+
+    last_ts = since
+    seen_ids: set[str] = set()
+
+    async def event_gen():
+        nonlocal last_ts, seen_ids
+        start = time.monotonic()
+        # Send an initial heartbeat so the client receives headers + first
+        # byte immediately. Without this the TestClient (and some proxies)
+        # block waiting for the first chunk of the stream.
+        yield ": heartbeat\n\n"
+        last_heartbeat = start
+        while time.monotonic() - start < SSE_MAX_DURATION_S:
+            try:
+                params: list = []
+                conditions: list[str] = []
+                if last_ts:
+                    conditions.append("created_at > %s")
+                    params.append(last_ts)
+                where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+                params.append(50)
+                rows = db.fetch_all(
+                    f"""SELECT id, session_id, event_type, agent_type, tool_name,
+                               trust_tier, args_hash, result_status, metadata, created_at
+                          FROM agent_events
+                          {where}
+                          ORDER BY created_at ASC
+                          LIMIT %s""",
+                    params,
+                ) or []
+                for r in rows:
+                    eid = str(r.get("id") or "")
+                    if eid and eid in seen_ids:
+                        continue
+                    if eid:
+                        seen_ids.add(eid)
+                    payload = _serialize_event_for_sse(r)
+                    if requested_agents is not None and payload["agent"] not in requested_agents:
+                        continue
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    if r.get("created_at"):
+                        last_ts = r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else str(r["created_at"])
+                # Heartbeat
+                if time.monotonic() - last_heartbeat >= DEFAULT_HEARTBEAT_S:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = time.monotonic()
+            except Exception as exc:
+                logger.warning("stream_events poll failed: %s", exc)
+            await asyncio.sleep(DEFAULT_POLL_S)
+        # Tell the client to reconnect cleanly
+        yield "event: close\ndata: max_duration_reached\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # nginx: don't buffer
+            "Connection": "keep-alive",
+        },
+    )
