@@ -32,6 +32,76 @@ _ENTITY_LINK_RE = re.compile(
 )
 
 
+def extract_citations_with_tier(
+    narrative: str,
+    evidence: list[dict] | None,
+) -> list[dict]:
+    """BE-16 — return one item per ``[N]`` citation marker in ``narrative``.
+
+    Each item carries the source metadata the frontend chip needs::
+
+        {"n": int, "evidence_id": str|None,
+         "source_id": str, "source_name": str, "source_tier": str,
+         "published_at": str|None, "snippet": str|None,
+         "source_url": str|None}
+
+    Tier resolution:
+      1. Use the evidence record's explicit ``source_tier`` if set
+         (BE-1 wired this onto evidence_records).
+      2. Fall back to ``services.evidence_ledger.lookup_source_metadata``
+         which maps source_id → (name, tier) via the BE-1 registry.
+
+    Skips out-of-range markers (e.g. ``[7]`` when only 3 evidence
+    records were supplied) so callers get a clean list.
+    """
+    if not narrative or not evidence:
+        return []
+
+    used_ns: list[int] = []
+    seen: set[int] = set()
+    for m in _CITATION_RE.finditer(narrative):
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            continue
+        if n in seen or n < 1 or n > len(evidence):
+            continue
+        seen.add(n)
+        used_ns.append(n)
+
+    out: list[dict] = []
+    # Avoid creating an import cycle if evidence_ledger is unavailable.
+    try:
+        from services.evidence_ledger import lookup_source_metadata as _lookup
+    except Exception:
+        _lookup = None  # type: ignore[assignment]
+
+    def _resolve_tier(rec: dict) -> tuple[str | None, str | None]:
+        explicit_name = rec.get("source_name")
+        explicit_tier = rec.get("source_tier")
+        if explicit_name and explicit_tier:
+            return explicit_name, explicit_tier
+        if _lookup is not None:
+            reg_name, reg_tier = _lookup(rec.get("source_id") or rec.get("source") or "")
+            return explicit_name or reg_name, explicit_tier or reg_tier
+        return explicit_name, explicit_tier
+
+    for n in used_ns:
+        rec = evidence[n - 1] or {}
+        source_name, source_tier = _resolve_tier(rec)
+        out.append({
+            "n": n,
+            "evidence_id": rec.get("evidence_id") or rec.get("id"),
+            "source_id": rec.get("source_id") or rec.get("source"),
+            "source_name": source_name,
+            "source_tier": source_tier,
+            "published_at": rec.get("published_at") or rec.get("retrieved_at"),
+            "snippet": rec.get("snippet") or rec.get("extracted_text") or rec.get("content"),
+            "source_url": rec.get("source_url"),
+        })
+    return out
+
+
 def validate_citations(narrative: str, evidence_count: int) -> dict:
     """Validate citation markers in narrative.
 
