@@ -25,6 +25,10 @@ from services.web_research import WebResearchService
 from services.conversation_memory import ConversationMemory
 from services.workspace import ChatWorkspaceService
 from services.concept_registry import ConceptRegistry
+from services.tenant_context import (
+    DEFAULT_TENANT,
+    set_current_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +478,38 @@ def get_current_user(
     if not row or not row.get("is_active"):
         return None
     return row
+
+
+def get_current_tenant_dep(
+    session_id: Optional[str] = Header(None, alias="X-Session-Id"),
+    db: Database = Depends(get_db),
+) -> str:
+    """BE-38 — resolve and install the active tenant for this request.
+
+    1. If `X-Session-Id` header is present and `chat_sessions.scope_key`
+       resolves to a non-empty slug → use it.
+    2. Otherwise fall back to `'public'`.
+
+    Side effect: writes the tenant onto ``services.tenant_context``'s
+    contextvar so downstream service-layer reads (HybridSearch,
+    GraphTraversal) automatically pick up the WHERE filter.
+    """
+    tenant = DEFAULT_TENANT
+    if session_id:
+        try:
+            row = db.fetch_one(
+                "SELECT scope_key FROM chat_sessions WHERE session_id::text = %s",
+                [session_id],
+            )
+            if row and row.get("scope_key"):
+                tenant = str(row["scope_key"]).strip() or DEFAULT_TENANT
+        except Exception:
+            logger.exception(
+                "get_current_tenant_dep: chat_sessions lookup failed; defaulting to 'public'"
+            )
+            tenant = DEFAULT_TENANT
+    set_current_tenant(tenant)
+    return tenant
 
 
 def require_role(min_role: str):

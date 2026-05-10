@@ -431,7 +431,15 @@ class GraphTraversal:
         return entity_id  # Return original if nothing found
 
     def _resolve_labels(self, entity_ids: set[str]) -> list[GraphNode]:
-        """Resolve human-readable labels for a set of entity IDs."""
+        """Resolve human-readable labels for a set of entity IDs.
+
+        BE-38 — when v_entity_labels rows resolve to drug / company /
+        clinical_trial / mechanisms_of_action entities, only those
+        belonging to the active tenant (or 'public') are surfaced.
+        Cross-tenant ids fall back to the "unknown" node (label-less)
+        so the graph can't accidentally reveal another tenant's
+        entity name.
+        """
         if not entity_ids:
             return []
 
@@ -444,6 +452,38 @@ class GraphTraversal:
             """,
             [ids_list],
         )
+
+        # BE-38 tenant filter — pull the tenant_id of every entity we
+        # might surface and drop those outside the active tenant set.
+        try:
+            from services.tenant_context import (
+                ENTITY_TYPE_TENANT_TABLES,
+                get_current_tenant,
+                DEFAULT_TENANT,
+            )
+            active = get_current_tenant()
+            allowed = (DEFAULT_TENANT, active) if active != DEFAULT_TENANT else (DEFAULT_TENANT,)
+            blocked: set[str] = set()
+            for entity_type, table in ENTITY_TYPE_TENANT_TABLES.items():
+                # Group ids whose label-row claims this entity_type
+                ids_for_type = [
+                    r["entity_id"] for r in rows
+                    if r.get("entity_type") == entity_type
+                ]
+                if not ids_for_type:
+                    continue
+                tenant_rows = self.db.fetch_all(
+                    f"SELECT id::text AS id, tenant_id FROM {table} "
+                    f"WHERE id::text = ANY(%s)",
+                    [ids_for_type],
+                ) or []
+                for tr in tenant_rows:
+                    if tr.get("tenant_id") not in allowed:
+                        blocked.add(tr["id"])
+            if blocked:
+                rows = [r for r in rows if r["entity_id"] not in blocked]
+        except Exception as exc:
+            logger.warning("BE-38 tenant filter on graph labels failed: %s", exc)
 
         label_map = {r["entity_id"]: r for r in rows}
         nodes = []
