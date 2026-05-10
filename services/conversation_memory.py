@@ -188,6 +188,85 @@ class ConversationMemory:
             )
         ]
 
+    def resolve_reference_with_map(self, question: str) -> tuple[str, dict]:
+        """Resolve coreferences AND return the substitution map.
+
+        Returns
+        -------
+        (resolved_question, coreference_resolution)
+
+        ``coreference_resolution`` is a dict shaped::
+
+            {
+                "<original phrase>": "<resolved entity>",
+                ...
+                "from_turn": <int 1-based source turn>,
+            }
+
+        Empty dict when no substitutions occurred. Intended for surfacing
+        in the chat response so the frontend can render a branch
+        indicator under user messages (BE-15 acceptance shape).
+        """
+        if not self._exchanges:
+            return question, {}
+
+        q_lower = question.lower()
+        has_ref = re.search(
+            r"\b(this|that|these|those|its|their|the same|it)\b", q_lower
+        )
+        if not has_ref:
+            return question, {}
+
+        last_entity = ""
+        source_turn: int | None = None
+        for ex in reversed(self._exchanges):
+            if ex.entities:
+                last_entity = ex.entities[0]
+                source_turn = ex.turn
+                break
+            bold = _extract_bold_entities(ex.response)
+            if bold:
+                last_entity = bold[0]
+                source_turn = ex.turn
+                break
+        if not last_entity:
+            return question, {}
+
+        coreference_map: dict[str, str] = {}
+
+        def _record(pattern: str, replacement: str, *, capture_after_word: bool = False):
+            """Apply a regex sub and record every match in coreference_map."""
+            nonlocal resolved
+            for m in re.finditer(pattern, resolved, flags=re.IGNORECASE):
+                phrase = m.group(0)
+                # The replacement string contains the entity; if the regex
+                # has a captured word group we want the displayable phrase.
+                coreference_map[phrase] = replacement.split()[0] if capture_after_word else replacement
+            if capture_after_word:
+                resolved = re.sub(pattern, f"{last_entity} \\2", resolved, flags=re.IGNORECASE)
+            else:
+                resolved = re.sub(pattern, replacement, resolved, flags=re.IGNORECASE)
+
+        resolved = question
+        _record(r"\b(this|that)\s+(drug|compound|molecule|medication|therapy|treatment)\b", last_entity)
+        _record(r"\b(this|that)\s+(company|firm|manufacturer|pharma)\b", last_entity)
+        _record(
+            r"\b(these|those)\s+(drugs?|compounds?|companies|entities|mechanisms?)\b",
+            last_entity,
+            capture_after_word=True,
+        )
+        _record(
+            r"\b(its?|their)\s+(pipeline|portfolio|trials?|landscape|safety profile|efficacy|mechanism)\b",
+            last_entity,
+            capture_after_word=True,
+        )
+
+        if not coreference_map:
+            return question, {}
+
+        coreference_map["from_turn"] = source_turn  # type: ignore[assignment]
+        return resolved, coreference_map
+
     def resolve_reference(self, question: str) -> str:
         """Resolve coreferences like 'this drug', 'that company', 'its pipeline'.
 
