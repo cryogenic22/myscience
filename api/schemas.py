@@ -61,6 +61,13 @@ class EvidenceItemResponse(BaseModel):
     content: str
     relevance: float
     provenance: dict
+    # BE-1 — evidence-card render fields. Optional so legacy producers
+    # that don't set these stay backwards-compatible; PB-101's
+    # EvidenceCard primitive consumes them when present.
+    source_name: Optional[str] = None
+    source_tier: Optional[str] = None
+    published_at: Optional[str] = None
+    snippet: Optional[str] = None
 
 
 class QueryResponse(BaseModel):

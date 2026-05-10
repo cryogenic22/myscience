@@ -121,23 +121,112 @@ class EvidenceRecord:
     confidence: Optional[float]
     retrieved_by_user_id: Optional[str]
     created_at: Optional[datetime]
+    # BE-1 evidence-card fields
+    source_name: Optional[str] = None
+    source_tier: Optional[str] = None
+    published_at: Optional[datetime] = None
+    snippet: Optional[str] = None
     relation: Optional[str] = None  # populated when joined via claim_evidence_links
 
     def to_dict(self) -> dict:
         return {
             "evidence_id": str(self.evidence_id),
             "source_id": self.source_id,
+            "source_name": self.source_name,
+            "source_tier": self.source_tier,
             "source_url": self.source_url,
             "source_content_hash": self.source_content_hash_hex,
             "archived_snapshot_ref": self.archived_snapshot_ref,
             "retrieved_at": self.retrieved_at.isoformat() if self.retrieved_at else None,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
             "extraction_method": self.extraction_method or {},
             "extracted_text": self.extracted_text,
+            "snippet": self.snippet,
             "confidence": self.confidence,
             "retrieved_by_user_id": str(self.retrieved_by_user_id) if self.retrieved_by_user_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "relation": self.relation,
         }
+
+
+# ────────────────────────────────────────────────────────────────────
+# BE-1 — source registry + snippet helper
+# ────────────────────────────────────────────────────────────────────
+
+# (source_id substring → source_name, source_tier). First match wins.
+# Tier 1 — authoritative public; Tier 2 — disclosure & news;
+# Tier 3 — scientific & conference; Tier 4 — licensed CI.
+_SOURCE_REGISTRY: tuple[tuple[str, str, str], ...] = (
+    ("clinical_trials_gov",   "ClinicalTrials.gov",      "T1"),
+    ("clinicaltrials.gov",    "ClinicalTrials.gov",      "T1"),
+    ("openfda_faers",         "FDA FAERS",               "T1"),
+    ("openfda_labels",        "FDA Drug Labels",         "T1"),
+    ("fda_orange_book",       "FDA Orange Book",         "T1"),
+    ("fda_shortages",         "FDA Drug Shortages",      "T1"),
+    ("fda_opdp",              "FDA OPDP",                "T1"),
+    ("fda",                   "FDA",                     "T1"),
+    ("ema",                   "EMA",                     "T1"),
+    ("who_ictrp",             "WHO ICTRP",               "T1"),
+    ("uspto",                 "USPTO PatentsView",       "T1"),
+    ("epo",                   "EPO Patents",             "T1"),
+    ("cms_partd",             "CMS Medicare Part D",     "T1"),
+    ("cms_pricing",           "CMS Medicare Pricing",    "T1"),
+    ("va_dod",                "VA / DoD Formulary",      "T1"),
+    ("sec_edgar",             "SEC EDGAR",               "T2"),
+    ("sec",                   "SEC",                     "T2"),
+    ("biorxiv",               "bioRxiv",                 "T3"),
+    ("medrxiv",               "medRxiv",                 "T3"),
+    ("pubmed",                "PubMed",                  "T3"),
+    ("pmc",                   "PubMed Central",          "T3"),
+    ("mesh",                  "MeSH",                    "T3"),
+    ("aacr",                  "AACR",                    "T3"),
+    ("asco",                  "ASCO",                    "T3"),
+    ("ash",                   "ASH",                     "T3"),
+)
+
+
+def lookup_source_metadata(source_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(source_name, source_tier)`` for a known source_id slug.
+
+    The matcher is case-insensitive and substring-style (so
+    ``"openfda_faers_pull_2026_05"`` still resolves). Falls back to
+    ``(source_id, "T3")`` for unknown slugs — T3 is the safe scientific
+    default per the materiality scoring documentation.
+    """
+    if not source_id:
+        return None, None
+    needle = source_id.lower()
+    for slug, name, tier in _SOURCE_REGISTRY:
+        if slug in needle:
+            return name, tier
+    return source_id, "T3"
+
+
+_SENTENCE_END = (". ", "! ", "? ", "; ")
+
+
+def make_snippet(text: str, max_chars: int = 200) -> Optional[str]:
+    """Return a single-line ~2-line preview of ``text``.
+
+    Truncates at the last sentence boundary inside ``max_chars``;
+    appends ``"…"`` if anything was dropped. Collapses whitespace so
+    the result fits on two display lines without surprises.
+    """
+    if not text:
+        return None
+    # Collapse whitespace so newlines / runs don't widow lines.
+    flat = " ".join(text.split())
+    if len(flat) <= max_chars:
+        return flat
+    cut = flat[:max_chars]
+    best = -1
+    for sep in _SENTENCE_END:
+        idx = cut.rfind(sep)
+        if idx > best:
+            best = idx
+    if best > 80:  # only respect the boundary if it's not the very start
+        return cut[: best + 1].rstrip() + " …"
+    return cut.rstrip() + " …"
 
 
 @dataclass
@@ -229,9 +318,24 @@ def _row_to_evidence(row: dict) -> EvidenceRecord:
             method = json.loads(method)
         except (TypeError, ValueError):
             method = {}
+
+    # BE-1 — fall back to the registry so older rows without
+    # source_name / source_tier still render as cards.
+    source_id = row["source_id"]
+    name = row.get("source_name")
+    tier = row.get("source_tier")
+    if name is None or tier is None:
+        reg_name, reg_tier = lookup_source_metadata(source_id)
+        name = name if name is not None else reg_name
+        tier = tier if tier is not None else reg_tier
+
+    snippet = row.get("snippet")
+    if snippet is None and row.get("extracted_text"):
+        snippet = make_snippet(row["extracted_text"])
+
     return EvidenceRecord(
         evidence_id=str(row["evidence_id"]),
-        source_id=row["source_id"],
+        source_id=source_id,
         source_url=row.get("source_url"),
         source_content_hash_hex=_bytes_to_hex(row.get("source_content_hash")),
         archived_snapshot_ref=row.get("archived_snapshot_ref"),
@@ -241,6 +345,10 @@ def _row_to_evidence(row: dict) -> EvidenceRecord:
         confidence=row.get("confidence"),
         retrieved_by_user_id=str(row["retrieved_by_user_id"]) if row.get("retrieved_by_user_id") else None,
         created_at=row.get("created_at"),
+        source_name=name,
+        source_tier=tier,
+        published_at=row.get("published_at"),
+        snippet=snippet,
         relation=row.get("relation"),
     )
 
@@ -475,7 +583,8 @@ class EvidenceLedgerService:
             """
             SELECT evidence_id, source_id, source_url, source_content_hash,
                    archived_snapshot_ref, retrieved_at, extraction_method,
-                   extracted_text, confidence, retrieved_by_user_id, created_at
+                   extracted_text, confidence, retrieved_by_user_id, created_at,
+                   source_name, source_tier, published_at, snippet
               FROM evidence_records
              WHERE source_content_hash = %s
                AND source_id = %s
@@ -487,21 +596,27 @@ class EvidenceLedgerService:
         if existing:
             evidence = _row_to_evidence(existing)
         else:
+            # BE-1 — derive card defaults from the registry + snippet helper
+            reg_name, reg_tier = lookup_source_metadata(source_id)
             row = db.fetch_one(
                 """
                 INSERT INTO evidence_records (
                     source_id, source_url, source_content_hash,
                     retrieved_at, extraction_method, extracted_text,
-                    confidence, retrieved_by_user_id
-                ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                    confidence, retrieved_by_user_id,
+                    source_name, source_tier, published_at, snippet
+                ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s,
+                          %s, %s, %s, %s)
                 RETURNING evidence_id, source_id, source_url, source_content_hash,
                           archived_snapshot_ref, retrieved_at, extraction_method,
-                          extracted_text, confidence, retrieved_by_user_id, created_at
+                          extracted_text, confidence, retrieved_by_user_id, created_at,
+                          source_name, source_tier, published_at, snippet
                 """,
                 (
                     source_id, source_url, content_hash,
                     retrieved_at, json.dumps(extraction_method or {}),
                     extracted_text, confidence, retrieved_by_user_id,
+                    reg_name, reg_tier, retrieved_at, make_snippet(extracted_text),
                 ),
             )
             evidence = _row_to_evidence(row)
