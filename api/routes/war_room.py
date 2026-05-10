@@ -910,3 +910,110 @@ def delete_comment(
         raise HTTPException(500, f"delete failed: {exc}") from exc
 
     return Response(status_code=204)
+
+
+# ════════════════════════════════════════════════════════════════════
+# BE-11 · GET /war-rooms/{id}/cockpit-stream (SSE)
+# ════════════════════════════════════════════════════════════════════
+
+import asyncio as _asyncio
+import json as _json
+import time as _time
+from datetime import datetime as _datetime, timezone as _timezone
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+
+
+_COCKPIT_HEARTBEAT_S = 15
+_COCKPIT_POLL_S = 3
+_COCKPIT_MAX_DURATION_S = 600
+
+
+@router.get("/{room_id}/cockpit-stream")
+async def cockpit_stream(
+    room_id: str,
+    variant_id: Optional[str] = None,
+    since: Optional[str] = None,
+    db: Database = Depends(get_db),
+):
+    """BE-11 — SSE feed for PB-503 cockpit (Strategist thinking-stream
+    + Sentinel/Curator activity during a war-game simulation).
+
+    Each event has shape::
+      { "kind": "step"|"sample"|"complete", "agent": str,
+        "variant_id": str|null, "ts": iso, "payload": {...} }
+
+    Polls ``agent_events`` for rows where session_id matches the
+    war_room id (or variant_id when supplied). Heartbeat every 15s,
+    auto-closes after 10 min so a stuck client never pins a worker.
+    """
+    if not _fetch_room(db, room_id):
+        raise HTTPException(404, f"war room not found: {room_id}")
+
+    last_ts = since
+    seen_ids: set[str] = set()
+
+    async def gen():
+        nonlocal last_ts, seen_ids
+        start = _time.monotonic()
+        # Initial heartbeat so headers + first byte flush immediately.
+        yield ": heartbeat\n\n"
+        last_heartbeat = start
+        while _time.monotonic() - start < _COCKPIT_MAX_DURATION_S:
+            try:
+                conditions = ["session_id = %s"]
+                params: list = [variant_id or room_id]
+                if last_ts:
+                    conditions.append("created_at > %s")
+                    params.append(last_ts)
+                params.append(50)
+                rows = db.fetch_all(
+                    f"""SELECT id, session_id, event_type, agent_type, tool_name,
+                               result_status, metadata, created_at
+                          FROM agent_events
+                         WHERE { ' AND '.join(conditions) }
+                         ORDER BY created_at ASC
+                         LIMIT %s""",
+                    params,
+                ) or []
+                for r in rows:
+                    eid = str(r.get("id") or "")
+                    if eid and eid in seen_ids:
+                        continue
+                    seen_ids.add(eid)
+                    md = r.get("metadata") or {}
+                    if isinstance(md, str):
+                        try:
+                            md = _json.loads(md)
+                        except (TypeError, ValueError):
+                            md = {}
+                    payload = {
+                        "id":         eid,
+                        "kind":       r.get("event_type"),
+                        "agent":      r.get("agent_type"),
+                        "variant_id": variant_id,
+                        "ts":         r["created_at"].isoformat()
+                                      if r.get("created_at") and hasattr(r["created_at"], "isoformat")
+                                      else None,
+                        "payload":    md,
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
+                    if r.get("created_at"):
+                        last_ts = r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else str(r["created_at"])
+                if _time.monotonic() - last_heartbeat >= _COCKPIT_HEARTBEAT_S:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = _time.monotonic()
+            except Exception as exc:
+                logger.warning("cockpit_stream poll failed: %s", exc)
+            await _asyncio.sleep(_COCKPIT_POLL_S)
+        yield "event: close\ndata: max_duration_reached\n\n"
+
+    return _StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
