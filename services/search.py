@@ -475,6 +475,18 @@ class HybridSearch:
         conditions = [f"{emb_col} IS NOT NULL"]
         params: list = []
 
+        # BE-38 multi-tenancy filter — only for entity types whose
+        # tables have tenant_id (drug / company / trial). Public rows
+        # stay visible from every tenant.
+        from services.tenant_context import (
+            ENTITY_TYPE_TENANT_TABLES,
+            tenant_filter_clause,
+        )
+        if entity_type in ENTITY_TYPE_TENANT_TABLES:
+            tenant_clause, tenant_params = tenant_filter_clause()
+            conditions.append(tenant_clause)
+            params.extend(tenant_params)
+
         # Exclude merged and excluded records (golden record pattern)
         if entity_type in ("drug", "company"):
             conditions.append("(record_status IS NULL OR record_status NOT IN ('excluded', 'merged'))")
