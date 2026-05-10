@@ -232,11 +232,35 @@ class AskEngine:
         question: str,
         user_id: Optional[str] = None,
         persist: bool = True,
+        subgraph_context: Optional[dict] = None,
     ) -> AskResult:
+        """Run an /ask query.
+
+        BE-20 — when ``subgraph_context`` is supplied (shape:
+        ``{"node_ids": [...], "edge_types": [...]}``), the result is
+        post-filtered to only include nodes the user had selected and
+        edges of the requested type. Lets PB-701 "ask this subgraph"
+        scope the answer to a multi-select on the graph canvas.
+        """
         if not question or not question.strip():
             raise ValueError("question required")
         if len(question) > MAX_QUESTION_CHARS:
             raise ValueError(f"question exceeds {MAX_QUESTION_CHARS} chars")
+
+        # Normalise subgraph context (BE-20)
+        subgraph_node_ids: Optional[set[str]] = None
+        subgraph_edge_types: Optional[set[str]] = None
+        if subgraph_context:
+            raw_nodes = subgraph_context.get("node_ids") or []
+            raw_edges = subgraph_context.get("edge_types") or []
+            if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
+                raise ValueError("subgraph.node_ids and subgraph.edge_types must be lists")
+            if len(raw_nodes) > MAX_NODES:
+                raise ValueError(f"subgraph.node_ids exceeds {MAX_NODES} ids")
+            if raw_nodes:
+                subgraph_node_ids = {str(n) for n in raw_nodes if n}
+            if raw_edges:
+                subgraph_edge_types = {str(e) for e in raw_edges if e}
 
         t0 = time.perf_counter()
         intent = parse_question(question)
@@ -255,6 +279,18 @@ class AskEngine:
                 if executor is None:
                     raise RuntimeError(f"executor not found: {intent.executor}")
                 graph, sql_summary = executor(db, intent.params)
+                # BE-20 — subgraph post-filter: drop nodes not in the
+                # user's selection, then drop edges referencing dropped
+                # nodes; drop edges whose link_type isn't in edge_types.
+                if subgraph_node_ids is not None:
+                    graph.nodes = [n for n in graph.nodes if n.id in subgraph_node_ids]
+                if subgraph_edge_types is not None:
+                    # Edge type lives on `.type` in this engine's GraphEdge;
+                    # also accept `link_type` for callers using that name.
+                    graph.edges = [
+                        e for e in graph.edges
+                        if (getattr(e, "type", None) or getattr(e, "link_type", None)) in subgraph_edge_types
+                    ]
                 # Bound result size
                 if len(graph.nodes) > MAX_NODES:
                     graph.nodes = graph.nodes[:MAX_NODES]

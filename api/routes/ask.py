@@ -23,8 +23,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ask", tags=["ask"])
 
 
+class SubgraphContext(BaseModel):
+    """BE-20 — optional selection from PB-701 'ask this subgraph'."""
+    node_ids: Optional[list[str]] = None
+    edge_types: Optional[list[str]] = None
+
+
+class AskContext(BaseModel):
+    subgraph: Optional[SubgraphContext] = None
+
+
 class AskBody(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    context: Optional[AskContext] = None  # BE-20
 
 
 @router.post("", status_code=200)
@@ -34,8 +45,19 @@ def ask(
     db: Database = Depends(get_db),
 ):
     engine = ask_engine.AskEngine()
+    subgraph_context = None
+    if body.context and body.context.subgraph:
+        subgraph_context = {
+            "node_ids":   body.context.subgraph.node_ids or [],
+            "edge_types": body.context.subgraph.edge_types or [],
+        }
     try:
-        result = engine.ask(db, question=body.question, user_id=str(user["id"]))
+        result = engine.ask(
+            db,
+            question=body.question,
+            user_id=str(user["id"]),
+            subgraph_context=subgraph_context,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     return result.to_dict()
