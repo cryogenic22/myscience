@@ -273,16 +273,58 @@ CITATION PROTOCOL (SPEC_016):
 """
 
 
+def _load_active_prompt_from_registry(name: str) -> Optional[str]:
+    """BE-40 — fetch the active prompt content for ``name`` from
+    prompt_registry. Returns None if the registry isn't reachable
+    or no row matches; the caller falls back to the in-file dict.
+
+    Lazily imports the DB so this module stays import-time-cheap
+    and can run unit tests without a database.
+    """
+    try:
+        from db import Database
+        from config import config
+        db = Database(config.db.dsn)
+        # Prefer is_active = TRUE; fall back to highest version when
+        # the is_active column doesn't yet exist.
+        try:
+            row = db.fetch_one(
+                "SELECT content FROM prompt_registry "
+                "WHERE name = %s AND is_active = TRUE LIMIT 1",
+                [name],
+            )
+        except Exception:
+            row = None
+        if not row:
+            row = db.fetch_one(
+                "SELECT content FROM prompt_registry WHERE name = %s "
+                "ORDER BY version DESC LIMIT 1",
+                [name],
+            )
+        return (row or {}).get("content") if row else None
+    except Exception:
+        return None
+
+
 def _get_system_prompt(intent: str, format_hint: str | None = None) -> str:
     """Select the best system prompt based on intent and format hint.
+
+    BE-40 — when the prompt_registry has an active row for the
+    intent, that wins (lets the steward iterate prompts without a
+    code deploy). Falls back to the in-file SYSTEM_PROMPTS dict so
+    nothing breaks when the registry is missing or empty.
 
     SPEC_016 §1B: appends the citation protocol (click-through entity links)
     to every prompt regardless of intent so the response layer is consistent.
     """
     if format_hint == "table":
-        base = SYSTEM_PROMPTS["tabular"]
+        eff_intent = "tabular"
     else:
-        base = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
+        eff_intent = intent if intent in SYSTEM_PROMPTS else "default"
+
+    base = _load_active_prompt_from_registry(f"system.{eff_intent}")
+    if not base:
+        base = SYSTEM_PROMPTS[eff_intent]
     return base + "\n\n" + _CITATION_PROTOCOL
 
 RESEARCH_SYSTEM_PROMPT = """You are preparing a decision-support research brief for a pharmaceutical leadership team.
