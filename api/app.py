@@ -253,7 +253,7 @@ def create_app() -> FastAPI:
         catalog.router, enrichment.router, pricing.router, scenarios.router,
     ]
     if _NEW_ROUTERS_OK:
-        all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router, agent.router])
+        all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router, agent.router, agent.nudge_router])
     if _UPLOAD_ROUTER_OK:
         all_routers.append(upload_route.router)
     if _AUTH_ROUTER_OK:

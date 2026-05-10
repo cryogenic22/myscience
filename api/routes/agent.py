@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import BaseModel, Field
 from typing import Optional
 
-from api.deps import get_db
+from api.deps import get_db, require_role
 from db import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["agent"])
+nudge_router = APIRouter(prefix="/agents", tags=["agents-nudge"])  # BE-5
 
 
 # BE-3 — Phase 8 verification mandates the noun form for the public
@@ -171,3 +173,50 @@ def get_tool_registry():
         ],
         "total": len(tools),
     }
+
+
+# ════════════════════════════════════════════════════════════════════
+# BE-5 · POST /agents/{agent}/nudge
+# ════════════════════════════════════════════════════════════════════
+
+class NudgeBody(BaseModel):
+    intent: str = Field(min_length=1, max_length=80)
+    payload: dict = Field(default_factory=dict)
+
+
+@nudge_router.post("/{agent}/nudge")
+def nudge_agent(
+    body: NudgeBody,
+    agent: str = Path(..., description="sentinel|strategist|curator"),
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """Send a typed nudge to a specific agent.
+
+    Per BE-5: each call is logged to ``agent_events`` with the intent
+    in metadata; identical nudges from the same actor within 5 min
+    are deduped (returns the prior event_id with deduped=true).
+    """
+    if agent not in VALID_AGENTS:
+        raise HTTPException(404, f"unknown agent: {agent!r}")
+    from services.agent import nudge_intents as svc
+
+    try:
+        result = svc.dispatch(
+            db,
+            agent=agent,
+            intent=body.intent,
+            payload=body.payload or {},
+            actor=str(user.get("id") or user.get("email") or "anonymous"),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return result.to_dict()
+
+
+@nudge_router.get("/intents")
+def list_nudge_intents(agent: Optional[str] = Query(None)):
+    """Return the nudge-intent registry. Frontend renders the menu
+    from this so nothing is hard-coded UI-side."""
+    from services.agent import nudge_intents as svc
+    return {"intents": svc.list_intents(agent)}
