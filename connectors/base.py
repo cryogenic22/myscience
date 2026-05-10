@@ -47,6 +47,16 @@ class SourceType(str, Enum):
     OPEN_TARGETS = "open_targets"
     USER_DOCUMENT = "user_document"
     USER_URL = "user_url"
+    # ── BE-27..34 Phase 1 connectors ──
+    USPTO = "uspto"                       # BE-27
+    EPO_PATENTS = "epo_patents"           # BE-28
+    BIORXIV = "biorxiv"                   # BE-29
+    MEDRXIV = "medrxiv"                   # BE-29 (sibling)
+    FDA_OPDP = "fda_opdp"                 # BE-30
+    CMS_PARTD = "cms_partd"               # BE-31
+    CMS_PRICING = "cms_pricing"           # BE-32
+    WHO_ICTRP = "who_ictrp"               # BE-33
+    VA_DOD_FORMULARY = "va_dod_formulary" # BE-34
 
 
 class RecordType(str, Enum):
