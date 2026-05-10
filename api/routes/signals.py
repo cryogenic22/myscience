@@ -52,6 +52,15 @@ def _row_to_dict(row: dict) -> dict:
             return v.isoformat()
         return str(v)
 
+    # materiality_factors arrives as either dict (psycopg) or str (json text).
+    raw_factors = row.get("materiality_factors")
+    if isinstance(raw_factors, str):
+        import json as _json
+        try:
+            raw_factors = _json.loads(raw_factors)
+        except (TypeError, ValueError):
+            raw_factors = None
+
     return {
         "id": str(row.get("id")),
         "event_id": str(row["event_id"]) if row.get("event_id") else None,
@@ -63,6 +72,8 @@ def _row_to_dict(row: dict) -> dict:
         "trust_score": row.get("trust_score"),
         "impact_tier": row.get("impact_tier"),
         "impact_score": row.get("impact_score"),
+        "materiality_score": row.get("materiality_score"),
+        "materiality_factors": raw_factors,
         "rule_version_id": row.get("rule_version_id"),
         "primary_entity_type": row.get("primary_entity_type"),
         "primary_entity_id": row.get("primary_entity_id"),
@@ -131,6 +142,7 @@ def list_signals(
     sql = f"""
         SELECT id, event_id, kbq_tags, headline, summary, direction,
                confidence_tier, trust_score, impact_tier, impact_score,
+               materiality_score, materiality_factors,
                rule_version_id, primary_entity_type, primary_entity_id,
                primary_entity_name, related_entity_ids,
                evidence_document_ids, status, superseded_by,
@@ -176,6 +188,7 @@ def get_signal(signal_id: str, db: Database = Depends(get_db)):
         row = db.fetch_one(
             """SELECT id, event_id, kbq_tags, headline, summary, direction,
                       confidence_tier, trust_score, impact_tier, impact_score,
+                      materiality_score, materiality_factors,
                       rule_version_id, primary_entity_type, primary_entity_id,
                       primary_entity_name, related_entity_ids,
                       evidence_document_ids, status, superseded_by,

@@ -166,9 +166,11 @@ class TestScoreSignalRow:
 # ════════════════════════════════════════════════════════════════════
 
 class TestSignalsAPIIncludesMateriality:
-    def _make_db_with_signal(self, *, materiality_score=72, materiality_factors=None):
+    _DEFAULT_FACTORS = object()
+
+    def _make_db_with_signal(self, *, materiality_score=72, materiality_factors=_DEFAULT_FACTORS):
         """Return a fake DB that serves a single signal row when /signals queries it."""
-        if materiality_factors is None:
+        if materiality_factors is self._DEFAULT_FACTORS:
             materiality_factors = {
                 "source_tier": {"input": 1, "value": 1.0, "weight": 0.30, "contribution": 30.0},
                 "entity_criticality": {"input": "focal", "value": 1.0, "weight": 0.30, "contribution": 30.0},
