@@ -287,3 +287,58 @@ def transition_brief(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return brief.to_dict()
+
+
+# ════════════════════════════════════════════════════════════════════
+# BE-7 · POST /decision-briefs/{brief_id}/suggest
+# ════════════════════════════════════════════════════════════════════
+
+
+class SuggestBody(BaseModel):
+    current_text: str = Field(default="", max_length=64000)
+    current_options: Optional[list[dict]] = None
+    evidence_refs: Optional[list[dict]] = None
+    cursor_position: Optional[dict] = None
+
+
+@router.post("/{brief_id}/suggest", status_code=200)
+def suggest_brief(
+    brief_id: str,
+    body: SuggestBody,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """BE-7 — strategist + curator inline suggestions (PB-402).
+
+    Verifies the brief exists then delegates to
+    ``services.brief_suggestions.suggest``. Returns a stale-token
+    so the frontend can throttle rerequests when the body hasn't
+    changed.
+    """
+    try:
+        brief = DecisionBriefService.get(db, brief_id)
+    except BriefNotFound:
+        raise HTTPException(404, f"brief not found: {brief_id}")
+    except Exception:
+        brief = None  # service unavailable — still serve heuristics
+    _ = brief  # presence-only; we don't actually need the brief content
+
+    from services import brief_suggestions as svc
+    # LLM is opt-in via deps; the service handles unavailability gracefully.
+    try:
+        from api.deps import get_llm
+        llm = get_llm()
+    except Exception:
+        llm = None
+
+    suggestions = svc.suggest(
+        current_text=body.current_text,
+        current_options=body.current_options,
+        evidence_refs=body.evidence_refs,
+        cursor_position=body.cursor_position,
+        llm=llm,
+    )
+    return {
+        "suggestions": suggestions,
+        "stale_token": svc.stale_token(body.current_text),
+    }
