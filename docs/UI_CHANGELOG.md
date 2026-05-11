@@ -11,6 +11,64 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (PB-301 — Entity dossier scaffold; Loop #6 closed)
+
+First shippable surface of E3 (the spine). New route
+`/dossier/:entityType/:slug` renders a three-column scaffold
+(identity rail · synthesis main · evidence pile) so analysts can
+preview the experience while the backend composer (BE-6, PR #57)
+finishes review.
+
+### Surfaces
+
+- **New route** `/dossier/:entityType/:slug` for entity types
+  `drug`, `company`, `mechanism`, `trial`, `therapeutic_area`.
+- **`DossierPage`** component renders:
+  - Header — entity name (Fraunces 28px), type chip, last-updated
+    timestamp.
+  - Left rail — aliases, external IDs (e.g. `rxnorm`, `chembl`),
+    primary attributes; collapsed sections hide when empty.
+  - Synthesis main — serif 16px paragraph from
+    `services/llm.py::synthesize_dossier()` or a "Synthesis
+    pending" italic placeholder.
+  - Evidence pile — up to three rows (source · tier · date ·
+    2-line snippet) with a "+N more" affordance when more exist.
+- **Mock-data banner** — top `role="status"` line reads "Showing
+  placeholder data — backend composer (BE-6, PR #57) is not yet
+  merged" while `data.is_mock === true`. Banner disappears
+  automatically once BE-6 lands and the field is dropped.
+
+### New files
+
+```
+frontend/src/pages/DossierPage.tsx          — three-column scaffold
+frontend/src/hooks/useDossier.ts             — fetch hook (mock today,
+                                                real fetch in 1 line)
+frontend/src/types/dossier.ts                — wire-format DTOs
+frontend/__tests__/pages/DossierPage.test.tsx — 9 cases
+```
+
+### Out of scope (own PB items)
+
+- PB-302 — inline citations in synthesis (blocked by PB-603)
+- PB-303 — recent-moves timeline
+- PB-304 — full EvidenceCard pile (blocked by PB-101)
+- PB-305 — watching analysts + add-to-watchlist (blocked by PB-102)
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **308 passing, 22 todo,
+  0 failures** (45 files; +9 over Loop #5)
+- `python -m scripts.validate_product_backlog` → OK
+
+### Spec
+
+`specs/SPEC_PB_301_dossier_scaffold.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-11 (PB-104 — Multi-select KBQ chips; Loop #5 closed)
 
 Two-hour bug fix from the design-review heuristic findings (H2,

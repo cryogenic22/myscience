@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 2     |
-| triaged       | 59    |
+| triaged       | 58    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 1     |
+| shipped (90d) | 2     |
 
 ## Currently in flight (2)
 
@@ -224,15 +224,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-301] Dossier route + three-column layout
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: spec
 - **Source ref**: legacy:design-review-E3.S3.1
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: New `/dossier/{entity_type}/{slug-or-id}` route. Three columns: identity rail · synthesis main · evidence pile. entity_type ∈ { drug, company, mechanism, trial, therapeutic_area }. Backend: `GET /dossier/{type}/{slug}` composer endpoint that joins existing endpoints (BE-6). Closes Phase 5 G1.
+- **Last touched**: 2026-05-11
+- **Notes**: Frontend scaffold shipped via Loop #6 (`/dossier/:entityType/:slug` route + three-column layout + useDossier hook + 9 tests). Mock data with `is_mock` banner; backend composer ships via BE-6 (PR #57) — swap is a one-line change in `useDossier.fetchDossier`. Spec at `specs/SPEC_PB_301_dossier_scaffold.md`.
 
 #### [PB-302] Dossier synthesis with inline citations
 - **Type**: feature
