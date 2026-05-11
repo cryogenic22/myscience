@@ -1174,6 +1174,7 @@ append-only; resolved entries stay for audit.
 | 042 | Centralized Product Backlog (consolidate four legacy backlogs) | Frontend Claude (docs) | `claude-fe/spec-042-product-backlog` | merged 2026-05-11 (PR #36) |
 | PB-104 | Multi-select KBQ chips · 2-hour bug fix (E1.S1.4) | Frontend Claude | `claude-fe/loop-5-pb-104-kbq-chips` | merged 2026-05-11 (PR #71) |
 | PB-301 | Entity dossier scaffold (frontend half of E3.S3.1) | Frontend Claude | `claude-fe/loop-6-pb-301-dossier-scaffold` | merged 2026-05-11 (PR #72); BE-6 (PR #57) unmerged |
-| PB-501 | Payoff matrix scaffold (frontend half of E5.S5.1) | Frontend Claude | `claude-fe/loop-7-pb-501-payoff-matrix` | Loop #7 — Stage 7 deploy in progress; BE-8 (PR #59) unmerged |
+| PB-501 | Payoff matrix scaffold (frontend half of E5.S5.1) | Frontend Claude | `claude-fe/loop-7-pb-501-payoff-matrix` | merged 2026-05-11 (PR #73); BE-8 (PR #59) unmerged |
+| PB-201 | Agent identity strip (frontend half of E2.S2.1) | Frontend Claude | `claude-fe/loop-8-pb-201-agent-identity` | Loop #8 — Stage 7 deploy in progress; BE-3 (PR #50) unmerged |
 | 043+ | (free — either side may claim) | — | — | available |
 

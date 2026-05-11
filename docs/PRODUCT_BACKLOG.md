@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 2     |
-| triaged       | 57    |
+| triaged       | 56    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 3     |
+| shipped (90d) | 4     |
 
 ## Currently in flight (2)
 
@@ -172,15 +172,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-201] Agent identity · name them, give them roles
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: spec
 - **Source ref**: legacy:design-review-E2.S2.1
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: Three named agents with consistent glyphs across surfaces — Sentinel (SE / teal · Sense), Strategist (ST / violet · Frame+Simulate), Curator (CU / green · Learn+Recalibrate). New `AgentGlyph.tsx` primitive. Backend tags `/agent/events` with `agent: "sentinel"|"strategist"|"curator"` field (BE-3). Phase 8 verification mandates noun form (not verb form).
+- **Last touched**: 2026-05-11
+- **Notes**: Frontend half shipped via Loop #8 (AgentGlyph + AgentIdentityStrip primitives + 11 tests + mounted in CIPage sidebar). Three named agents (Sentinel teal, Strategist violet, Curator green) with noun-form aria-labels for Phase 8 compliance. Status dots wire to SSE via PB-202 (BE-4 PR #51). Spec at `specs/SPEC_PB_201_agent_identity_strip.md`.
 
 #### [PB-202] Agent activity feed · show what each agent is doing now
 - **Type**: feature
@@ -295,8 +295,8 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Source ref**: legacy:design-review-E4.S4.1
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: TipTap/ProseMirror editor with custom marks for `{{cite:doc_id}}` (citations), `{{entity:slug}}` (entity mentions), AI suggestions (inline cards). Autosave 4s to `/decision-briefs/{id}`. State machine runs underneath, surfaced in slim sidebar. Pivot from current 5-panel `DecisionWorkspace.tsx`.
+- **Last touched**: 2026-05-11
+- **Notes**: TipTap/ProseMirror editor with custom marks for `{{cite:doc_id}}` (citations), `{{entity:slug}}` (entity mentions), AI suggestions (inline cards). Autosave 4s to `/decision-briefs/{id}`. State machine runs underneath, surfaced in slim sidebar. Pivot from current 5-panel `DecisionWorkspace.tsx`. **Needs dedicated install loop**: TipTap is not in `frontend/package.json`; ~10 transitive packages + custom-mark TDD is too large for a continuation pass (see SPEC_PB_201_agent_identity_strip.md §"Why this loop pivoted from PB-401").
 
 #### [PB-402] Inline AI suggestions
 - **Type**: feature
