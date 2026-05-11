@@ -1,14 +1,13 @@
 import type { PayoffCell, PayoffMatrix as PayoffMatrixT, PayoffOutcome } from '../../../types/payoff';
 
 /**
- * PB-501 — 2×2 payoff matrix view (scaffold).
+ * 2×2 payoff matrix view. Renders one cell per (our_move,
+ * adversary_state) pair with delta% + confidence and a tier-coloured
+ * background (win/neutral/lose). The recommended cell is outlined
+ * with the brand accent.
  *
- * Renders one cell per (row, col) pairing with delta% + confidence
- * and a tier-coloured background (win/neutral/lose). The recommended
- * cell is outlined with the brand accent so the eye finds it first.
- *
- * Data plumbed via `usePayoffMatrix(roomId)`; backend composer ships
- * via BE-8 (PR #59).
+ * Wired to the BE-8 composer (`POST /war-rooms/{id}/payoff-matrix`)
+ * via `usePayoffMatrix`.
  */
 
 interface Props {
@@ -70,22 +69,6 @@ export default function PayoffMatrix({ matrix }: Props) {
         background: 'var(--color-surface)',
       }}
     >
-      {matrix.is_mock && (
-        <div
-          role="status"
-          className="text-[11px]"
-          style={{
-            padding: '6px 16px',
-            background: 'var(--color-line)',
-            borderTopLeftRadius: '6px',
-            borderTopRightRadius: '6px',
-            color: 'var(--color-ink-3)',
-          }}
-        >
-          Showing placeholder data — backend composer (BE-8, PR #59) is not yet merged.
-        </div>
-      )}
-
       <header
         className="flex items-baseline justify-between"
         style={{

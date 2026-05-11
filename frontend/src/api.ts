@@ -1,6 +1,6 @@
 // In dev mode (vite dev server), proxy rewrites /api -> /
 // In production (served from FastAPI), call routes directly
-const BASE = import.meta.env.DEV ? '/api' : '';
+export const BASE = import.meta.env.DEV ? '/api' : '';
 
 export interface SourceCoverageItem {
   source: string;

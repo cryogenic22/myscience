@@ -11,6 +11,74 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #9 — swap PB-301 + PB-501 from mock to live BE)
+
+Backend trio (BE-3 PR #50, BE-6 PR #57, BE-8 PR #59) merged earlier
+today. Loop #9 pointed the two scaffold-loop hooks at their real
+endpoints and dropped the "Showing placeholder data — backend
+composer not yet merged" banners.
+
+### Surfaces
+
+- **`/dossier/:entityType/:slug`** — `useDossier` now hits
+  `GET /dossier/{type}/{slug}` (the BE-6 composer). The component
+  shape is unchanged; an adapter (`adaptDossierResponse`) maps the
+  backend response onto the frontend `Dossier` type. Banner removed.
+- **War room payoff matrix** — `usePayoffMatrix` now POSTs to
+  `/war-rooms/{id}/payoff-matrix` (the BE-8 composer) with default
+  `our_moves: ['launch_q3', 'wait_q4']` × `adversary_states:
+  ['defend', 'cede']` and `samples: 1200`. `adaptPayoffResponse`
+  reshapes the backend's 2D `cells[][]` + index-pair recommendation
+  into the flat frontend shape and derives win/neutral/lose outcome
+  tiers from `delta_pct`. Banner removed.
+
+### New adapter functions
+
+```
+src/hooks/useDossier.ts          + adaptDossierResponse(wire, slug)
+src/hooks/usePayoffMatrix.ts     + adaptPayoffResponse(wire, roomId,
+                                                       ourMoves, adversaryStates)
+```
+
+Both exported for unit testing.
+
+### Types
+
+`Dossier` and `PayoffMatrix` lose the frontend-only `is_mock` field;
+the banner gates in `DossierPage.tsx` and `PayoffMatrix.tsx` are gone.
+
+### Tests
+
+- 8 new cases in `__tests__/hooks/useDossier.adapter.test.ts`
+  (entity name/slug, identity-field partitioning, synthesis
+  null/text, evidence rename + tier default, watcher count).
+- 7 new cases in `__tests__/hooks/usePayoffMatrix.adapter.test.ts`
+  (2D→flat reshape, row/col labels, recommended pair, outcome
+  derivation, null recommended, dimension validation).
+- 3 banner-related tests removed from existing
+  `DossierPage.test.tsx` + `PayoffMatrix.test.tsx`; all remaining
+  tests still pass.
+
+### Why BE-3 didn't trigger a swap
+
+BE-3 added an `agent` field on `/agent/events` to unblock PB-202
+(live activity feed), not PB-201. The agent identity strip from
+Loop #8 is a static surface and was already correct.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **339 passing, 22 todo,
+  0 failures attributable to this loop** (50 files; +2 over Loop #8).
+- `python -m scripts.validate_product_backlog` → OK
+
+### Spec
+
+`specs/SPEC_LOOP_9_swap_mocks_to_real.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-11 (PB-201 — Agent identity strip; Loop #8 closed)
 
 The three named agents are now visible across the CI cockpit

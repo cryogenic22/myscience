@@ -3,18 +3,9 @@ import { useDossier } from '../hooks/useDossier';
 import type { DossierEntityType, DossierEvidence } from '../types/dossier';
 
 /**
- * PB-301 — Entity dossier scaffold.
- *
- * Three-column layout (`identity rail · synthesis main · evidence pile`)
- * for `/dossier/:entityType/:slug`. Backend composer ships via BE-6
- * (PR #57); for now `useDossier` returns a mock fixture so the layout
- * can be reviewed end-to-end.
- *
- * When BE-6 lands:
- * 1. Replace the body of `fetchDossier` in `src/hooks/useDossier.ts`
- *    with a real `fetch(${BASE}/dossier/${type}/${slug})` call.
- * 2. Drop the `is_mock` field from the type + remove the placeholder
- *    notice rendered in this file (search for `data.is_mock`).
+ * Entity dossier — three-column layout (identity rail · synthesis
+ * main · evidence pile) for `/dossier/:entityType/:slug`. Wired to
+ * the BE-6 composer (`GET /dossier/{type}/{slug}`) via `useDossier`.
  */
 
 const KNOWN_TYPES: DossierEntityType[] = ['drug', 'company', 'mechanism', 'trial', 'therapeutic_area'];
@@ -87,22 +78,6 @@ export default function DossierPage() {
 
   return (
     <ScaffoldShell>
-      {/* Mock-data notice — drop when BE-6 ships. */}
-      {data.is_mock && (
-        <div
-          role="status"
-          className="text-[11px]"
-          style={{
-            padding: '6px 16px',
-            background: 'var(--color-line)',
-            borderBottom: '1px solid var(--color-line)',
-            color: 'var(--color-ink-3)',
-          }}
-        >
-          Showing placeholder data — backend composer (BE-6, PR #57) is not yet merged.
-        </div>
-      )}
-
       <header
         className="flex items-baseline gap-3 flex-wrap"
         style={{

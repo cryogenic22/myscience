@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import type { Dossier, DossierEntityType } from '../types/dossier';
+import { BASE } from '../api';
+import type {
+  Dossier,
+  DossierEntityType,
+  DossierEvidence,
+  EvidenceTier,
+} from '../types/dossier';
 
 /**
- * PB-301 — Dossier hook.
- *
- * While BE-6 (`GET /dossier/{type}/{slug}`) is unmerged this returns
- * a mock dossier so the frontend scaffold can be built and reviewed.
- * When BE-6 lands, replace the body of `fetchDossier` with a real
- * `fetch(`${BASE}/dossier/${type}/${slug}`)` call and drop the
- * `is_mock` flag from the returned payload.
+ * `useDossier(type, slug)` — hits `GET /dossier/{type}/{slug}` and
+ * adapts the BE-6 response into the frontend `Dossier` shape.
  */
 
 export interface UseDossierResult {
@@ -17,64 +18,110 @@ export interface UseDossierResult {
   isLoading: boolean;
 }
 
-const MOCK_FIXTURES: Record<string, Dossier> = {
-  'drug/tirzepatide': {
-    entity: {
-      id: 'ent-tirzepatide',
-      slug: 'tirzepatide',
-      type: 'drug',
-      canonical_name: 'tirzepatide',
-      aliases: ['Mounjaro', 'Zepbound', 'LY3298176'],
-      external_ids: { rxnorm: '2589007', chembl: 'CHEMBL4297535' },
-      primary_attributes: {
-        mechanism: 'GIP/GLP-1 dual agonist',
-        company: 'Eli Lilly',
-        approval_date: '2022-05-13',
-      },
-      updated_at: '2026-05-09T12:00:00Z',
-    },
-    synthesis: {
-      summary:
-        'Tirzepatide is a dual GIP/GLP-1 receptor agonist approved in 2022 for type 2 diabetes (Mounjaro) and chronic weight management (Zepbound). Lilly reported $5.4B in Q1 2026 Mounjaro revenue and Phase 3 SURPASS-PEDS hit its primary endpoint in April 2026.',
-      citations: [],
-    },
-    recent_moves: [],
-    evidence: [
-      { id: 'ev-1', source_name: 'ClinicalTrials.gov', tier: 'T1', published_at: '2026-04-15', snippet: 'SURPASS-PEDS Phase 3 trial primary endpoint met.' },
-      { id: 'ev-2', source_name: 'FDA Orange Book', tier: 'T1', published_at: '2026-03-10', snippet: 'Patent expiry 2036.' },
-      { id: 'ev-3', source_name: 'PubMed', tier: 'T3', published_at: '2026-02-20', snippet: 'NEJM publication — SURPASS-1 5-year follow-up.' },
-      { id: 'ev-4', source_name: 'SEC EDGAR', tier: 'T2', published_at: '2026-01-30', snippet: 'Lilly Q1 8-K — Mounjaro $5.4B revenue.' },
-    ],
-    watchers: [],
-    watcher_count: 0,
-    is_mock: true,
-  },
-};
+const KNOWN_EXTERNAL_ID_KEYS = new Set<string>([
+  'rxnorm', 'chembl', 'unii', 'inn', 'cas',
+  'ndc', 'gtin',
+  'nct_id', 'nct',
+  'cik', 'lei', 'ticker',
+  'mesh_id', 'doi', 'pmid',
+  'wikidata',
+]);
 
-function buildMockKey(entityType: DossierEntityType, slug: string): string {
-  return `${entityType}/${slug.toLowerCase()}`;
+const VALID_TIERS = new Set<EvidenceTier>(['T1', 'T2', 'T3', 'T4']);
+
+function isScalar(v: unknown): v is string | number {
+  return typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v));
+}
+
+/**
+ * Map the BE-6 wire shape onto the frontend `Dossier` shape.
+ *
+ * Exposed for unit testing.
+ */
+export function adaptDossierResponse(wire: any, slug: string): Dossier {
+  const entityIn = wire?.entity ?? {};
+  const idFields: Record<string, unknown> = entityIn.identity_fields ?? {};
+
+  const externalIds: Record<string, string> = {};
+  const primaryAttributes: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(idFields)) {
+    if (!isScalar(v)) continue;                                       // drop arrays / nested objects
+    if (KNOWN_EXTERNAL_ID_KEYS.has(k.toLowerCase()) || k.endsWith('_id')) {
+      externalIds[k] = String(v);
+    } else {
+      primaryAttributes[k] = v;
+    }
+  }
+
+  // Some optional fields don't exist on every entity type; keep them
+  // out of the attributes block to avoid clutter.
+  delete (primaryAttributes as any).created_at;
+  delete (primaryAttributes as any).updated_at;
+  delete (primaryAttributes as any).description_embedding;
+
+  const synthesisIn = wire?.synthesis ?? null;
+  const synthesis = synthesisIn
+    ? {
+        summary: String(synthesisIn.text_with_citation_marks ?? synthesisIn.summary ?? ''),
+        citations: [],
+      }
+    : null;
+
+  const evidence: DossierEvidence[] = (wire?.evidence_refs ?? []).map((e: any): DossierEvidence => {
+    const tier = (typeof e?.source_tier === 'string' && VALID_TIERS.has(e.source_tier as EvidenceTier))
+      ? (e.source_tier as EvidenceTier)
+      : ('T3' as EvidenceTier);
+    return {
+      id: String(e?.evidence_id ?? e?.id ?? ''),
+      source_name: String(e?.source_name ?? '—'),
+      tier,
+      published_at: String(e?.published_at ?? ''),
+      snippet: String(e?.snippet ?? ''),
+    };
+  });
+
+  const watchers = (wire?.watching ?? []).map((w: any) => ({
+    user_id: String(w?.user_id ?? ''),
+    display_name: String(w?.name ?? w?.display_name ?? ''),
+    avatar_url: w?.avatar_url ?? null,
+  }));
+
+  const updatedAt =
+    typeof primaryAttributes.updated_at === 'string'
+      ? primaryAttributes.updated_at
+      : new Date().toISOString();
+
+  return {
+    entity: {
+      id: String(entityIn.id ?? ''),
+      slug,
+      type: entityIn.type as DossierEntityType,
+      canonical_name: String(entityIn.name ?? ''),
+      aliases: Array.isArray(entityIn.aliases) ? entityIn.aliases.map(String) : [],
+      external_ids: externalIds,
+      primary_attributes: primaryAttributes,
+      updated_at: updatedAt,
+    },
+    synthesis,
+    recent_moves: [],
+    evidence,
+    watchers,
+    watcher_count: watchers.length,
+  };
 }
 
 async function fetchDossier(
   entityType: DossierEntityType,
   slug: string,
 ): Promise<Dossier> {
-  // TODO(BE-6 / PR #57): swap this for
-  //   const res = await fetch(`${BASE}/dossier/${entityType}/${slug}`);
-  //   if (!res.ok) {
-  //     const err = new Error(`${res.status} ${res.statusText}`) as Error & { status?: number };
-  //     err.status = res.status;
-  //     throw err;
-  //   }
-  //   return res.json();
-  const key = buildMockKey(entityType, slug);
-  const fixture = MOCK_FIXTURES[key];
-  if (!fixture) {
-    const err = new Error('not found') as Error & { status?: number };
-    err.status = 404;
+  const res = await fetch(`${BASE}/dossier/${encodeURIComponent(entityType)}/${encodeURIComponent(slug)}`);
+  if (!res.ok) {
+    const err = new Error(`${res.status} ${res.statusText}`) as Error & { status?: number };
+    err.status = res.status;
     throw err;
   }
-  return fixture;
+  const wire = await res.json();
+  return adaptDossierResponse(wire, slug);
 }
 
 export function useDossier(

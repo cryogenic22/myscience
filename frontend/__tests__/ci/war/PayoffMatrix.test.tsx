@@ -20,7 +20,6 @@ const MOCK_MATRIX: PayoffMatrixT = {
     { row_id: 'r2', col_id: 'c2', outcome: 'win',     delta_pct: 6.0,  confidence: 0.79 },
   ],
   recommended_cell: { row_id: 'r2', col_id: 'c1' },
-  is_mock: true,
 };
 
 describe('PayoffMatrix (PB-501)', () => {
@@ -67,25 +66,13 @@ describe('PayoffMatrix (PB-501)', () => {
     expect(within(recommended as HTMLElement).getByText(/recommended/i)).toBeDefined();
   });
 
-  it('shows the placeholder-data banner while is_mock', () => {
-    render(<PayoffMatrix matrix={MOCK_MATRIX} />);
-    expect(screen.getByText(/placeholder data/i)).toBeDefined();
-    expect(screen.getByText(/BE-8/i)).toBeDefined();
-  });
-
-  it('hides the placeholder banner when is_mock is false', () => {
-    render(<PayoffMatrix matrix={{ ...MOCK_MATRIX, is_mock: false }} />);
-    expect(screen.queryByText(/placeholder data/i)).toBeNull();
-  });
-
-  it('renders nothing of substance when the matrix has zero cells (empty room)', () => {
+  it('renders the empty-state message when the matrix has zero cells', () => {
     const empty: PayoffMatrixT = {
       room_id: 'room-empty',
       rows: [],
       cols: [],
       cells: [],
       recommended_cell: null,
-      is_mock: true,
     };
     render(<PayoffMatrix matrix={empty} />);
     expect(screen.getByText(/no scenarios yet/i)).toBeDefined();
