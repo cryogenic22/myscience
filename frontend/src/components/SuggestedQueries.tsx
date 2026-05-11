@@ -22,10 +22,10 @@ export default function SuggestedQueries({ onSelect }: Props) {
         <Sparkles size={24} className="text-brand" />
       </div>
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-slate-900">
+        <h2 className="text-xl font-semibold text-ink">
           Ask anything about the pharmaceutical landscape
         </h2>
-        <p className="mt-2 text-sm text-slate-500 max-w-md">
+        <p className="mt-2 text-sm text-ink-3 max-w-md">
           Get evidence-grounded answers powered by {'>'}8,900 knowledge graph connections across drugs, trials, companies, and mechanisms.
         </p>
       </div>

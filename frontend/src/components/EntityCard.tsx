@@ -27,7 +27,7 @@ export default function EntityCard({ entityType, label, properties, connections,
   return (
     <div
       onClick={onClick}
-      className={`rounded-md border border-slate-200/75 bg-white/88 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-slate-300 hover:shadow-md' : ''}`}
+      className={`rounded-md border border-line bg-white/88 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-line hover:shadow-md' : ''}`}
       style={{ padding: '16px' }}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -36,12 +36,12 @@ export default function EntityCard({ entityType, label, properties, connections,
             {cfg.icon}
           </div>
           <div>
-            <div className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight text-slate-900">{label}</div>
-            <div className="text-[11px] text-slate-400 capitalize">{entityType.replace('_', ' ')}</div>
+            <div className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight text-ink">{label}</div>
+            <div className="text-[11px] text-ink-4 capitalize">{entityType.replace('_', ' ')}</div>
           </div>
         </div>
         {connections !== undefined && (
-          <span className="rounded-md border border-slate-200/75 bg-white text-[11px] font-medium text-slate-500" style={{ padding: '4px 10px' }}>
+          <span className="rounded-md border border-line bg-white text-[11px] font-medium text-ink-3" style={{ padding: '4px 10px' }}>
             {connections} links
           </span>
         )}
@@ -51,8 +51,8 @@ export default function EntityCard({ entityType, label, properties, connections,
         <div className="space-y-1">
           {displayProps.map(([key, val]) => (
             <div key={key} className="flex items-baseline justify-between text-xs">
-              <span className="text-slate-400 capitalize">{key.replace(/_/g, ' ')}</span>
-              <span className="text-slate-600 font-medium truncate ml-2 max-w-[60%] text-right">
+              <span className="text-ink-4 capitalize">{key.replace(/_/g, ' ')}</span>
+              <span className="text-ink-3 font-medium truncate ml-2 max-w-[60%] text-right">
                 {String(val ?? '--')}
               </span>
             </div>

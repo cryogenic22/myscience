@@ -43,7 +43,7 @@ function freshnessBadge(provenance: Record<string, unknown>): { label: string; c
   if (days <= 7) return { label: 'Fresh', color: 'text-emerald-700 bg-emerald-50' };
   if (days <= 30) return { label: 'Recent', color: 'text-blue-700 bg-blue-50' };
   if (days <= 90) return { label: `${days}d ago`, color: 'text-amber-700 bg-amber-50' };
-  return { label: `${Math.floor(days / 30)}mo ago`, color: 'text-slate-500 bg-slate-100' };
+  return { label: `${Math.floor(days / 30)}mo ago`, color: 'text-ink-3 bg-surface-3' };
 }
 
 export default function EvidenceCard({ source, entityType, content, relevance, provenance, index, highlighted }: Props) {
@@ -53,13 +53,13 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
   const freshness = freshnessBadge(provenance ?? {});
 
   return (
-    <div className={`rounded-md border border-slate-200/75 bg-white/88 mz-text-sm shadow-sm transition-all ${
-      highlighted ? 'ring-2 ring-brand/10' : 'hover:border-slate-300 hover:shadow-md'
+    <div className={`rounded-md border border-line bg-white/88 mz-text-sm shadow-sm transition-all ${
+      highlighted ? 'ring-2 ring-brand/10' : 'hover:border-line hover:shadow-md'
     }`} style={{ padding: '14px 16px' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           {index !== undefined && (
-            <span className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 mz-text-xs font-bold text-slate-500">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md border border-line bg-surface-2 mz-text-xs font-bold text-ink-3">
               {index}
             </span>
           )}
@@ -67,9 +67,9 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
             {SOURCE_ICONS[source] ?? SOURCE_ICONS.search}
             {source}
           </span>
-          <span className="mz-text-xs text-slate-400 capitalize">{entityType.replace('_', ' ')}</span>
+          <span className="mz-text-xs text-ink-4 capitalize">{entityType.replace('_', ' ')}</span>
           {sourceTypeLabel && (
-            <span className="rounded-sm bg-slate-100 mz-text-xs text-slate-500" style={{ padding: '2px 6px' }}>
+            <span className="rounded-sm bg-surface-3 mz-text-xs text-ink-3" style={{ padding: '2px 6px' }}>
               {sourceTypeLabel}
             </span>
           )}
@@ -80,14 +80,14 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
               {freshness.label}
             </span>
           )}
-          <span className="mz-text-xs font-medium text-slate-400">
+          <span className="mz-text-xs font-medium text-ink-4">
             {(relevance * 100).toFixed(0)}% relevant
           </span>
         </div>
       </div>
-      <p className="text-slate-600 leading-relaxed line-clamp-3">{content}</p>
+      <p className="text-ink-3 leading-relaxed line-clamp-3">{content}</p>
       {(sourceApi || sourceUrl) && (
-        <div className="mt-2 flex items-center gap-1 mz-text-xs text-slate-400">
+        <div className="mt-2 flex items-center gap-1 mz-text-xs text-ink-4">
           <ExternalLink size={10} />
           {sourceUrl ? (
             <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-brand-dark hover:underline truncate">

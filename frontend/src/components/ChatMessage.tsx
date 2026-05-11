@@ -73,7 +73,7 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
   };
 
   if (!item) {
-    return <sup className="text-[10px] text-slate-400 font-medium">[{index}]</sup>;
+    return <sup className="text-[10px] text-ink-4 font-medium">[{index}]</sup>;
   }
 
   const sourceApi = item.provenance?.source_api as string | undefined;
@@ -92,27 +92,27 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
       </sup>
       {show && (
         <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white text-left shadow-lg"
+          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-line bg-white text-left shadow-lg"
           style={{ padding: '14px' }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[10px] font-medium text-slate-400 uppercase">{item.source}</span>
-            <span className="text-[10px] text-slate-300">|</span>
-            <span className="text-[10px] text-slate-400 capitalize">{item.entity_type.replace('_', ' ')}</span>
-            <span className="ml-auto text-[10px] font-medium text-slate-400">{(item.relevance * 100).toFixed(0)}%</span>
+            <span className="text-[10px] font-medium text-ink-4 uppercase">{item.source}</span>
+            <span className="text-[10px] text-ink-4">|</span>
+            <span className="text-[10px] text-ink-4 capitalize">{item.entity_type.replace('_', ' ')}</span>
+            <span className="ml-auto text-[10px] font-medium text-ink-4">{(item.relevance * 100).toFixed(0)}%</span>
           </div>
-          <p className="text-[11px] text-slate-600 leading-relaxed">{contentPreview}</p>
+          <p className="text-[11px] text-ink-3 leading-relaxed">{contentPreview}</p>
           {(sourceApi || sourceUrl) && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white" style={{ padding: '6px 8px' }}>
-              <ExternalLink size={10} className="text-slate-400" />
+            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-line bg-white" style={{ padding: '6px 8px' }}>
+              <ExternalLink size={10} className="text-ink-4" />
               {sourceUrl ? (
                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-dark hover:underline truncate">
                   {sourceApi || sourceUrl}
                 </a>
               ) : (
-                <span className="text-[10px] text-slate-400">{sourceApi}</span>
+                <span className="text-[10px] text-ink-4">{sourceApi}</span>
               )}
             </div>
           )}
@@ -134,7 +134,7 @@ function RichText({ text, evidence }: { text: string; evidence?: EvidenceItem[] 
         <p key={pi} className={pi > 0 ? 'mt-2.5' : ''}>
           {para.split(/(\*\*[^*]+\*\*|\*[^*]+\*|\[\d+\])/).map((segment, si) => {
             if (segment.startsWith('**') && segment.endsWith('**')) {
-              return <strong key={si} className="font-semibold text-slate-800">{segment.slice(2, -2)}</strong>;
+              return <strong key={si} className="font-semibold text-ink">{segment.slice(2, -2)}</strong>;
             }
             if (segment.startsWith('*') && segment.endsWith('*') && !segment.startsWith('**')) {
               return <em key={si}>{segment.slice(1, -1)}</em>;
@@ -184,7 +184,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
     >
       <div className="w-full max-w-[90%]">
         {isUser ? (
-          <div className="ml-auto max-w-[82%] rounded-md bg-slate-900 text-[13px] text-white shadow-sm" style={{ padding: '12px 16px' }}>
+          <div className="ml-auto max-w-[82%] rounded-md bg-ink text-[13px] text-white shadow-sm" style={{ padding: '12px 16px' }}>
             {message.content}
           </div>
         ) : (
@@ -194,7 +194,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
             ) : (
               <>
                 {/* Narrative text - tighter font, relaxed leading, with inline citations */}
-                <div className="text-[14px] leading-relaxed text-slate-700" style={{ padding: '0 4px' }}>
+                <div className="text-[14px] leading-relaxed text-ink-2" style={{ padding: '0 4px' }}>
                   <RichText text={message.content} evidence={message.data?.evidence} />
                 </div>
 
@@ -244,7 +244,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
                         key={q}
                         type="button"
                         onClick={() => onFollowUp(q)}
-                        className="rounded-md border border-slate-200 bg-white text-[11px] text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                        className="rounded-md border border-line bg-white text-[11px] text-ink-3 transition-colors hover:border-line hover:bg-surface-2 hover:text-ink"
                         style={{ padding: '6px 12px' }}
                       >
                         {q}
@@ -263,14 +263,14 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
 
 function LoadingIndicator() {
   return (
-    <div className="rounded-md border border-slate-200/70 bg-white/78" style={{ padding: '16px' }}>
+    <div className="rounded-md border border-line bg-white/78" style={{ padding: '16px' }}>
       <div className="flex items-center gap-3">
         <div className="flex gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '0ms' }} />
           <div className="h-1.5 w-1.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '150ms' }} />
           <div className="h-1.5 w-1.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '300ms' }} />
         </div>
-        <span className="text-xs text-slate-400">Analyzing knowledge graph...</span>
+        <span className="text-xs text-ink-4">Analyzing knowledge graph...</span>
       </div>
     </div>
   );
@@ -372,8 +372,8 @@ function ResponseCards({
 
       {/* ── 3. Entities + Metrics (combined row) ── */}
       {(hasEntities || hasMetrics) && (
-        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
-          <div className="mb-2 text-[11px] font-medium text-slate-400">Key Entities & Metrics</div>
+        <div className="border-t border-line mt-2" style={{ paddingTop: '12px' }}>
+          <div className="mb-2 text-[11px] font-medium text-ink-4">Key Entities & Metrics</div>
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {hasEntities && (
               <div className="space-y-2">
@@ -407,15 +407,15 @@ function ResponseCards({
 
       {/* ── 4. Knowledge Graph (collapsible) ── */}
       {hasGraph && data && (
-        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
+        <div className="border-t border-line mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowGraph(!showGraph)}
-            className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+            className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-ink-4 transition-colors hover:text-ink-3"
           >
             {showGraph ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             Knowledge Graph ({data.graph_context.nodes.length} nodes, {data.graph_context.edges.length} edges)
             {shouldOpenGraphByDefault && (
-              <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-300">recommended</span>
+              <span className="ml-1 text-[10px] uppercase tracking-wide text-ink-4">recommended</span>
             )}
           </button>
           {showGraph && (
@@ -432,15 +432,15 @@ function ResponseCards({
 
       {/* ── 5. Evidence (collapsed by default, compact summary) ── */}
       {hasEvidence && data && (
-        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
+        <div className="border-t border-line mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowEvidence(!showEvidence)}
-            className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+            className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-ink-4 transition-colors hover:text-ink-3"
           >
             {showEvidence ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             <span>Based on {data.evidence.length} evidence sources</span>
             {evidenceSummary && (
-              <span className="text-[10px] text-slate-300">({evidenceSummary})</span>
+              <span className="text-[10px] text-ink-4">({evidenceSummary})</span>
             )}
           </button>
           {showEvidence && (
@@ -483,15 +483,15 @@ function ResponseCards({
 
       {/* ── 6. Deep Research Brief (collapsible, keeps border) ── */}
       {hasReport && (
-        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
+        <div className="border-t border-line mt-2" style={{ paddingTop: '12px' }}>
           <button
             onClick={() => setShowReport(!showReport)}
-            className="mb-2 flex w-full items-center gap-1.5 text-left text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+            className="mb-2 flex w-full items-center gap-1.5 text-left text-[11px] font-medium text-ink-4 transition-colors hover:text-ink-3"
           >
             {showReport ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             Deep Research Brief
             {reportMeta?.generated_at && (
-              <span className="ml-auto text-[10px] text-slate-300">
+              <span className="ml-auto text-[10px] text-ink-4">
                 {new Date(reportMeta.generated_at).toLocaleString()}
               </span>
             )}
@@ -502,7 +502,7 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('md')}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '4px 10px' }}
+                  className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Markdown
@@ -510,28 +510,28 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('txt')}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '4px 10px' }}
+                  className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Text
                 </button>
               </div>
-              <div className="max-h-[min(28rem,50vh)] overflow-y-auto rounded-md border border-slate-200/60 bg-slate-50/40 text-[12px] leading-relaxed whitespace-pre-line text-slate-600" style={{ padding: '10px 12px' }}>
+              <div className="max-h-[min(28rem,50vh)] overflow-y-auto rounded-md border border-line bg-surface-2 text-[12px] leading-relaxed whitespace-pre-line text-ink-3" style={{ padding: '10px 12px' }}>
                 {report}
               </div>
               {webResults && webResults.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-slate-500">External references</div>
+                  <div className="text-[11px] font-medium text-ink-3">External references</div>
                   {webResults.slice(0, 4).map((item, idx) => (
                     <a
                       key={`${item.url}-${idx}`}
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-md border border-slate-200/60 text-[11px] text-slate-600 transition-colors hover:bg-slate-50" style={{ padding: '8px 10px' }}
+                      className="block rounded-md border border-line text-[11px] text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '8px 10px' }}
                     >
-                      <div className="font-medium text-slate-700">{item.title}</div>
-                      {item.snippet && <div className="mt-0.5 line-clamp-2 text-slate-500">{item.snippet}</div>}
+                      <div className="font-medium text-ink-2">{item.title}</div>
+                      {item.snippet && <div className="mt-0.5 line-clamp-2 text-ink-3">{item.snippet}</div>}
                     </a>
                   ))}
                 </div>
@@ -543,11 +543,11 @@ function ResponseCards({
 
       {/* ── 7. Persona Analyses (collapsible) ── */}
       {hasPersonaAnalyses && personaAnalyses && (
-        <div className="border-t border-slate-100 mt-2" style={{ paddingTop: '12px' }}>
+        <div className="border-t border-line mt-2" style={{ paddingTop: '12px' }}>
           {confidenceAssessment && (
             <div className="mb-2 flex items-center gap-3">
-              <span className="text-[11px] font-medium text-slate-400">Team Confidence</span>
-              <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <span className="text-[11px] font-medium text-ink-4">Team Confidence</span>
+              <div className="flex-1 h-1.5 rounded-full bg-surface-3 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -556,14 +556,14 @@ function ResponseCards({
                   }}
                 />
               </div>
-              <span className="text-[11px] font-semibold text-slate-700">
+              <span className="text-[11px] font-semibold text-ink-2">
                 {Math.round(confidenceAssessment.overall * 100)}%
               </span>
             </div>
           )}
           {(data?.evidence?.length ?? 0) > 0 && (
-            <div className="mb-2 text-[10px] text-slate-400">
-              Citations like <span className="font-semibold text-slate-600">[1]</span> refer to evidence sources above.
+            <div className="mb-2 text-[10px] text-ink-4">
+              Citations like <span className="font-semibold text-ink-3">[1]</span> refer to evidence sources above.
             </div>
           )}
           <div className="space-y-2">
@@ -631,12 +631,12 @@ function DataTable({ tableData }: { tableData: TableData }) {
     <div style={{ paddingTop: '4px' }}>
       <div className="mb-2 flex items-center justify-between">
         {tableData.title && (
-          <div className="text-[12px] font-medium text-slate-700">{tableData.title}</div>
+          <div className="text-[12px] font-medium text-ink-2">{tableData.title}</div>
         )}
         <button
           type="button"
           onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink-2"
           style={{ padding: '4px 8px' }}
           title="Download CSV"
         >
@@ -644,15 +644,15 @@ function DataTable({ tableData }: { tableData: TableData }) {
           CSV
         </button>
       </div>
-      <div className="max-h-80 overflow-auto rounded-md border border-slate-200/60">
+      <div className="max-h-80 overflow-auto rounded-md border border-line">
         <table className="min-w-full text-[12px]" style={{ tableLayout: 'auto' }}>
           <thead className="sticky top-0 bg-white z-10">
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-line">
               {tableData.columns.map((col) => (
                 <th
                   key={col.key}
                   onClick={() => handleSort(col.key)}
-                  className={`cursor-pointer whitespace-nowrap text-left font-medium text-slate-500 hover:text-slate-700 select-none ${col.type === 'number' ? 'text-right' : ''}`}
+                  className={`cursor-pointer whitespace-nowrap text-left font-medium text-ink-3 hover:text-ink-2 select-none ${col.type === 'number' ? 'text-right' : ''}`}
                   style={{ padding: '6px 12px' }}
                 >
                   {col.label}
@@ -665,12 +665,12 @@ function DataTable({ tableData }: { tableData: TableData }) {
           </thead>
           <tbody>
             {displayRows.map((row, i) => (
-              <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
+              <tr key={i} className="border-b border-line hover:bg-surface-2">
                 {tableData.columns.map((col, ci) => (
                   <td
                     key={col.key}
                     title={row[col.key] != null ? String(row[col.key]) : undefined}
-                    className={`whitespace-nowrap text-slate-600 ${col.type === 'number' ? 'text-right tabular-nums' : ''} ${ci === 0 ? 'font-medium text-slate-700' : ''}`}
+                    className={`whitespace-nowrap text-ink-3 ${col.type === 'number' ? 'text-right tabular-nums' : ''} ${ci === 0 ? 'font-medium text-ink-2' : ''}`}
                     style={{ padding: '6px 12px' }}
                   >
                     {row[col.key] != null ? String(row[col.key]) : '-'}
@@ -710,17 +710,17 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 text-left"
       >
-        {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-        <span className="text-xs font-semibold text-slate-700">{analysis.display_name}</span>
+        {expanded ? <ChevronDown size={14} className="text-ink-4" /> : <ChevronRight size={14} className="text-ink-4" />}
+        <span className="text-xs font-semibold text-ink-2">{analysis.display_name}</span>
         <div className="ml-auto flex items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <div className={`h-1.5 w-8 rounded-full bg-slate-100 overflow-hidden`}>
+            <div className={`h-1.5 w-8 rounded-full bg-surface-3 overflow-hidden`}>
               <div
                 className={`h-full rounded-full ${confidenceColor}`}
                 style={{ width: `${Math.round(analysis.confidence * 100)}%` }}
               />
             </div>
-            <span className="text-[10px] text-slate-400">{Math.round(analysis.confidence * 100)}%</span>
+            <span className="text-[10px] text-ink-4">{Math.round(analysis.confidence * 100)}%</span>
           </div>
         </div>
       </button>
@@ -729,7 +729,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
       {analysis.key_findings.length > 0 && (
         <ul className="mt-2 ml-5 space-y-0.5">
           {analysis.key_findings.slice(0, 3).map((finding, i) => (
-            <li key={i} className="text-[11px] text-slate-600 list-disc">
+            <li key={i} className="text-[11px] text-ink-3 list-disc">
               <RichText text={finding} evidence={evidence} />
             </li>
           ))}
@@ -749,7 +749,7 @@ function PersonaCard({ analysis, evidence }: { analysis: PersonaAnalysis; eviden
 
       {/* Full analysis (expandable) */}
       {expanded && (
-        <div className="mt-2.5 ml-5 rounded-md border border-slate-200/60 bg-slate-50/50 text-[11px] leading-relaxed text-slate-600" style={{ padding: '8px 12px' }}>
+        <div className="mt-2.5 ml-5 rounded-md border border-line bg-surface-2 text-[11px] leading-relaxed text-ink-3" style={{ padding: '8px 12px' }}>
           <RichText text={analysis.analysis} evidence={evidence} />
         </div>
       )}
@@ -788,7 +788,7 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
 
   return (
     <div style={{ padding: '4px' }}>
-      <div className="mb-2 text-[11px] font-medium text-slate-600">{spec.title}</div>
+      <div className="mb-2 text-[11px] font-medium text-ink-3">{spec.title}</div>
       <div className="w-full" style={{ minHeight: 220, height: 'clamp(220px, 24vw, 300px)' }}>
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           {spec.type === 'donut' ? (
