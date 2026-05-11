@@ -910,3 +910,55 @@ def delete_comment(
         raise HTTPException(500, f"delete failed: {exc}") from exc
 
     return Response(status_code=204)
+
+
+# ════════════════════════════════════════════════════════════════════
+# BE-8 · POST /war-rooms/{id}/payoff-matrix
+# ════════════════════════════════════════════════════════════════════
+
+
+class PayoffMatrixBody(BaseModel):
+    our_moves: list[str] = Field(min_length=2, max_length=2)
+    adversary_states: list[str] = Field(min_length=2, max_length=2)
+    samples: int = Field(default=1200, ge=100, le=10000)
+
+
+@router.post("/{room_id}/payoff-matrix", status_code=200)
+def payoff_matrix(
+    room_id: str,
+    body: PayoffMatrixBody,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """BE-8 — 2x2 payoff matrix composer (PB-501)."""
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+
+    from services.simulation.payoff import build_payoff_matrix
+
+    def _runner(*, war_room_id, our_move, adversary_state, samples):
+        try:
+            from services.game_theory import run_bayesian
+            return run_bayesian(
+                db=db,
+                war_room_id=war_room_id,
+                our_move=our_move,
+                adversary_state=adversary_state,
+                samples=samples,
+            )
+        except Exception as exc:
+            logger.warning("run_bayesian failed (%s, %s): %s", our_move, adversary_state, exc)
+            return {}
+
+    try:
+        out = build_payoff_matrix(
+            our_moves=body.our_moves,
+            adversary_states=body.adversary_states,
+            bayesian_runner=_runner,
+            war_room_id=room_id,
+            samples=body.samples,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return out
