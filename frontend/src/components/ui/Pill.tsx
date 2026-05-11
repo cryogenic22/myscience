@@ -12,12 +12,12 @@ interface PillProps {
 
 export function Pill({ label, tone = 'neutral', icon, className = '', onClick }: PillProps) {
   const toneClasses = {
-    neutral: 'bg-slate-100 text-slate-700 border-slate-200',
+    neutral: 'bg-surface-3 text-ink-2 border-line',
     good: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     warn: 'bg-amber-50 text-amber-800 border-amber-200',
     bad: 'bg-rose-50 text-rose-700 border-rose-200',
     info: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    brand: 'bg-slate-900 text-white border-slate-900',
+    brand: 'bg-ink text-white border-ink',
   };
 
   const baseClasses = 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors';

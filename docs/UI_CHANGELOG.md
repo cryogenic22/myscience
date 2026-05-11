@@ -11,6 +11,66 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #13 — delete the `!important` legacy slate block)
+
+Closes root cause #8 from the Loop #11 audit. The 150-line "LEGACY
+COMPATIBILITY" block in `index.css` that mapped Tailwind `slate-*`
+classes to design tokens via the high-precedence flag was the
+single biggest reason the "ugly + squished" feeling persisted — it
+shadowed every design-token utility with hardcoded slate alphas,
+making the system unfixable from the token layer.
+
+### What changed
+
+- **244 substitutions across 9 component files**: every Tailwind
+  `slate-*` colour class migrated to its design-token equivalent
+  (`bg-surface-2`, `text-ink-3`, `border-line`, …). The token
+  utilities are not declared in our CSS — Tailwind v4
+  auto-generates them from the `@theme` declarations.
+- **`index.css`: 165 lines removed**, 45+ `!important` declarations
+  gone. The one load-bearing rule (`.workspace-canvas` body font)
+  is kept. Production CSS bundle shrank **5 KB** (68 → 63 KB).
+- **Heaviest migrators**: `GraphExplorer.tsx` (112), `ChatMessage.tsx`
+  (78), `EvidenceCard.tsx` (13), `ConversationSidebar.tsx` (12),
+  `MetricCard.tsx` (11).
+- **Only remaining `!important` rules** are 7 inside
+  `@media (prefers-reduced-motion: reduce)` — WCAG-compliant
+  user-preference overrides; intentional.
+
+### Codemod
+
+`scripts/migrate_slate_classes.py` — pure-Python regex rewriter.
+Idempotent. Default path `frontend/src`. Skips `__tests__`/`test`/
+`dist`. Checked in alongside Loop #12's `migrate_text_sizes.py` so
+the design-system migration tooling lives next to the codebase it
+maintains.
+
+### Regression guard
+
+`__tests__/design-system/loop13-no-slate.test.ts`:
+
+- One test per `.tsx`/`.ts` file under `src/` (~140 cases) asserts
+  zero `slate-*` colour classes.
+- One test asserts zero `.text-slate-*` / `.bg-slate-*` selectors
+  in `index.css`.
+- One test asserts zero `!important` outside the reduced-motion
+  block.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vite build` → 62.93 KB CSS (–5 KB), 1.26 MB JS
+- `npx vitest run --no-file-parallelism` → **503 passing, 22 todo,
+  0 failures** (54 files; +144 from per-file Loop #13 tests +10
+  over Loop #12).
+- 6-route HTTP smoke on dev server → all 200
+
+### Spec
+
+`specs/SPEC_LOOP_13_delete_legacy_slate.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #12 — type-scale migration: pages + visible primitives)
 
 Loop #11 shipped the type scale; this loop puts it to work. Migrated

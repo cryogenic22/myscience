@@ -24,20 +24,20 @@ const LABELS: Record<string, string> = {
 
 export default function MetricCard({ type, data, entityName }: Props) {
   return (
-    <div className="rounded-md border border-slate-200/75 bg-white/88 shadow-sm transition-all hover:border-slate-300 hover:shadow-md" style={{ padding: '10px 12px' }}>
+    <div className="rounded-md border border-line bg-white/88 shadow-sm transition-all hover:border-line hover:shadow-md" style={{ padding: '10px 12px' }}>
       {/* Header row: icon + type label */}
       <div className="mb-1.5 flex items-center gap-2">
         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand-dark">
           {ICONS[type]}
         </div>
-        <span className="flex-1 mz-text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <span className="flex-1 mz-text-xs font-semibold uppercase tracking-wide text-ink-4">
           {LABELS[type]}
         </span>
       </div>
 
       {/* Entity name */}
       {entityName && (
-        <div className="mb-1.5 truncate mz-text-sm font-semibold text-slate-800" style={{ paddingLeft: '32px' }}>
+        <div className="mb-1.5 truncate mz-text-sm font-semibold text-ink" style={{ paddingLeft: '32px' }}>
           {entityName}
         </div>
       )}
@@ -85,7 +85,7 @@ function SuccessRateSummary({ data }: { data: Record<string, unknown> }) {
   return (
     <>
       <MetricRow label="Success Rate" value={`${rate.toFixed(1)}%`} bold />
-      <div className="mb-1 mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mb-1 mt-1 h-1.5 overflow-hidden rounded-full bg-surface-3">
         <div
           className="h-full rounded-full bg-green-500 transition-all duration-700"
           style={{ width: `${Math.min(rate, 100)}%` }}
@@ -135,8 +135,8 @@ function PortfolioSummary({ data }: { data: Record<string, unknown> }) {
 function MetricRow({ label, value, bold }: { label: string; value: unknown; bold?: boolean }) {
   return (
     <div className="flex items-baseline justify-between">
-      <span className="text-slate-500">{label}</span>
-      <span className={bold ? 'mz-text-base font-semibold text-slate-900' : 'font-medium text-slate-600'}>
+      <span className="text-ink-3">{label}</span>
+      <span className={bold ? 'mz-text-base font-semibold text-ink' : 'font-medium text-ink-3'}>
         {formatValue(value)}
       </span>
     </div>
@@ -147,14 +147,14 @@ function PhaseBar({ label, count, max, color }: { label: string; count: number; 
   const pct = Math.min((count / max) * 100, 100);
   return (
     <div className="flex-1">
-      <div className="mb-0.5 text-center mz-text-xs text-slate-400">{label}</div>
-      <div className="relative h-7 overflow-hidden rounded-md bg-slate-100">
+      <div className="mb-0.5 text-center mz-text-xs text-ink-4">{label}</div>
+      <div className="relative h-7 overflow-hidden rounded-md bg-surface-3">
         <div
           className={`absolute bottom-0 left-0 right-0 ${color} rounded-md transition-all duration-700`}
           style={{ height: `${pct}%` }}
         />
       </div>
-      <div className="mt-0.5 text-center mz-text-xs font-medium text-slate-600">{count}</div>
+      <div className="mt-0.5 text-center mz-text-xs font-medium text-ink-3">{count}</div>
     </div>
   );
 }

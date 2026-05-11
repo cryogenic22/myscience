@@ -671,7 +671,7 @@ export default function KnowledgeGraph({
         <button
           type="button"
           onClick={() => zoomByFactor(0.9)}
-          className="rounded hover:bg-white/15"
+          className="rounded hover:bg-surface/15"
           style={{ padding: '2px 5px' }}
           aria-label="Zoom out"
         >
@@ -681,7 +681,7 @@ export default function KnowledgeGraph({
         <button
           type="button"
           onClick={() => zoomByFactor(1.12)}
-          className="rounded hover:bg-white/15"
+          className="rounded hover:bg-surface/15"
           style={{ padding: '2px 5px' }}
           aria-label="Zoom in"
         >
@@ -690,7 +690,7 @@ export default function KnowledgeGraph({
         <button
           type="button"
           onClick={resetView}
-          className="rounded hover:bg-white/15"
+          className="rounded hover:bg-surface/15"
           style={{ padding: '2px 5px' }}
           aria-label="Reset view"
         >

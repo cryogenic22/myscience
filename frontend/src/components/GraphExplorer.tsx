@@ -515,7 +515,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
   return (
     <div className="workspace-canvas flex h-full w-full min-h-0 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
       <aside
-        className={`w-full shrink-0 border-b border-slate-200/70 bg-white/58 transition-all duration-200 max-h-[52vh] lg:max-h-none lg:border-b-0 lg:border-r ${
+        className={`w-full shrink-0 border-b border-line bg-white/58 transition-all duration-200 max-h-[52vh] lg:max-h-none lg:border-b-0 lg:border-r ${
           railCollapsed ? 'lg:w-[66px]' : 'lg:w-[430px]'
         }`}
       >
@@ -525,7 +525,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               <button
                 type="button"
                 onClick={() => setRailCollapsed(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2"
                 title="Expand explorer controls"
                 aria-label="Expand explorer controls"
               >
@@ -538,7 +538,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   setQuickNodeInsight(selectedEntityInsight);
                 }}
                 disabled={!selectedEntityInsight}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-35"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
                 title="Show quick node insight"
                 aria-label="Show quick node insight"
               >
@@ -548,13 +548,13 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 type="button"
                 onClick={() => setDrawerOpen(true)}
                 disabled={!selectedEntity}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-35"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
                 title="Open full node details"
                 aria-label="Open full node details"
               >
                 <FileText size={15} />
               </button>
-              <div className="mt-auto text-[10px] text-slate-400 [writing-mode:vertical-rl] rotate-180">
+              <div className="mt-auto text-[10px] text-ink-4 [writing-mode:vertical-rl] rotate-180">
                 Graph controls
               </div>
             </div>
@@ -563,25 +563,25 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
         <div className="card" style={{ padding: '16px' }}>
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h3 className="text-[13px] font-semibold text-slate-900">Graph Explorer</h3>
-              <p className="text-[11px] text-slate-500">Traverse linked evidence and provenance from a chosen anchor entity.</p>
+              <h3 className="text-[13px] font-semibold text-ink">Graph Explorer</h3>
+              <p className="text-[11px] text-ink-3">Traverse linked evidence and provenance from a chosen anchor entity.</p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setRailCollapsed(true)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2"
                 title="Collapse explorer controls"
                 aria-label="Collapse explorer controls"
               >
                 <PanelLeftClose size={14} />
               </button>
-              <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-600" style={{ padding: '6px 12px' }}>
+              <div className="inline-flex items-center gap-2 rounded-md border border-line bg-white text-[11px] text-ink-3" style={{ padding: '6px 12px' }}>
               <span>Hops</span>
               <select
                 value={hops}
                 onChange={(event) => setHops(Number(event.target.value))}
-                className="bg-transparent text-[11px] font-semibold text-slate-800 outline-none"
+                className="bg-transparent text-[11px] font-semibold text-ink outline-none"
               >
                 <option value={1}>1</option>
                 <option value={2}>2</option>
@@ -592,7 +592,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </div>
 
           <div className="mt-3">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Exploration objective</div>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Exploration objective</div>
             <div className="flex flex-wrap gap-1.5">
               {OBJECTIVES.map((item) => (
                 <button
@@ -601,8 +601,8 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   onClick={() => setObjective(item.id)}
                   className={`rounded-md border text-[11px] transition-colors ${
                     objective === item.id
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                      ? 'border-ink bg-ink text-white'
+                      : 'border-line bg-white text-ink-3 hover:border-line hover:bg-surface-2'
                   }`}
                   style={{ padding: '6px 12px' }}
                 >
@@ -610,13 +610,13 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 </button>
               ))}
             </div>
-            <div className="mt-2 text-[11px] text-slate-500">{activeObjective.description}</div>
+            <div className="mt-2 text-[11px] text-ink-3">{activeObjective.description}</div>
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Anchor entity</div>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Anchor entity</div>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+              <Search className="absolute left-3 top-2.5 text-ink-4" size={16} />
               <input
                 value={entityLookupQuery}
                 onChange={(event) => handleLookupChange(event.target.value)}
@@ -625,21 +625,21 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 style={{ padding: '8px 16px 8px 40px' }}
               />
               {showSuggestions && (
-                <div className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl">
+                <div className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl">
                   {suggestions.map((suggestion) => (
                     <button
                       key={suggestion.entity_id}
                       type="button"
                       onClick={() => void loadGraph(suggestion.entity_id, suggestion._type, suggestion.label)}
-                      className="flex w-full items-center gap-3 text-left transition-colors hover:bg-slate-50"
+                      className="flex w-full items-center gap-3 text-left transition-colors hover:bg-surface-2"
                       style={{ padding: '12px 16px' }}
                     >
-                      <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '6px' }}>
+                      <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '6px' }}>
                         {ENTITY_CONFIG[suggestion._type]?.icon ?? <Network size={14} />}
                       </span>
                       <div>
-                        <div className="text-sm font-medium text-slate-900">{suggestion.label}</div>
-                        <div className="text-xs capitalize text-slate-500">{prettyType(suggestion._type)}</div>
+                        <div className="text-sm font-medium text-ink">{suggestion.label}</div>
+                        <div className="text-xs capitalize text-ink-3">{prettyType(suggestion._type)}</div>
                       </div>
                     </button>
                   ))}
@@ -746,16 +746,16 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       }}
                     />
                     {showPathFromSuggestions && (
-                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
+                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
                         {pathFromSuggestions.map((s) => (
                           <button
                             key={s.entity_id}
                             type="button"
                             onClick={() => selectPathFrom(s)}
-                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-slate-50"
+                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-surface-2"
                             style={{ padding: '8px 12px' }}
                           >
-                            <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '4px' }}>
+                            <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '4px' }}>
                               {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
                             </span>
                             <div>
@@ -793,16 +793,16 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       }}
                     />
                     {showPathToSuggestions && (
-                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
+                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
                         {pathToSuggestions.map((s) => (
                           <button
                             key={s.entity_id}
                             type="button"
                             onClick={() => selectPathTo(s)}
-                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-slate-50"
+                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-surface-2"
                             style={{ padding: '8px 12px' }}
                           >
-                            <span className="rounded-sm bg-slate-100 text-slate-600" style={{ padding: '4px' }}>
+                            <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '4px' }}>
                               {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
                             </span>
                             <div>
@@ -922,7 +922,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
         {graphData && (
           <div className="card animate-slide-in" style={{ padding: '16px' }}>
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Graph Summary</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">Graph Summary</h3>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <ControlStat label="Entities found" value={String(filteredGraphData?.nodes.length ?? graphData.nodes.length)} />
               <ControlStat label="Relationships" value={String(filteredGraphData?.edges.length ?? graphData.edges.length)} />
@@ -932,21 +932,21 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
             {highConfidenceRows.length > 0 && (
               <div className="mt-3">
-                <div className="mb-2 text-[11px] font-semibold text-slate-700">High-confidence neighbors</div>
+                <div className="mb-2 text-[11px] font-semibold text-ink-2">High-confidence neighbors</div>
                 <div className="max-h-40 space-y-1.5 overflow-y-auto" style={{ paddingRight: '2px' }}>
                   {highConfidenceRows.map((row) => (
                     <button
                       key={row.key}
                       type="button"
                       onClick={() => void loadGraph(row.otherId, row.otherType, row.otherLabel)}
-                      className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white text-left text-[11px] transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-white text-left text-[11px] transition-colors hover:border-line hover:bg-surface-2"
                       style={{ padding: '8px 12px' }}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate font-medium text-slate-800">{row.otherLabel}</span>
-                        <span className="block truncate text-slate-500">{prettyType(row.linkType)} - {prettyType(row.otherType)}</span>
+                        <span className="block truncate font-medium text-ink">{row.otherLabel}</span>
+                        <span className="block truncate text-ink-3">{prettyType(row.linkType)} - {prettyType(row.otherType)}</span>
                       </span>
-                      <span className="shrink-0 text-slate-500">{(row.confidence * 100).toFixed(0)}%</span>
+                      <span className="shrink-0 text-ink-3">{(row.confidence * 100).toFixed(0)}%</span>
                     </button>
                   ))}
                 </div>
@@ -956,8 +956,8 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
             {linkTypeCounts.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {linkTypeCounts.slice(0, 8).map(([linkType, count]) => (
-                  <span key={linkType} className="rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600" style={{ padding: '4px 10px' }}>
-                    {prettyType(linkType)}: <span className="font-semibold text-slate-800">{count}</span>
+                  <span key={linkType} className="rounded-sm border border-line bg-white text-[10px] text-ink-3" style={{ padding: '4px 10px' }}>
+                    {prettyType(linkType)}: <span className="font-semibold text-ink">{count}</span>
                   </span>
                 ))}
               </div>
@@ -967,14 +967,14 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
         {graphData && (
           <div className="card animate-slide-in" style={{ padding: '16px' }}>
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Graph controls</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">Graph controls</h3>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="text-[11px] text-slate-500">
+              <label className="text-[11px] text-ink-3">
                 Node type
                 <select
                   value={nodeTypeFilter}
                   onChange={(event) => setNodeTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-line bg-white text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
                   style={{ padding: '0 10px' }}
                 >
                   <option value="all">All node types</option>
@@ -983,12 +983,12 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   ))}
                 </select>
               </label>
-              <label className="text-[11px] text-slate-500">
+              <label className="text-[11px] text-ink-3">
                 Link type
                 <select
                   value={linkTypeFilter}
                   onChange={(event) => setLinkTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-line bg-white text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
                   style={{ padding: '0 10px' }}
                 >
                   <option value="all">All links</option>
@@ -1005,7 +1005,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
         </div>
       </aside>
 
-      <div className="relative min-h-[52vh] flex-1 border-t border-slate-200/60 lg:min-h-0 lg:border-t-0">
+      <div className="relative min-h-[52vh] flex-1 border-t border-line lg:min-h-0 lg:border-t-0">
         {isLoading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
             <div style={{
@@ -1087,11 +1087,11 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-center" style={{ padding: '0 16px' }}>
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white/88 shadow-sm">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-white/88 shadow-sm">
               <Network size={28} className="text-brand" />
             </div>
-            <h3 className="text-[15px] font-semibold text-slate-800">Explore Entity Connections</h3>
-            <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-slate-500">
+            <h3 className="text-[15px] font-semibold text-ink">Explore Entity Connections</h3>
+            <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-ink-3">
               Search for a drug, company, or therapeutic area to visualize its relationships in the knowledge graph.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -1117,7 +1117,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       } catch { /* ignore */ }
                     })();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white text-[11px] font-medium text-ink-3 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
                   style={{ padding: '6px 12px' }}
                 >
                   {ENTITY_CONFIG[example.type]?.icon}
@@ -1127,9 +1127,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
             </div>
             <div className="mt-6 grid max-w-lg grid-cols-2 gap-3 text-left">
               {OBJECTIVES.map((obj) => (
-                <div key={obj.id} className="rounded-lg border border-slate-100 bg-white/80" style={{ padding: '8px 12px' }}>
-                  <div className="text-[11px] font-semibold text-slate-700">{obj.label}</div>
-                  <div className="mt-0.5 text-[10px] leading-relaxed text-slate-400">{obj.description}</div>
+                <div key={obj.id} className="rounded-lg border border-line bg-white/80" style={{ padding: '8px 12px' }}>
+                  <div className="text-[11px] font-semibold text-ink-2">{obj.label}</div>
+                  <div className="mt-0.5 text-[10px] leading-relaxed text-ink-4">{obj.description}</div>
                 </div>
               ))}
             </div>
@@ -1198,7 +1198,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   onClick={() => {
                     void loadGraph(quickNodeInsight.id, quickNodeInsight.type, quickNodeInsight.label, hops);
                   }}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-white text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
                   style={{ padding: '4px 10px' }}
                 >
                   <Network size={11} />
@@ -1207,7 +1207,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white text-[10px] text-slate-600 transition-colors hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-white text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
                   style={{ padding: '4px 10px' }}
                 >
                   <FileText size={11} />
@@ -1228,16 +1228,16 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
       >
         <div className="space-y-5">
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Overview</h4>
-            <div className="space-y-2 rounded-md border border-slate-200 bg-white" style={{ padding: '16px' }}>
+            <h4 className="mb-2.5 text-sm font-medium text-ink">Overview</h4>
+            <div className="space-y-2 rounded-md border border-line bg-white" style={{ padding: '16px' }}>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Type</span>
-                <span className="font-medium text-slate-900">{selectedEntity?.type ? displayName(selectedEntity.type) : 'n/a'}</span>
+                <span className="text-ink-3">Type</span>
+                <span className="font-medium text-ink">{selectedEntity?.type ? displayName(selectedEntity.type) : 'n/a'}</span>
               </div>
               {entitySummary && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Connections</span>
-                  <span className="font-medium text-slate-900">{entitySummary.total_connections}</span>
+                  <span className="text-ink-3">Connections</span>
+                  <span className="font-medium text-ink">{entitySummary.total_connections}</span>
                 </div>
               )}
               {entitySummary && Object.keys(entitySummary.connections_by_entity_type || {}).length > 0 && (
@@ -1245,8 +1245,8 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   {Object.entries(entitySummary.connections_by_entity_type)
                     .sort(([, a], [, b]) => Number(b) - Number(a))
                     .map(([eType, count]) => (
-                      <span key={eType} className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-[10px] font-medium text-slate-600" style={{ padding: '2px 8px' }}>
-                        {displayName(eType)} <span className="text-slate-400">{Number(count)}</span>
+                      <span key={eType} className="inline-flex items-center gap-1 rounded-full bg-surface-3 text-[10px] font-medium text-ink-3" style={{ padding: '2px 8px' }}>
+                        {displayName(eType)} <span className="text-ink-4">{Number(count)}</span>
                       </span>
                     ))}
                 </div>
@@ -1255,29 +1255,29 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </section>
 
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Relationships</h4>
+            <h4 className="mb-2.5 text-sm font-medium text-ink">Relationships</h4>
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {edgeRows.length === 0 && (
-                <div className="rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
+                <div className="rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                   Source data pending — this entity has no linked provenance yet.
                 </div>
               )}
               {edgeRows.slice(0, 14).map((row) => (
-                <div key={row.key} className="rounded-md border border-slate-200 bg-white" style={{ padding: '12px 14px' }}>
+                <div key={row.key} className="rounded-md border border-line bg-white" style={{ padding: '12px 14px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-800">
+                      <div className="text-xs font-semibold text-ink">
                         {displayName(row.linkType)} {row.direction} {isUUID(row.otherLabel) ? displayName(row.otherType) : row.otherLabel}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-slate-500">{displayName(row.otherType)}</div>
+                      <div className="mt-0.5 text-[11px] text-ink-3">{displayName(row.otherType)}</div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
+                    <div className="flex shrink-0 items-center gap-1 text-[11px] text-ink-3">
                       <ShieldCheck size={12} />
                       {(row.confidence * 100).toFixed(0)}%
                     </div>
                   </div>
                   {row.via && !isUUID(row.via) && (
-                    <div className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-500">
+                    <div className="mt-2 flex items-start gap-1.5 text-[11px] text-ink-3">
                       <Link2 size={12} className="mt-0.5 shrink-0" />
                       <span className="break-all">{/https?:\/\//.test(row.via) ? row.via : displayName(row.via)}</span>
                     </div>
@@ -1288,9 +1288,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </section>
 
           <section>
-            <h4 className="mb-2.5 text-sm font-medium text-slate-900">Connection breakdown</h4>
+            <h4 className="mb-2.5 text-sm font-medium text-ink">Connection breakdown</h4>
             {summaryLoading ? (
-              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
+              <div className="flex items-center gap-2 rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                 <Loader2 size={12} className="animate-spin" />
                 Loading...
               </div>
@@ -1303,12 +1303,12 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                     const total = entitySummary.total_connections || 1;
                     const pct = Math.round((Number(count) / total) * 100);
                     return (
-                      <div key={linkType} className="rounded-md border border-slate-200 bg-white" style={{ padding: '8px 14px' }}>
+                      <div key={linkType} className="rounded-md border border-line bg-white" style={{ padding: '8px 14px' }}>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600">{displayName(linkType)}</span>
-                          <span className="font-semibold text-slate-900">{Number(count)}</span>
+                          <span className="text-ink-3">{displayName(linkType)}</span>
+                          <span className="font-semibold text-ink">{Number(count)}</span>
                         </div>
-                        <div className="mt-1 h-1 w-full rounded-full bg-slate-100">
+                        <div className="mt-1 h-1 w-full rounded-full bg-surface-3">
                           <div className="h-1 rounded-full" style={{ width: `${pct}%`, background: 'var(--color-accent)' }} />
                         </div>
                       </div>
@@ -1316,7 +1316,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   })}
               </div>
             ) : (
-              <div className="rounded-md border border-slate-200 bg-white text-xs text-slate-500" style={{ padding: '10px 14px' }}>
+              <div className="rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                 No connections found for this entity.
               </div>
             )}
@@ -1324,7 +1324,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
           {edgeRows.some((row) => /https?:\/\//.test(row.via)) && (
             <section>
-              <h4 className="mb-2.5 text-sm font-medium text-slate-900">External sources</h4>
+              <h4 className="mb-2.5 text-sm font-medium text-ink">External sources</h4>
               <div className="space-y-1.5">
                 {Array.from(new Set(edgeRows.map((row) => extractUrl(row.via)).filter(Boolean) as string[]))
                   .slice(0, 5)
@@ -1334,7 +1334,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-slate-200 bg-white text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                      className="flex items-center gap-2 rounded-md border border-line bg-white text-xs text-ink-3 transition-colors hover:bg-surface-2"
                       style={{ padding: '10px 14px' }}
                     >
                       <ExternalLink size={12} />
@@ -1352,18 +1352,18 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
 function ControlStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-white" style={{ padding: '10px 12px' }}>
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="text-lg font-semibold tracking-tight text-slate-900">{value}</div>
+    <div className="rounded-md border border-line bg-white" style={{ padding: '10px 12px' }}>
+      <div className="text-[10px] uppercase tracking-wide text-ink-3">{label}</div>
+      <div className="text-lg font-semibold tracking-tight text-ink">{value}</div>
     </div>
   );
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-slate-200 bg-white" style={{ padding: '6px 8px' }}>
-      <div className="truncate text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="truncate text-[11px] font-semibold text-slate-900">{value}</div>
+    <div className="rounded-sm border border-line bg-white" style={{ padding: '6px 8px' }}>
+      <div className="truncate text-[9px] uppercase tracking-wide text-ink-3">{label}</div>
+      <div className="truncate text-[11px] font-semibold text-ink">{value}</div>
     </div>
   );
 }
