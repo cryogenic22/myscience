@@ -12,6 +12,7 @@ import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
+import AgentIdentityStrip from '../components/primitives/AgentIdentityStrip';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 
 type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
@@ -139,6 +140,9 @@ export default function CIPage() {
 
         {/* Global Telemetry & Footer */}
         <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: 'var(--color-line-2)' }}>
+          {/* PB-201 — three named agents felt across surfaces. PB-202 will
+              swap the static `statuses` prop for SSE-driven values via BE-4. */}
+          <AgentIdentityStrip />
           <AgentStatusBar status="sensing" message="Flywheel Active" agentCount={4} />
           
           <div className="flex items-center justify-between">

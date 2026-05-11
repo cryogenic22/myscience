@@ -11,6 +11,76 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (PB-201 — Agent identity strip; Loop #8 closed)
+
+The three named agents are now visible across the CI cockpit
+sidebar. Replaces the opaque "Flywheel Active · 4 Agents Active"
+label with three glyphs the analyst can address by name:
+
+- **Sentinel** (SE · teal · *Sense*) — the watchdog
+- **Strategist** (ST · violet · *Frame · Simulate*) — the planner
+- **Curator** (CU · green · *Learn · Recalibrate*) — the librarian
+
+Phase 8 verification mandates the noun form; aria-labels and
+visible role lines use nouns throughout.
+
+### Surfaces
+
+- **CI cockpit sidebar** — `<AgentIdentityStrip />` now sits above
+  the legacy `AgentStatusBar` in the global telemetry footer of
+  `CIPage`. Three glyphs in fixed order, each with name + role.
+  Strip wraps gracefully on narrower viewports via `flex-wrap`.
+
+### New primitives
+
+```
+frontend/src/components/primitives/
+├── AgentGlyph.tsx          — 28×28 tinted badge + 2-letter mark
+│                              + optional status dot
+└── AgentIdentityStrip.tsx  — fixed-order row of 3 agents +
+                                 role="group" / aria-label
+```
+
+`AgentGlyph` exports the canonical `AGENTS` metadata map so other
+surfaces (workspace chat, war rooms, dossier) can consume the same
+names + roles + tints.
+
+### Tests
+
+- `AgentGlyph.test.tsx` — 7 cases (SE/ST/CU letters + aria-labels,
+  noun-form guard, `showLabel` on/off, `status` dot).
+- `AgentIdentityStrip.test.tsx` — 4 cases (fixed order, names
+  visible, role lines, `role="group"` with aria-label).
+
+### Out of scope (own PB items)
+
+- PB-202 — live activity feed via `GET /agents/stream` SSE (BE-4)
+- PB-203 — addressable nudges per agent
+- PB-204 — failed / paused state visibility
+
+When PB-202 lands and SSE wires real per-agent state, the legacy
+`AgentStatusBar` "X Agents Active" label can be retired in favour
+of `AgentIdentityStrip` with live statuses.
+
+### Why this loop pivoted from PB-401
+
+PB-401 (TipTap brief composer) needs ~10 transitive packages
+installed + custom-mark TDD — too large for a continuation pass.
+PB-201 is similarly-sized to Loops 5–7 and keeps the rhythm.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **328 passing, 22 todo,
+  0 failures** (48 files; +11 over Loop #7)
+
+### Spec
+
+`specs/SPEC_PB_201_agent_identity_strip.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-11 (PB-501 — Payoff matrix scaffold; Loop #7 closed)
 
 First WOW-surface visual of E5. A 2×2 payoff matrix renders inside
