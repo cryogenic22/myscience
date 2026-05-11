@@ -11,6 +11,102 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #17 — Helix Bridge MVP)
+
+The expert team filed the **MarketZero · Helix** unified-product
+spec earlier today. This loop ships the **Bridge MVP** — the first
+piece of the new IA — end-to-end with deep backend wiring. Eight
+backend asks (BE-50..57) filed simultaneously in
+`docs/AGENT_BACKLOG.md`.
+
+### New surface
+
+`/bridge` — top-level route with Helix shell:
+
+- **Left sidebar**: 6 primary (Bridge · Watchlist · KBQ Workspace
+  · War Game · Knowledge · Replay) + 2 oversight (Reviewer ·
+  Agents) + Connectors footer link. Brand line *MarketZero · Helix*.
+- **Header**: agents-live pulse + **Decision Ledger pin** (47
+  decisions) + clock + theme toggle.
+- **Bridge body**: mode toggle (Live / Today / Week) → hero strip
+  (most urgent moment) → three zones:
+  - **Pulse** — real `/signals` data with materiality dial, tier
+    badge, 10-category filter chips
+  - **Digital Twin** — SVG force-directed GLP-1 market graph (12
+    nodes, 11 edges incl. ghost + future)
+  - **AI Moments** — LLM-synthesised cards via new `POST
+    /bridge/moments` endpoint
+
+### New backend route
+
+`POST /bridge/moments` (`api/routes/bridge.py`):
+
+- Pulls top-N tier-1/tier-2 signals from last `since_days`
+- Groups by impact category, ranks by aggregate impact
+- For each top group, calls `services/llm.py::LLMSynthesizer` for
+  TITLE + SUMMARY (Fraunces-style headline, one-line summary)
+- Falls back to deterministic headline echo on LLM outage
+- Returns `{ moments: Moment[] }` with stable ids, three plays,
+  delta_belief, signal_chain, EV at stake
+
+### Types — `frontend/src/types/helix.ts`
+
+`Moment`, `Play`, `DeltaBelief`, `ImpactCategory`,
+`ImpactCategoryId`, `PlayKind` + helpers `tierFor()` and
+`categoryFor()` for mapping raw signal fields to Helix taxonomy.
+
+### Tests
+
+- Frontend `__tests__/helix/BridgePage.test.tsx` — **9 cases**
+  (brand line · 6 primary nav · 2 oversight · 3 zones with
+  `role="region"` · mode toggle · ledger pin · real signals
+  rendering · 10 category chips · hero with EV).
+- Backend `tests/test_bridge_moments.py` — **5 cases** (endpoint
+  exists · one-moment-per-top-category · `n` cap · `n` validation
+  · LLM-disabled fallback).
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vite build` → clean (63 KB CSS / 1.64 MB JS)
+- `npx vitest run` → **535 passing**, 22 todo, 0 failures (58
+  files; +11 over Loop #16)
+- `pytest tests/test_bridge_moments.py` → 5/5
+- 3-route HTTP smoke (`/bridge`, `/ci`, `/`) → all 200
+
+### Backend asks filed (BE-50..57)
+
+See `docs/AGENT_BACKLOG.md`:
+
+| BE | Priority | What | Unblocks |
+|----|----------|------|----------|
+| 50 | urgent | Materiality 6-input formula | Pulse scoring (closes PB-104b) |
+| 51 | high | DecisionFrame object + endpoint | FRAME AS DECISION (Loop #19) |
+| 52 | — | **Shipped in this loop** | Moments zone |
+| 53 | med | Twin posterior + snapshots | Twin zone, Replay |
+| 54 | med | KBQ workflow engine | KBQ Workspace (Loop #26) |
+| 55 | med | Coach observations | Reviewer (Loop #21) |
+| 56 | med | Knowledge ingestion | Knowledge (Loop #24) |
+| 57 | med | Watchlist subscriptions | Watchlist (Loop #20) |
+
+### What's NOT in this loop (queue)
+
+- Cinematic Moment overlay → Loop #18
+- FRAME AS DECISION modal → Loop #19 (needs BE-51)
+- Top-level Watchlist / Reviewer / Agents / War Game / Knowledge
+  / Replay / KBQ surfaces → Loops #20–#26
+- Hybrid theme variant → Loop #18
+
+### Spec
+
+`specs/SPEC_LOOP_17_helix_bridge.md` — Status: **Shipped 2026-05-11**.
+
+Reference docs checked in:
+- `specs/raw_helix.md` (1,228 lines)
+- `specs/helix_proto.tsx` (1,306 lines)
+
+---
+
 ## 2026-05-11 (Loop #16 — fix 401 cycles from broken demo auto-login)
 
 User reported recurring `{"error":{"code":401,"type":"unauthorized",

@@ -544,6 +544,238 @@ Format:
 
 ---
 
+# Helix unification backlog — from `specs/helix_proto.tsx` + `specs/raw_helix.md`
+
+The expert team filed a unified MarketZero · Helix product spec on 2026-05-11.
+The frontend ships in Loops #17–#26 (see PRODUCT_BACKLOG.md for the loop
+queue). Each backend ask below is what the Helix surface needs at its
+*data contract* layer to swap from mocked/derived to real. Filed
+following the same pattern as BE-1..41.
+
+Reference docs:
+- `specs/raw_helix.md` — surface mapping + engineering brief
+- `specs/helix_proto.tsx` — visual reference prototype (1,306 lines)
+
+### [BACKEND] BE-50 · Materiality formula implementation (closes PB-104b)
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Bridge / Pulse zone, plus every signal-rendering surface
+- Why: Current production materiality scores all show 1% (PB-104b). The
+  Helix spec §5 gives the exact formula required.
+- Need: implement the 6-weighted-input formula in
+  `services/materiality.py::score()`:
+  ```
+  materiality =
+    0.30 × strategic_relevance     (LLM classifier vs tenant priorities)
+    + 0.25 × posterior_shift       (twin belief delta magnitude)
+    + 0.15 × novelty               (embedding distance to recent signals)
+    + 0.10 × recency_decay         (fresh > old)
+    + 0.10 × source_reliability    (sentinel track record)
+    + 0.10 × cross_stream_confluence (multi-stream bonus)
+    + Watchlist match bonus (per-user, additive, +0.5 cap)
+  ```
+- Tier thresholds: tier_1 ≥ 7.0, tier_2 4.0–6.99, tier_3 < 4.0.
+- Acceptance: signals page shows non-1% distribution; tier_1 ≥ 7
+  precision target documented (≥0.75 at GA).
+- Files: `services/materiality.py`, new `services/materiality_inputs.py`
+  for the 6 input calculators, migration adding `tenant_priorities`
+  table.
+- Priority: urgent
+- Status: open
+
+### [BACKEND] BE-51 · DecisionFrame object + endpoint
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix FRAME AS DECISION modal (Loop #19)
+- Need: new table + endpoint for the user-initiated decision shell.
+  Distinct from `decision_briefs` because frames are pre-commit and can
+  be promoted to Moments.
+- Schema:
+  ```sql
+  CREATE TABLE decision_frames (
+    id           UUID PRIMARY KEY,
+    tenant_id    UUID NOT NULL REFERENCES tenants(id),
+    created_by   UUID NOT NULL REFERENCES users(id),
+    created_at   timestamptz NOT NULL DEFAULT NOW(),
+    question     text NOT NULL,
+    decision_class text NOT NULL,  -- pricing/indication/trial/ma/other
+    time_horizon_days int NOT NULL,
+    ev_at_stake_musd numeric,
+    triggering_signal_id text,  -- references signals.id
+    next_steps   jsonb NOT NULL,  -- {open_as_moment, open_war_room, kbq_refresh}
+    status       text NOT NULL DEFAULT 'in_frame',  -- in_frame|promoted|abandoned
+    promoted_to_moment_id text  -- nullable; set when promoted
+  );
+  ```
+- Endpoints:
+  - `POST /decision-frames` — create frame
+  - `GET /decision-frames?status=in_frame` — list
+  - `POST /decision-frames/{id}/promote` — convert to Moment
+- Acceptance: frontend modal call returns 201 + frame id.
+- Priority: high
+- Status: open
+
+### [BACKEND] BE-52 · Moment synthesizer endpoint
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Bridge / AI Moments zone (Loop #17 wires to this)
+- Need: small endpoint that synthesises moments from top signals via
+  the existing `services/llm.py` gateway. Spec from raw_helix.md §3.4.
+- Endpoint: `POST /bridge/moments`
+  - Input: optional `n` (1–5, default 3), optional `since_days` (default 7)
+  - Output: array of Moment objects:
+    ```typescript
+    {
+      id: string;
+      priority: number;
+      ev_at_stake_musd: number;
+      expires_hours: number;
+      title: string;             // serif headline; LLM-generated
+      summary: string;            // 1-2 sentences
+      delta_belief: { from: number; to: number; label: string };
+      signal_chain: string[];     // signals.id[]
+      category: string;
+      plays: Array<{id, label, ev, ev_var, prob_success, kind}>;  // 3 plays
+    }
+    ```
+- Implementation hints:
+  - Pull top-N tier-1 signals from last `since_days`, group by category
+  - For each top group, call `LLMSynthesizer.synthesize_landscape` with a
+    new moment-schema prompt
+  - Plays generated via existing strategist personas (3 plays per moment)
+  - Cache 15 min by `(tenant_id, since_days)`
+- Acceptance: returns 3 moments with non-empty title/summary; signal
+  chain references valid signal ids.
+- Priority: high
+- Status: open
+
+### [BACKEND] BE-53 · Digital Twin posterior state + snapshots
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Bridge / Twin zone (Loop #17 reads), Replay (Loop #25)
+- Need: store probabilistic state per twin node; persist snapshots.
+- Schema:
+  ```sql
+  CREATE TABLE twin_nodes (
+    id           text PRIMARY KEY,
+    tenant_id    UUID NOT NULL,
+    node_type    text NOT NULL,    -- asset/segment/payer/regulator/kol
+    owner_company_id text,
+    attributes   jsonb,
+    beliefs      jsonb,             -- {beta:{a,b}|gaussian:{mu,sigma}|categorical:{probs}|point:{value}}
+    confidence   numeric,
+    updated_at   timestamptz NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE twin_snapshots (
+    id           UUID PRIMARY KEY,
+    tenant_id    UUID NOT NULL,
+    snapshot_at  timestamptz NOT NULL DEFAULT NOW(),
+    node_id      text NOT NULL,
+    beliefs      jsonb NOT NULL,
+    confidence   numeric,
+    triggered_by_signal_id text
+  );
+  ```
+- Endpoints:
+  - `GET /twin/nodes` — current state for Bridge Twin zone
+  - `GET /twin/snapshots?node_id=&from=&to=` — Replay
+  - Worker: Bayesian update on signal arrival (called from the sentinel pipeline)
+- Acceptance: Bridge Twin shows 8–12 nodes with current `share`/`phase`
+  fields; snapshots accumulate as signals arrive.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-54 · KBQ workflow engine
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix KBQ Workspace surface (Loop #26)
+- Need: typed workflow runtime for the 8 KBQs (per raw_helix.md §7.3).
+- Type sketch (Python):
+  ```python
+  @dataclass
+  class KBQ:
+      code: str            # "KBQ-1"
+      question: str
+      input_schema: dict
+      output_schema: dict
+      dependencies: list[str]
+      steps: list[KBQStep]
+      decision_gates: list[KBQGate]
+      sources: list[SourceRef]
+      freshness: FreshnessPolicy
+  ```
+- Endpoints:
+  - `GET /kbq` — list 8 KBQs with metadata
+  - `POST /kbq/{code}/runs` — start a run
+  - `GET /kbq/{code}/runs/{id}` — poll status + outputs
+- Acceptance: KBQ-1, KBQ-3, KBQ-7 runnable end-to-end on a seeded
+  KBQ Profile.
+- Files: new `services/kbq/` module.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-55 · Coach observations
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Reviewer surface (Loop #21)
+- Need: `coach_observations` table + nightly worker that derives
+  patterns from `commits`, `outcomes`, `moments_resolved` per user.
+- Schema:
+  ```sql
+  CREATE TABLE coach_observations (
+    id           UUID PRIMARY KEY,
+    user_id      UUID NOT NULL,
+    tenant_id    UUID NOT NULL,
+    kind         text NOT NULL,  -- pattern|track-record|lesson
+    severity     text NOT NULL,  -- advisory|info|positive
+    text         text NOT NULL,
+    evidence_links jsonb,        -- [{decision_id, moment_id, ...}]
+    week_label   text NOT NULL,
+    dismissed_at timestamptz
+  );
+  ```
+- Endpoint: `GET /coach/observations`
+- Worker: nightly. Patterns to detect (start with these): "cautious-bias
+  in pricing", "outperformed system rate", "lesson from confirmed
+  outcome".
+- Per-user, never cross-tenant.
+- Tone constraint enforced via prompt template: observational language,
+  never directive.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-56 · Knowledge Library ingestion pipeline
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Knowledge surface (Loop #24)
+- Need: upload + indexing pipeline that surfaces internal docs as
+  `INTERNAL`-stream signals.
+- Endpoints:
+  - `POST /knowledge/upload` — presigned S3 URL
+  - `GET /knowledge/docs?status=` — list with indexing status
+  - `GET /knowledge/docs/{id}` — detail + chunks + entities
+- Pipeline (per raw_helix.md §7.8):
+  1. Client → S3 (presigned)
+  2. Parser (Unstructured.io or custom)
+  3. Entity extraction via existing LLM
+  4. Chunk + embed (existing embedder)
+  5. Surface as `INTERNAL:doc-{uuid}` signal if time-bound
+- Acceptance: <90s indexing latency for ≤50pp docs.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-57 · Watchlist subscriptions + automation hooks
+- Filed: 2026-05-11 by Frontend Claude
+- For: Helix Watchlist surface (Loop #20)
+- Need: extend watchlist schema for delivery channels + KBQ-trigger
+  hooks + materiality bonus computation.
+- Schema additions:
+  ```sql
+  ALTER TABLE watchlist_entries ADD COLUMN subscription jsonb;
+  -- {channel: 'in_app'|'email'|'slack', cadence: 'realtime'|'digest'|'weekly'}
+  ALTER TABLE watchlist_entries ADD COLUMN automation jsonb;
+  -- {trigger_kbq_codes: ['KBQ-3', 'KBQ-7'], push_to_slack_webhook: '...'}
+  ```
+- Worker: on signal arrival, evaluate matching watchlists per user; +0.5
+  materiality bonus (capped) for matched signals; fire subscriptions.
+- Acceptance: signal matching a "Lilly + Pricing & Access" watchlist
+  appears with elevated materiality for that user only.
+- Priority: medium
+- Status: open
+
 ## [FRONTEND] InboxTab login wall blocks the default landing
 - Filed: 2026-05-09 by Claude
 - Repro: Open `/ci` (the CI page) without an `mz_auth_token` in localStorage.
@@ -1183,6 +1415,7 @@ append-only; resolved entries stay for audit.
 | Loop #13 | Delete `!important` legacy slate block + slate-class codemod | Frontend Claude | `claude-fe/loop-13-delete-legacy-slate` | merged 2026-05-11 (PR #79) |
 | Loop #14 | `.mz-elevated` hover-bloom primitive + 4 card surfaces | Frontend Claude | `claude-fe/loop-14-elevation-primitive` | merged 2026-05-11 (PR #80) |
 | Loop #15 / PB-401 | TipTap brief composer scaffold + CitationMark + autosave | Frontend Claude | `claude-fe/loop-15-pb-401-tiptap-scaffold` | merged 2026-05-11 (PR #81) |
-| Loop #16 | Fix 401 cycles from broken `demo-token` literal — real /auth/login | Frontend Claude | `claude-fe/loop-16-fix-demo-login` | Stage 7 deploy in progress |
+| Loop #16 | Fix 401 cycles from broken `demo-token` literal — real /auth/login | Frontend Claude | `claude-fe/loop-16-fix-demo-login` | merged 2026-05-11 (PR #82) |
+| Loop #17 | Helix Bridge MVP — `/bridge` surface + `POST /bridge/moments` LLM endpoint + BE-50..57 filed | Frontend Claude | `claude-fe/loop-17-helix-bridge` | Stage 7 deploy in progress |
 | 043+ | (free — either side may claim) | — | — | available |
 
