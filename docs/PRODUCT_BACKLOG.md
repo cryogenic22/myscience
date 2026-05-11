@@ -232,7 +232,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
 - **Last touched**: 2026-05-11
-- **Notes**: Frontend scaffold shipped via Loop #6 (`/dossier/:entityType/:slug` route + three-column layout + useDossier hook + 9 tests). Mock data with `is_mock` banner; backend composer ships via BE-6 (PR #57) — swap is a one-line change in `useDossier.fetchDossier`. Spec at `specs/SPEC_PB_301_dossier_scaffold.md`.
+- **Notes**: Frontend scaffold shipped via Loop #6; mock data swapped to live BE-6 endpoint in Loop #9 (PR #57 merged 2026-05-11). `adaptDossierResponse` maps the wire shape onto the frontend `Dossier` type. Banner removed. Spec at `specs/SPEC_PB_301_dossier_scaffold.md` + `specs/SPEC_LOOP_9_swap_mocks_to_real.md`.
 
 #### [PB-302] Dossier synthesis with inline citations
 - **Type**: feature
@@ -360,7 +360,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
 - **Last touched**: 2026-05-11
-- **Notes**: Frontend scaffold shipped via Loop #7. `PayoffMatrix` component + `usePayoffMatrix` hook + 9 tests; mounted above the move-selector flow inside `WarRoomView`. Tier-coloured cells (win green / neutral amber / lose red), brand-accent outline + "Recommended" caption on the optimal cell. Mock today; swap to `POST /war-rooms/{id}/payoff-matrix` (BE-8, PR #59) is one line. Spec at `specs/SPEC_PB_501_payoff_matrix_scaffold.md`.
+- **Notes**: Frontend scaffold shipped via Loop #7; mock data swapped to live BE-8 endpoint in Loop #9 (PR #59 merged 2026-05-11). `adaptPayoffResponse` reshapes the backend's 2D `cells[][]` + index-pair recommendation into the flat frontend shape. Banner removed. Spec at `specs/SPEC_PB_501_payoff_matrix_scaffold.md` + `specs/SPEC_LOOP_9_swap_mocks_to_real.md`.
 
 #### [PB-502] Adversary digital twins · posterior side panel
 - **Type**: feature

@@ -48,7 +48,6 @@ const MOCK_DRUG = {
   ],
   watchers: [],
   watcher_count: 0,
-  is_mock: true,
 };
 
 describe('DossierPage (PB-301 scaffold)', () => {
@@ -109,13 +108,6 @@ describe('DossierPage (PB-301 scaffold)', () => {
     // 4th item is hidden behind +N more
     expect(screen.queryByText(/SEC EDGAR/)).toBeNull();
     expect(screen.getByText(/\+1 more/i)).toBeDefined();
-  });
-
-  it('shows a "placeholder data" notice while the backend composer is still in PR', () => {
-    vi.mocked(useDossier).mockReturnValue({ data: MOCK_DRUG, error: null, isLoading: false });
-    renderAt('/dossier/drug/tirzepatide');
-    expect(screen.getByText(/placeholder data/i)).toBeDefined();
-    expect(screen.getByText(/BE-6/i)).toBeDefined();
   });
 
   it('renders synthesis-pending copy when the entity has no synthesis yet', () => {

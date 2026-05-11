@@ -1,23 +1,23 @@
 /**
- * PB-501 — Payoff matrix scaffold types.
+ * Payoff matrix wire types — aligned with BE-8
+ * (`POST /war-rooms/{id}/payoff-matrix`) shipped 2026-05-11 in PR #59.
  *
- * Wire shape for `POST /war-rooms/{id}/payoff-matrix` (AGENT_BACKLOG#BE-8,
- * PR #59). While BE-8 is unmerged, `usePayoffMatrix` returns a mock
- * fixture with `is_mock: true` so the panel can render against
- * realistic data.
+ * The hook (`usePayoffMatrix`) adapts the backend's 2D `cells[][]` and
+ * `recommended_cell: [r, c]` into this flat shape so the renderer
+ * (`PayoffMatrix.tsx`) stays stable.
  */
 
 export type PayoffOutcome = 'win' | 'neutral' | 'lose';
 
 export interface PayoffRow {
   id: string;
-  /** Adversary move (e.g. "Lilly defends Mounjaro"). */
+  /** Our move label, e.g. "Launch Q3". */
   label: string;
 }
 
 export interface PayoffCol {
   id: string;
-  /** Our option (e.g. "Launch Q3"). */
+  /** Adversary state label, e.g. "Defend". */
   label: string;
 }
 
@@ -25,11 +25,10 @@ export interface PayoffCell {
   row_id: string;
   col_id: string;
   outcome: PayoffOutcome;
-  /** Δ vs baseline NPV / share / whatever the room is scored on, expressed
-   *  in percentage points. */
+  /** Δ vs baseline NPV / share / whatever the room scores on, in
+   *  percentage points. */
   delta_pct: number;
-  /** Posterior confidence (0–1) from the 1,200-MC simulation in
-   *  `services/game_theory.py::run_bayesian()`. */
+  /** Posterior confidence (0–1) from the 1,200-MC Bayesian run. */
   confidence: number;
 }
 
@@ -38,9 +37,5 @@ export interface PayoffMatrix {
   rows: PayoffRow[];
   cols: PayoffCol[];
   cells: PayoffCell[];
-  /** Highest expected-value cell (delta * confidence) the strategist
-   *  recommends; null if the matrix is empty. */
   recommended_cell: { row_id: string; col_id: string } | null;
-  /** Frontend-only — drop once BE-8 ships. */
-  is_mock?: boolean;
 }
