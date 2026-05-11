@@ -5,8 +5,10 @@ import { warRoomApi, type MoveType, type WarRoom } from '../../../api';
 import CommentsPanel from './CommentsPanel';
 import MoveSelector, { type MoveSelectorHandle } from './MoveSelector';
 import MoveSuggestions from './MoveSuggestions';
+import PayoffMatrix from './PayoffMatrix';
 import RoomActionsMenu from './RoomActionsMenu';
 import RoundHistory from './RoundHistory';
+import { usePayoffMatrix } from '../../../hooks/usePayoffMatrix';
 
 interface Props {
   roomId: string;
@@ -172,6 +174,9 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         )}
       </div>
 
+      {/* PB-501 — Payoff matrix panel (mock until BE-8 lands). */}
+      <PayoffMatrixSection roomId={roomId} />
+
       {/* Phase A.5 — Autonomous move suggestions */}
       <MoveSuggestions
         roomId={roomId}
@@ -227,6 +232,33 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         </div>
         <CommentsPanel roomId={roomId} ownerUserId={room.owner_user_id} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * PB-501 — Payoff matrix panel.
+ *
+ * Renders the 2×2 matrix above the existing move-selector flow.
+ * Today the data is mocked via `usePayoffMatrix`; when BE-8 ships
+ * the hook swaps to a real `POST /war-rooms/{id}/payoff-matrix`
+ * call without changing this component.
+ */
+function PayoffMatrixSection({ roomId }: { roomId: string }) {
+  const { data, error, isLoading } = usePayoffMatrix(roomId);
+  if (isLoading) {
+    return (
+      <div className="mb-6 text-[12px]" style={{ color: 'var(--color-ink-4)' }}>
+        Loading payoff matrix…
+      </div>
+    );
+  }
+  if (error || !data) {
+    return null;
+  }
+  return (
+    <div className="mb-6">
+      <PayoffMatrix matrix={data} />
     </div>
   );
 }
