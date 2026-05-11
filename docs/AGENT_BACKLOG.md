@@ -1177,6 +1177,7 @@ append-only; resolved entries stay for audit.
 | PB-501 | Payoff matrix scaffold (frontend half of E5.S5.1) | Frontend Claude | `claude-fe/loop-7-pb-501-payoff-matrix` | merged 2026-05-11 (PR #73); BE-8 (PR #59) unmerged |
 | PB-201 | Agent identity strip (frontend half of E2.S2.1) | Frontend Claude | `claude-fe/loop-8-pb-201-agent-identity` | merged 2026-05-11 (PR #74); BE-3 (PR #50) merged 2026-05-11 — unblocks PB-202 next |
 | Loop #9 | Swap mocks→real for PB-301 + PB-501 after BE trio merge | Frontend Claude | `claude-fe/loop-9-swap-mocks-to-real` | merged 2026-05-11 (PR #75) |
-| Loop #10 | UI integration pass (sidebar / dossier chrome / strategy group / agent tint) | Frontend Claude | `claude-fe/loop-10-ui-integration` | Stage 7 deploy in progress |
+| Loop #10 | UI integration pass (sidebar / dossier chrome / strategy group / agent tint) | Frontend Claude | `claude-fe/loop-10-ui-integration` | merged 2026-05-11 (PR #76) |
+| Loop #11 | Design system fixup (Fraunces canonical / borderless / type scale / spacing) | Frontend Claude | `claude-fe/loop-11-design-system-fixup` | Stage 7 deploy in progress |
 | 043+ | (free — either side may claim) | — | — | available |
 

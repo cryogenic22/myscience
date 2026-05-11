@@ -2,13 +2,17 @@ import type { PayoffCell, PayoffMatrix as PayoffMatrixT, PayoffOutcome } from '.
 import { AGENTS } from '../../primitives/AgentGlyph';
 
 /**
- * 2×2 payoff matrix view. Renders one cell per (our_move,
- * adversary_state) pair with delta% + confidence and a tier-coloured
- * background (win/neutral/lose). The recommended cell is outlined
- * with the brand accent.
+ * 2×2 payoff matrix. Renders one cell per (our_move, adversary_state)
+ * pair with delta% + confidence and a tier-coloured background
+ * (win/neutral/lose). The recommended cell carries the Strategist's
+ * violet inset ring so the eye reads recommended → Strategist.
  *
- * Wired to the BE-8 composer (`POST /war-rooms/{id}/payoff-matrix`)
- * via `usePayoffMatrix`.
+ * Loop #11 — borderless surface. The matrix no longer ships its own
+ * outer card border; it composes inside a parent panel (the war-room
+ * Strategy group). Tier-coloured cell fills + the Strategist inset
+ * ring are the only borders that remain.
+ *
+ * Data via `usePayoffMatrix(roomId)` (BE-8 composer).
  */
 
 interface Props {
@@ -16,15 +20,9 @@ interface Props {
 }
 
 const OUTCOME_BACKGROUND: Record<PayoffOutcome, string> = {
-  win:     'rgba(34, 197, 94, 0.12)',   // green-500 @ 12%
-  neutral: 'rgba(245, 158, 11, 0.10)',  // amber-500 @ 10%
-  lose:    'rgba(239, 68, 68, 0.12)',   // red-500 @ 12%
-};
-
-const OUTCOME_BORDER: Record<PayoffOutcome, string> = {
-  win:     'rgba(34, 197, 94, 0.55)',
-  neutral: 'rgba(245, 158, 11, 0.55)',
-  lose:    'rgba(239, 68, 68, 0.55)',
+  win:     'rgba(34, 197, 94, 0.10)',
+  neutral: 'rgba(245, 158, 11, 0.08)',
+  lose:    'rgba(239, 68, 68, 0.10)',
 };
 
 function formatDelta(d: number): string {
@@ -41,14 +39,14 @@ export default function PayoffMatrix({ matrix }: Props) {
 
   if (rows.length === 0 || cols.length === 0) {
     return (
-      <section className="mb-4">
+      <section style={{ marginBottom: '16px' }}>
         <h3
-          className="font-serif text-[14px] mb-1"
-          style={{ color: 'var(--color-ink-2)' }}
+          className="font-display"
+          style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-md)', marginBottom: '6px' }}
         >
           Payoff matrix
         </h3>
-        <p className="text-[12px]" style={{ color: 'var(--color-ink-4)' }}>
+        <p className="mz-text-sm" style={{ color: 'var(--color-ink-4)' }}>
           No scenarios yet — add adversary moves and your options to populate the matrix.
         </p>
       </section>
@@ -56,20 +54,26 @@ export default function PayoffMatrix({ matrix }: Props) {
   }
 
   return (
-    <section className="mb-5">
-      <header className="flex items-baseline justify-between mb-2">
-        <h3 className="font-serif text-[14px]" style={{ color: 'var(--color-ink-2)' }}>
+    <section style={{ marginBottom: '24px' }}>
+      <header
+        className="flex items-baseline justify-between"
+        style={{ marginBottom: '12px' }}
+      >
+        <h3
+          className="font-display"
+          style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-md)' }}
+        >
           Payoff matrix
         </h3>
-        <span className="text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
+        <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>
           Posterior over 1,200 Monte Carlo simulations
         </span>
       </header>
 
       <div style={{ overflowX: 'auto' }}>
         <table
-          className="w-full border-collapse"
-          style={{ minWidth: '420px' }}
+          className="w-full"
+          style={{ minWidth: '420px', borderCollapse: 'separate', borderSpacing: '8px' }}
           role="table"
           aria-label="Payoff matrix cells"
         >
@@ -79,12 +83,13 @@ export default function PayoffMatrix({ matrix }: Props) {
               {cols.map((c) => (
                 <th
                   key={c.id}
-                  className="text-[11px] font-medium uppercase tracking-wide"
+                  className="mz-text-xs uppercase"
                   style={{
-                    padding: '6px 10px',
+                    padding: '4px 12px',
                     color: 'var(--color-ink-3)',
                     textAlign: 'left',
-                    borderBottom: '1px solid var(--color-line)',
+                    letterSpacing: '0.06em',
+                    fontWeight: 600,
                   }}
                 >
                   {c.label}
@@ -96,14 +101,15 @@ export default function PayoffMatrix({ matrix }: Props) {
             {rows.map((r) => (
               <tr key={r.id}>
                 <th
-                  className="text-[11px] font-medium uppercase tracking-wide"
+                  className="mz-text-xs uppercase"
                   scope="row"
                   style={{
-                    padding: '10px 10px 10px 0',
+                    padding: '14px 12px 14px 0',
                     color: 'var(--color-ink-3)',
                     textAlign: 'left',
                     verticalAlign: 'top',
-                    borderRight: '1px solid var(--color-line)',
+                    letterSpacing: '0.06em',
+                    fontWeight: 600,
                   }}
                 >
                   {r.label}
@@ -114,11 +120,8 @@ export default function PayoffMatrix({ matrix }: Props) {
                     return (
                       <td
                         key={c.id}
-                        style={{
-                          padding: '12px 10px',
-                          color: 'var(--color-ink-4)',
-                          fontSize: '12px',
-                        }}
+                        className="mz-text-sm"
+                        style={{ padding: '14px', color: 'var(--color-ink-4)' }}
                       >
                         —
                       </td>
@@ -134,32 +137,41 @@ export default function PayoffMatrix({ matrix }: Props) {
                       data-outcome={cell.outcome}
                       data-recommended={isRecommended ? 'true' : 'false'}
                       style={{
-                        padding: '12px',
+                        padding: '16px',
                         background: OUTCOME_BACKGROUND[cell.outcome],
-                        border: isRecommended
-                          ? `2px solid rgb(${AGENTS.strategist.rgb})`
-                          : `1px solid ${OUTCOME_BORDER[cell.outcome]}`,
-                        borderRadius: '6px',
+                        boxShadow: isRecommended
+                          ? `inset 0 0 0 2px rgb(${AGENTS.strategist.rgb})`
+                          : 'none',
+                        borderRadius: 'var(--radius-card)',
                         verticalAlign: 'top',
                       }}
                     >
                       <div
-                        className="font-serif text-[18px] leading-none"
-                        style={{ color: 'var(--color-ink)' }}
+                        className="font-display"
+                        style={{
+                          color: 'var(--color-ink)',
+                          fontSize: 'var(--text-xl)',
+                          lineHeight: '1',
+                          letterSpacing: '-0.015em',
+                        }}
                       >
                         {formatDelta(cell.delta_pct)}
                       </div>
                       <div
-                        className="text-[11px] mt-1"
-                        style={{ color: 'var(--color-ink-3)' }}
+                        className="mz-text-xs"
+                        style={{ color: 'var(--color-ink-3)', marginTop: '6px' }}
                       >
                         {Math.round(cell.confidence * 100)}% conf
                       </div>
                       {isRecommended && (
                         <div
                           data-agent="strategist"
-                          className="text-[10px] uppercase tracking-wide mt-2 font-medium"
-                          style={{ color: `rgb(${AGENTS.strategist.rgb})` }}
+                          className="mz-text-xs uppercase font-medium"
+                          style={{
+                            color: `rgb(${AGENTS.strategist.rgb})`,
+                            letterSpacing: '0.08em',
+                            marginTop: '10px',
+                          }}
                           title="Recommended by the Strategist agent based on posterior delta × confidence"
                         >
                           Strategist recommends

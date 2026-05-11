@@ -11,6 +11,61 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #11 — design system fixup)
+
+User feedback: "the whole UI is looking quite ugly with font types
+and the borders across feeling squished." Audited the cascade and
+found eight root causes spanning `index.html`, `index.css`, and the
+four surfaces I shipped in Loops 6–10. Six of the eight are fixed
+in this loop; the remaining two are filed for separate follow-ups.
+
+### Six fixes
+
+| # | Fix |
+|---|---|
+| A | **Fraunces canonical.** Was `--font-display: 'Syne', 'Fraunces', …`; now `'Fraunces', Georgia, …`. Syne dropped from `index.html`. Every `font-serif` (which resolves to Georgia) in my recent surfaces migrated to `font-display` (the new utility that resolves to `--font-display`). |
+| B | **Borderless surfaces.** Dropped `1px solid var(--color-line)` from DossierPage column dividers, PayoffMatrix outer card, and the war-room Strategy group. Spotify/Oura model: background-elevation tiers (`--color-bg` → `--color-surface` → `--color-surface-2`) do the separation. `--color-divider` reserved for the one place we need a horizontal rule (app top-bar / body boundary). |
+| C | **Spacing scaled up.** Padding/gap bumped to token values (24px panel pad, 16px gap, 32px between major sections). Border-radius normalised to `--radius-card`/`--radius-panel`/`--radius-pill`. |
+| D | **Type scale.** New `mz-text-xs/sm/base/md/lg/xl/display/hero` utilities replace ad-hoc `text-[10px]…text-[28px]`. The big-heading utilities (`xl/display/hero`) bundle font-display + display line-height + negative letter-spacing; smaller utilities are pure size and compose with any font family. |
+| E | **No more global tracking squeeze.** Removed `letter-spacing: -0.01em` from `html`. Tracking now only on display headings via the scale. |
+| F | **Regression guards.** `__tests__/design-system/loop11-regression.test.tsx` pins down: H1 must use `font-display`, PayoffMatrix must not ship a `1px solid` border, DossierPage H1 must use the `mz-text-display` scale class. |
+
+### Surfaces touched
+
+- `pages/DossierPage.tsx` — H1 uses Fraunces; left+right rails on
+  surface-2 tier; synthesis on surface; 32px header padding; 70ch
+  measure on the synthesis paragraph.
+- `components/ci/war/PayoffMatrix.tsx` — borderless; cells have
+  `border-spacing: 8px` for air; recommended cell uses
+  `inset box-shadow` not `border` so no layout shift; numbers
+  rendered in Fraunces.
+- `components/ci/war/WarRoomView.tsx` Strategy group — borderless,
+  sits on surface-2, 24px padding, `--radius-panel` corners.
+- `components/primitives/AgentIdentityStrip.tsx` — `text-[10/12px]`
+  → `mz-text-xs/sm`; tighter tracking on the role line.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **349 passing, 22 todo,
+  0 failures** (52 files; +4 over Loop #10).
+- `python -m scripts.validate_product_backlog` → OK
+
+### Out of scope (filed)
+
+- The 50-line `!important` legacy Tailwind-slate override block in
+  `index.css` (root cause #8) — needs coordinated TSX migration.
+- Migrating every component in the codebase to the type scale —
+  only the four surfaces I shipped in Loops 6–10 are migrated here.
+- Hover-bloom elevation shadows (Spotify pattern) — separate
+  primitive.
+
+### Spec
+
+`specs/SPEC_LOOP_11_design_system_fixup.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #10 — UI integration pass)
 
 Targeted polish so Loops 5–9's surfaces read as one app, not five

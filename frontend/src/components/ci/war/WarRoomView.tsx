@@ -176,51 +176,48 @@ export default function WarRoomView({ roomId, onClose }: Props) {
 
       {/* Strategy group — payoff matrix + autonomous suggestions + move
           selector. Loop #10 consolidated these three siblings into one
-          panel so the analyst reads them as a single decision surface. */}
+          panel; Loop #11 drops the surrounding border in favour of a
+          background-elevation tier (Spotify/Oura model). */}
       <section
         aria-label="Strategy"
-        className="mb-6 rounded-md"
+        className="mb-8"
         style={{
-          border: '1px solid var(--color-line)',
-          background: 'var(--color-surface)',
+          padding: '24px',
+          background: 'var(--color-surface-2)',
+          borderRadius: 'var(--radius-panel)',
         }}
       >
         <header
           className="flex items-baseline justify-between"
-          style={{
-            padding: '12px 20px',
-            borderBottom: '1px solid var(--color-line)',
-          }}
+          style={{ marginBottom: '16px' }}
         >
           <h2
-            className="text-[10px] uppercase font-medium"
-            style={{ color: 'var(--color-ink-4)', letterSpacing: '0.08em' }}
+            className="mz-text-xs uppercase font-medium"
+            style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}
           >
             Strategy
           </h2>
-          <span className="text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
+          <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>
             Strategist · payoff matrix · move
           </span>
         </header>
 
-        <div style={{ padding: '16px 20px 4px 20px' }}>
-          <PayoffMatrixSection roomId={roomId} />
-          <MoveSuggestions
+        <PayoffMatrixSection roomId={roomId} />
+        <MoveSuggestions
+          roomId={roomId}
+          signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
+          onPick={(move_type, payload) => {
+            selectorRef.current?.applySuggestion(move_type, payload);
+          }}
+        />
+        <div style={{ marginTop: '16px' }}>
+          <MoveSelector
+            ref={selectorRef}
+            onSubmit={handleSubmit}
+            busy={busy}
+            initialMoveType={suggestedMove}
             roomId={roomId}
-            signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
-            onPick={(move_type, payload) => {
-              selectorRef.current?.applySuggestion(move_type, payload);
-            }}
           />
-          <div className="mb-2">
-            <MoveSelector
-              ref={selectorRef}
-              onSubmit={handleSubmit}
-              busy={busy}
-              initialMoveType={suggestedMove}
-              roomId={roomId}
-            />
-          </div>
         </div>
       </section>
 
@@ -275,7 +272,10 @@ function PayoffMatrixSection({ roomId }: { roomId: string }) {
   const { data, error, isLoading } = usePayoffMatrix(roomId);
   if (isLoading) {
     return (
-      <div className="mb-6 text-[12px]" style={{ color: 'var(--color-ink-4)' }}>
+      <div
+        className="mz-text-sm"
+        style={{ color: 'var(--color-ink-4)', marginBottom: '16px' }}
+      >
         Loading payoff matrix…
       </div>
     );
@@ -283,9 +283,5 @@ function PayoffMatrixSection({ roomId }: { roomId: string }) {
   if (error || !data) {
     return null;
   }
-  return (
-    <div className="mb-6">
-      <PayoffMatrix matrix={data} />
-    </div>
-  );
+  return <PayoffMatrix matrix={data} />;
 }
