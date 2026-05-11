@@ -10,6 +10,9 @@ import ConnectorsPage from './pages/ConnectorsPage';
 import CIPage from './pages/CIPage';
 import DecisionDetailPage from './components/ci/decisions/DecisionDetailPage';
 import DecisionWorkspace from './components/ci/decisions/DecisionWorkspace';
+import FeedbackButton from './components/feedback/FeedbackButton';
+import FeedbackWidget from './components/feedback/FeedbackWidget';
+import { installDiagnostics } from './lib/diagnostics';
 import { ThemeProvider } from './hooks/useTheme';
 
 /**
@@ -40,6 +43,12 @@ function AppRoutes() {
     window.addEventListener('mz:auth-expired', onExpired);
     return () => window.removeEventListener('mz:auth-expired', onExpired);
   }, [navigate]);
+
+  // SPEC_041 — install diagnostics ring buffers + mount the feedback
+  // widget (always-listening) and pill (route-aware).
+  useEffect(() => {
+    installDiagnostics();
+  }, []);
 
   return (
     <AnimatePresence mode="wait">
@@ -86,6 +95,11 @@ function AppRoutes() {
         {/* Catch-all → landing */}
         <Route path="*" element={<LandingPage onEnter={() => navigate('/workspace')} onSearch={() => navigate('/search')} onCI={() => navigate('/ci')} />} />
       </Routes>
+      {/* SPEC_041 — feedback pill (route-aware) + the always-listening
+          widget. The pill dispatches `mz:open-feedback`; the widget
+          stays in the DOM but renders nothing until the event fires. */}
+      <FeedbackButton />
+      <FeedbackWidget />
     </AnimatePresence>
   );
 }

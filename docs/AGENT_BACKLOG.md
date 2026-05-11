@@ -466,6 +466,63 @@ target state. Each is tagged for ownership.
   follow-up.
 - Status: open
 
+### [FRONTEND] SPEC-041 deferred items — minor a11y / ops polish
+- Filed: 2026-05-09 by Frontend Claude (from SPEC-041 §13a red-team)
+- Deferred from Stage 6 FIX-ALL to a future loop:
+  - **#5** Console.error wrap captures dev-mode noise — needs an
+    allow-list of own-source frames, deny-list of React internals.
+  - **#6** Hover state mutates DOM imperatively in `FeedbackButton`
+    — replace with `:hover` CSS rule.
+  - **#7** Pill missing focus-ring polish — match SPEC_022 token
+    `box-shadow: 0 0 0 3px rgba(28,110,247,0.15)`.
+  - **#8** No idempotency key on submit — double-click can land
+    twice. Add a client-side UUID + retry semantics.
+  - **#9** No drag-drop attachment path (paste only). Scriptiva
+    reference has it; small win.
+  - **#10** No size cap on description / payload — cap at 10 KB
+    text and 5 MB total payload client-side.
+  - **#12** Category + priority pickers mouse-only — `1`-`6` for
+    category, `←/→` for priority.
+  - **#13** Q4 pill placement on `/workspace` needs visual
+    verification — Stage 7 attached screenshot is the gate.
+  - **#14** No client-side payload size cap.
+  - **#15** `sync.sh` portability (bash + python). Document or
+    rewrite in pwsh-portable form.
+  - **#16** `python` vs `python3` portability in `sync.sh`.
+  - **#17** `/triage-feedback` `git log -30` — bump to `--all
+    --since=6mo`.
+  - **#18** Human-mode `/process-feedback` lacks rate cap.
+  - **#19** Modal pattern rolled separately for the 4th time —
+    finally extract `<Modal>` primitive (joins SPEC-030 backlog #16).
+  - Nits 20-24 from §13a.
+- Priority: medium (none block usability; PII filter from M1
+  already covers the actual privacy risk).
+- Status: open
+
+### [FRONTEND] SPEC-041 admin retraction UI for `DELETE /feedback/{id}`
+- Filed: 2026-05-09 by Frontend Claude (from SPEC-041 fix M4)
+- Stage 6 added `DELETE /feedback/{id}` on the backend +
+  `feedbackApi.remove()` on the frontend. There is no per-user
+  retraction UI yet — the slash commands use it to purge resolved
+  duplicates during triage. Build: a `/admin/feedback` admin view
+  that lists submissions and exposes a "delete" action behind
+  `mz_auth_role === 'enterprise'`.
+- Priority: medium (privacy mitigation already in via PII filter)
+- Status: open
+
+### [FRONTEND] vitest parallel-mode flakes — 3 pre-existing tests
+- Filed: 2026-05-09 by Frontend Claude
+- Symptom: `__tests__/primitives/{DisagreementPanel,EvidenceAffordance}`
+  + `src/components/__tests__/GraphContextMenu` flake under default
+  `npx vitest run` parallel mode (different test fails each run,
+  always near 5s timeouts). All pass under
+  `npx vitest run --no-file-parallelism`. Pre-existing; not
+  introduced by SPEC-030 or SPEC-041.
+- Suggested fix: bump `waitFor`/`findBy*` timeouts on the affected
+  tests, or limit `vitest.config.ts` `pool.threads.maxThreads` to 4.
+- Priority: low (workaround documented; doesn't block CI per-file)
+- Status: open
+
 # 2026-05-09 — Frontend takeover (Frontend Claude in Antigravity's seat)
 
 The previous frontend agent (Antigravity) was unable to continue. A second
@@ -593,5 +650,6 @@ append-only; resolved entries stay for audit.
 | 038 | Search reskin | Frontend Claude | (planned) | reserved |
 | 039 | Catalog reskin | Frontend Claude | (planned) | reserved |
 | 040 | Auth surfaces | Frontend Claude | (planned) | reserved |
-| 041+ | (free — backend please claim from here) | — | — | available |
+| 041 | User Feedback Loop (in-app widget + autonomous triage) | Frontend Claude (cross-cutting) | `claude-fe/spec-041-feedback-loop` | claimed 2026-05-09 |
+| 042+ | (free — either side may claim) | — | — | available |
 

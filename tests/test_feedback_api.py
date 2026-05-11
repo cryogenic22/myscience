@@ -166,6 +166,33 @@ class TestUpdateFeedback:
         assert exc_info.value.status_code == 400
 
 
+# ── Delete endpoint tests (SPEC_041 Stage 6 fix M4) ──
+
+
+class TestDeleteFeedback:
+    """Verify DELETE /feedback/{id} logic — privacy retraction path."""
+
+    def test_deletes_existing_entry(self):
+        from api.routes.feedback import delete_feedback
+        db = MagicMock()
+        db.fetch_one.return_value = {"id": "fb-to-delete"}
+
+        result = delete_feedback("fb-to-delete", db)
+        assert result is None  # 204 No Content
+        sql = db.fetch_one.call_args[0][0]
+        assert "DELETE FROM feedback_entries" in sql
+
+    def test_404_when_entry_missing(self):
+        from api.routes.feedback import delete_feedback
+        from fastapi import HTTPException
+        db = MagicMock()
+        db.fetch_one.return_value = None  # nothing matched
+
+        with pytest.raises(HTTPException) as exc_info:
+            delete_feedback("does-not-exist", db)
+        assert exc_info.value.status_code == 404
+
+
 # ── Stats endpoint tests ──
 
 
