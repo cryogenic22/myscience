@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 2     |
-| triaged       | 56    |
+| triaged       | 55    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 4     |
+| shipped (90d) | 5     |
 
 ## Currently in flight (2)
 
@@ -288,7 +288,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-401] Writing-first editor (TipTap)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: spec
@@ -296,7 +296,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
 - **Last touched**: 2026-05-11
-- **Notes**: TipTap/ProseMirror editor with custom marks for `{{cite:doc_id}}` (citations), `{{entity:slug}}` (entity mentions), AI suggestions (inline cards). Autosave 4s to `/decision-briefs/{id}`. State machine runs underneath, surfaced in slim sidebar. Pivot from current 5-panel `DecisionWorkspace.tsx`. **Needs dedicated install loop**: TipTap is not in `frontend/package.json`; ~10 transitive packages + custom-mark TDD is too large for a continuation pass (see SPEC_PB_201_agent_identity_strip.md §"Why this loop pivoted from PB-401").
+- **Notes**: Scaffold shipped via Loop #15 (TipTap installed, `/briefs/new` route, `CitationMark` + `useBriefAutosave` hook + mock-data banner + 5 tests). Backend save lands via BE-19 (PR #46) — swap is one line in `useBriefAutosave.persistDraft`. PB-402/403/404/405 build on top. Spec at `specs/SPEC_PB_401_brief_composer_scaffold.md`.
 
 #### [PB-402] Inline AI suggestions
 - **Type**: feature
