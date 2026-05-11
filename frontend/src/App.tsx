@@ -9,6 +9,7 @@ import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
 import CIPage from './pages/CIPage';
 import DossierPage from './pages/DossierPage';
+import BriefComposerPage from './pages/BriefComposerPage';
 import DecisionDetailPage from './components/ci/decisions/DecisionDetailPage';
 import DecisionWorkspace from './components/ci/decisions/DecisionWorkspace';
 import FeedbackButton from './components/feedback/FeedbackButton';
@@ -92,6 +93,7 @@ function AppRoutes() {
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
         <Route path="/ci" element={<CIPage key="ci" />} />
         <Route path="/dossier/:entityType/:slug" element={<DossierPage key="dossier" />} />
+        <Route path="/briefs/new" element={<BriefComposerPage key="briefs-new" />} />
         <Route path="/ci/decisions/:id" element={<DecisionRouteSelector key="decision-route" />} />
         <Route path="/ci/legacy-decisions/:id" element={<DecisionDetailPage key="decision-legacy" />} />
         {/* Catch-all → landing */}

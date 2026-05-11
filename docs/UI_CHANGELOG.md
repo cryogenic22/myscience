@@ -11,6 +11,57 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #15 — PB-401 TipTap brief composer scaffold)
+
+Closes PB-401. Installs TipTap and ships the editor surface,
+a custom citation mark, and a 4s-debounced autosave hook. Backend
+save lands via BE-19 (PR #46); the hook's `persistDraft` is a stub
+until then.
+
+### New surface
+
+`/briefs/new` — shared app chrome (back button, app name, "Brief"
+breadcrumb, theme toggle, Save button + autosave indicator),
+mock-data banner, 760px editor column with 48px panel padding.
+
+### New files
+
+```
+frontend/src/pages/BriefComposerPage.tsx       — editor + chrome
+frontend/src/components/briefs/CitationMark.ts — TipTap inline mark
+                                                  for {{cite:doc_id}}
+frontend/src/hooks/useBriefAutosave.ts          — 4s debounce + status
+```
+
+### Dependencies
+
+- `@tiptap/react` ^3.23.1
+- `@tiptap/starter-kit` ^3.23.1
+- `@tiptap/extension-placeholder` ^3.23.1
+
+JS bundle grows 377 KB (1.26 MB → 1.64 MB). PB-403 (options grid)
+and PB-405 (migration) will share this bundle. Zero production-only
+vulnerabilities.
+
+### Out of scope (own PB items)
+
+- PB-402 — inline AI suggestions (BE-7 dep)
+- PB-403 — options grid as in-doc primitive
+- PB-404 — slim sidebar
+- PB-405 — migration from legacy DecisionWorkspace
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vite build` → 63.28 KB CSS / 1.64 MB JS
+- `npx vitest run` → **517 passing, 22 todo, 0 failures** (56 files; +8 over Loop #14)
+
+### Spec
+
+`specs/SPEC_PB_401_brief_composer_scaffold.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #14 — `.mz-elevated` hover-bloom primitive)
 
 Closes the last visible piece of the "Spotify/Oura aesthetic
