@@ -71,13 +71,13 @@ export default function ConnectorsPage() {
           <ArrowLeft size={15} />
         </button>
         <span
-          className="font-display text-[15px] font-light"
+          className="font-display mz-text-md font-light"
           style={{ color: 'var(--color-ink-3)', letterSpacing: '-0.01em' }}
         >
           {PRODUCT_NAME}
         </span>
         <div className="h-4 w-px" style={{ background: 'var(--color-line)' }} />
-        <span className="font-display text-[15px]" style={{ color: 'var(--color-ink)' }}>
+        <span className="font-display mz-text-md" style={{ color: 'var(--color-ink)' }}>
           Connectors
         </span>
       </header>
@@ -85,11 +85,11 @@ export default function ConnectorsPage() {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: 'var(--color-ink-4)' }}>
+          <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: 'var(--color-ink-4)' }}>
             Loading connectors…
           </div>
         ) : error ? (
-          <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: '#B91C1C' }}>
+          <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: '#B91C1C' }}>
             {error}
           </div>
         ) : (
@@ -100,7 +100,7 @@ export default function ConnectorsPage() {
               onSelect={setSelectedKey}
             />
             {detailLoading || !detail ? (
-              <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: 'var(--color-ink-4)' }}>
+              <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: 'var(--color-ink-4)' }}>
                 {detailLoading ? 'Loading…' : 'Select a connector'}
               </div>
             ) : (

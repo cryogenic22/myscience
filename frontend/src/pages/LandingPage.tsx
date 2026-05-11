@@ -86,7 +86,7 @@ export default function LandingPage({ onEnter, onSearch, onCI }: LandingPageProp
             </span>
           </div>
           
-          <h1 className="font-display text-5xl md:text-7xl lg:text-[84px] font-normal tracking-tight leading-[1.05] mb-6" style={{ color: 'var(--color-ink)' }}>
+          <h1 className="font-display mz-text-hero font-normal mb-6" style={{ color: 'var(--color-ink)' }}>
             The intelligence layer<br />
             <span className="italic" style={{ color: 'var(--color-accent)' }}>strategy demands.</span>
           </h1>
