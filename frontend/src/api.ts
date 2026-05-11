@@ -1073,6 +1073,19 @@ export const signalsApi = {
     }),
 };
 
+// Loop #17 — Helix Bridge endpoints.
+export const bridgeApi = {
+  moments: (n: number = 3, sinceDays: number = 7): Promise<{ moments: import('./types/helix').Moment[] }> =>
+    fetch(`${BASE}/bridge/moments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ n, since_days: sinceDays }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
 export interface WatchlistEntry {
   id: string;
   user_id: string;

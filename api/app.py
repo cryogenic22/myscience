@@ -186,6 +186,14 @@ except Exception as _e:
     logger.error("Failed to import dossier router (BE-6): %s", _e)
     _DOSSIER_ROUTER_OK = False
 
+# Loop #17 — Helix Bridge
+try:
+    from api.routes import bridge as bridge_route
+    _BRIDGE_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import bridge router (Loop #17): %s", _e)
+    _BRIDGE_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -308,6 +316,8 @@ def create_app() -> FastAPI:
         all_routers.append(game_theory_route.router)
     if _DOSSIER_ROUTER_OK:
         all_routers.append(dossier_route.router)
+    if _BRIDGE_ROUTER_OK:
+        all_routers.append(bridge_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
