@@ -11,6 +11,61 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (PB-104 — Multi-select KBQ chips; Loop #5 closed)
+
+Two-hour bug fix from the design-review heuristic findings (H2,
+high). The Signals DB KBQ chip filter went from single-select to
+additive multi-select with URL persistence.
+
+### Surfaces
+
+- **`SignalsTab`** — clicking a KBQ chip now toggles its membership
+  in the filter set instead of clearing all other selections. The
+  "All" chip clears the array (active iff no chips are selected).
+  Selection is mirrored to `?kbq=financial,regulatory` in the URL
+  via `useSearchParams` so it survives reload and shareable links.
+- **`KBQFilter`** primitive — props changed from
+  `selected: string | null` to `selected: string[]` and
+  `onSelect: (next: string[]) => void`. Adds `aria-pressed` per
+  chip and `role="group"` on the container so screen readers track
+  multi-select state correctly.
+
+### Backend (additive, non-breaking)
+
+`GET /signals?kbq=financial,regulatory` now accepts a comma-separated
+list of KBQ tags and returns any signal whose `kbq_tags` overlaps any
+of them (PG `&&` array-overlap). Whitespace and duplicates are
+stripped. An empty-after-strip CSV is treated as no filter. The
+single-value form (`?kbq=clinical`) is unchanged.
+
+### Tests
+
+- `frontend/__tests__/ci/KBQFilter.test.tsx` — 7 cases (empty state,
+  multi-select active state, additive add, remove, "All" clears,
+  aria-pressed).
+- `tests/test_signals_api.py` — 3 new cases (CSV any-of match,
+  whitespace stripping, empty-after-strip no-op). Pre-existing
+  single-value test still passes.
+- Full vitest run after the change: **299 passing, 22 todo, 0
+  failures** (44 files).
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → 299 / 0 / 22 todo
+- `python -m pytest tests/test_signals_api.py -v` → 20 / 20
+- `python -m pytest tests/test_product_backlog.py -v` → 14 / 14
+- `python -m scripts.validate_product_backlog` → OK
+  (regenerator now idempotent after fixing duplicate `## Currently
+  in flight` section bug)
+
+### Spec
+
+`specs/SPEC_PB_104_multiselect_kbq_chips.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-09 (SPEC-042 — Centralized Product Backlog + repo doc cleanup; Loop #3 closed)
 
 Pure docs / process loop. **No code surfaces touched, no API changes, no

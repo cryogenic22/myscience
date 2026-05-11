@@ -281,6 +281,39 @@ def test_list_endpoint_filters_by_kbq():
     assert {s["id"] for s in body["signals"]} == {"s2", "s3"}
 
 
+def test_list_endpoint_filters_by_kbq_csv_multi_value():
+    """PB-104 — accept CSV of kbq tags and match any-of."""
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", kbq_tags=["financial"]),
+        _make_signal_row(signal_id="s2", kbq_tags=["clinical"]),
+        _make_signal_row(signal_id="s3", kbq_tags=["regulatory"]),
+        _make_signal_row(signal_id="s4", kbq_tags=["strategic"]),
+    ])
+    body = _client(db).get("/signals?kbq=financial,clinical").json()
+    assert {s["id"] for s in body["signals"]} == {"s1", "s2"}
+
+
+def test_list_endpoint_kbq_csv_strips_whitespace_and_empties():
+    """`kbq=financial,, ,clinical ,` → matches financial OR clinical."""
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", kbq_tags=["financial"]),
+        _make_signal_row(signal_id="s2", kbq_tags=["clinical"]),
+        _make_signal_row(signal_id="s3", kbq_tags=["regulatory"]),
+    ])
+    body = _client(db).get("/signals?kbq=financial,, ,clinical ,").json()
+    assert {s["id"] for s in body["signals"]} == {"s1", "s2"}
+
+
+def test_list_endpoint_kbq_empty_after_strip_is_a_no_op():
+    """`kbq=, ,` collapses to no filter — return all (default-status) signals."""
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", kbq_tags=["financial"]),
+        _make_signal_row(signal_id="s2", kbq_tags=["clinical"]),
+    ])
+    body = _client(db).get("/signals?kbq=, ,").json()
+    assert {s["id"] for s in body["signals"]} == {"s1", "s2"}
+
+
 def test_list_endpoint_filters_by_entity():
     db, _ = _make_db([
         _make_signal_row(signal_id="s1", primary_entity_type="company",

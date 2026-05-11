@@ -89,7 +89,10 @@ def _row_to_dict(row: dict) -> dict:
 def list_signals(
     status: Optional[str] = Query(None, description="Filter to one status"),
     impact: Optional[str] = Query(None, description="high|medium|low"),
-    kbq: Optional[str] = Query(None, description="single kbq tag — matches if signal has it"),
+    kbq: Optional[str] = Query(
+        None,
+        description="comma-separated kbq tags — signal matches if it has ANY of them (e.g. `financial,clinical`)",
+    ),
     entity_type: Optional[str] = Query(None),
     entity_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
@@ -116,8 +119,12 @@ def list_signals(
         params.append(impact)
 
     if kbq:
-        where_clauses.append("kbq_tags && %s")
-        params.append([kbq])
+        # PB-104 — CSV of any-of tags. Dedup, strip whitespace, drop empties.
+        # If nothing survives the strip (e.g. `kbq=, ,`) treat it as no filter.
+        tags = list({t.strip() for t in kbq.split(",") if t.strip()})
+        if tags:
+            where_clauses.append("kbq_tags && %s")
+            params.append(tags)
 
     if entity_type:
         where_clauses.append("primary_entity_type = %s")

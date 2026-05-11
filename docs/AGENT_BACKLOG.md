@@ -1171,6 +1171,7 @@ append-only; resolved entries stay for audit.
 | 039 | Catalog reskin | Frontend Claude | (planned) | reserved |
 | 040 | Auth surfaces | Frontend Claude | (planned) | reserved |
 | 041 | User Feedback Loop (in-app widget + autonomous triage) | Frontend Claude (cross-cutting) | `claude-fe/spec-041-feedback-loop` | merged 2026-05-11 (PR #35) |
-| 042 | Centralized Product Backlog (consolidate four legacy backlogs) | Frontend Claude (docs) | `claude-fe/spec-042-product-backlog` | in PR #36 (resolving merge conflict) |
+| 042 | Centralized Product Backlog (consolidate four legacy backlogs) | Frontend Claude (docs) | `claude-fe/spec-042-product-backlog` | merged 2026-05-11 (PR #36) |
+| PB-104 | Multi-select KBQ chips · 2-hour bug fix (E1.S1.4) | Frontend Claude | `claude-fe/loop-5-pb-104-kbq-chips` | Loop #5 — Stage 7 deploy in progress |
 | 043+ | (free — either side may claim) | — | — | available |
 

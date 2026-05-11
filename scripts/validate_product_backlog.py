@@ -271,10 +271,18 @@ def regenerate_summary(text: str) -> str:
     new_block = "\n".join(rows).rstrip() + "\n"
 
     # Replace whatever exists between the first `## Dashboard` and the next
-    # `## ` line. If there's no `## Dashboard`, insert at the top of the body.
-    pat = re.compile(r"## Dashboard.*?(?=\n## |\Z)", re.DOTALL)
+    # non-auto-generated `## ` heading. The auto-generated sections we may
+    # have appended on previous runs are `## Currently in flight (...)` and
+    # `## Blocked (...)`; consume those too so the regenerator is idempotent.
+    pat = re.compile(
+        r"## Dashboard.*?"
+        r"(?=\n## (?!Currently in flight|Blocked \()|\Z)",
+        re.DOTALL,
+    )
     if pat.search(text):
-        return pat.sub(new_block.rstrip(), text, count=1)
+        # Trailing \n preserves a blank line between regenerated content
+        # and the next non-auto heading (e.g. `## 24-week sequencing`).
+        return pat.sub(new_block.rstrip() + "\n", text, count=1)
     # No dashboard yet — insert before `## Items`.
     if "## Items" in text:
         return text.replace("## Items", new_block + "\n## Items", 1)
