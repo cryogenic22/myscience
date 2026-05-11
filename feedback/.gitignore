@@ -1,0 +1,10 @@
+# Per SPEC_041 — screenshots are user-pasted blobs, not source.
+# Keep tracker + jsonl + scripts; ignore everything else.
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.log
+.paused

@@ -93,6 +93,131 @@ the highest-priority `triaged` item.
 
 ---
 
+## 2026-05-09 (SPEC-041 — User Feedback Loop; Loop #2 closed)
+
+In-app feedback widget visible on every authenticated surface.
+Captures bugs / issues / enhancements / features / data-quality /
+data-request submissions, auto-attaches a privacy-filtered diagnostic
+bundle (recent console errors + failed-fetch metadata + viewport +
+theme + density + route), supports paste / drag screenshots, and
+persists submissions to the existing `feedback_entries` table.
+Triage runs on a 45-minute cron via three new slash commands.
+
+### Surfaces
+
+- **Floating "Feedback" pill** — bottom-right on every authenticated
+  surface, bottom-LEFT on `/workspace` to clear the chat send button
+  (Q4 sign-off). Hidden on `/`, `/login`, and when
+  `localStorage.mz_feedback_disabled === 'true'`. Click dispatches
+  `mz:open-feedback`.
+- **Chat-style submission panel** — opens on `mz:open-feedback`.
+  State machine: `greeting → category_selected →
+  description_provided → priority_selected → confirmed →
+  submitted | error`. 6 categories (bug / issue / enhancement /
+  feature / data_quality / data_request). Esc closes; sessionStorage
+  preserves the in-progress draft so an accidental Esc does not lose
+  work. Tab is trapped inside the dialog (WCAG 2.4.3); initial focus
+  lands on close button.
+- **PII-filtered diagnostics** — `installDiagnostics()` runs once at
+  App mount, wrapping `console.error` + `globalThis.fetch` (and
+  `window.error` / `unhandledrejection`). URL search params with
+  sensitive names (`token`, `api_key`, `authorization`, etc.) are
+  redacted; bodies have JWTs and 32+-char alphanumeric runs scrubbed
+  before truncation to 500 chars. Ring buffers cap at 50 entries each
+  (FIFO eviction). Cleared after a successful submit.
+
+### New components
+
+```
+frontend/src/components/feedback/
+├── FeedbackButton.tsx       — floating pill (route-aware, theme-aware)
+└── FeedbackWidget.tsx       — chat panel + state machine + draft persistence
+
+frontend/src/lib/
+└── diagnostics.ts            — install / collect / clear + PII redaction
+```
+
+`frontend/src/api.ts` extended with SPEC_041 types
+(`FeedbackCategory`, `FeedbackPriority`, `FeedbackStatus`,
+`FeedbackEntry`, `FeedbackCreateBody`, `FeedbackDiagnosticContext`,
+`FeedbackEntityContext`, `FeedbackAttachment`,
+`FeedbackListResponse`, `FeedbackStatsResponse`) +
+`feedbackApi` (`submit` / `list` / `update` / `stats` / `remove`).
+
+### Repo-level new files
+
+```
+feedback/
+├── live_user_feedback.md   — append-only chronological tracker
+├── backlog.jsonl            — machine-readable mirror of the queue
+├── sync.sh                   — pulls /feedback?status=new and updates above
+├── README.md                 — operator runbook for the loop
+└── .gitignore                — ignores screenshots/* + .paused
+
+.claude/commands/
+├── triage-feedback.md       — assessment-only slash command
+├── process-feedback.md      — full Ralph Loop on Implement items
+└── feedback-cron.md          — 45-min cron entry point (sync → triage → safe-fix)
+```
+
+### Backend (no new tables — extended existing)
+
+- New endpoint `DELETE /feedback/{id}` (returns 204) for privacy /
+  GDPR retraction. Migration 020_feedback_entries.sql + the rest of
+  the routes were shipped previously — this loop is purely
+  additive.
+- `tests/test_feedback_api.py` extended with 2 tests for
+  `TestDeleteFeedback`.
+
+### Cron + autonomous triage
+
+- 45-minute cron (registered per-user via the `schedule` skill) runs
+  `/feedback-cron`. Auto-fix gate per Q2 sign-off (SPEC_041 §8.1):
+  ```
+  verdict == 'Implement'
+  && category == 'bug'
+  && scope_estimate == 'S'
+  && labels excludes any of: api, schema, auth, security
+  ```
+  Items inside the gate get shipped under `chore(feedback-cron):
+  <id> <title>` commits (one per item, individually pushed for audit
+  + revert friendliness). Items outside the gate stay `triaged` for
+  human-driven `/process-feedback`. Pause via
+  `touch feedback/.paused`.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **43 files, 292 tests
+  passing, 22 it.todo, zero failures, zero regressions** (was 256
+  pre-loop)
+- `python -m pytest tests/test_feedback_api.py -v` → **14/14**
+
+### Stage 5 red-team / Stage 6 fix-all
+
+4 majors filed in §13a; all 4 closed:
+- M1 (PII filter on diagnostics)
+- M2 (focus trap inside widget)
+- M3 (sessionStorage draft persistence)
+- M4 (`DELETE /feedback/{id}` endpoint + `feedbackApi.remove`)
+
+15 minors + 5 nits deferred to AGENT_BACKLOG with reasons.
+
+### Open issues / follow-ups
+
+- **Admin retraction UI** for `DELETE /feedback/{id}` — currently
+  only slash commands call it. Filed.
+- **Vitest parallel-mode flakes** in 3 pre-existing primitive tests
+  — not introduced by this loop. Filed.
+- **15-minor backlog** under `[FRONTEND] SPEC-041 deferred items`.
+
+### Spec
+
+`specs/SPEC_041_user_feedback_loop.md` — Status: **Shipped
+2026-05-09**. Loop #2 of the SPEC-029 reskin program is now closed.
+
+---
+
 ## 2026-05-09 (SPEC-030 — Decision Workspace v2; Loop #1 closed)
 
 First mini-spec under the SPEC-029 reskin program; first frontend loop

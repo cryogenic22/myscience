@@ -1887,3 +1887,157 @@ export const decisionBriefsApi = {
     }).then((r) => expectJson<DecisionBrief>(r));
   },
 };
+
+// ─── SPEC_041 — User Feedback Loop ──────────────────────────────────
+
+export type FeedbackCategory =
+  | 'bug'
+  | 'issue'
+  | 'enhancement'
+  | 'feature'
+  | 'data_quality'
+  | 'data_request';
+
+export type FeedbackPriority = 'low' | 'medium' | 'high' | 'critical';
+
+export type FeedbackStatus =
+  | 'new'
+  | 'triaged'
+  | 'in_progress'
+  | 'resolved'
+  | 'rejected';
+
+export interface FeedbackAttachment {
+  data: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+export interface FeedbackDiagnosticContext {
+  errors: Array<{ ts: string; message: string; stack?: string }>;
+  failed_requests: Array<{
+    ts: string;
+    method: string;
+    url: string;
+    status?: number;
+    body?: string;
+  }>;
+  user_agent: string;
+  viewport: { w: number; h: number };
+  theme: 'light' | 'dark';
+  density?: 'spacious' | 'compact';
+  route: string;
+}
+
+export interface FeedbackEntityContext {
+  brief_id?: string;
+  signal_id?: string;
+  decision_id?: string;
+  entity_type?: string;
+  entity_id?: string;
+  war_room_id?: string;
+}
+
+export interface FeedbackCreateBody {
+  category: FeedbackCategory;
+  title: string;
+  description?: string;
+  priority?: FeedbackPriority;
+  page_url?: string;
+  user_id?: string;
+  session_id?: string;
+  entity_context?: FeedbackEntityContext;
+  diagnostic_context?: FeedbackDiagnosticContext;
+  attachments?: FeedbackAttachment[];
+}
+
+export interface FeedbackEntry {
+  id: string;
+  category: FeedbackCategory;
+  title: string;
+  description?: string;
+  priority: FeedbackPriority;
+  status: FeedbackStatus;
+  resolution?: string;
+  resolved_by?: string;
+  page_url?: string;
+  entity_context?: FeedbackEntityContext;
+  diagnostic_context?: FeedbackDiagnosticContext;
+  attachments: FeedbackAttachment[];
+  steward_action_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeedbackListFilter {
+  status?: FeedbackStatus;
+  category?: FeedbackCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface FeedbackListResponse {
+  items: FeedbackEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FeedbackStatsResponse {
+  total: number;
+  by_category: Record<string, number>;
+  by_status: Record<string, number>;
+  auto_resolved_by_steward: number;
+}
+
+export const feedbackApi = {
+  submit: (body: FeedbackCreateBody): Promise<{ feedback: FeedbackEntry }> =>
+    fetch(`${BASE}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then((r) => expectJson<{ feedback: FeedbackEntry }>(r)),
+
+  list: (filter: FeedbackListFilter = {}): Promise<FeedbackListResponse> => {
+    const qs = new URLSearchParams();
+    if (filter.status) qs.set('status', filter.status);
+    if (filter.category) qs.set('category', filter.category);
+    if (filter.limit !== undefined) qs.set('limit', String(filter.limit));
+    if (filter.offset !== undefined) qs.set('offset', String(filter.offset));
+    const url = qs.toString() ? `${BASE}/feedback?${qs}` : `${BASE}/feedback`;
+    return fetch(url, { headers: { ...authHeaders() } }).then((r) =>
+      expectJson<FeedbackListResponse>(r),
+    );
+  },
+
+  update: (
+    id: string,
+    patch: {
+      status?: FeedbackStatus;
+      priority?: FeedbackPriority;
+      resolution?: string;
+      resolved_by?: string;
+    },
+  ): Promise<{ feedback: FeedbackEntry }> =>
+    fetch(`${BASE}/feedback/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(patch),
+    }).then((r) => expectJson<{ feedback: FeedbackEntry }>(r)),
+
+  stats: (): Promise<FeedbackStatsResponse> =>
+    fetch(`${BASE}/feedback/stats`, { headers: { ...authHeaders() } }).then((r) =>
+      expectJson<FeedbackStatsResponse>(r),
+    ),
+
+  // SPEC_041 Stage 6 fix M4 — hard-delete for PII retraction.
+  remove: (id: string): Promise<{ ok: true }> =>
+    fetch(`${BASE}/feedback/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 204) return { ok: true } as const;
+      return expectJson<{ ok: true }>(r);
+    }),
+};
