@@ -21,15 +21,15 @@
 > **Status taxonomy:** `proposed | triaged | blocked | in-progress | shipped | archived | wontfix`.
 > See [SPEC-042 §4.2](../specs/SPEC_042_centralized_product_backlog.md).
 
-## Dashboard (regenerated 2026-05-10)
+## Dashboard (regenerated 2026-05-11)
 
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 2     |
-| triaged       | 60    |
+| triaged       | 59    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 0     |
+| shipped (90d) | 1     |
 
 ## Currently in flight (2)
 
@@ -144,15 +144,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-104] Multi-select KBQ chips · the 2-hour bug fix
 - **Type**: bug
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: spec
 - **Source ref**: legacy:design-review-E1.S1.4
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: `KBQFilter.tsx:1-53` — toggle logic clears all other chips on click. Should be additive multi-select with URL sync (`?kbq=KBQ-3,KBQ-1`). Backend already supports any-of matching. Closes finding H2 (high). 2-hour fix.
+- **Last touched**: 2026-05-11
+- **Notes**: Closed by Loop #5. `KBQFilter` now multi-select with URL sync (`?kbq=financial,regulatory`); backend accepts CSV any-of. 7 vitest + 3 pytest cases added. Spec at `specs/SPEC_PB_104_multiselect_kbq_chips.md`.
 
 #### [PB-104b] DIAGNOSTIC · production materiality scores all show 1%
 - **Type**: bug

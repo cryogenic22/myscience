@@ -1035,7 +1035,8 @@ export interface Signal {
 export interface SignalsListParams {
   status?: SignalStatus;
   impact?: ImpactTier;
-  kbq?: string;
+  /** PB-104 — pass multiple values; serialized to `kbq=a,b,c` on the wire. */
+  kbq?: string[];
   entity_type?: string;
   entity_id?: string;
   limit?: number;
@@ -1044,7 +1045,10 @@ export interface SignalsListParams {
 
 export const signalsApi = {
   list: (params: SignalsListParams = {}): Promise<{ signals: Signal[]; count: number; limit: number; offset: number }> => {
-    const qsStr = qs(params as Record<string, unknown>);
+    const { kbq, ...rest } = params;
+    const wire: Record<string, unknown> = { ...rest };
+    if (kbq && kbq.length > 0) wire.kbq = kbq.join(',');
+    const qsStr = qs(wire);
     const url = `${BASE}/signals${qsStr ? `?${qsStr}` : ''}`;
     return fetch(url).then((r) => {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { signalsApi, type ImpactTier, type Signal } from '../../api';
 import KBQFilter from './KBQFilter';
 import SignalsListPanel from './SignalsListPanel';
@@ -30,7 +31,29 @@ export default function SignalsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<ImpactTier | 'all'>('all');
-  const [kbq, setKbq] = useState<string | null>(null);
+
+  // PB-104 — kbq is multi-select, mirrored to `?kbq=financial,clinical` in the URL
+  const [searchParams, setSearchParams] = useSearchParams();
+  const kbq = useMemo<string[]>(() => {
+    const raw = searchParams.get('kbq');
+    if (!raw) return [];
+    return Array.from(new Set(
+      raw.split(',').map((s) => s.trim()).filter(Boolean),
+    ));
+  }, [searchParams]);
+
+  const setKbq = (next: string[]) => {
+    const dedup = Array.from(new Set(next.filter(Boolean)));
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        if (dedup.length === 0) sp.delete('kbq');
+        else sp.set('kbq', dedup.join(','));
+        return sp;
+      },
+      { replace: true },
+    );
+  };
 
   const reload = async () => {
     setLoading(true);
@@ -39,7 +62,7 @@ export default function SignalsTab({
       const params: Parameters<typeof signalsApi.list>[0] = { limit: 100 };
       if (initialStatus) params.status = initialStatus;
       if (impact !== 'all') params.impact = impact;
-      if (kbq) params.kbq = kbq;
+      if (kbq.length > 0) params.kbq = kbq;
       const r = await signalsApi.list(params);
       setSignals(r.signals);
       if (r.signals.length > 0 && !selectedId) {
@@ -55,11 +78,12 @@ export default function SignalsTab({
     }
   };
 
-  // Reload on filter changes
+  // Reload on filter changes (kbq comparison via stable serialized key)
+  const kbqKey = kbq.join(',');
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impact, kbq, initialStatus]);
+  }, [impact, kbqKey, initialStatus]);
 
   // Load detail when selection changes
   useEffect(() => {
