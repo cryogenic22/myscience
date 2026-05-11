@@ -13,6 +13,7 @@ import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import AgentIdentityStrip from '../components/primitives/AgentIdentityStrip';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
+import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
 type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
@@ -72,14 +73,10 @@ export default function CIPage() {
     setParams(next, { replace: false });
   };
 
-  // Auto-login as demo for CI Cockpit to bypass login walls
-  useEffect(() => {
-    if (!localStorage.getItem('mz_auth_token')) {
-      localStorage.setItem('mz_auth_token', 'demo-token');
-      localStorage.setItem('mz_auth_role', 'enterprise');
-      window.location.reload();
-    }
-  }, []);
+  // Loop #16 — real JWT against the seeded enterprise demo account
+  // (replaces the fake `'demo-token'` literal that was causing 401
+  // cycles on every protected fetch).
+  useDemoAutoLogin();
 
   useEffect(() => {
     const t = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');

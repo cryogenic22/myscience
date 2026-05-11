@@ -1182,6 +1182,7 @@ append-only; resolved entries stay for audit.
 | Loop #12 | Type-scale migration (pages + visible primitives) + codemod | Frontend Claude | `claude-fe/loop-12-type-scale-migration` | merged 2026-05-11 (PR #78) |
 | Loop #13 | Delete `!important` legacy slate block + slate-class codemod | Frontend Claude | `claude-fe/loop-13-delete-legacy-slate` | merged 2026-05-11 (PR #79) |
 | Loop #14 | `.mz-elevated` hover-bloom primitive + 4 card surfaces | Frontend Claude | `claude-fe/loop-14-elevation-primitive` | merged 2026-05-11 (PR #80) |
-| Loop #15 / PB-401 | TipTap brief composer scaffold + CitationMark + autosave | Frontend Claude | `claude-fe/loop-15-pb-401-tiptap-scaffold` | Stage 7 deploy in progress |
+| Loop #15 / PB-401 | TipTap brief composer scaffold + CitationMark + autosave | Frontend Claude | `claude-fe/loop-15-pb-401-tiptap-scaffold` | merged 2026-05-11 (PR #81) |
+| Loop #16 | Fix 401 cycles from broken `demo-token` literal — real /auth/login | Frontend Claude | `claude-fe/loop-16-fix-demo-login` | Stage 7 deploy in progress |
 | 043+ | (free — either side may claim) | — | — | available |
 
