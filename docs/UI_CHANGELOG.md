@@ -11,6 +11,59 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (PB-501 — Payoff matrix scaffold; Loop #7 closed)
+
+First WOW-surface visual of E5. A 2×2 payoff matrix renders inside
+each war room above the move-selector flow: tier-coloured cells
+(win green / neutral amber / lose red), delta% + confidence per
+cell, brand-accent outline + "Recommended" caption on the optimal
+cell.
+
+### Surfaces
+
+- **`PayoffMatrix`** component
+  (`frontend/src/components/ci/war/PayoffMatrix.tsx`) renders a
+  `<table>` with row + col labels, one cell per (row, col) pair,
+  tier-coloured background, signed delta%, integer confidence%,
+  recommended outline. Empty state ("No scenarios yet — add
+  adversary moves and your options to populate the matrix.")
+  when the matrix has no rows or cols.
+- **`WarRoomView`** mounts the matrix above `MoveSuggestions` so
+  the recommended option is the first thing the analyst sees.
+- **Mock-data banner** at the top of the matrix card reads
+  "Showing placeholder data — backend composer (BE-8, PR #59) is
+  not yet merged" while `data.is_mock === true`.
+
+### New files
+
+```
+frontend/src/components/ci/war/PayoffMatrix.tsx  — 2×2 grid
+frontend/src/hooks/usePayoffMatrix.ts             — fetch hook
+                                                    (mock today)
+frontend/src/types/payoff.ts                       — wire-format DTOs
+frontend/__tests__/ci/war/PayoffMatrix.test.tsx   — 9 cases
+```
+
+### Out of scope (own PB items)
+
+- PB-502 — adversary twins posterior side panel
+- PB-503 — full live cockpit route with thinking-stream
+- PB-504 — 5-level authority spectrum
+- PB-505 — delegated "run while I sleep"
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **317 passing, 22 todo,
+  0 failures** (46 files; +9 over Loop #6)
+
+### Spec
+
+`specs/SPEC_PB_501_payoff_matrix_scaffold.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-11 (PB-301 — Entity dossier scaffold; Loop #6 closed)
 
 First shippable surface of E3 (the spine). New route

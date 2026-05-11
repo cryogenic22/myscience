@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 2     |
-| triaged       | 58    |
+| triaged       | 57    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 2     |
+| shipped (90d) | 3     |
 
 ## Currently in flight (2)
 
@@ -352,15 +352,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-501] Payoff matrix view (2×2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: spec
 - **Source ref**: legacy:design-review-E5.S5.1
 - **Blocked by**: n/a
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: 2×2 matrix with delta% + confidence + recommended highlight per cell. Win green / neutral amber / lose red. `services/game_theory.py::run_bayesian()` already does 1,200 Monte Carlo. Backend: `POST /war-rooms/{id}/payoff-matrix` composer (BE-8) + `services/simulation/payoff.py`. Closes Phase 5 G4.
+- **Last touched**: 2026-05-11
+- **Notes**: Frontend scaffold shipped via Loop #7. `PayoffMatrix` component + `usePayoffMatrix` hook + 9 tests; mounted above the move-selector flow inside `WarRoomView`. Tier-coloured cells (win green / neutral amber / lose red), brand-accent outline + "Recommended" caption on the optimal cell. Mock today; swap to `POST /war-rooms/{id}/payoff-matrix` (BE-8, PR #59) is one line. Spec at `specs/SPEC_PB_501_payoff_matrix_scaffold.md`.
 
 #### [PB-502] Adversary digital twins · posterior side panel
 - **Type**: feature
