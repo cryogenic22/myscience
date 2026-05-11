@@ -214,11 +214,10 @@ function RoomCard({
   const commentCount = r.comments?.length ?? 0;
   return (
     <div
-      className="group relative"
+      className="mz-elevated group relative"
       style={{
         padding: '14px 16px',
-        borderRadius: '6px',
-        border: '1px solid var(--color-line)',
+        borderRadius: 'var(--radius-card)',
         background: 'var(--color-surface)',
       }}
     >

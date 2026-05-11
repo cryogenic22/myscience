@@ -11,6 +11,51 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #14 — `.mz-elevated` hover-bloom primitive)
+
+Closes the last visible piece of the "Spotify/Oura aesthetic
+target" referenced in the Loop #11 audit. Cards now lift 2px and
+pick up a soft shadow on hover, with `:active` softening the lift
+to 1px for press feedback. Respects `prefers-reduced-motion` via
+the existing global transition-duration override.
+
+### Applied
+
+- `components/EvidenceCard.tsx` — workspace canvas evidence card
+- `components/MetricCard.tsx` — workspace metric card
+- `pages/DossierPage.tsx` — evidence pile rows (each wrapped in a
+  `--color-surface` background with `var(--radius-card)` corners
+  so the bloom has something to lift)
+- `components/ci/war/WarRoomsList.tsx` — war-room cards in the list
+
+### Primitive
+
+```css
+.mz-elevated {
+  transition: transform 220ms ease-out, box-shadow 220ms ease-out;
+  will-change: transform;
+}
+.mz-elevated:hover  { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.mz-elevated:active { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+```
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run` → **509 passing, 22 todo, 0 failures** (55 files; +6 over Loop #13)
+
+### Out of scope (filed)
+
+Apply `.mz-elevated` to remaining card surfaces (signal cards,
+brief cards, decision cards, dossier related-entities). Mechanical
+follow-up.
+
+### Spec
+
+`specs/SPEC_LOOP_14_elevation_primitive.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #13 — delete the `!important` legacy slate block)
 
 Closes root cause #8 from the Loop #11 audit. The 150-line "LEGACY

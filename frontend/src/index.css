@@ -593,6 +593,27 @@ html.dark .topbar {
 .empty-state-hint { font-size: 12px; margin-top: 6px; }
 
 /* ══════════════════════════════════════════════════════
+   LOOP #14 — `.mz-elevated`: Spotify/Oura "subtle bloom" hover.
+   Composable on any card surface. On hover the element lifts a few
+   pixels and gains a soft shadow. Inside the reduced-motion block
+   above, transitions collapse to 1ms so the lift is suppressed
+   automatically — no extra rule needed here.
+   ══════════════════════════════════════════════════════ */
+.mz-elevated {
+  transition: transform 220ms var(--motion-out, cubic-bezier(0.16, 1, 0.3, 1)),
+              box-shadow 220ms var(--motion-out, cubic-bezier(0.16, 1, 0.3, 1));
+  will-change: transform;
+}
+.mz-elevated:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.mz-elevated:active {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ══════════════════════════════════════════════════════
    BADGES / PILLS
    ══════════════════════════════════════════════════════ */
 .badge {

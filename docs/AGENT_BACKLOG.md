@@ -1180,6 +1180,7 @@ append-only; resolved entries stay for audit.
 | Loop #10 | UI integration pass (sidebar / dossier chrome / strategy group / agent tint) | Frontend Claude | `claude-fe/loop-10-ui-integration` | merged 2026-05-11 (PR #76) |
 | Loop #11 | Design system fixup (Fraunces canonical / borderless / type scale / spacing) | Frontend Claude | `claude-fe/loop-11-design-system-fixup` | merged 2026-05-11 (PR #77) |
 | Loop #12 | Type-scale migration (pages + visible primitives) + codemod | Frontend Claude | `claude-fe/loop-12-type-scale-migration` | merged 2026-05-11 (PR #78) |
-| Loop #13 | Delete `!important` legacy slate block + slate-class codemod | Frontend Claude | `claude-fe/loop-13-delete-legacy-slate` | Stage 7 deploy in progress |
+| Loop #13 | Delete `!important` legacy slate block + slate-class codemod | Frontend Claude | `claude-fe/loop-13-delete-legacy-slate` | merged 2026-05-11 (PR #79) |
+| Loop #14 | `.mz-elevated` hover-bloom primitive + 4 card surfaces | Frontend Claude | `claude-fe/loop-14-elevation-primitive` | Stage 7 deploy in progress |
 | 043+ | (free — either side may claim) | — | — | available |
 

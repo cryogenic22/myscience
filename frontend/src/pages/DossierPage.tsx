@@ -200,9 +200,17 @@ export default function DossierPage() {
           {visibleEvidence.length === 0 ? (
             <p className="mz-text-sm" style={{ color: 'var(--color-ink-4)' }}>No evidence on file yet.</p>
           ) : (
-            <ul className="space-y-4">
+            <ul className="space-y-3">
               {visibleEvidence.map((ev) => (
-                <li key={ev.id}>
+                <li
+                  key={ev.id}
+                  className="mz-elevated"
+                  style={{
+                    padding: '12px 14px',
+                    background: 'var(--color-surface)',
+                    borderRadius: 'var(--radius-card)',
+                  }}
+                >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="mz-text-sm font-medium" style={{ color: 'var(--color-ink-2)' }}>
                       {ev.source_name}
