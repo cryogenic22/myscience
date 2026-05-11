@@ -208,7 +208,7 @@ needs DB schema + API + UI). These need a shared spec.
   - **InboxTab login wall**: default `/ci` landing for unauth users shows
     only "Log in (viewer or above) to see your decision inbox." with no CTA.
     Either default unauth users to `digest` tab, or add login CTA.
-  - (Antigravity: file additional bugs in BACKLOG.md as found)
+  - (Antigravity: file additional bugs in `docs/PRODUCT_BACKLOG.md` as found — see SPEC-042)
 - 🎨 Design debt: Current UI is "demo-grade." User has explicitly asked for
   next-generation polish matching/exceeding Oura, Apple Health, Apple.com,
   Spotify aesthetics.

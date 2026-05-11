@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Maya's Tuesday — analyst persona walk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --teal: #4ED4D0;
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.25); --shadow-md: 0 8px 24px rgba(0,0,0,0.35); --shadow-glow: 0 0 0 1px var(--accent-soft), 0 12px 36px rgba(91,140,255,0.18);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+body { background: radial-gradient(circle at 20% -10%, rgba(91,140,255,0.06) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(182,140,255,0.04) 0%, transparent 50%), var(--bg); padding-bottom: 120px; }
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.85); } }
+
+/* Sticky persona banner */
+.persona-banner { position: sticky; top: 0; z-index: 100; background: rgba(20,26,42,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); padding: 14px 32px; display: flex; align-items: center; gap: 16px; }
+.persona-banner .glyph { width: 36px; height: 36px; border-radius: 12px; background: var(--accent); color: white; display: grid; place-items: center; font-family: var(--display); font-weight: 600; }
+.persona-banner .who { display: flex; flex-direction: column; gap: 2px; }
+.persona-banner .name { font-family: var(--display); font-size: 15px; font-weight: 500; }
+.persona-banner .role { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; }
+.persona-banner .now { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+
+/* Hero */
+.hero { padding: 80px 32px 56px; max-width: 1240px; margin: 0 auto; }
+.eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--accent); display: inline-flex; gap: 10px; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); margin-bottom: 24px; }
+.eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.hero-title { font-family: var(--display); font-size: clamp(42px, 5.4vw, 68px); font-weight: 400; line-height: 1.05; letter-spacing: -0.035em; margin-bottom: 24px; max-width: 1000px; }
+.hero-title em { font-style: italic; color: var(--accent-2); }
+.hero-sub { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 760px; margin-bottom: 40px; }
+
+/* Day arc */
+.day-arc { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 24px; }
+.arc-step { background: var(--surface); border-radius: 12px; padding: 10px 12px; text-align: center; cursor: pointer; transition: all 200ms ease; }
+.arc-step:hover { background: var(--surface-2); }
+.arc-step .t { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.arc-step .a { font-family: var(--display); font-size: 12px; font-weight: 500; margin-top: 2px; line-height: 1.2; }
+.arc-step.active { background: var(--accent-soft); border: 1px solid var(--accent); }
+.arc-step.active .a { color: var(--accent-2); }
+
+/* Hour panel */
+.hour-shell { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+.hour-panel { margin-bottom: 80px; padding-top: 24px; border-top: 1px dashed var(--line); }
+.hour-head { display: grid; grid-template-columns: 80px 1fr; gap: 24px; align-items: baseline; margin-bottom: 24px; }
+.hour-time { font-family: var(--mono); font-size: 14px; color: var(--accent); font-weight: 500; }
+.hour-title { font-family: var(--display); font-size: 32px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; margin-bottom: 8px; }
+.hour-narration { font-size: 15px; color: var(--ink-2); max-width: 760px; }
+.hour-narration em { color: var(--ink); font-style: normal; }
+
+.screen { background: var(--bg-2); border-radius: 20px; padding: 32px; box-shadow: var(--shadow-md); position: relative; margin-left: 104px; }
+.screen-label { position: absolute; top: -12px; left: 24px; background: var(--bg); padding: 4px 12px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); border-radius: 6px; border: 1px solid var(--line); }
+.screen-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.14em; display: flex; gap: 12px; align-items: center; }
+
+/* Common card primitives */
+.card { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.btn { font-family: var(--body); font-size: 12px; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { color: var(--ink); background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.entity-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+.entity-pill .swatch { width: 6px; height: 6px; border-radius: 50%; }
+.entity-pill.drug .swatch { background: #5B8CFF; }
+.entity-pill.company .swatch { background: #F2A23B; }
+.entity-pill.trial .swatch { background: #4ED4D0; }
+.entity-pill.mechanism .swatch { background: #B68CFF; }
+.entity-pill.ta .swatch { background: #E36B6B; }
+
+.action-callout { display: flex; gap: 12px; align-items: flex-start; margin-top: 24px; padding: 16px 20px; background: var(--accent-soft); border-radius: 12px; border-left: 3px solid var(--accent); margin-left: 104px; }
+.action-callout .arrow { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: white; display: grid; place-items: center; flex-shrink: 0; font-family: var(--mono); font-weight: 600; }
+.action-callout .body .head { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent-2); margin-bottom: 4px; }
+.action-callout .body .text { font-size: 14px; color: var(--ink); }
+
+/* Pulse panel */
+.pulse-grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+.ring-card { display: flex; flex-direction: column; gap: 16px; }
+.pulse-ring { width: 160px; height: 160px; margin: 8px auto; position: relative; }
+.pulse-ring svg { transform: rotate(-90deg); }
+.pulse-ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pulse-ring .num { font-family: var(--display); font-size: 40px; font-weight: 500; letter-spacing: -0.04em; }
+.pulse-ring .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); margin-top: 4px; }
+.metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.metric .v { font-family: var(--display); font-size: 20px; font-weight: 500; }
+.metric .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 2px; }
+
+.signal-card { background: var(--surface); border-radius: 14px; padding: 16px 20px; display: grid; grid-template-columns: 50px 1fr auto; gap: 16px; margin-bottom: 10px; cursor: pointer; transition: all 150ms ease; border: 1px solid transparent; border-left: 3px solid var(--accent); }
+.signal-card:hover { background: var(--surface-2); }
+.signal-card .score .v { font-family: var(--display); font-size: 22px; font-weight: 500; line-height: 1; text-align: center; }
+.signal-card .score .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.14em; text-transform: uppercase; text-align: center; margin-top: 2px; }
+.signal-card .body .meta { display: flex; gap: 8px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.12em; flex-wrap: wrap; }
+.signal-card .body .meta .kbq { color: var(--accent-2); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; }
+.signal-card .body .headline { font-family: var(--display); font-size: 15px; font-weight: 500; margin-bottom: 4px; line-height: 1.3; }
+.signal-card .body .quote { margin-top: 8px; padding: 8px 12px; background: var(--accent-soft); border-left: 2px solid var(--accent); border-radius: 4px; font-style: italic; font-size: 12.5px; }
+
+/* Dossier panel */
+.dossier-grid { display: grid; grid-template-columns: 240px 1fr 280px; gap: 16px; }
+.dossier-rail { display: flex; flex-direction: column; gap: 14px; }
+.dossier-name { font-family: var(--display); font-size: 22px; font-weight: 500; line-height: 1.15; }
+.dossier-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.dossier-section { margin-bottom: 24px; }
+.dossier-section .label { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 8px; }
+.cite { display: inline-flex; font-family: var(--mono); font-size: 10px; color: var(--accent-2); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; margin: 0 2px; cursor: pointer; }
+.timeline { display: flex; flex-direction: column; gap: 12px; padding-left: 20px; position: relative; }
+.timeline::before { content: ''; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+.timeline-row { position: relative; }
+.timeline-row::before { content: ''; position: absolute; left: -20px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--bg-2); }
+.timeline-row.lower::before { background: var(--ink-3); }
+.timeline-row .when { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.timeline-row .what { font-size: 12.5px; color: var(--ink); margin-top: 1px; }
+.evidence-card { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+.evidence-card .top { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px; display: flex; gap: 6px; }
+.evidence-card .top .tier { color: var(--green); background: var(--green-soft); padding: 1px 4px; border-radius: 3px; }
+.evidence-card .ttl { font-size: 12px; font-weight: 500; line-height: 1.3; }
+
+/* KBQ ask panel */
+.kbq-block { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.ask-input { background: var(--surface); border-radius: 14px; padding: 18px 22px; }
+.ask-input .ts { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 8px; }
+.ask-input .q { font-family: var(--display); font-size: 20px; font-weight: 500; line-height: 1.3; }
+.ask-input .pills { display: flex; gap: 6px; margin-top: 10px; }
+.ask-input .pill { font-family: var(--mono); font-size: 9px; color: var(--accent-2); background: var(--accent-soft); padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.14em; }
+.ask-answer { background: var(--surface); border-radius: 14px; padding: 22px 26px; }
+.ask-answer .who { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.ask-answer .glyph { width: 24px; height: 24px; border-radius: 8px; background: rgba(78,212,208,0.16); color: var(--teal); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; }
+.ask-answer .name { font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.14em; }
+.ask-answer p { font-size: 14.5px; line-height: 1.7; color: var(--ink); margin-bottom: 12px; }
+.findings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.finding { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; }
+.finding .tag { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px; }
+.finding .num { font-family: var(--display); font-size: 24px; font-weight: 500; line-height: 1; margin-bottom: 4px; }
+.finding .num.amber { color: var(--amber); }
+.finding .num.green { color: var(--green); }
+.finding .desc { font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+
+/* Strategist proposal */
+.proposal-card { background: var(--surface); border-radius: 14px; padding: 22px 26px; border-left: 4px solid var(--violet); }
+.proposal-card .who { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.proposal-card .glyph { width: 24px; height: 24px; border-radius: 8px; background: rgba(182,140,255,0.16); color: var(--violet); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; }
+.proposal-card .name { font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.14em; }
+.proposal-card h3 { font-family: var(--display); font-size: 18px; font-weight: 500; margin-bottom: 8px; line-height: 1.3; }
+.proposal-card p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; margin-bottom: 12px; }
+.proposal-card .actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* War game board */
+.wargame-grid { display: grid; grid-template-columns: 1fr 280px; gap: 18px; }
+.wargame-board { background: var(--surface); border-radius: 14px; padding: 22px; min-height: 360px; }
+.wargame-board .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.wargame-board .head .title { font-family: var(--display); font-size: 16px; font-weight: 500; line-height: 1.3; max-width: 480px; }
+.wargame-board .head .sub { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.payoff-matrix { display: grid; grid-template-columns: 70px 1fr 1fr; grid-template-rows: 32px 1fr 1fr; gap: 8px; height: 280px; margin-left: 24px; margin-top: 8px; }
+.payoff-matrix .col-head, .payoff-matrix .row-head { display: grid; place-items: center; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-2); }
+.payoff-matrix .row-head { writing-mode: vertical-rl; transform: rotate(180deg); }
+.payoff-cell { border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: all 200ms ease; position: relative; }
+.payoff-cell.win { background: linear-gradient(135deg, rgba(91,201,125,0.18) 0%, rgba(91,201,125,0.06) 100%); border: 1px solid rgba(91,201,125,0.25); }
+.payoff-cell.lose { background: linear-gradient(135deg, rgba(227,107,107,0.16) 0%, rgba(227,107,107,0.04) 100%); border: 1px solid rgba(227,107,107,0.22); }
+.payoff-cell.neutral { background: linear-gradient(135deg, rgba(242,162,59,0.14) 0%, rgba(242,162,59,0.04) 100%); border: 1px solid rgba(242,162,59,0.20); }
+.payoff-cell.recommended { box-shadow: var(--shadow-glow); }
+.payoff-cell .delta { font-family: var(--display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
+.payoff-cell .desc { font-size: 10.5px; color: var(--ink-2); line-height: 1.4; }
+.payoff-cell .ribbon { position: absolute; right: 10px; top: 10px; font-family: var(--mono); font-size: 8px; color: var(--accent-2); background: var(--accent-soft); padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.wargame-side { background: var(--surface); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.posterior-bars { display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); padding: 10px 12px; border-radius: 10px; }
+.posterior-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.posterior-row .lab { font-size: 11px; color: var(--ink-2); }
+.posterior-row .pct { font-family: var(--mono); font-size: 10px; }
+.posterior-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
+.posterior-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.posterior-bar .fill.amber { background: var(--amber); }
+.posterior-bar .fill.violet { background: var(--violet); }
+
+/* Brief composer */
+.composer { background: var(--surface); border-radius: 14px; padding: 36px 44px; }
+.composer .meta { display: flex; gap: 12px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.composer .state { background: var(--accent-soft); color: var(--accent-2); padding: 2px 8px; border-radius: 4px; }
+.composer h1 { font-family: var(--display); font-size: 26px; font-weight: 500; line-height: 1.2; margin-bottom: 18px; }
+.composer p { font-size: 14.5px; line-height: 1.7; margin-bottom: 12px; }
+.composer h2 { font-family: var(--display); font-size: 16px; font-weight: 500; margin: 22px 0 10px; }
+.composer .ai-suggest { margin: 12px 0; padding: 12px 16px; background: rgba(182,140,255,0.10); border-radius: 10px; border-left: 3px solid var(--violet); display: flex; gap: 10px; align-items: flex-start; }
+.composer .ai-suggest .icon { width: 22px; height: 22px; border-radius: 6px; background: var(--violet); color: white; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
+.composer .ai-suggest .body { flex: 1; }
+.composer .ai-suggest .head { font-family: var(--mono); font-size: 9px; color: var(--violet); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px; }
+.composer .ai-suggest p { font-size: 13px; margin-bottom: 6px; }
+.composer .ai-suggest .actions { display: flex; gap: 6px; margin-top: 6px; }
+.options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.option-card { background: var(--surface-2); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--line); }
+.option-card.recommended { border-color: var(--green); box-shadow: 0 0 0 3px rgba(91,201,125,0.10); }
+.option-card .ord { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.option-card .ttl { font-family: var(--display); font-size: 14px; font-weight: 500; margin: 4px 0 6px; }
+.option-card .scoreline { display: flex; gap: 10px; font-family: var(--mono); font-size: 9px; color: var(--ink-2); }
+.option-card .scoreline .ok { color: var(--green); }
+.option-card .scoreline .alert { color: var(--amber); }
+
+/* Commit ceremony */
+.commit-card { background: linear-gradient(135deg, rgba(91,201,125,0.16) 0%, rgba(91,140,255,0.08) 100%); border: 1px solid rgba(91,201,125,0.25); border-radius: 16px; padding: 32px 36px; text-align: center; }
+.commit-card .glyph { width: 60px; height: 60px; border-radius: 16px; background: var(--green); color: white; margin: 0 auto 16px; display: grid; place-items: center; font-family: var(--display); font-size: 28px; font-weight: 600; }
+.commit-card h2 { font-family: var(--display); font-size: 22px; font-weight: 500; margin-bottom: 8px; }
+.commit-card p { font-size: 14px; color: var(--ink-2); max-width: 540px; margin: 0 auto 18px; }
+.commit-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 600px; margin: 0 auto; padding-top: 16px; border-top: 1px solid var(--line); }
+.commit-meta .item .v { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.commit-meta .item .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.14em; text-transform: uppercase; margin-top: 2px; }
+
+/* Recap */
+.recap { max-width: 1240px; margin: 0 auto; padding: 60px 32px; }
+.recap-title { font-family: var(--display); font-size: 30px; font-weight: 500; margin-bottom: 14px; line-height: 1.15; }
+.recap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
+.recap-card { background: var(--surface); border-radius: 14px; padding: 18px 22px; }
+.recap-card .h { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 8px; }
+.recap-card .b { font-size: 14px; color: var(--ink); line-height: 1.6; }
+
+@media (max-width: 1100px) {
+  .pulse-grid, .dossier-grid, .wargame-grid { grid-template-columns: 1fr !important; }
+  .day-arc { grid-template-columns: repeat(4, 1fr); }
+  .screen, .action-callout { margin-left: 0; }
+  .hour-head { grid-template-columns: 60px 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Persona banner -->
+<div class="persona-banner">
+  <div class="glyph">M</div>
+  <div class="who">
+    <span class="name">Maya Chen</span>
+    <span class="role">Senior CI Analyst · Solid-tumour oncology · Watching 40 assets across 6 mechanism classes</span>
+  </div>
+  <span class="now">Tuesday · 12 May 2026 · Real signals from production</span>
+</div>
+
+<!-- Hero -->
+<div class="hero">
+  <span class="eyebrow"><span class="pulse"></span>Persona walk · Analyst · End-to-end day</span>
+  <h1 class="hero-title">A day where the platform <em>thinks alongside her</em>, not in front of her.</h1>
+  <p class="hero-sub">
+    Seven moments from a typical Tuesday. Maya catches up, deepens into a dossier, asks a key business question, gets a Strategist proposal, runs a war-game with her team, drafts the brief by writing it, and commits the decision. The platform proactively surfaces what mattered overnight, ranks by materiality, suggests when something has earned a brief, runs the simulations, writes the dissent, and learns from the outcome.
+  </p>
+  <div class="day-arc">
+    <a href="#m1" class="arc-step active"><div class="t">08:40</div><div class="a">Pulse</div></a>
+    <a href="#m2" class="arc-step"><div class="t">09:20</div><div class="a">Dossier</div></a>
+    <a href="#m3" class="arc-step"><div class="t">10:30</div><div class="a">Ask · KBQ</div></a>
+    <a href="#m4" class="arc-step"><div class="t">11:30</div><div class="a">Proposal</div></a>
+    <a href="#m5" class="arc-step"><div class="t">14:00</div><div class="a">War game</div></a>
+    <a href="#m6" class="arc-step"><div class="t">15:30</div><div class="a">Brief</div></a>
+    <a href="#m7" class="arc-step"><div class="t">17:00</div><div class="a">Commit</div></a>
+  </div>
+</div>
+
+<!-- ========== M1 · 08:40 PULSE ========== -->
+<section id="m1" class="hour-shell">
+  <div class="hour-panel" style="border-top:none;">
+    <div class="hour-head">
+      <div class="hour-time">08:40</div>
+      <div>
+        <div class="hour-title">The morning Pulse · the system has done the overnight work</div>
+        <div class="hour-narration">Maya sits down. Sentinel processed 571 signals overnight; three crossed her materiality threshold. She does not skim a feed. She reads three sentences, sees the one that matters, and the system has already drafted the headline she could quote in stand-up.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">/pulse</span>
+      <div class="screen-meta">Sentinel · 4m ago · 15 sources scanned · 571 signals · 3 above threshold</div>
+      <div class="pulse-grid">
+        <div class="card ring-card">
+          <div class="pulse-ring">
+            <svg width="160" height="160" viewBox="0 0 160 160">
+              <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="9"/>
+              <circle cx="80" cy="80" r="68" fill="none" stroke="url(#g1)" stroke-width="9" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="100"/>
+              <defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5B8CFF"/><stop offset="100%" stop-color="#7AA2FF"/></linearGradient></defs>
+            </svg>
+            <div class="center"><div class="num">87</div><div class="label">Top signal</div></div>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><div class="v">3</div><div class="l">Above threshold</div></div>
+            <div class="metric"><div class="v">571</div><div class="l">Tracked overnight</div></div>
+            <div class="metric"><div class="v">71%</div><div class="l">30d calibration</div></div>
+            <div class="metric"><div class="v">15</div><div class="l">Sources active</div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="signal-card">
+            <div class="score"><div class="v">87</div><div class="l">Materiality</div></div>
+            <div class="body">
+              <div class="meta"><span>FDA · tier 1</span><span>·</span><span>4h ago</span><span>·</span><span class="kbq">KBQ-3 Regulatory</span><span>·</span><span style="color:var(--green)">94% trust</span></div>
+              <div class="headline">Eli Lilly receives FDA Complete Response Letter on tirzepatide oncology label expansion</div>
+              <div class="quote">"Validates the second-line CRL pattern your team flagged in March. Affects three competitor assets in your space — Pfizer's amivantamab and AZN's osimertinib both have similar second-line filings due in Q3."</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+              <span class="entity-pill drug"><span class="swatch"></span>Tirzepatide</span>
+              <span class="entity-pill company"><span class="swatch"></span>Eli Lilly</span>
+              <button class="btn primary">Open dossier →</button>
+            </div>
+          </div>
+          <div class="signal-card" style="border-left-color:var(--amber);">
+            <div class="score"><div class="v">74</div><div class="l">Materiality</div></div>
+            <div class="body">
+              <div class="meta"><span>SEC 8-K · tier 1</span><span>·</span><span>11h ago</span><span>·</span><span class="kbq">KBQ-7 Financial</span></div>
+              <div class="headline">AstraZeneca cuts FY26 oncology revenue guidance 4–6% on osimertinib pricing pressure</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;"><span class="entity-pill company"><span class="swatch"></span>AstraZeneca</span><button class="btn">View thread</button></div>
+          </div>
+          <div class="signal-card" style="border-left-color:var(--ink-3);opacity:0.7;">
+            <div class="score"><div class="v">62</div><div class="l">Materiality</div></div>
+            <div class="body">
+              <div class="meta"><span>CT.gov · tier 1</span><span>·</span><span>17h ago</span><span>·</span><span class="kbq">KBQ-1 Clinical</span><span>·</span><span>Read 09:12</span></div>
+              <div class="headline">KEYNOTE-869 enrolment update: Pfizer adds 4 EU sites, completion shifts to Q1 2027</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;"><span class="entity-pill trial"><span class="swatch"></span>NCT04964220</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-callout">
+      <div class="arrow">→</div>
+      <div class="body">
+        <div class="head">Maya's action · 08:42</div>
+        <div class="text">Clicks "Open dossier" on the Lilly CRL. The system pivots to the tirzepatide entity dossier, carrying the signal context with her.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M2 · 09:20 DOSSIER ========== -->
+<section id="m2" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">09:20</div>
+      <div>
+        <div class="hour-title">The dossier · everything we know about tirzepatide, in one page</div>
+        <div class="hour-narration">She clicks the entity pill. The dossier opens. Every claim cites its source inline; the timeline shows what changed in the last 30 days; the evidence pile is on the right with real source names — FDA docket FDA-2026-D-1842, Reuters Health, the Lilly investor day transcript. She does not stitch context across five tabs. She reads the synthesis.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">/dossier/drug/tirzepatide</span>
+      <div class="screen-meta">Aggregated from /catalog/entity-profile + /graph/neighborhood + /signals · refreshed 32s ago</div>
+      <div class="dossier-grid">
+        <div class="dossier-rail">
+          <div class="card">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:4px;">Drug · Eli Lilly · INN</div>
+            <div class="dossier-name">tirzepatide</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+              <span class="entity-pill mechanism"><span class="swatch"></span>GIP/GLP-1</span>
+              <span class="entity-pill ta"><span class="swatch"></span>Oncology</span>
+            </div>
+            <div class="dossier-stats">
+              <div class="metric"><div class="v">Phase 3</div><div class="l">Status</div></div>
+              <div class="metric"><div class="v">Q3 26</div><div class="l">Next catalyst</div></div>
+              <div class="metric"><div class="v">14</div><div class="l">Active trials</div></div>
+              <div class="metric"><div class="v">3</div><div class="l">New signals</div></div>
+            </div>
+            <button class="btn primary" style="margin-top:12px;width:100%;justify-content:center;">Add to my watchlist</button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:24px 26px;">
+          <div class="dossier-section">
+            <div class="label">Strategist · synthesis · written 14m ago · edited by you</div>
+            <div style="font-size:14px;color:var(--ink);line-height:1.65;">
+              <p style="margin-bottom:10px;">tirzepatide is Eli Lilly's lead asset in oncology, with primary endpoint readout in EU and an FDA filing under review. As of 6 hours ago<a class="cite">FDA-001</a>, the FDA issued a Complete Response Letter citing manufacturing chemistry, not safety or efficacy.</p>
+              <p>Comparable assets — <a class="cite">Pfizer amivantamab</a> and <a class="cite">AZN osimertinib</a> — have second-line filings due in the same window. If Lilly resolves the CMC concerns within 60 days<a class="cite">LLY-PR-09May</a>, the launch shifts by one quarter; if longer, the field opens.</p>
+            </div>
+          </div>
+          <div class="dossier-section">
+            <div class="label">Recent moves · Last 30 days · 3 signals · graph: 14 new edges</div>
+            <div class="timeline">
+              <div class="timeline-row"><div class="when">6h ago · KBQ-3 Regulatory</div><div class="what">FDA Complete Response Letter — manufacturing chemistry citation, no safety / efficacy concerns</div></div>
+              <div class="timeline-row"><div class="when">11d ago · KBQ-1 Clinical</div><div class="what">Primary endpoint hit on EU pivotal trial; PFS HR 0.61, p&lt;0.001</div></div>
+              <div class="timeline-row lower"><div class="when">19d ago · KBQ-7 Financial</div><div class="what">CFO reaffirmed Q3 26 launch target; $2.4B peak guidance maintained</div></div>
+              <div class="timeline-row lower"><div class="when">28d ago · KBQ-10 Patent</div><div class="what">USPTO grants composition-of-matter through 2041</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:18px 20px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:10px;">Evidence pile · 14 grounded items</div>
+          <div class="evidence-card">
+            <div class="top"><span style="color:var(--ink-2);">FDA.gov · Docket</span><span class="tier">TIER 1</span><span>09 May 03:42 GMT</span></div>
+            <div class="ttl">FDA-2026-D-1842 — Complete Response Letter, Application 217488</div>
+          </div>
+          <div class="evidence-card">
+            <div class="top"><span style="color:var(--ink-2);">Reuters Health</span><span class="tier" style="color:var(--amber);background:var(--amber-soft);">TIER 2</span><span>09 May</span></div>
+            <div class="ttl">Lilly's tirzepatide hits regulatory snag in oncology label push</div>
+          </div>
+          <div class="evidence-card">
+            <div class="top"><span style="color:var(--ink-2);">SEC EDGAR · 10-Q</span><span class="tier">TIER 1</span><span>04 May</span></div>
+            <div class="ttl">Q1 26 Quarterly Report — Risk factors, oncology pipeline</div>
+          </div>
+          <button class="btn" style="width:100%;justify-content:center;margin-top:6px;">+ 11 more</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-callout">
+      <div class="arrow">→</div>
+      <div class="body">
+        <div class="head">Maya's action · 09:50</div>
+        <div class="text">She has the morning context. Now she wants to ask a portfolio-level question — a KBQ — to see if anything material crossed her watchlist this week.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M3 · 10:30 KBQ ASK ========== -->
+<section id="m3" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">10:30</div>
+      <div>
+        <div class="hour-title">A KBQ-driven question · the system answers in evidence-grounded prose</div>
+        <div class="hour-narration">She summons the Ask overlay (⌘K). She picks a KBQ template — "what changed for our portfolio in the last week?" — and adds her watchlist scope. Sentinel runs the retrieval, Strategist writes the answer, Curator validates every cite. The answer arrives in 4 seconds with clickable citations, structured findings, and a "save to brief" affordance.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">⌘K · /ask</span>
+      <div class="screen-meta">Wraps SPEC-035 ask-graph + CTX pipeline · streams via SSE · 4.2s end-to-end</div>
+      <div class="kbq-block">
+        <div class="ask-input">
+          <div class="ts">Maya · 10:32:14 · KBQ-6 SWOT scope</div>
+          <div class="q">What changed for my watchlist this week, ranked by competitive impact?</div>
+          <div class="pills">
+            <span class="pill">Watchlist · 14 entities</span>
+            <span class="pill">Last 7 days</span>
+            <span class="pill">KBQ-6 SWOT</span>
+            <span class="pill">Source-strict mode</span>
+          </div>
+        </div>
+
+        <div class="ask-answer">
+          <div class="who">
+            <div class="glyph">SE</div>
+            <div class="name">Sentinel + Strategist + Curator · 4.2s · 11 evidence items</div>
+          </div>
+          <p>Three of your fourteen tracked entities had material moves this week<a class="cite">[1-11]</a>. The Lilly CRL on tirzepatide<a class="cite">[1,2]</a> is the highest-impact event — it shifts Pfizer's amivantamab launch window by an estimated 60-90 days and creates an opening for your Q3 plan. AstraZeneca's revised guidance<a class="cite">[3,4]</a> signals broader oncology pricing pressure that may affect your launch economics. KEYNOTE-869's enrolment update<a class="cite">[5]</a> is neutral for your timing.</p>
+          <p>Two of your watched mechanism classes saw new entrants this week. ChEMBL flagged a Roche compound (CT-388)<a class="cite">[6,7]</a> entering Phase 1 for GIP/GLP-1 dual agonism. Open Targets surfaced new genetic evidence<a class="cite">[8]</a> supporting the second-line oncology indication you're tracking.</p>
+
+          <div class="findings-grid">
+            <div class="finding">
+              <div class="tag">Regulatory · Lilly CRL</div>
+              <div class="num amber">+60-90d</div>
+              <div class="desc">Estimated Pfizer launch delay window. 82% confidence (Strategist Bayesian).</div>
+            </div>
+            <div class="finding">
+              <div class="tag">Pricing · AZN guidance cut</div>
+              <div class="num">−4 to −6%</div>
+              <div class="desc">FY26 oncology revenue revision. First downward in 11 quarters.</div>
+            </div>
+            <div class="finding">
+              <div class="tag">Pipeline · new entrants</div>
+              <div class="num green">+2</div>
+              <div class="desc">CT-388 (Roche), KS-2418 (Korro). Both Phase 1, your TA.</div>
+            </div>
+            <div class="finding">
+              <div class="tag">Trials · timing shifts</div>
+              <div class="num">3</div>
+              <div class="desc">All within tolerance. KEYNOTE-869 +2Q is the largest.</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:18px;">
+            <button class="btn primary">Save to draft brief</button>
+            <button class="btn">Open as graph</button>
+            <button class="btn">Schedule weekly digest</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M4 · 11:30 STRATEGIST PROPOSAL ========== -->
+<section id="m4" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">11:30</div>
+      <div>
+        <div class="hour-title">Strategist · "this has earned a brief"</div>
+        <div class="hour-narration">A subtle notification slides in from the side. The Strategist has noticed: the Lilly CRL signal scored 87, two of her watchlist entities are downstream-affected, and the cluster of three regulatory signals in 14 days has tripped a framing trigger. It proposes a draft decision brief with a question, options, stakeholders and a deadline — pre-populated. She doesn't have to start from a blank page.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">Strategist · proposal · auto-framed</span>
+      <div class="screen-meta">SPEC-029 framing trigger · cluster (3 signals on regulatory in 14d) · KBQ-3+KBQ-6 weighted</div>
+      <div class="proposal-card">
+        <div class="who"><div class="glyph">ST</div><div class="name">Strategist · proposal · 4 seconds ago</div></div>
+        <h3>The Lilly CRL has earned a decision brief. Want me to draft it?</h3>
+        <p>Three regulatory signals in your watchlist over the past 14 days have crossed the framing-trigger cluster threshold. Two of them affect your Q3 launch window. I have evidence (11 items, all tier 1 or 2), a question framing, an options grid (3 candidate moves), and a stakeholder set ready. Estimated decision deadline: 10 working days, given the 60-90 day Pfizer recovery window.</p>
+        <div style="background:var(--surface-2);border-radius:10px;padding:14px 16px;margin-top:10px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">Proposed brief</div>
+          <div style="font-family:var(--display);font-size:16px;font-weight:500;margin-bottom:8px;">Should we accelerate our Q3 launch in response to the Lilly CRL?</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--ink-2);line-height:1.7;">
+            Trigger · cluster (3 regulatory signals)<br>
+            Stakeholders · Brand lead, R&D portfolio, CCO office<br>
+            Time horizon · 90 days<br>
+            Confidence to proceed · 0.72<br>
+            Materiality · 87
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary">Yes · open the brief</button>
+          <button class="btn">Adjust framing</button>
+          <button class="btn" style="color:var(--ink-3);">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-callout">
+      <div class="arrow">→</div>
+      <div class="body">
+        <div class="head">Maya's action · 11:32</div>
+        <div class="text">She accepts. The brief opens in draft state. Before she writes, she wants to run a war-game with the team this afternoon. She schedules it and the Strategist starts pre-running scenarios in the background.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M5 · 14:00 WAR GAME ========== -->
+<section id="m5" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">14:00</div>
+      <div>
+        <div class="hour-title">War-game session with the team · the Strategist has done the maths</div>
+        <div class="hour-narration">Maya opens the war-game board with her brand lead and R&D portfolio rep on the call. The Strategist has pre-run 1,200 Bayesian Monte Carlo trials. The 2x2 payoff matrix is on the screen. Pfizer's adversary type posterior is on the right — currently 61% "aggressive growth", just shifted from 53% after the KEYNOTE-869 enrolment news 14 minutes ago. The recommended cell glows. The counter-argument is below it.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">/war-rooms/wr-q3-launch-001</span>
+      <div class="screen-meta">Strategist · 1,200 Monte Carlo · 87% confidence · live with brand lead + R&D portfolio</div>
+      <div class="wargame-grid">
+        <div class="wargame-board">
+          <div class="head">
+            <div>
+              <div class="sub">Strategist · 1,200 Monte Carlo trials · 87% confidence</div>
+              <div class="title">If Lilly resolves the CRL by Q3 vs Q4 — and Pfizer responds aggressively or holds back — what does our market share look like?</div>
+            </div>
+            <button class="btn">Re-run with new evidence</button>
+          </div>
+          <div class="payoff-matrix">
+            <div></div><div class="col-head">Pfizer aggressive</div><div class="col-head">Pfizer holds back</div>
+            <div class="row-head">Lilly Q3</div>
+            <div class="payoff-cell lose"><div class="ribbon">Worst case</div><div class="delta" style="color:var(--ink);">−4.2%</div><div class="desc">Lose share to both. Conf 71%.</div></div>
+            <div class="payoff-cell neutral"><div class="delta" style="color:var(--ink);">+0.8%</div><div class="desc">Hold share. Conf 64%.</div></div>
+            <div class="row-head">Lilly Q4+</div>
+            <div class="payoff-cell win recommended"><div class="ribbon">Recommended →</div><div class="delta" style="color:var(--ink);">+6.4%</div><div class="desc">Capture share before either rival. Conf 82%.</div></div>
+            <div class="payoff-cell win"><div class="delta" style="color:var(--ink);">+3.1%</div><div class="desc">Both slow. We launch on schedule.</div></div>
+          </div>
+        </div>
+
+        <div class="wargame-side">
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">Pfizer · adversary type · posterior</div>
+            <div class="posterior-bars">
+              <div class="posterior-row"><span class="lab">Aggressive growth</span><span class="pct">61%</span></div>
+              <div class="posterior-bar"><div class="fill" style="width:61%;"></div></div>
+              <div class="posterior-row"><span class="lab">Defensive</span><span class="pct">28%</span></div>
+              <div class="posterior-bar"><div class="fill amber" style="width:28%;"></div></div>
+              <div class="posterior-row"><span class="lab">Cash-constrained</span><span class="pct">11%</span></div>
+              <div class="posterior-bar"><div class="fill violet" style="width:11%;"></div></div>
+            </div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:6px;">Updated 14m ago after KEYNOTE-869 +4 EU sites</div>
+          </div>
+          <div style="background:var(--accent-soft);border-radius:10px;padding:12px 14px;border:1px solid var(--accent);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent-2);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px;">Strategist · counter-argument</div>
+            <div style="font-size:12px;line-height:1.5;">If you discount the FDA CRL recovery time below 90 days, the recommended cell flips. Worth stress-testing with CMC contacts before committing.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-callout">
+      <div class="arrow">→</div>
+      <div class="body">
+        <div class="head">Team's decision · 14:55</div>
+        <div class="text">The team agrees on the recommended cell (Lilly Q4+ / Pfizer aggressive · accelerate our launch). Maya promotes the war-game outcome to her draft brief; the options grid auto-populates from the matrix.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M6 · 15:30 BRIEF ========== -->
+<section id="m6" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">15:30</div>
+      <div>
+        <div class="hour-title">Composing the brief · writing-first, with the agents suggesting inline</div>
+        <div class="hour-narration">She opens the brief composer. Not a five-panel form. A document. She starts writing. The Strategist surfaces an inline suggestion — "you haven't named the dissenting view; want me to draft a counter-recommendation?" — and writes a real argument when she accepts. The Curator notices that the CMC commentary from Lilly's CFO is missing and offers to insert it with a citation. The state machine runs underneath; she stays in the writing.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">/briefs/d-q3-launch-2026-0247</span>
+      <div class="screen-meta">SPEC-023 brief composer · TipTap editor · autosave 4s · Strategist + Curator suggesting inline</div>
+      <div class="composer">
+        <div class="meta">
+          <span>Decision brief · D-2026-0247</span>
+          <span class="state">Draft</span>
+          <span>Owner · Maya Chen</span>
+          <span>Confidence to proceed · 72%</span>
+          <span>Updated 4m ago</span>
+        </div>
+
+        <h1>Should we accelerate our Q3 launch in response to the Lilly CRL?</h1>
+
+        <p>The Lilly Complete Response Letter on tirzepatide<a class="cite">FDA-001</a> creates a 60-90 day window in which our Q3 launch can either pre-empt Pfizer or be pre-empted. The Strategist's modelled payoff matrix shows the highest expected value in the bottom-left cell — accelerating our launch and counting on Lilly delaying past Q3.</p>
+
+        <div class="ai-suggest">
+          <div class="icon">ST</div>
+          <div class="body">
+            <div class="head">Strategist suggests · 12s ago</div>
+            <p>You haven't named the dissenting view. Pfizer's posterior shifted to 61% "aggressive growth" 14 minutes ago. Want me to draft a real counter-recommendation, not a templated one?</p>
+            <div class="actions"><button class="btn primary">Yes, draft it</button><button class="btn">Dismiss</button></div>
+          </div>
+        </div>
+
+        <h2>Options under consideration · 2 of max 5 (SPEC-023)</h2>
+        <div class="options-grid">
+          <div class="option-card recommended">
+            <div class="ord">Option 1 · Strategist recommended</div>
+            <div class="ttl">Accelerate Q3 launch</div>
+            <div class="scoreline"><span class="ok">+6.4% share</span><span class="alert">+$22M opex</span><span>82% confidence</span></div>
+          </div>
+          <div class="option-card">
+            <div class="ord">Option 2 · Counter-recommendation</div>
+            <div class="ttl">Hold Q3, accelerate marketing</div>
+            <div class="scoreline"><span class="ok">+2.1% share</span><span class="ok">+$4M opex</span><span>76% confidence</span></div>
+          </div>
+        </div>
+
+        <div class="ai-suggest" style="background:rgba(91,201,125,0.08);border-color:var(--green);">
+          <div class="icon" style="background:var(--green);">CU</div>
+          <div class="body">
+            <div class="head" style="color:var(--green);">Curator notes · evidence completeness 4/5</div>
+            <p>You're missing CMC commentary from Lilly's CFO investor-day call. I have a transcript snippet that may close that gap.</p>
+            <div class="actions"><button class="btn primary">Insert with citation</button><button class="btn">Not relevant</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-callout">
+      <div class="arrow">→</div>
+      <div class="body">
+        <div class="head">Maya's action · 16:30</div>
+        <div class="text">She finishes writing, accepts both AI suggestions, sends to stakeholder review. Brand lead and R&D portfolio approve within an hour. She advances the state to decided.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== M7 · 17:00 COMMIT ========== -->
+<section id="m7" class="hour-shell">
+  <div class="hour-panel">
+    <div class="hour-head">
+      <div class="hour-time">17:00</div>
+      <div>
+        <div class="hour-title">Commit · the decision is signed, the outcome tracking begins</div>
+        <div class="hour-narration">CCO confirms over Slack. Maya commits the decision. The state machine advances; the decision is cryptographically signed (SPEC-034); the forensics snapshot is taken — exactly what the system knew at this moment is preserved. The Curator schedules the outcome match for Q4 review. The Sentinel watches for any signal that would invalidate or confirm the decision in flight.</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <span class="screen-label">/decisions/d-q3-launch-2026-0247 · committed</span>
+      <div class="screen-meta">Forensics snapshot taken · state_log signed · outcome match scheduled for Q4 review</div>
+      <div class="commit-card">
+        <div class="glyph">✓</div>
+        <h2>Decision committed</h2>
+        <p>"Accelerate our Q3 launch in response to the Lilly CRL." Brand lead, R&D portfolio and CCO have signed. The forensics snapshot preserves exactly what the system knew at 17:02 today — every evidence ref, every materiality score, every Strategist call, every adversary posterior. Curator will match outcomes against this decision in Q4.</p>
+        <div class="commit-meta">
+          <div class="item"><div class="v">11</div><div class="l">Evidence cited</div></div>
+          <div class="item"><div class="v">3</div><div class="l">Stakeholders signed</div></div>
+          <div class="item"><div class="v">Q4 26</div><div class="l">Outcome window</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Recap -->
+<div class="recap">
+  <div class="recap-title">What just happened, in one paragraph.</div>
+  <p style="font-size:16px;color:var(--ink-2);line-height:1.65;max-width:780px;">
+    Maya spent her Tuesday on synthesis, not on stitching. The platform did the overnight scan, ranked by materiality, surfaced the dossier in context, answered her KBQ in evidence-grounded prose, proposed a brief when one was earned, ran the war-game simulation, wrote the inline AI suggestions, drafted the counter-recommendation, snapshotted the forensics, and queued the outcome match for Q4. She wrote the brief. She made the calls. She did the thinking the system can't do — and the system did the work that wastes her day.
+  </p>
+  <div class="recap-grid">
+    <div class="recap-card">
+      <div class="h">What the platform did proactively</div>
+      <div class="b">Scanned 571 signals overnight · ranked 3 above her threshold · pre-ran 1,200 Monte Carlo trials before her war-game · proposed a brief when the framing trigger fired · suggested the dissenting view she hadn't named · noticed missing evidence and offered to insert it.</div>
+    </div>
+    <div class="recap-card">
+      <div class="h">What Maya did</div>
+      <div class="b">Read the headlines · pivoted into a dossier · asked one KBQ question · accepted the proposal · convened the war-game with two colleagues · wrote the brief · accepted the counter-recommendation · committed the decision after stakeholder review.</div>
+    </div>
+    <div class="recap-card">
+      <div class="h">What the platform never did</div>
+      <div class="b">Made a decision for her · hid the evidence · said something it couldn't ground · pretended the answer was certain when it wasn't · skipped the dissenting view · forgot the outcome window.</div>
+    </div>
+    <div class="recap-card">
+      <div class="h">What the platform will do next</div>
+      <div class="b">Watch for any signal that confirms or invalidates this decision in flight · match the actual Q4 outcome to the predicted +6.4% share gain · update the source weights based on which evidence proved most predictive · adjust the Strategist's prompt calibration if accuracy drifts.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

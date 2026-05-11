@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Data Catalog — substrate, sources, entities, gaps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --violet-soft: rgba(182,140,255,0.14);
+  --teal: #4ED4D0; --teal-soft: rgba(78,212,208,0.14);
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.35); --shadow-glow: 0 0 0 1px var(--teal-soft), 0 12px 36px rgba(78,212,208,0.18);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+body { background: radial-gradient(circle at 15% -10%, rgba(78,212,208,0.06) 0%, transparent 45%), radial-gradient(circle at 85% 110%, rgba(91,140,255,0.04) 0%, transparent 50%), var(--bg); padding-bottom: 120px; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+@keyframes thinking { 0%,100% { opacity:0.4; } 50% { opacity:1; } }
+
+/* Status bar with persona toggle */
+.status-bar { position: sticky; top: 0; z-index: 100; background: rgba(20,26,42,0.95); backdrop-filter: blur(24px); border-bottom: 1px solid var(--line); padding: 12px 32px; display: flex; gap: 24px; align-items: center; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.status-bar .live-tag { display: inline-flex; gap: 8px; align-items: center; padding: 4px 10px; border-radius: 999px; background: var(--teal-soft); color: var(--teal); border: 1px solid var(--teal); }
+.status-bar .live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: pulse 1.4s ease-in-out infinite; }
+.persona-toggle { margin-left: auto; display: inline-flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 999px; border: 1px solid var(--line); }
+.persona-toggle button { background: transparent; border: none; cursor: pointer; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; padding: 4px 14px; border-radius: 999px; color: var(--ink-3); }
+.persona-toggle button.active { background: var(--teal); color: var(--bg); }
+.section-nav { display: flex; gap: 14px; }
+.section-nav a { color: var(--ink-3); text-decoration: none; }
+.section-nav a:hover { color: var(--ink); }
+
+/* Hero */
+.hero { padding: 56px 32px 48px; max-width: 1400px; margin: 0 auto; }
+.eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--teal); display: inline-flex; gap: 10px; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--teal-soft); margin-bottom: 24px; }
+.eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: pulse 1.6s ease-in-out infinite; }
+.hero-title { font-family: var(--display); font-size: clamp(36px, 4.6vw, 56px); font-weight: 400; line-height: 1.1; letter-spacing: -0.035em; margin-bottom: 20px; max-width: 1080px; }
+.hero-title em { font-style: italic; color: var(--teal); }
+.hero-sub { font-size: 16.5px; line-height: 1.6; color: var(--ink-2); max-width: 880px; margin-bottom: 28px; }
+
+/* Section */
+.section { padding: 48px 32px; max-width: 1400px; margin: 0 auto; }
+.section-eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.section-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); }
+.section-title { font-family: var(--display); font-size: 28px; font-weight: 500; line-height: 1.15; letter-spacing: -0.025em; margin-bottom: 12px; }
+.section-sub { font-size: 14.5px; color: var(--ink-2); max-width: 880px; margin-bottom: 28px; }
+.persona-tag { display: inline-flex; gap: 4px; align-items: center; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; margin-left: 8px; }
+.persona-tag.exec { background: rgba(91,140,255,0.10); color: var(--accent-2); }
+.persona-tag.analyst { background: rgba(91,201,125,0.10); color: var(--green); }
+.persona-tag.steward { background: var(--teal-soft); color: var(--teal); }
+.persona-tag.all { background: var(--surface-2); color: var(--ink-2); }
+
+/* ========== OVERVIEW KPI STRIP ========== */
+.kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
+.kpi-card { background: var(--surface); border-radius: 14px; padding: 16px 18px; border-top: 3px solid; }
+.kpi-card.teal { border-top-color: var(--teal); }
+.kpi-card.green { border-top-color: var(--green); }
+.kpi-card.amber { border-top-color: var(--amber); }
+.kpi-card.violet { border-top-color: var(--violet); }
+.kpi-card.accent { border-top-color: var(--accent); }
+.kpi-card .num { font-family: var(--display); font-size: 26px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.kpi-card .num.teal { color: var(--teal); }
+.kpi-card .num.green { color: var(--green); }
+.kpi-card .num.amber { color: var(--amber); }
+.kpi-card .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-top: 6px; }
+.kpi-card .desc { font-size: 11.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.5; }
+
+/* ========== TIER ROLLUP ========== */
+.tier-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+.tier-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; border-left: 3px solid; }
+.tier-card.t1 { border-left-color: var(--green); }
+.tier-card.t2 { border-left-color: var(--accent); }
+.tier-card.t3 { border-left-color: var(--violet); }
+.tier-card.t4 { border-left-color: var(--amber); }
+.tier-card .h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.tier-card .name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.tier-card .ct { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.tier-card .desc { font-size: 11.5px; color: var(--ink-2); line-height: 1.5; margin-bottom: 10px; }
+.tier-card .meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); padding-top: 8px; border-top: 1px solid var(--line); display: flex; gap: 12px; flex-wrap: wrap; }
+.tier-card .meta .key { color: var(--ink-2); }
+
+/* ========== ACTIVITY STREAM ========== */
+.activity-grid { display: grid; grid-template-columns: 1fr 280px; gap: 18px; }
+.activity-stream { background: var(--bg-2); border-radius: 16px; padding: 20px; }
+.activity-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.activity-row:last-child { border-bottom: none; }
+.activity-row .when { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.activity-row .what { color: var(--ink); }
+.activity-row .what .src { font-family: var(--mono); color: var(--teal); }
+.activity-row .what .ct { font-family: var(--mono); color: var(--ink); }
+.activity-row .badge { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.activity-row .badge.ok { background: var(--green-soft); color: var(--green); }
+.activity-row .badge.warn { background: var(--amber-soft); color: var(--amber); }
+.activity-row .badge.fail { background: var(--red-soft); color: var(--red); }
+
+.activity-side { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.activity-side .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 12px; }
+.activity-side .gauge { text-align: center; padding: 10px 0; }
+.activity-side .gauge .num { font-family: var(--display); font-size: 32px; font-weight: 500; letter-spacing: -0.04em; }
+.activity-side .gauge .num.green { color: var(--green); }
+.activity-side .gauge .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 4px; }
+.activity-side .meta { padding-top: 12px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; color: var(--ink-2); line-height: 1.7; }
+.activity-side .meta .key { color: var(--ink-3); }
+
+/* ========== KBQ COVERAGE STRIP ========== */
+.kbq-strip { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+.kbq-tile { background: var(--surface); border-radius: 10px; padding: 14px 12px; text-align: center; cursor: pointer; transition: all 150ms ease; border-bottom: 3px solid; }
+.kbq-tile:hover { background: var(--surface-2); }
+.kbq-tile.s4 { border-bottom-color: var(--green); }
+.kbq-tile.s3 { border-bottom-color: var(--amber); }
+.kbq-tile.s2 { border-bottom-color: var(--red); }
+.kbq-tile.s1 { border-bottom-color: var(--red); background: linear-gradient(180deg, var(--surface) 60%, rgba(227,107,107,0.06) 100%); }
+.kbq-tile .num { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px; }
+.kbq-tile .nm { font-family: var(--display); font-size: 12px; font-weight: 500; line-height: 1.2; margin-bottom: 8px; }
+.kbq-tile .score { font-family: var(--display); font-size: 22px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.kbq-tile .score.s4 { color: var(--green); }
+.kbq-tile .score.s3 { color: var(--amber); }
+.kbq-tile .score.s2 { color: var(--red); }
+.kbq-tile .score.s1 { color: var(--red); }
+.kbq-tile .of { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.kbq-tile .src-ct { font-family: var(--mono); font-size: 9px; color: var(--ink-3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* ========== SOURCE DETAIL DIVE ========== */
+.source-detail { background: var(--bg-2); border-radius: 20px; padding: 28px; }
+.source-header { display: grid; grid-template-columns: 56px 1fr auto; gap: 18px; align-items: center; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.source-glyph { width: 56px; height: 56px; border-radius: 16px; background: rgba(91,201,125,0.18); color: var(--green); display: grid; place-items: center; font-family: var(--display); font-weight: 600; font-size: 15px; }
+.source-info .name { font-family: var(--display); font-size: 22px; font-weight: 500; }
+.source-info .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+.source-info .meta .tier { padding: 1px 6px; border-radius: 3px; }
+.source-info .meta .tier.t1 { background: var(--green-soft); color: var(--green); }
+.source-actions { display: flex; gap: 6px; }
+
+.source-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.source-block { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.source-block .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 12px; }
+.source-block .ttl { font-family: var(--display); font-size: 14px; font-weight: 500; margin-bottom: 10px; }
+
+/* FAIR scoring */
+.fair-row { display: grid; grid-template-columns: 110px 1fr 60px; align-items: center; gap: 12px; padding: 7px 0; font-size: 12px; }
+.fair-row .lab { font-family: var(--mono); font-size: 10px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+.fair-row .bar-track { height: 5px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.fair-row .bar-fill { height: 100%; border-radius: 999px; }
+.fair-row .bar-fill.green { background: var(--green); }
+.fair-row .bar-fill.amber { background: var(--amber); }
+.fair-row .bar-fill.red { background: var(--red); }
+.fair-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); text-align: right; }
+
+.fair-overall { display: flex; gap: 12px; align-items: baseline; padding-top: 10px; border-top: 1px solid var(--line); margin-top: 10px; }
+.fair-overall .v { font-family: var(--display); font-size: 28px; font-weight: 500; color: var(--green); letter-spacing: -0.03em; }
+.fair-overall .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.fair-overall .delta { font-family: var(--mono); font-size: 11px; color: var(--green); margin-left: auto; }
+.fair-overall .delta.down { color: var(--red); }
+
+/* KBQ contribution */
+.kbq-contrib-row { display: grid; grid-template-columns: 1fr auto 60px; align-items: center; gap: 12px; padding: 6px 0; font-size: 12px; }
+.kbq-contrib-row .lab { color: var(--ink-2); }
+.kbq-contrib-row .strength { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.kbq-contrib-row .strength.primary { background: var(--green-soft); color: var(--green); }
+.kbq-contrib-row .strength.substantial { background: rgba(91,201,125,0.30); color: var(--green); }
+.kbq-contrib-row .strength.peripheral { background: var(--surface-2); color: var(--ink-3); }
+.kbq-contrib-row .ct { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-align: right; }
+
+/* Schedule */
+.sched-row { display: grid; grid-template-columns: 100px 1fr; gap: 10px; padding: 6px 0; font-size: 12.5px; }
+.sched-row .key { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.sched-row .val { color: var(--ink); }
+.sched-row .val.cron { font-family: var(--mono); }
+
+/* Schema preview */
+.schema-table { background: var(--surface); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; }
+.schema-table .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.schema-row { display: grid; grid-template-columns: 200px 100px 80px 1fr; gap: 14px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; align-items: center; }
+.schema-row:last-child { border-bottom: none; }
+.schema-row.head { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.schema-row .field { font-family: var(--mono); color: var(--ink); }
+.schema-row .typ { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.schema-row .completeness { font-family: var(--mono); font-size: 11px; }
+.schema-row .completeness.high { color: var(--green); }
+.schema-row .completeness.med { color: var(--amber); }
+.schema-row .completeness.low { color: var(--red); }
+.schema-row .desc { font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+
+/* Linked entities */
+.linked-entities { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+.entity-block { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.entity-block .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 12px; }
+.entity-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; font-size: 13px; border-bottom: 1px solid var(--line); }
+.entity-row:last-child { border-bottom: none; }
+.entity-row .nm { font-family: var(--display); font-size: 13px; font-weight: 500; cursor: pointer; }
+.entity-row .nm:hover { color: var(--accent-2); }
+.entity-row .typ-pill { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.entity-row .typ-pill.drug { background: var(--accent-soft); color: var(--accent-2); }
+.entity-row .typ-pill.company { background: var(--amber-soft); color: var(--amber); }
+.entity-row .typ-pill.trial { background: var(--teal-soft); color: var(--teal); }
+.entity-row .typ-pill.mechanism { background: var(--violet-soft); color: var(--violet); }
+.entity-row .ct { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+/* Recent records */
+.records-table { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.records-table .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 12px; }
+.record-row { display: grid; grid-template-columns: 100px 1fr auto auto; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; font-size: 12.5px; cursor: pointer; }
+.record-row:last-child { border-bottom: none; }
+.record-row:hover { background: var(--surface-2); }
+.record-row .when { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.record-row .ttl { color: var(--ink); }
+.record-row .id { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.record-row .ent-ct { font-family: var(--mono); font-size: 10px; color: var(--accent-2); padding: 2px 6px; border-radius: 3px; background: var(--accent-soft); }
+
+/* ========== ENTITY BROWSE ========== */
+.browse-shell { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+.browse-filters { display: flex; flex-direction: column; gap: 14px; }
+.filter-block { background: var(--surface); border-radius: 14px; padding: 16px 18px; }
+.filter-block .h { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 10px; }
+.filter-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12.5px; }
+.filter-row input[type=checkbox] { accent-color: var(--teal); }
+.filter-row .ct { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+.browse-results { background: var(--bg-2); border-radius: 16px; padding: 22px; }
+.browse-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.browse-toolbar .summary { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.browse-toolbar .summary .key { color: var(--ink); }
+.browse-toolbar .controls { display: flex; gap: 8px; }
+
+.browse-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.browse-card { background: var(--surface); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: all 150ms ease; border-left: 3px solid; }
+.browse-card.drug { border-left-color: var(--accent); }
+.browse-card.company { border-left-color: var(--amber); }
+.browse-card.trial { border-left-color: var(--teal); }
+.browse-card.mechanism { border-left-color: var(--violet); }
+.browse-card:hover { background: var(--surface-2); }
+.browse-card .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.browse-card .nm { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.browse-card .qual { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+.browse-card .qual.high { background: var(--green-soft); color: var(--green); }
+.browse-card .qual.med { background: var(--amber-soft); color: var(--amber); }
+.browse-card .qual.low { background: var(--red-soft); color: var(--red); }
+.browse-card .meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+.browse-card .sources { display: flex; gap: 4px; flex-wrap: wrap; }
+.browse-card .src-pill { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--surface-2); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+.browse-card .footer { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.browse-card .footer .conn { color: var(--accent-2); }
+
+/* ========== COVERAGE GAPS ========== */
+.gaps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.gap-block { background: var(--bg-2); border-radius: 16px; padding: 22px 24px; }
+.gap-block .h { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.gap-block .ttl { font-family: var(--display); font-size: 17px; font-weight: 500; line-height: 1.3; margin-bottom: 14px; }
+.roadmap-bar { height: 36px; background: var(--surface); border-radius: 8px; overflow: hidden; display: flex; margin-bottom: 14px; }
+.roadmap-bar .seg { height: 100%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; color: var(--bg); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; }
+.roadmap-bar .seg.now { background: var(--green); }
+.roadmap-bar .seg.p1 { background: var(--accent); color: var(--bg); }
+.roadmap-bar .seg.p2 { background: var(--amber); color: var(--bg); }
+.roadmap-bar .seg.p3 { background: var(--violet); color: var(--bg); }
+.roadmap-bar .seg.p4 { background: var(--ink-3); color: var(--bg); }
+
+.phase-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.phase-row:last-child { border-bottom: none; }
+.phase-row .when { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+.phase-row .what { color: var(--ink); }
+.phase-row .what .key { color: var(--ink); font-weight: 500; }
+.phase-row .what .desc { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+.phase-row .ct-badge { font-family: var(--mono); font-size: 9px; padding: 3px 8px; border-radius: 3px; background: var(--surface-2); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* ========== BYOD / MARKETPLACE ========== */
+.marketplace-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+.byod-card { background: var(--bg-2); border-radius: 16px; padding: 24px 26px; border: 2px dashed var(--line-strong); text-align: center; cursor: pointer; transition: all 150ms ease; }
+.byod-card:hover { border-color: var(--teal); background: rgba(78,212,208,0.04); }
+.byod-card .glyph { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 14px; background: var(--teal-soft); color: var(--teal); display: grid; place-items: center; font-family: var(--display); font-size: 20px; font-weight: 500; }
+.byod-card .head { font-family: var(--display); font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+.byod-card .body { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin-bottom: 14px; }
+
+/* Cost / licence panel */
+.licence-block { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.licence-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.licence-row:last-child { border-bottom: none; }
+.licence-row.head { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.licence-row .src { font-weight: 500; }
+.licence-row .cost { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.licence-row .cost.free { color: var(--green); }
+.licence-row .renewal { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.licence-row .health-pill { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.12em; }
+.licence-row .health-pill.ok { background: var(--green-soft); color: var(--green); }
+.licence-row .health-pill.warn { background: var(--amber-soft); color: var(--amber); }
+.licence-row .health-pill.unlicenced { background: var(--surface-2); color: var(--ink-3); }
+
+/* UI primitives */
+.btn { font-family: var(--body); font-size: 12px; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
+.btn.primary { background: var(--teal); color: var(--bg); border-color: var(--teal); font-weight: 600; }
+.btn.amber { color: var(--amber); border-color: rgba(242,162,59,0.3); }
+
+/* Closing */
+.closing { padding: 56px 32px; max-width: 980px; margin: 0 auto; text-align: center; }
+.closing .quote { font-family: var(--display); font-size: 22px; font-weight: 400; font-style: italic; line-height: 1.5; color: var(--ink); margin-bottom: 18px; letter-spacing: -0.015em; }
+.closing .quote em { color: var(--teal); }
+.closing .body { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; }
+
+@media (max-width: 1100px) {
+  .kpi-strip, .kbq-strip { grid-template-columns: repeat(2, 1fr) !important; }
+  .tier-grid, .source-grid, .gaps-grid, .marketplace-grid { grid-template-columns: 1fr !important; }
+  .browse-shell, .activity-grid { grid-template-columns: 1fr !important; }
+  .browse-grid, .linked-entities { grid-template-columns: 1fr !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="status-bar">
+  <span class="live-tag"><span class="dot"></span>DATA CATALOG · LIVE</span>
+  <span>15 sources · 162,787 entities · 5 personas served</span>
+  <div class="section-nav">
+    <a href="#overview">Overview</a>
+    <a href="#source">Source</a>
+    <a href="#browse">Browse</a>
+    <a href="#gaps">Gaps</a>
+    <a href="#byod">Add</a>
+  </div>
+  <div class="persona-toggle">
+    <button class="active" onclick="setPersona('all', event)">ALL</button>
+    <button onclick="setPersona('exec', event)">EXEC</button>
+    <button onclick="setPersona('analyst', event)">ANALYST</button>
+    <button onclick="setPersona('steward', event)">STEWARD</button>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<div class="hero">
+  <span class="eyebrow"><span class="pulse"></span>Data catalog · the substrate at a glance · all personas</span>
+  <h1 class="hero-title">Every source, every entity, every quality score — <em>in one place</em>.</h1>
+  <p class="hero-sub">
+    The data catalog has to do four jobs at once: show what's in the substrate, show how good each piece is, show what's missing, and serve three personas (executive, analyst, data steward) without becoming cluttered. The five sections below — overview, source detail, entity browse, coverage gaps, BYOD + marketplace — together replace the raw-JSON /connectors endpoint with a real catalog surface.
+  </p>
+</div>
+
+<!-- ========== OVERVIEW ========== -->
+<section id="overview" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Overview · the substrate in one screen<span class="persona-tag exec">EXEC</span></div>
+  <div class="section-title">15 sources · 162,787 entities · 0.74 platform FAIR</div>
+  <p class="section-sub">Top-line numbers, then a per-tier rollup, then today's ingestion activity. The exec leaves this section knowing how big the substrate is, how healthy it is, and what changed in the last 24 hours.</p>
+
+  <div class="kpi-strip">
+    <div class="kpi-card teal"><div class="num teal">15</div><div class="lab">Connectors live</div><div class="desc">+8 in Phase 1 roadmap</div></div>
+    <div class="kpi-card green"><div class="num">162,787</div><div class="lab">Entities indexed</div><div class="desc">+235 today · +2.4k this week</div></div>
+    <div class="kpi-card green"><div class="num green">0.74</div><div class="lab">Platform FAIR score</div><div class="desc">−0.02 vs last week · 4 of 5 dim healthy</div></div>
+    <div class="kpi-card amber"><div class="num amber">14</div><div class="lab">HITL review queue</div><div class="desc">All cleared by 09:30 today</div></div>
+    <div class="kpi-card violet"><div class="num">571</div><div class="lab">Signals overnight</div><div class="desc">3 above your attention threshold</div></div>
+  </div>
+
+  <div class="tier-grid">
+    <div class="tier-card t1">
+      <div class="h"><div class="name">Tier 1 · Authoritative public</div><div class="ct">8 sources</div></div>
+      <div class="desc">FDA OB · CT.gov · FDA Shortages · OpenFDA FAERS · OpenFDA Labels · EMA · NADAC · MeSH</div>
+      <div class="meta"><span><span class="key">Records:</span> 199,933</span><span><span class="key">Avg freshness:</span> 6h</span><span><span class="key">FAIR:</span> 0.91</span></div>
+    </div>
+    <div class="tier-card t2">
+      <div class="h"><div class="name">Tier 2 · Disclosure &amp; news</div><div class="ct">2 sources</div></div>
+      <div class="desc">SEC EDGAR · Pharma News (scraper)</div>
+      <div class="meta"><span><span class="key">Records:</span> 3,448</span><span><span class="key">Avg freshness:</span> 1h</span><span><span class="key">FAIR:</span> 0.74</span></div>
+    </div>
+    <div class="tier-card t3">
+      <div class="h"><div class="name">Tier 3 · Scientific</div><div class="ct">5 sources</div></div>
+      <div class="desc">PubMed · PMC · ChEMBL · PubChem · Open Targets Genetics</div>
+      <div class="meta"><span><span class="key">Records:</span> 22,939</span><span><span class="key">Avg freshness:</span> 1d</span><span><span class="key">FAIR:</span> 0.76</span></div>
+    </div>
+    <div class="tier-card t4">
+      <div class="h"><div class="name">Tier 4 · Licensed CI</div><div class="ct">0 sources</div></div>
+      <div class="desc"><em>None licensed today.</em> Phase 2 roadmap targets IQVIA · MMIT · AlphaSense · RedBook.</div>
+      <div class="meta"><span><span class="key">Records:</span> 0</span><span><span class="key">KBQs blocked:</span> 4 · 5 · 7 · 8</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== KBQ COVERAGE STRIP ========== -->
+<section class="section">
+  <div class="section-eyebrow"><span class="dot"></span>KBQ readiness · the substrate-to-question map<span class="persona-tag exec">EXEC</span><span class="persona-tag analyst">ANALYST</span></div>
+  <div class="section-title">Eight KBQs · what each can answer today.</div>
+  <p class="section-sub">Click any tile to see exactly which sources feed it and which are missing. Three KBQs strong, two moderate, three critically thin. Pricing and access are the largest decisions and the largest gaps.</p>
+
+  <div class="kbq-strip">
+    <div class="kbq-tile s4"><div class="num">KBQ 1</div><div class="nm">Indications</div><div class="score s4">4<span class="of">/5</span></div><div class="src-ct">6 sources</div></div>
+    <div class="kbq-tile s3"><div class="num">KBQ 2</div><div class="nm">Competitors</div><div class="score s3">3<span class="of">/5</span></div><div class="src-ct">4 sources</div></div>
+    <div class="kbq-tile s4"><div class="num">KBQ 3</div><div class="nm">Clinical</div><div class="score s4">4<span class="of">/5</span></div><div class="src-ct">6 sources</div></div>
+    <div class="kbq-tile s1"><div class="num">KBQ 4</div><div class="nm">Positioning</div><div class="score s1">1<span class="of">/5</span></div><div class="src-ct">1 source</div></div>
+    <div class="kbq-tile s2"><div class="num">KBQ 5</div><div class="nm">Sales</div><div class="score s2">2<span class="of">/5</span></div><div class="src-ct">2 sources</div></div>
+    <div class="kbq-tile s3"><div class="num">KBQ 6</div><div class="nm">SWOT</div><div class="score s3">3<span class="of">/5</span></div><div class="src-ct">computed</div></div>
+    <div class="kbq-tile s1"><div class="num">KBQ 7</div><div class="nm">Pricing</div><div class="score s1">1.5<span class="of">/5</span></div><div class="src-ct">1 source</div></div>
+    <div class="kbq-tile s1"><div class="num">KBQ 8</div><div class="nm">Access</div><div class="score s1">1<span class="of">/5</span></div><div class="src-ct">0 sources</div></div>
+  </div>
+</section>
+
+<!-- ========== INGESTION ACTIVITY ========== -->
+<section class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Ingestion activity · last 24 hours<span class="persona-tag steward">STEWARD</span></div>
+  <div class="section-title">What ran, what arrived, what failed.</div>
+  <p class="section-sub">The activity stream is the data steward's morning ritual. Every connector run is logged here with its outcome; every drift detection lands as an event; every BYOD upload is timestamped and traceable.</p>
+
+  <div class="activity-grid">
+    <div class="activity-stream">
+      <div class="activity-row"><span class="when">04:30 UTC</span><span class="what"><span class="src">ClinicalTrials.gov</span> · 147 new trial records · cycle complete · <span class="ct">+0.04 link density</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">04:00 UTC</span><span class="what"><span class="src">FDA Orange Book</span> · 8 new approvals · <span class="ct">tirzepatide oncology label expansion CRL flagged</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">04:00 UTC</span><span class="what"><span class="src">OpenFDA FAERS</span> · weekly cycle · 412 new adverse events · <span class="ct">2 entity escalations to HITL</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">04:00 UTC</span><span class="what"><span class="src">SEC EDGAR</span> · 47 new 8-K filings · <span class="ct">AZN guidance cut detected as KBQ-7 signal</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">03:30 UTC</span><span class="what"><span class="src">FDA Shortages</span> · 2 new entries · <span class="ct">no portfolio matches</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">03:00 UTC</span><span class="what"><span class="src">PubMed Central</span> · daily cycle · 234 new full-text articles ingested</span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">02:30 UTC</span><span class="what"><span class="src">PubMed</span> · 12 new abstracts · <span class="ct">3 cited in tirzepatide dossier within 4h</span></span><span class="badge ok">SUCCESS</span></div>
+      <div class="activity-row"><span class="when">02:00 UTC</span><span class="what"><span class="src">ClinicalTrials.gov</span> · <strong style="color:var(--amber);">schema drift</strong> · new field <code>oversightHasDmc</code> on 8 trials</span><span class="badge warn">DRIFT</span></div>
+      <div class="activity-row"><span class="when">06:00 UTC</span><span class="what"><span class="src">ChEMBL</span> · weekly cycle · throttle limit hit at iteration 47k of ~200k · <span class="ct">12 retries · partial success</span></span><span class="badge warn">PARTIAL</span></div>
+      <div class="activity-row"><span class="when">06:00 UTC</span><span class="what"><span class="src">Pharma News</span> · scrape complete · 24 new headlines · <span style="color:var(--amber);">link density 38% — parser issue</span></span><span class="badge warn">QUALITY</span></div>
+      <div class="activity-row"><span class="when">10:30 UTC</span><span class="what"><span class="src">BYOD upload</span> · acme-kol-advisory-board-may2026 · 32 pages · 47 entities resolved · <span class="ct">3 → HITL</span></span><span class="badge ok">SUCCESS</span></div>
+    </div>
+
+    <div class="activity-side">
+      <div class="h">Last 24h health</div>
+      <div class="gauge"><div class="num green">98.7%</div><div class="lab">connector uptime</div></div>
+      <div class="meta">
+        <span class="key">Cycles run</span><br>
+        <span>147 of 149 succeeded</span><br><br>
+        <span class="key">Records ingested</span><br>
+        <span>+2,847 across 12 sources</span><br><br>
+        <span class="key">Avg freshness vs SLA</span><br>
+        <span>+0.4h ahead of SLA</span><br><br>
+        <span class="key">Drift events</span><br>
+        <span>1 (CT.gov · resolved 11:38)</span><br><br>
+        <span class="key">Cost</span><br>
+        <span>$3.42 LLM enrichment</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SOURCE DETAIL DIVE ========== -->
+<section id="source" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Source detail · ClinicalTrials.gov<span class="persona-tag steward">STEWARD</span><span class="persona-tag analyst">ANALYST</span></div>
+  <div class="section-title">Every source is a first-class object — health, quality, contributions, schema, recent records.</div>
+  <p class="section-sub">Click any source from the overview tier rollup to land here. ClinicalTrials.gov shown as the example because it's the largest. The page serves both the steward (health, drift, schedule, schema) and the analyst (which entities does this feed, what records arrived recently).</p>
+
+  <div class="source-detail">
+    <div class="source-header">
+      <div class="source-glyph">CT</div>
+      <div class="source-info">
+        <div class="name">ClinicalTrials.gov</div>
+        <div class="meta">
+          <span class="tier t1">TIER 1 · AUTHORITATIVE PUBLIC</span>
+          <span>·</span><span>Public Domain (US Gov)</span>
+          <span>·</span><span>API since 2007</span>
+          <span>·</span><span>NIH National Library of Medicine</span>
+        </div>
+      </div>
+      <div class="source-actions">
+        <button class="btn">Run cycle now</button>
+        <button class="btn">View raw API</button>
+        <button class="btn primary">Open registry config →</button>
+      </div>
+    </div>
+
+    <div class="source-grid">
+      <!-- FAIR scoring -->
+      <div class="source-block">
+        <div class="h">Source registry · FAIR quality scoring</div>
+        <div class="ttl">Five dimensions · learned from outcomes</div>
+        <div class="fair-row"><div class="lab">Coverage</div><div class="bar-track"><div class="bar-fill green" style="width:88%;"></div></div><div class="v">0.88</div></div>
+        <div class="fair-row"><div class="lab">Latency</div><div class="bar-track"><div class="bar-fill green" style="width:97%;"></div></div><div class="v">0.97</div></div>
+        <div class="fair-row"><div class="lab">Pred accuracy</div><div class="bar-track"><div class="bar-fill green" style="width:84%;"></div></div><div class="v">0.84</div></div>
+        <div class="fair-row"><div class="lab">Stability</div><div class="bar-track"><div class="bar-fill amber" style="width:72%;"></div></div><div class="v">0.72</div></div>
+        <div class="fair-row"><div class="lab">Licence health</div><div class="bar-track"><div class="bar-fill green" style="width:100%;"></div></div><div class="v">free</div></div>
+        <div class="fair-overall"><div class="v">0.91</div><div class="lab">Composite FAIR · weighted</div><div class="delta">↑ 0.04 in 30 days</div></div>
+      </div>
+
+      <!-- KBQ contributions -->
+      <div class="source-block">
+        <div class="h">KBQ contributions · what this source feeds</div>
+        <div class="ttl">Primary feeder for 2 KBQs · substantial for 2 more</div>
+        <div class="kbq-contrib-row"><div class="lab">KBQ 3 · Clinical evidence</div><div class="strength primary">PRIMARY</div><div class="ct">142k cites</div></div>
+        <div class="kbq-contrib-row"><div class="lab">KBQ 1 · Indications landscape</div><div class="strength primary">PRIMARY</div><div class="ct">94k cites</div></div>
+        <div class="kbq-contrib-row"><div class="lab">KBQ 2 · Competitors registry</div><div class="strength substantial">SUBSTANTIAL</div><div class="ct">38k cites</div></div>
+        <div class="kbq-contrib-row"><div class="lab">KBQ 6 · SWOT (computed)</div><div class="strength substantial">SUBSTANTIAL</div><div class="ct">21k cites</div></div>
+        <div class="kbq-contrib-row"><div class="lab">KBQ 5 · Sales</div><div class="strength peripheral">PERIPHERAL</div><div class="ct">2k cites</div></div>
+      </div>
+
+      <!-- Schedule + health -->
+      <div class="source-block">
+        <div class="h">Ingestion · schedule + health</div>
+        <div class="ttl">Daily 02:00 UTC · 14h SLA</div>
+        <div class="sched-row"><div class="key">Schedule</div><div class="val cron">0 2 * * *</div></div>
+        <div class="sched-row"><div class="key">Last run</div><div class="val">04:30 UTC today · 147 records · 18m</div></div>
+        <div class="sched-row"><div class="key">Next run</div><div class="val">02:00 UTC tomorrow · est ~2.5k records</div></div>
+        <div class="sched-row"><div class="key">Avg latency</div><div class="val">14m to first signal · within SLA</div></div>
+        <div class="sched-row"><div class="key">Retry policy</div><div class="val">3 attempts · exponential backoff</div></div>
+        <div class="sched-row"><div class="key">Auto-approve</div><div class="val">false · all NEW entities go to HITL</div></div>
+        <div class="sched-row"><div class="key">Last drift</div><div class="val" style="color:var(--amber);">02:00 UTC · oversightHasDmc · resolved 11:38</div></div>
+      </div>
+    </div>
+
+    <!-- Schema preview -->
+    <div class="schema-table">
+      <div class="h"><span>Schema · 47 fields ingested · completeness across last 1k records</span><button class="btn">Full schema (47)</button></div>
+      <div class="schema-row head"><span>Field</span><span>Type</span><span>Coverage</span><span>Description</span></div>
+      <div class="schema-row"><span class="field">nctId</span><span class="typ">string · unique</span><span class="completeness high">100%</span><span class="desc">Canonical trial identifier · entity primary key</span></div>
+      <div class="schema-row"><span class="field">briefTitle</span><span class="typ">string</span><span class="completeness high">100%</span><span class="desc">Trial title · used for entity name resolution</span></div>
+      <div class="schema-row"><span class="field">phase</span><span class="typ">enum</span><span class="completeness high">98%</span><span class="desc">Phase 1/2/3/4/Early Phase 1/N/A · drives KBQ 3 view</span></div>
+      <div class="schema-row"><span class="field">sponsorName</span><span class="typ">string</span><span class="completeness high">100%</span><span class="desc">Lead sponsor · resolved to Company entity (94% match rate)</span></div>
+      <div class="schema-row"><span class="field">primaryEndpoint</span><span class="typ">text · long</span><span class="completeness med">87%</span><span class="desc">Free-text · NLP-extracted into structured endpoint vocabulary</span></div>
+      <div class="schema-row"><span class="field">enrollmentCount</span><span class="typ">integer</span><span class="completeness med">82%</span><span class="desc">Target enrollment · used in trial-feasibility scoring</span></div>
+      <div class="schema-row"><span class="field">oversightHasDmc</span><span class="typ">bool · NEW</span><span class="completeness low">5%</span><span class="desc">Schema drift 1d ago · mapped to data_monitoring_committee_present</span></div>
+    </div>
+
+    <!-- Linked entities + recent records -->
+    <div class="linked-entities">
+      <div class="entity-block">
+        <div class="h">Top entities by mention count from this source</div>
+        <div class="entity-row"><span class="nm">tirzepatide</span><span class="typ-pill drug">DRUG</span><span class="ct">847 trials</span></div>
+        <div class="entity-row"><span class="nm">semaglutide</span><span class="typ-pill drug">DRUG</span><span class="ct">622 trials</span></div>
+        <div class="entity-row"><span class="nm">Eli Lilly</span><span class="typ-pill company">COMPANY</span><span class="ct">412 sponsored</span></div>
+        <div class="entity-row"><span class="nm">Pfizer</span><span class="typ-pill company">COMPANY</span><span class="ct">387 sponsored</span></div>
+        <div class="entity-row"><span class="nm">GLP-1 RA</span><span class="typ-pill mechanism">MECHANISM</span><span class="ct">1,247 trials</span></div>
+        <div class="entity-row"><span class="nm">KEYNOTE-869</span><span class="typ-pill trial">TRIAL</span><span class="ct">14 amendments</span></div>
+      </div>
+
+      <div class="records-table">
+        <div class="h">Recent records · last 10 ingested</div>
+        <div class="record-row"><span class="when">04:24 UTC</span><span class="ttl">SURMOUNT-OB Phase 3 · enrollment update</span><span class="id">NCT05893349</span><span class="ent-ct">12 entities</span></div>
+        <div class="record-row"><span class="when">04:21 UTC</span><span class="ttl">KEYNOTE-869 · 4 EU sites added</span><span class="id">NCT04964220</span><span class="ent-ct">8 entities</span></div>
+        <div class="record-row"><span class="when">04:18 UTC</span><span class="ttl">tirzepatide oncology Ph 3 · primary endpoint amended</span><span class="id">NCT05156983</span><span class="ent-ct">11 entities</span></div>
+        <div class="record-row"><span class="when">04:14 UTC</span><span class="ttl">amivantamab combination · Ph 2 results posted</span><span class="id">NCT05028348</span><span class="ent-ct">7 entities</span></div>
+        <div class="record-row"><span class="when">04:09 UTC</span><span class="ttl">CT-388 first-in-human dosing initiated</span><span class="id">NCT06314841</span><span class="ent-ct">9 entities</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ENTITY BROWSE ========== -->
+<section id="browse" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Entity browse · the catalog by entity<span class="persona-tag analyst">ANALYST</span></div>
+  <div class="section-title">Browse the substrate by entity · filtered, faceted, source-attributed.</div>
+  <p class="section-sub">The analyst's view: enter the catalog by entity rather than by source. Quality scores, source contributors, connection density, last-touched. Click any to open the dossier.</p>
+
+  <div class="browse-shell">
+    <div class="browse-filters">
+      <div class="filter-block">
+        <div class="h">Entity type</div>
+        <div class="filter-row"><input type="checkbox" checked /><span>Drug</span><span class="ct">1,511</span></div>
+        <div class="filter-row"><input type="checkbox" checked /><span>Company</span><span class="ct">847</span></div>
+        <div class="filter-row"><input type="checkbox" checked /><span>Trial</span><span class="ct">160,787</span></div>
+        <div class="filter-row"><input type="checkbox" checked /><span>Mechanism</span><span class="ct">324</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Therapeutic area</span><span class="ct">48</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Patent</span><span class="ct">2,114</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Literature</span><span class="ct">36,847</span></div>
+      </div>
+
+      <div class="filter-block">
+        <div class="h">Quality score</div>
+        <div class="filter-row"><input type="checkbox" checked /><span>High (≥ 8.0)</span><span class="ct">487</span></div>
+        <div class="filter-row"><input type="checkbox" checked /><span>Medium (5-8)</span><span class="ct">621</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Low (&lt; 5)</span><span class="ct">403</span></div>
+      </div>
+
+      <div class="filter-block">
+        <div class="h">Source contributors</div>
+        <div class="filter-row"><input type="checkbox" /><span>FDA Orange Book</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>ClinicalTrials.gov</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>SEC EDGAR</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>EMA</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>ChEMBL</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>BYOD upload</span></div>
+      </div>
+
+      <div class="filter-block">
+        <div class="h">Last touched</div>
+        <div class="filter-row"><input type="checkbox" /><span>Last 24h</span><span class="ct">147</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Last 7d</span><span class="ct">412</span></div>
+        <div class="filter-row"><input type="checkbox" /><span>Last 30d</span><span class="ct">1,247</span></div>
+      </div>
+    </div>
+
+    <div class="browse-results">
+      <div class="browse-toolbar">
+        <div class="summary"><span class="key">487 entities</span> · top-tier quality · drug/company/trial/mechanism · sorted by connection density</div>
+        <div class="controls">
+          <button class="btn">Sort: connections ↓</button>
+          <button class="btn">Save view</button>
+          <button class="btn primary">Export CSV</button>
+        </div>
+      </div>
+
+      <div class="browse-grid">
+        <div class="browse-card drug">
+          <div class="top"><div class="nm">tirzepatide</div><div class="qual high">9.1</div></div>
+          <div class="meta">DRUG · ELI LILLY · INN</div>
+          <div class="sources">
+            <span class="src-pill">FDA OB</span><span class="src-pill">CT.gov</span><span class="src-pill">ChEMBL</span><span class="src-pill">PubMed</span><span class="src-pill">EMA</span>
+          </div>
+          <div class="footer"><span>5 sources</span><span class="conn">412 connections</span></div>
+        </div>
+        <div class="browse-card drug">
+          <div class="top"><div class="nm">semaglutide</div><div class="qual high">8.7</div></div>
+          <div class="meta">DRUG · NOVO NORDISK · INN</div>
+          <div class="sources">
+            <span class="src-pill">FDA OB</span><span class="src-pill">CT.gov</span><span class="src-pill">ChEMBL</span><span class="src-pill">EMA</span>
+          </div>
+          <div class="footer"><span>4 sources</span><span class="conn">387 connections</span></div>
+        </div>
+        <div class="browse-card company">
+          <div class="top"><div class="nm">Eli Lilly &amp; Co</div><div class="qual high">9.4</div></div>
+          <div class="meta">COMPANY · NYSE:LLY · LARGE PHARMA</div>
+          <div class="sources">
+            <span class="src-pill">SEC</span><span class="src-pill">FDA OB</span><span class="src-pill">CT.gov</span><span class="src-pill">EMA</span>
+          </div>
+          <div class="footer"><span>4 sources</span><span class="conn">847 connections</span></div>
+        </div>
+        <div class="browse-card mechanism">
+          <div class="top"><div class="nm">GIP/GLP-1 RA</div><div class="qual high">8.9</div></div>
+          <div class="meta">MECHANISM · DUAL AGONIST</div>
+          <div class="sources">
+            <span class="src-pill">ChEMBL</span><span class="src-pill">CT.gov</span><span class="src-pill">PubMed</span><span class="src-pill">Open Targets</span>
+          </div>
+          <div class="footer"><span>4 sources</span><span class="conn">324 connections</span></div>
+        </div>
+        <div class="browse-card trial">
+          <div class="top"><div class="nm">KEYNOTE-869</div><div class="qual high">8.4</div></div>
+          <div class="meta">TRIAL · NCT04964220 · PHASE 3</div>
+          <div class="sources">
+            <span class="src-pill">CT.gov</span><span class="src-pill">PubMed</span>
+          </div>
+          <div class="footer"><span>2 sources</span><span class="conn">147 connections</span></div>
+        </div>
+        <div class="browse-card company">
+          <div class="top"><div class="nm">Pfizer Inc</div><div class="qual high">9.2</div></div>
+          <div class="meta">COMPANY · NYSE:PFE · LARGE PHARMA</div>
+          <div class="sources">
+            <span class="src-pill">SEC</span><span class="src-pill">FDA OB</span><span class="src-pill">CT.gov</span><span class="src-pill">EMA</span>
+          </div>
+          <div class="footer"><span>4 sources</span><span class="conn">724 connections</span></div>
+        </div>
+        <div class="browse-card drug">
+          <div class="top"><div class="nm">amivantamab</div><div class="qual med">7.6</div></div>
+          <div class="meta">DRUG · PFIZER · INN</div>
+          <div class="sources">
+            <span class="src-pill">FDA OB</span><span class="src-pill">CT.gov</span><span class="src-pill">PubMed</span>
+          </div>
+          <div class="footer"><span>3 sources</span><span class="conn">218 connections</span></div>
+        </div>
+        <div class="browse-card drug">
+          <div class="top"><div class="nm">retatrutide</div><div class="qual med">7.2</div></div>
+          <div class="meta">DRUG · ELI LILLY · TRIPLE AGONIST</div>
+          <div class="sources">
+            <span class="src-pill">CT.gov</span><span class="src-pill">ChEMBL</span><span class="src-pill">PubMed</span>
+          </div>
+          <div class="footer"><span>3 sources</span><span class="conn">94 connections</span></div>
+        </div>
+        <div class="browse-card drug">
+          <div class="top"><div class="nm">CT-388 (Roche)</div><div class="qual low">4.1</div></div>
+          <div class="meta">DRUG · ROCHE · COMPOUND</div>
+          <div class="sources">
+            <span class="src-pill">CT.gov</span><span class="src-pill">ChEMBL</span>
+          </div>
+          <div class="footer"><span>2 sources · sparse</span><span class="conn">12 connections</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== COVERAGE GAPS ========== -->
+<section id="gaps" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Coverage gaps · what's missing<span class="persona-tag exec">EXEC</span><span class="persona-tag steward">STEWARD</span></div>
+  <div class="section-title">The 28-source roadmap, made visible from the catalog.</div>
+  <p class="section-sub">The catalog should not just show what's there — it should show what's missing and what's coming. Two views: roadmap progress (substrate over time) and per-KBQ closure (which gaps each phase closes).</p>
+
+  <div class="gaps-grid">
+
+    <div class="gap-block">
+      <div class="h">Substrate growth · timeline</div>
+      <div class="ttl">15 today → 23 (Phase 1) → 29 (Phase 2) → 36 (Phase 3) → 43 (Phase 4)</div>
+      <div class="roadmap-bar">
+        <div class="seg now" style="width:35%;">15 NOW</div>
+        <div class="seg p1" style="width:18%;">+8 P1</div>
+        <div class="seg p2" style="width:14%;">+6 P2</div>
+        <div class="seg p3" style="width:16%;">+7 P3</div>
+        <div class="seg p4" style="width:17%;">+7 P4</div>
+      </div>
+
+      <div class="phase-row"><span class="when">Q3 26</span><div class="what"><span class="key">Phase 1 · 8 free public sources</span><div class="desc">USPTO, EPO, bioRxiv, medRxiv, FDA OPDP, CMS Part D formulary, CMS pricing, WHO ICTRP, VA/DoD</div></div><span class="ct-badge">£0 · ~6wk</span></div>
+      <div class="phase-row"><span class="when">Q4 26</span><div class="what"><span class="key">Phase 2 · 6 paid sources</span><div class="desc">IQVIA, MMIT, AlphaSense, RedBook, Citeline, Crunchbase</div></div><span class="ct-badge">6-fig × 4 · L</span></div>
+      <div class="phase-row"><span class="when">Q1 27</span><div class="what"><span class="key">Phase 3 · 7 international + private</span><div class="desc">Health Canada, PMDA, TGA, NMPA, CDSCO, intl trial registries, GLEIF</div></div><span class="ct-badge">£0-£ · M</span></div>
+      <div class="phase-row"><span class="when">Q2-Q3 27</span><div class="what"><span class="key">Phase 4 · 7 speciality + sentiment</span><div class="desc">Conference abstracts × 6, Cochrane, EU EudraVigilance, Sermo/Doximity, patient sentiment, iSpot.tv, HTA × 5</div></div><span class="ct-badge">mixed · L</span></div>
+    </div>
+
+    <div class="gap-block">
+      <div class="h">Per-KBQ closure · what each phase fixes</div>
+      <div class="ttl">By end of Phase 2 · KBQ 4, 5, 7, 8 turn from thin to comprehensive</div>
+
+      <div class="phase-row"><span class="when">P1</span><div class="what"><span class="key">KBQ 8 · Access</span> from 1 → 2.5<div class="desc">CMS Medicare Part D + VA/DoD formularies (free) close the federal-channel access view</div></div><span class="ct-badge" style="background:var(--green-soft);color:var(--green);">+1.5</span></div>
+      <div class="phase-row"><span class="when">P1</span><div class="what"><span class="key">KBQ 4 · Positioning</span> from 1 → 2<div class="desc">FDA OPDP enforcement actions (free) — first non-label-text source</div></div><span class="ct-badge" style="background:var(--green-soft);color:var(--green);">+1.0</span></div>
+      <div class="phase-row"><span class="when">P1</span><div class="what"><span class="key">KBQ 10 · Patent</span> from 2 → 4<div class="desc">USPTO + EPO (free) — closes patent-cliff signal gap</div></div><span class="ct-badge" style="background:var(--green-soft);color:var(--green);">+2.0</span></div>
+      <div class="phase-row"><span class="when">P2</span><div class="what"><span class="key">KBQ 8 · Access</span> from 2.5 → 4.5<div class="desc">MMIT (paid) closes 90% of remaining commercial-payer gap</div></div><span class="ct-badge" style="background:var(--amber-soft);color:var(--amber);">+2.0</span></div>
+      <div class="phase-row"><span class="when">P2</span><div class="what"><span class="key">KBQ 5 · Sales</span> from 2 → 4.5<div class="desc">IQVIA + AlphaSense (paid) close the canonical commercial input</div></div><span class="ct-badge" style="background:var(--amber-soft);color:var(--amber);">+2.5</span></div>
+      <div class="phase-row"><span class="when">P2</span><div class="what"><span class="key">KBQ 7 · Pricing</span> from 1.5 → 4<div class="desc">RedBook (paid) + CMS pricing files (P1 free) make WAC/AWP/IRA visible</div></div><span class="ct-badge" style="background:var(--amber-soft);color:var(--amber);">+2.5</span></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ========== LICENCE / COST PANEL ========== -->
+<section class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Licence health · per-source cost &amp; renewal<span class="persona-tag exec">EXEC</span><span class="persona-tag steward">STEWARD</span></div>
+  <div class="section-title">Cost transparency · renewal calendar · graceful degradation when a licence expires.</div>
+  <p class="section-sub">Per the Reimagined Spec §11.4, every licensed source has an explicit usage profile encoded in the registry. This panel makes the cost and renewal picture legible — what's free, what's paid, what's renewing soon, what would degrade if a licence lapsed.</p>
+
+  <div class="licence-block">
+    <div class="licence-row head"><span>Source</span><span>Annual cost</span><span>Renewal</span><span>Health</span></div>
+    <div class="licence-row"><span class="src">FDA Orange Book + Shortages + FAERS + Labels</span><span class="cost free">FREE</span><span class="renewal">N/A</span><span class="health-pill ok">PUBLIC</span></div>
+    <div class="licence-row"><span class="src">ClinicalTrials.gov · MeSH · PubMed · PMC · Open Targets</span><span class="cost free">FREE</span><span class="renewal">N/A</span><span class="health-pill ok">PUBLIC</span></div>
+    <div class="licence-row"><span class="src">SEC EDGAR · CMS NADAC · EMA</span><span class="cost free">FREE</span><span class="renewal">N/A</span><span class="health-pill ok">PUBLIC</span></div>
+    <div class="licence-row"><span class="src">ChEMBL · PubChem (CC BY-SA / Public Domain)</span><span class="cost free">FREE</span><span class="renewal">N/A</span><span class="health-pill ok">CC LICENCED</span></div>
+    <div class="licence-row"><span class="src">Pharma News scraper</span><span class="cost free">FREE</span><span class="renewal">N/A</span><span class="health-pill warn">SCRAPER · TOS RISK</span></div>
+    <div class="licence-row" style="opacity:0.5;"><span class="src">IQVIA · Phase 2 roadmap</span><span class="cost">~$280k/yr</span><span class="renewal">tbd</span><span class="health-pill unlicenced">NOT LICENSED</span></div>
+    <div class="licence-row" style="opacity:0.5;"><span class="src">MMIT · Phase 2 roadmap</span><span class="cost">~$180k/yr</span><span class="renewal">tbd</span><span class="health-pill unlicenced">NOT LICENSED</span></div>
+    <div class="licence-row" style="opacity:0.5;"><span class="src">AlphaSense · Phase 2 roadmap</span><span class="cost">~$120k/yr</span><span class="renewal">tbd</span><span class="health-pill unlicenced">NOT LICENSED</span></div>
+    <div class="licence-row" style="opacity:0.5;"><span class="src">RedBook · Phase 2 roadmap</span><span class="cost">~$90k/yr</span><span class="renewal">tbd</span><span class="health-pill unlicenced">NOT LICENSED</span></div>
+    <div class="licence-row" style="border-top:1px solid var(--line-strong);padding-top:14px;margin-top:8px;"><span class="src" style="font-weight:500;color:var(--ink);">Total today · 15 free sources</span><span class="cost free" style="font-weight:500;">£0 / yr</span><span class="renewal">—</span><span class="health-pill ok">FULLY LIVE</span></div>
+    <div class="licence-row"><span class="src" style="font-weight:500;color:var(--ink);">Total after Phase 2 · est</span><span class="cost" style="color:var(--amber);font-weight:500;">~$670k / yr</span><span class="renewal">2027</span><span class="health-pill warn">PROJECTED</span></div>
+  </div>
+</section>
+
+<!-- ========== BYOD + MARKETPLACE ========== -->
+<section id="byod" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Add to the substrate<span class="persona-tag steward">STEWARD</span><span class="persona-tag analyst">ANALYST</span></div>
+  <div class="section-title">Bring your own data · request a connector · build a custom one.</div>
+  <p class="section-sub">Every catalog needs an "add to it" door. Three doors here: drag-and-drop document upload (auto-annotated through the five-stage pipeline), the connector marketplace (15 active + 28 in roadmap, vote for what to prioritise next), and the custom-connector SDK.</p>
+
+  <div class="marketplace-grid">
+    <div class="byod-card">
+      <div class="glyph">↑</div>
+      <div class="head">Upload documents</div>
+      <div class="body">Drop a PDF, DOCX, transcript, or research note. The five-stage pipeline runs automatically — extraction, NER, resolution cascade, embedding, cross-link. Queryable in ~10 seconds. Tenant-isolated.</div>
+      <button class="btn primary">Drop a file</button>
+    </div>
+
+    <div class="byod-card">
+      <div class="glyph">⊕</div>
+      <div class="head">Request a connector</div>
+      <div class="body">Browse the 28-source roadmap. Vote for what your TA most needs. Every team's request shifts the priority queue. Steward reviews monthly.</div>
+      <button class="btn primary">Browse roadmap</button>
+    </div>
+
+    <div class="byod-card">
+      <div class="glyph">⚙</div>
+      <div class="head">Build a custom connector</div>
+      <div class="body">Inherit BaseConnector. Set source_key, schedule, license profile. Framework handles fetch, normalize, resolve, embed, store, link. Approval review by data steward before production.</div>
+      <button class="btn primary">Open SDK</button>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-2);border-radius:16px;padding:22px 24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.16em;">Pending requests · last 30 days</div>
+        <div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">7 connector requests · 4 BYOD uploads · 2 custom connectors in dev</div>
+      </div>
+      <button class="btn">Open queue</button>
+    </div>
+
+    <div class="phase-row"><span class="when">3d ago</span><div class="what"><span class="key">ASCO 2026 abstract feed</span><div class="desc">Requested by 4 oncology analysts · sits in Phase 4 today · could be moved earlier</div></div><span class="ct-badge" style="background:var(--accent-soft);color:var(--accent-2);">VOTES · 4</span></div>
+    <div class="phase-row"><span class="when">5d ago</span><div class="what"><span class="key">EU Clinical Trials Register</span><div class="desc">Free public · Maya requested · would close EU trial gap before Phase 3</div></div><span class="ct-badge" style="background:var(--accent-soft);color:var(--accent-2);">VOTES · 3</span></div>
+    <div class="phase-row"><span class="when">11d ago</span><div class="what"><span class="key">Internal sales data (CRM)</span><div class="desc">Custom connector · Acme Pharma tenant · in steward review</div></div><span class="ct-badge" style="background:var(--amber-soft);color:var(--amber);">IN REVIEW</span></div>
+    <div class="phase-row"><span class="when">14d ago</span><div class="what"><span class="key">SharePoint internal docs</span><div class="desc">BYOD bulk upload · 247 docs awaiting steward approval</div></div><span class="ct-badge" style="background:var(--amber-soft);color:var(--amber);">IN REVIEW</span></div>
+  </div>
+</section>
+
+<!-- ========== CLOSING ========== -->
+<section class="closing">
+  <div class="quote">
+    A data catalog is not a list of tables. It is the surface where the substrate becomes <em>legible</em>, <em>tunable</em>, and <em>buildable-on</em>.
+  </div>
+  <div class="body">
+    Five sections, three personas. The exec leaves with a number for the substrate's size and health. The analyst leaves having found the entity they need with full source attribution. The data steward leaves having cleared the queue, audited the licences, and approved the BYOD uploads. The same surface served all three — because the catalog is not a steward-only tool. It's the load-bearing surface of every conversation about what the platform knows.
+  </div>
+</section>
+
+<script>
+function setPersona(p, ev) {
+  document.querySelectorAll('.persona-toggle button').forEach(b => b.classList.remove('active'));
+  ev.target.classList.add('active');
+  document.querySelectorAll('section').forEach(s => {
+    const tags = s.querySelectorAll('.persona-tag');
+    if (p === 'all') {
+      s.style.opacity = '1';
+      s.style.filter = 'none';
+    } else {
+      const matches = Array.from(tags).some(t => t.classList.contains(p));
+      if (matches || tags.length === 0) {
+        s.style.opacity = '1';
+        s.style.filter = 'none';
+      } else {
+        s.style.opacity = '0.35';
+        s.style.filter = 'saturate(0.4)';
+      }
+    }
+  });
+}
+</script>
+
+</body>
+</html>

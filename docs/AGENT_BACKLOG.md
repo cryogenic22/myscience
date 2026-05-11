@@ -24,6 +24,526 @@ Format:
 
 ---
 
+# Backend Backlog from SPEC-042 refresh (filed 2026-05-10)
+
+> **Source:** `design-review-output/enhancement-backlog.md` 12-epic plan,
+> mirrored into `docs/PRODUCT_BACKLOG.md` as PB-1XX..C03.
+>
+> **For backend Claude:** these are the concrete asks per epic. Each
+> entry has the file/endpoint shape, acceptance criteria, and which
+> frontend PB-NNN consumes it. Sequencing in §"Recommended ordering"
+> below — the urgent items (BE-2, BE-37/38/39 multi-tenancy) ship
+> first regardless of epic order.
+>
+> **Convention:** `BE-N` ids are referenced from PRODUCT_BACKLOG by
+> `Source ref: AGENT_BACKLOG#BE-N`. Each BE entry is also reachable by
+> Markdown anchor `#be-n-...`.
+
+## Recommended ordering for backend Claude
+
+1. **Urgent first** — BE-2 (production materiality 1% diagnostic), BE-37 → BE-38 → BE-39 (multi-tenancy enforcement).
+2. **Unblocks E1 frontend** — BE-1 (evidence schema extension).
+3. **Unblocks E2** — BE-3 (agent name field) → BE-4 (SSE stream) → BE-5 (nudge endpoint).
+4. **Unblocks E3** — BE-6 (dossier composer).
+5. **Unblocks E5** — BE-8/9/10 (payoff matrix + adversary twins) → BE-11 (cockpit SSE) → BE-12/13 (authority) → BE-14 (delegation executor).
+6. **Unblocks E6 (highest-leverage)** — BE-15 (wire ConversationMemory) → BE-16/17 (citation tier + 4-dim confidence) → BE-18/19 (source-strip + why-this).
+7. **Unblocks E7** — BE-20 (/ask subgraph context) + BE-21 (saved views).
+8. **Unblocks E8** — BE-22..26 (catalog endpoints).
+9. **E9 connectors** — BE-27..34 (8 free public sources, can be parallelised).
+10. **E10/E12** — BE-35/36/40/41.
+
+---
+
+## E1 · Trust foundation backend asks
+
+### [BACKEND] BE-1 · Extend evidence_records schema with tier, snippet, published_at
+- Filed: 2026-05-10 by Frontend Claude (consumer of SPEC_024)
+- For: PB-101 Evidence cards
+- Need: Add columns to `evidence_records` (or join from `sources`):
+  - `source_name TEXT` (display)
+  - `source_tier TEXT CHECK (source_tier IN ('T1','T2','T3','T4'))`
+  - `published_at TIMESTAMPTZ`
+  - `snippet TEXT` (extracted 2-line preview)
+- Endpoint changes: `GET /signals/{id}` and `GET /decision-briefs/{id}/evidence` return these fields nested under each evidence item. Update `EvidenceItemResponse` in `api/schemas.py`.
+- Files: `schema/migrations/NNN_evidence_card_fields.sql`, `services/evidence_ledger.py`, `api/routes/evidence_ledger.py`, `api/schemas.py`.
+- Acceptance: frontend can render EvidenceCard with source / favicon-deferred / tier badge / date / 2-line snippet without further backend calls.
+- Priority: high
+- Status: open
+
+### [BACKEND] BE-2 · DIAGNOSTIC · production materiality scores all 1%
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-104b (blocks PB-103)
+- Need: investigate why every materiality score on production renders 1%. Live walk on 2026-05-09 confirmed.
+- Files to inspect: `services/materiality.py:score()`, the ingestion pipeline that triggers scoring, the `materiality_factors` JSONB on signals.
+- Possible causes: (a) scorer not running on new ingestion, (b) factor weights misconfigured (all near zero?), (c) response shape changed and frontend reads the wrong path, (d) calibration data missing.
+- Acceptance: written diagnostic with root cause + fix landed + spot-check 10 signals showing varied scores (>1% with sensible spread).
+- Priority: **urgent** (blocks SPEC-031 deliverable from being visible)
+- Status: open
+
+### [BACKEND] BE-3 · Agent name field on /agent/events
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-201 Agent identity
+- Need: every event emitted by `services/research_agent.py`, `services/conversation_memory.py`, `services/data_steward.py` carries `agent: "sentinel" | "strategist" | "curator"` (noun form per Phase 8 verification).
+- Files: `api/routes/agent.py`, services above.
+- Acceptance: GET `/agent/events?limit=20` returns events all of which have a non-null `agent` field with one of the three values.
+- Priority: medium
+- Status: open
+
+---
+
+## E2 · Live agent presence backend asks
+
+### [BACKEND] BE-4 · GET /agents/stream (Server-Sent Events)
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-202 Agent activity feed
+- Need: new SSE endpoint streaming agent events as they happen.
+- Endpoint shape:
+  ```
+  GET /agents/stream?since=<iso>&agents=sentinel,strategist,curator
+  Content-Type: text/event-stream
+  data: {"agent":"sentinel","kind":"started","activity":"Scanning trial registry","ts":"...","entity_refs":["drug:tirzepatide"]}\n\n
+  data: {...}\n\n
+  ```
+- Server-side: wraps existing `/agent/events` poll loop into a generator with heartbeat every 15s.
+- Files: `api/routes/agent.py` (extend), reuse existing event publishers in `services/`.
+- Acceptance: frontend `lib/sse.ts` + `AgentRail` consume the stream; reconnects with exponential backoff after server restart; falls back to polling if SSE unavailable.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-5 · POST /agents/{agent}/nudge with intent registry
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-203 Agent nudges
+- Need: new endpoint to nudge a specific agent with a typed intent + payload.
+- Endpoint shape:
+  ```
+  POST /agents/{agent}/nudge
+  Body: { intent: string, payload: object }
+  agent ∈ {sentinel, strategist, curator}
+  ```
+- Intent registry per agent:
+  - Sentinel: `watch_entity`, `ignore_source`, `boost_source`
+  - Strategist: `rerun_simulation`, `draft_counter_recommendation`
+  - Curator: `explain_score`, `mark_outcome_verified`
+- Files: new `services/agent/nudge_intents.py` (registry + dispatcher), `api/routes/agent.py` (endpoint), update `services/research_agent.py` etc. to handle nudges.
+- Acceptance: each intent → one effect logged in `agent_events` with `nudge_intent` field; idempotent for repeated identical nudges within 5 min.
+- Priority: medium
+- Status: open
+
+---
+
+## E3 · Entity dossier backend asks
+
+### [BACKEND] BE-6 · GET /dossier/{type}/{slug-or-id} composer endpoint
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-301 Dossier route + PB-303 timeline + PB-304 evidence pile
+- Need: single composer endpoint that joins existing endpoints into one dossier payload.
+- Endpoint shape:
+  ```
+  GET /dossier/{entity_type}/{slug-or-id}
+  Response: {
+    entity: { id, type, name, aliases[], identity_fields{} },
+    synthesis: { text_with_citation_marks, last_synthesised_at, owner_user_id },
+    recent_moves: [ { ts, kbq_tag, headline, signal_id?, transition? } ],   // 30-day window
+    evidence_refs: [ EvidenceItemResponse ],     // up to 50, ordered by relevance
+    watching: [ { user_id, name, avatar_url } ], // up to 10
+    related_entities: [ { id, type, name, relation, edge_count } ]
+  }
+  ```
+- entity_type ∈ {drug, company, mechanism, trial, therapeutic_area}.
+- Files: new `api/routes/dossier.py`, new `services/dossier.py` (composer that calls existing `/catalog/entity-profile`, `/graph/neighborhood`, `/signals?entity_id=…` and assembles).
+- Acceptance: single GET returns a structured payload that DossierPage renders without further calls; supports both `slug` and `entity_id` URL parameter.
+- Priority: medium
+- Status: open
+
+---
+
+## E4 · Brief composer backend asks
+
+### [BACKEND] BE-7 · services/brief_suggestions.py + POST /decision-briefs/{id}/suggest
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-402 Inline AI suggestions
+- Need: endpoint that, given a brief draft, returns Strategist + Curator inline suggestions.
+- Endpoint shape:
+  ```
+  POST /decision-briefs/{brief_id}/suggest
+  Body: { current_text, current_options[], cursor_position? }
+  Response: {
+    suggestions: [
+      {
+        agent: "strategist" | "curator",
+        kind: "add_counter" | "name_stakeholder" | "surface_contradiction" | "evidence_score" | "insert_evidence",
+        anchor: { paragraph_index, char_offset },
+        proposed_text: "...",
+        rationale: "...",
+        confidence: 0.0-1.0,
+        evidence_refs: []
+      }
+    ]
+  }
+  ```
+- Files: new `services/brief_suggestions.py`, extend `services/llm.py` with `suggest_brief_edit()` if `synthesize_research_report()` is too coarse, `api/routes/decision_briefs.py` (new endpoint).
+- Acceptance: 6-second polling produces suggestions that anchor correctly; stale suggestions invalidated when underlying paragraphs change.
+- Priority: low (only after E1-E3 ship)
+- Status: open
+
+---
+
+## E5 · War-game cockpit backend asks
+
+### [BACKEND] BE-8 · POST /war-rooms/{id}/payoff-matrix composer
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-501 Payoff matrix view
+- Need: composer endpoint that returns a 2×2 payoff matrix using `services/game_theory.py::run_bayesian()` (1,200 Monte Carlo samples already implemented).
+- Endpoint shape:
+  ```
+  POST /war-rooms/{id}/payoff-matrix
+  Body: { our_moves: [m1, m2], adversary_states: [s1, s2] }
+  Response: {
+    cells: [[ { delta_pct, confidence, recommended }, { delta_pct, confidence, recommended } ],
+             [ { delta_pct, confidence, recommended }, { delta_pct, confidence, recommended } ]],
+    recommended_cell: [row, col]
+  }
+  ```
+- Files: new `services/simulation/payoff.py`, `api/routes/war_room.py` (extend).
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-9 · services/adversary_twin.py — adversary digital twin model
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-502 Adversary twins
+- Need: per-competitor twin model storing behavioural posterior + history.
+- Schema: new table `adversary_twins (twin_id, name, kind, posterior JSONB, last_updated_at, evidence_log[])`.
+- Initial seed: 6 twins for diabetes/obesity TA — Pfizer, Lilly, AZN, FDA, Payer, KOL — with their archetypes (aggressive/defensive/cash-constrained mixture).
+- Files: new `services/adversary_twin.py`, new `schema/migrations/NNN_adversary_twins.sql`, `domain/pharma/pack.py` (register twin entity type if needed).
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-10 · GET /adversaries/{id}/posterior
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-502 Adversary twins (consumes BE-9)
+- Need:
+  ```
+  GET /adversaries/{twin_id}/posterior
+  Response: {
+    posterior: { aggressive: 0.61, defensive: 0.24, cash_constrained: 0.15 },
+    last_updated_at: "...",
+    last_5_evidence_updates: [ { ts, evidence_id, what_shifted, magnitude } ]
+  }
+  ```
+- Files: new `api/routes/adversary.py`.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-11 · GET /war-rooms/{id}/cockpit-stream (SSE)
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-503 Live cockpit
+- Need: SSE stream of Strategist's reasoning steps + Sentinel/Curator activity during a simulation.
+- `services/game_theory.py::run_bayesian()` already produces sample-by-sample; surface as event stream.
+- Endpoint shape: SSE yielding `{ kind: "step" | "sample" | "complete", agent, payload }` events.
+- Acceptance: frontend cockpit renders thinking-stream live; supports stress-test variants by running multiple sims tagged with `variant_id`.
+- Priority: medium (after BE-8/9/10)
+- Status: open
+
+### [BACKEND] BE-12 · services/agent/authority.py — calibration windowing + promotion
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-504 Authority spectrum
+- Need: model that tracks each agent's calibration per scenario type + auto-promotes when calibration > 0.70 over 14 scenarios.
+- Schema: `agent_authority (agent, scenario_type, current_level, calibration_score, scenario_count, last_promoted_at)`.
+- Files: new `services/agent/authority.py`, new `schema/migrations/NNN_agent_authority.sql`.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-13 · POST /agent-authority + settings endpoints
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-504 Authority spectrum (consumes BE-12)
+- Need: settings endpoints to read/write authority levels per agent per scenario type, plus promotion notifications.
+- Endpoints: `GET /agent-authority`, `PATCH /agent-authority/{agent}/{scenario_type}`, `GET /agent-authority/promotions`.
+- Files: new `api/routes/agent_authority.py`.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-14 · Scheduled run executor for delegation
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-505 Delegation
+- Need: queue scenario with parameters + wake-me-up condition; agents run overnight; log to `game_theory_runs`.
+- Existing scheduler: `scheduler/runner.py` — extend for one-shot delegated runs.
+- Acceptance: morning Pulse shows verdict + diff vs baseline; replayable end-to-end.
+- Priority: low
+- Status: open
+
+---
+
+## E6 · Chat surface upgrade backend asks
+
+### [BACKEND] BE-15 · Wire ConversationMemory into /chat (the audit's #1 transformative move)
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-601 Wire ConversationMemory
+- Need: `services/conversation_memory.ConversationMemory` is fully built but not used. Wire it into `services/chat_handlers/context.py::build_conversation_context()`, then into `services/unified_handler.UnifiedChatHandler.handle()`.
+- Frontend will pass `session_id` to `/chat`; backend loads memory by session_id; calls `memory.get_context()`; feeds entity context into prompt assembly; resolves coreferences ("this drug" → tirzepatide from turn 1).
+- Files: `api/routes/chat.py`, `services/chat_handlers/context.py`, `services/unified_handler.py`, `api/deps.py::get_conversation_memory()` (already exists).
+- Acceptance: turn 2 user message "what's its safety profile?" resolves to the entity discussed in turn 1; backend response includes `coreference_resolution: { "this drug": "tirzepatide", from_turn: 1 }` so frontend can render branch indicator.
+- Priority: **high** (highest leverage chat fix per audit)
+- Status: open
+
+### [BACKEND] BE-16 · Citation payload carries source tier
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-603 Citation chips
+- Need: every citation in synthesis output carries `tier ∈ {T1, T2, T3, T4}` matching the source's registry tier.
+- Files: `services/llm.py::validate_citations()` — ensure tier propagated; `services/ctx_evidence.py` — tier in evidence pack.
+- Acceptance: `POST /chat` response has `citations: [{ id, source_name, tier, published_at, snippet }, ...]`.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-17 · Synthesize returns 4-dimension confidence breakdown
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-604 Confidence pill (replaces 3 inconsistent components)
+- Need: `services/llm.py::synthesize()` returns
+  ```
+  confidence_assessment: {
+    composite: 0.74,
+    by_dimension: {
+      evidence_quality: 0.82,
+      source_diversity: 0.71,
+      recency: 0.65,
+      calibration: 0.78
+    }
+  }
+  ```
+- Acceptance: frontend ConfidencePill renders the 4 bars + composite without further calls.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-18 · Aggregate-by-source endpoint for source strip
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-605 Source strip
+- Need: per-message aggregation of citations grouped by source.
+- Endpoint shape: response of `/chat` includes `source_aggregation: [ { source_id, source_name, tier, cite_count } ]`.
+- Files: `services/llm.py` post-process step.
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-19 · Why-this explanation generator
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-606 Why-this pattern
+- Need: endpoint that, given any proactive surface item (Pulse card, brief proposal, agent suggestion, war-game rec, framing trigger fire), returns a one-paragraph plain-language explanation + deep-link refs.
+- Endpoint shape:
+  ```
+  POST /why-this
+  Body: { surface: "pulse" | "brief_proposal" | "agent_suggestion" | "wargame_rec" | "trigger_fire",
+          item_id, ... }
+  Response: { explanation_paragraph, deep_links: { factor_breakdown_url?, source_registry_url?, trigger_config_url? } }
+  ```
+- Files: new `services/explainer.py`, `api/routes/explainer.py`.
+- Priority: low
+- Status: open
+
+---
+
+## E7 · Graph as interlocutor backend asks
+
+### [BACKEND] BE-20 · /ask accepts subgraph context
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-701 Ask-this-subgraph
+- Need: extend `POST /ask` body with optional `context.subgraph: { node_ids: [], edge_types: [] }`. When provided, `services/llm.py` constructs prompt with subgraph as the focal context.
+- Files: `api/routes/ask.py`, `services/ask_engine.py` (already shipped per SPEC-035).
+- Acceptance: subgraph-bounded answer; suggestion generator returns selection-specific suggestions.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-21 · saved_views table + CRUD endpoints
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-703 Saved subgraphs
+- Need: new persistence + endpoints.
+- Schema: `saved_views (view_id UUID, owner_user_id, name, version, state JSONB, shareable_slug, created_at, updated_at)`.
+- Endpoints: `GET /saved-views`, `POST /saved-views`, `GET /saved-views/{id}`, `PATCH /saved-views/{id}`, `DELETE /saved-views/{id}`, `GET /shared/views/{slug}`.
+- Files: new `api/routes/saved_views.py`, new `services/saved_views.py`, new migration.
+- Priority: low
+- Status: open
+
+---
+
+## E8 · Data catalog backend asks
+
+### [BACKEND] BE-22 · /catalog/stats tier-rollup data
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-801 Catalog overview
+- Need: extend `GET /catalog/stats` response with per-tier rollup:
+  ```
+  by_tier: {
+    T1: { sources, records, avg_freshness_hours, avg_fair_score },
+    T2: {...}, T3: {...}, T4: {...}
+  }
+  ```
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-23 · /catalog/24h-stats aggregate endpoint
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-803 Ingestion activity
+- Need: new endpoint with 24h breadcrumbs (cycles run, records ingested, drift events, cost).
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-24 · Source detail FAIR breakdown + schema preview
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-804 Source detail dive
+- Need: extend `api/routes/sources.py` with:
+  - `GET /sources/{id}/fair` — 5-dimension breakdown per spec §8.3 (coverage, latency, predictive_accuracy, stability, license_health).
+  - `GET /sources/{id}/schema` — schema preview with column types + 5 sample rows.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-25 · Licence model in source registry
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-807 Licence health panel
+- Need: extend `sources` table or new `source_licences` table with `annual_cost_usd`, `renewal_at`, `licence_type`, `health` fields.
+- Endpoint: `GET /sources/licences` returns per-source row + total today + projected total after Phase 2.
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-26 · /connectors → 301 redirect to /catalog
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-809 Decommission /connectors raw JSON
+- Need: move JSON response to `/api/connectors`; `/connectors` HTTP route returns 301 to `/catalog`.
+- Files: `api/routes/connectors.py` (or wherever `/connectors` lives).
+- Priority: low (after PB-801 catalog ships)
+- Status: open
+
+---
+
+## E9 · Phase 1 connectors backend asks (8 free public sources)
+
+> All 8 connectors follow the same pattern as existing `connectors/clinical_trials.py` etc.: inherit `BaseConnector`, register in `integration/pipeline_hooks.py`, add tests under `tests/test_*.py`.
+
+### [BACKEND] BE-27 · USPTO PatentsView API connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-901 — closes KBQ-10 Patent
+- Files: new `connectors/uspto.py`, register in `integration/pipeline_hooks.py`, add patent entity type to `domain/pharma/pack.py` if not present.
+- Schedule: weekly cron.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-28 · EPO Patents (OPS API) connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-902 — closes KBQ-10 international
+- Files: new `connectors/epo.py`. Depends on BE-27 (patent entity type).
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-29 · bioRxiv + medRxiv preprints connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-903 — closes scientific KBQ-4 priority
+- Files: new `connectors/biorxiv.py` (RSS + API), entity type already exists (literature).
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-30 · FDA OPDP warning letters connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-904 — closes KBQ-3 Regulatory + KBQ-9 Reputational
+- Files: new `connectors/fda_opdp.py` (scraper + parser).
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-31 · CMS Medicare Part D formulary (50 plan files) connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-905 — closes KBQ-8 Access (formularies, PA, step therapy)
+- Files: new `connectors/cms_partd.py`. Batch download + parse 50 plan files.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-32 · CMS Medicare B + D pricing connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-906 — closes KBQ-7 Pricing (free public alternative to RedBook/FDB until executive cost-benefit on those)
+- Files: new `connectors/cms_pricing.py`.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-33 · WHO ICTRP global trial registry connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-907 — closes international trial gap
+- Files: new `connectors/who_ictrp.py` + cross-walk to canonical Trial entity.
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-34 · VA / DoD national formulary connector
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-908 — public-payer access gap
+- Files: new `connectors/va_dod.py`.
+- Priority: low
+- Status: open
+
+---
+
+## E10 · Source registry + FAIR backend asks
+
+### [BACKEND] BE-35 · Curator-driven weight learning service
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-A02
+- Need: new `services/curator/weight_learning.py` — outcome-to-weight feedback loop, weekly recalibration job, weight-change audit log.
+- Priority: low
+- Status: open
+
+### [BACKEND] BE-36 · Source health monitoring + graceful degradation
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-A03
+- Need: per-source SLA monitoring + "Missing because" inline message in user-facing answers (when a degraded source would have been used).
+- Priority: low
+- Status: open
+
+---
+
+## E11 · Multi-tenancy enforcement backend asks (CRITICAL · SaaS-blocker)
+
+### [BACKEND] BE-37 · tenant_id on core entity tables
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-B01
+- Need: add `tenant_id` column to `drugs`, `companies`, `trials`, `mechanisms`. Backfill from `chat_sessions.scope_key` provenance where possible; default to `"public"` for entities ingested before tenancy.
+- Sequencing: NULL allowed during backfill; NOT NULL added after backfill verifies 100%.
+- Files: new `schema/migrations/NNN_tenant_id_core_entities.sql`, backfill script `scripts/backfill_tenant_id.py`.
+- Acceptance: every row in core tables has tenant_id set; query `SELECT COUNT(*) FROM drugs WHERE tenant_id IS NULL` returns 0.
+- Priority: **urgent**
+- Status: open
+
+### [BACKEND] BE-38 · Tenant isolation middleware
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-B02
+- Need: DB middleware that injects `tenant_id = :current_tenant` into all WHERE clauses. Update `services/search.py` + `services/graph.py` to filter by tenant.
+- Files: `db.py` (middleware), `services/search.py`, `services/graph.py`, plus any service that currently does raw SQL across core tables.
+- Acceptance: cross-tenant test (Pfizer session queries Roche-tenant entity) returns 0 rows; existing single-tenant tests still pass.
+- Priority: **urgent**
+- Status: open
+
+### [BACKEND] BE-39 · Tenant audit + CI isolation tests
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-B03
+- Need: per-tenant audit trail (90d retention) + CI tests that assert cross-tenant queries return zero rows.
+- Files: new `tests/test_tenant_isolation.py`, audit log table.
+- Priority: high
+- Status: open
+
+---
+
+## E12 · Prompt registry + active feedback backend asks
+
+### [BACKEND] BE-40 · Promote SYSTEM_PROMPTS dict to prompt_registry
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-C01
+- Need: migrate hardcoded `SYSTEM_PROMPTS` dict at `services/llm.py:179-250` to the existing `prompt_registry` table (table already exists, columns already populated for ad-hoc prompts; system prompts haven't been migrated). Update `services/llm.py` to load prompts from registry. Add versioning + A/B test harness.
+- Files: `services/llm.py`, new migration to seed registry from current dict, `scripts/migrate_system_prompts.py`.
+- Acceptance: prompts loaded from DB at startup; flagged-prompt rollback works; A/B harness can run two prompt versions side-by-side.
+- Priority: medium
+- Status: open
+
+### [BACKEND] BE-41 · Outcome-to-prompt-weight backpropagation
+- Filed: 2026-05-10 by Frontend Claude
+- For: PB-C02
+- Need: per spec §6.5.2 — when an outcome is detected, attribute accuracy to the prompt versions that produced the recommendation; update prompt weights via Curator.
+- Files: extend `services/outcome_detector.py`, new `services/curator/prompt_calibration.py`, weekly job.
+- Priority: low
+- Status: open
+
+---
+
 ## [FRONTEND] InboxTab login wall blocks the default landing
 - Filed: 2026-05-09 by Claude
 - Repro: Open `/ci` (the CI page) without an `mz_auth_token` in localStorage.
@@ -650,6 +1170,7 @@ append-only; resolved entries stay for audit.
 | 038 | Search reskin | Frontend Claude | (planned) | reserved |
 | 039 | Catalog reskin | Frontend Claude | (planned) | reserved |
 | 040 | Auth surfaces | Frontend Claude | (planned) | reserved |
-| 041 | User Feedback Loop (in-app widget + autonomous triage) | Frontend Claude (cross-cutting) | `claude-fe/spec-041-feedback-loop` | claimed 2026-05-09 |
-| 042+ | (free — either side may claim) | — | — | available |
+| 041 | User Feedback Loop (in-app widget + autonomous triage) | Frontend Claude (cross-cutting) | `claude-fe/spec-041-feedback-loop` | merged 2026-05-11 (PR #35) |
+| 042 | Centralized Product Backlog (consolidate four legacy backlogs) | Frontend Claude (docs) | `claude-fe/spec-042-product-backlog` | in PR #36 (resolving merge conflict) |
+| 043+ | (free — either side may claim) | — | — | available |
 

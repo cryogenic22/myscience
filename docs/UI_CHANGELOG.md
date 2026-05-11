@@ -11,6 +11,88 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-09 (SPEC-042 — Centralized Product Backlog + repo doc cleanup; Loop #3 closed)
+
+Pure docs / process loop. **No code surfaces touched, no API changes, no
+frontend behavioral changes.** Shipped because the planning surface had
+fragmented across 4 partially-overlapping backlog files and the repo
+had accumulated 158 stale .md documents. Result: a single canonical
+product backlog + a clean docs tree.
+
+### What shipped
+
+- **`docs/PRODUCT_BACKLOG.md`** — 76 PB-NNN items consolidated from
+  `BACKLOG.md`, `ROADMAP.md`, `docs/backlog.md`, and the open asks in
+  `docs/AGENT_BACKLOG.md`. Front-of-file dashboard with status counts
+  (regenerable via `--regenerate-summary`). 7-state taxonomy:
+  `proposed | triaged | blocked | in-progress | shipped | archived | wontfix`.
+- **`scripts/validate_product_backlog.py`** — schema validator + dashboard
+  regenerator. Exits 0 if every PB item has all required fields, IDs are
+  unique, cross-references resolve.
+- **`scripts/migrate_legacy_backlogs.py`** — one-shot migration helper
+  (idempotent; re-runnable). Pure functions; library tests cover Phase
+  skipping + agent-ask filtering.
+- **`tests/test_product_backlog.py`** — 14 pytest cases covering schema,
+  uniqueness, cross-refs, dashboard regeneration, migration, archive
+  redirects.
+- **`docs/archive/`** new directory tree with 158 archived files across
+  6 categories (brainstorms, communications, reports, benchmarks,
+  superseded-specs, legacy-backlogs). Each archived file has a 1-line
+  redirect header at its original path pointing readers at the canonical
+  successor.
+
+### What got archived
+
+| Category | Count | What |
+|---|---|---|
+| `brainstorms/` | 7 | Pre-Phase F vision rough drafts (Feb–Mar 2026) |
+| `communications/` | 2 | `dev_2_lead.md`, `comp_intelligence.md` |
+| `reports/` | 7 | One-time test/analysis reports |
+| `benchmarks/` | 98 | Auto-generated `benchmark/reports/eval-*.md` |
+| `superseded-specs/` | 40 | SPEC_001–SPEC_018 series + drafts (HARNESS_AUDIT, SESSION_REPORT, EXECUTION_PLAN, etc.) |
+| `legacy-backlogs/` | 4 | `BACKLOG.md`, `ROADMAP.md`, `docs/backlog.md`, `docs/product_backlog_research_and_intelligence.md` |
+| **Total** | **158** | |
+
+### What stayed put (active)
+
+- `CLAUDE.md`, `AGENTS.md`, `lead_notes_4_dev.md` (strategic, still
+  referenced)
+- `docs/AGENT_BACKLOG.md`, `docs/UI_CHANGELOG.md`, `docs/API_CHANGELOG.md`
+- `feedback/*` (cron-managed)
+- `frontend/README.md`, `harness/*`, `.claude/*`
+- All current specs `SPEC_019` and newer (47 specs remain at `specs/`)
+- `specs/CI_Agent_Reimagined_Spec.md` (north-star)
+- `specs/SPEC_021_decision_flywheel.md` (still useful context)
+
+### Quality gate
+
+- `python -m scripts.validate_product_backlog` — clean
+- `python -m pytest tests/test_product_backlog.py -v` — **14/14**
+
+### Stage 5 red-team / Stage 6 fix-all
+
+- 0 blockers
+- 3 majors filed; 2 closed in Stage 6 (`AGENTS.md:211` redirect, `MEMORY.md`
+  pointer); **M3 deferred by design** — the 74 migrated items need a
+  triage pass to demote already-shipped items to `Status: shipped` and
+  collapse duplicates. That's the next loop.
+
+### Spec
+
+`specs/SPEC_042_centralized_product_backlog.md` — Status: **Shipped
+2026-05-09**.
+
+### What's next
+
+Per the user's directive ("then follow the rigor of working on the loop
+step by step through the backlog"), Loop #4 begins by triaging the
+74 unfiltered PB-rows: collapsing duplicates, demoting already-shipped
+items to `Status: shipped` with the closing commit SHA, and assigning
+`Owner` + `Priority` per remaining item. After triage, work begins on
+the highest-priority `triaged` item.
+
+---
+
 ## 2026-05-09 (SPEC-041 — User Feedback Loop; Loop #2 closed)
 
 In-app feedback widget visible on every authenticated surface.

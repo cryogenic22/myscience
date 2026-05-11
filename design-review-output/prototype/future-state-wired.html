@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Market Zero — Wired future-state prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --teal: #4ED4D0;
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.25); --shadow-md: 0 8px 24px rgba(0,0,0,0.35); --shadow-lg: 0 24px 64px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 12px 36px rgba(91,140,255,0.18);
+  --motion-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(91,140,255,0.06) 0%, transparent 40%),
+    radial-gradient(circle at 80% 100%, rgba(182,140,255,0.04) 0%, transparent 50%),
+    var(--bg);
+  min-height: 100vh; padding-bottom: 80px;
+}
+
+/* ============ Mode banner ============ */
+.mode-banner {
+  position: sticky; top: 0; z-index: 200;
+  background: rgba(20,26,42,0.92); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 32px;
+  display: flex; align-items: center; gap: 16px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em;
+}
+.mode-banner .indicator {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-2);
+  border: 1px solid var(--accent);
+}
+.mode-banner .indicator.live { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+.mode-banner .indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+.mode-banner .toggle {
+  margin-left: auto;
+  display: inline-flex; gap: 4px;
+  padding: 3px;
+  background: var(--surface-2); border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.mode-banner .toggle button {
+  background: transparent; border: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  padding: 4px 12px; border-radius: 999px;
+  color: var(--ink-3);
+}
+.mode-banner .toggle button.active { background: var(--accent); color: white; }
+.mode-banner .url { color: var(--ink-2); font-size: 10px; text-transform: none; letter-spacing: 0.04em; font-family: var(--mono); }
+.mode-banner .url a { color: var(--accent-2); text-decoration: none; }
+.mode-banner .url a:hover { text-decoration: underline; }
+
+/* ============ Layout shell ============ */
+.shell { max-width: 1440px; margin: 0 auto; padding: 24px 32px 0; }
+
+.section-eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.section-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.section-title { font-family: var(--display); font-size: 36px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 12px; }
+.section-sub { font-size: 15px; color: var(--ink-2); max-width: 720px; margin-bottom: 32px; }
+
+.frame {
+  background: var(--bg-2); border-radius: 24px; padding: 32px; margin-bottom: 56px;
+  box-shadow: var(--shadow-md); position: relative;
+}
+.frame-label {
+  position: absolute; top: -12px; left: 24px;
+  background: var(--bg); padding: 6px 12px;
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-3); border-radius: 6px; border: 1px solid var(--line);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.frame-label .endpoint {
+  color: var(--accent-2); background: var(--accent-soft);
+  padding: 2px 8px; border-radius: 4px; font-size: 10px;
+  text-transform: none; letter-spacing: 0.04em;
+}
+.frame-label .endpoint.new { color: var(--amber); background: var(--amber-soft); }
+.frame-label .endpoint.aggregated { color: var(--violet); background: rgba(182,140,255,0.12); }
+.frame-status {
+  position: absolute; top: -12px; right: 24px;
+  padding: 4px 10px;
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em;
+  border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--line);
+}
+.frame-status.exists { color: var(--green); }
+.frame-status.aggregated { color: var(--violet); }
+.frame-status.new { color: var(--amber); }
+
+/* ============ Top chrome / page hero ============ */
+.hero { padding: 48px 32px 64px; max-width: 1440px; margin: 0 auto; }
+.hero-eyebrow {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--accent);
+  display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); margin-bottom: 24px;
+}
+.hero-eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+.hero-title { font-family: var(--display); font-size: clamp(44px, 6vw, 72px); font-weight: 400; line-height: 1.05; letter-spacing: -0.035em; color: var(--ink); margin-bottom: 24px; max-width: 1100px; }
+.hero-title em { font-style: italic; color: var(--accent-2); font-weight: 400; }
+.hero-sub { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 720px; margin-bottom: 32px; }
+
+/* ============ Top bar mock ============ */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px; background: rgba(20,26,42,0.7); backdrop-filter: blur(20px);
+  border-radius: 16px; border: 1px solid var(--line); margin-bottom: 24px;
+}
+.topbar-left { display: flex; align-items: center; gap: 24px; }
+.topbar-brand { font-family: var(--display); font-weight: 500; font-size: 16px; letter-spacing: -0.02em; }
+.topbar-brand .accent { color: var(--accent-2); font-style: italic; }
+.topbar-nav { display: flex; gap: 4px; }
+.topbar-nav button { background: transparent; border: none; padding: 6px 12px; border-radius: 8px; font-family: var(--body); font-size: 13px; color: var(--ink-3); cursor: pointer; }
+.topbar-nav button.active { color: var(--ink); background: var(--surface-2); }
+.cmd-k {
+  display: flex; align-items: center; gap: 12px; padding: 6px 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  color: var(--ink-3); font-size: 13px; cursor: pointer; min-width: 280px;
+}
+.cmd-k:hover { border-color: var(--line-strong); color: var(--ink-2); }
+.cmd-k .k { font-family: var(--mono); font-size: 10px; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; margin-left: auto; }
+
+/* ============ Live agent rail ============ */
+.agent-rail { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 32px; }
+.agent-card {
+  background: var(--surface); border-radius: 14px; padding: 16px 18px;
+  border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px;
+  transition: all 200ms var(--motion-out);
+}
+.agent-card:hover { border-color: var(--line-strong); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.agent-head { display: flex; align-items: center; gap: 10px; }
+.agent-glyph { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-family: var(--mono); font-size: 14px; font-weight: 500; }
+.agent-glyph.sentinel { background: rgba(78,212,208,0.12); color: var(--teal); }
+.agent-glyph.strategist { background: rgba(182,140,255,0.12); color: var(--violet); }
+.agent-glyph.curator { background: rgba(91,201,125,0.12); color: var(--green); }
+.agent-name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.agent-role { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.agent-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.agent-status .live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.6s ease-in-out infinite; }
+.agent-activity { font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
+.agent-activity .now { color: var(--ink-2); }
+.agent-progress { height: 2px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.agent-progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%); border-radius: 999px; animation: load 3.4s ease-in-out infinite; }
+@keyframes load { 0% { width: 5%; } 60% { width: 80%; } 100% { width: 100%; } }
+
+/* ============ Pulse hero (Sensing Feed) ============ */
+.pulse-grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
+.pulse-summary { background: var(--surface); border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+.pulse-ring { width: 180px; height: 180px; margin: 12px auto; position: relative; }
+.pulse-ring svg { transform: rotate(-90deg); }
+.pulse-ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.pulse-ring .num { font-family: var(--display); font-weight: 500; font-size: 48px; line-height: 1; color: var(--ink); letter-spacing: -0.04em; }
+.pulse-ring .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); margin-top: 6px; }
+.pulse-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pulse-meta .item .v { font-family: var(--display); font-size: 22px; font-weight: 500; color: var(--ink); line-height: 1; }
+.pulse-meta .item .l { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); margin-top: 4px; }
+
+.signal-list { display: flex; flex-direction: column; gap: 12px; }
+.signal-card {
+  background: var(--surface); border-radius: 16px; padding: 20px 24px;
+  display: grid; grid-template-columns: 56px 1fr auto; gap: 20px; align-items: flex-start;
+  cursor: pointer; transition: all 200ms var(--motion-out); border: 1px solid transparent;
+}
+.signal-card:hover { border-color: var(--line-strong); background: var(--surface-2); transform: translateX(2px); }
+.signal-card.unread { border-left: 3px solid var(--accent); }
+.signal-card.read { opacity: 0.6; }
+.signal-score { text-align: center; }
+.signal-score .v { font-family: var(--display); font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1; }
+.signal-score .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); margin-top: 4px; letter-spacing: 0.14em; text-transform: uppercase; }
+.signal-body .meta { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.14em; flex-wrap: wrap; }
+.signal-body .meta .source { color: var(--ink-2); }
+.signal-body .meta .dot { color: var(--ink-4); }
+.signal-body .meta .kbq { color: var(--accent-2); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; }
+.signal-body .headline { font-family: var(--display); font-size: 17px; font-weight: 500; line-height: 1.3; color: var(--ink); margin-bottom: 6px; }
+.signal-body .summary { font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+.signal-body .quote { margin-top: 10px; padding: 10px 14px; background: var(--accent-soft); border-left: 2px solid var(--accent); border-radius: 6px; font-style: italic; font-size: 13px; color: var(--ink); }
+.signal-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.entity-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.entity-pill .swatch { width: 6px; height: 6px; border-radius: 50%; }
+.entity-pill.drug .swatch { background: #5B8CFF; }
+.entity-pill.company .swatch { background: #F2A23B; }
+.entity-pill.trial .swatch { background: #4ED4D0; }
+.entity-pill.mechanism .swatch { background: #B68CFF; }
+.entity-pill.ta .swatch { background: #E36B6B; }
+
+.btn { font-family: var(--body); font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 150ms var(--motion-out); }
+.btn:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-2); }
+.btn.ghost { border-color: transparent; }
+
+/* ============ Materiality ============ */
+.materiality-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+.materiality-bars { display: flex; flex-direction: column; gap: 14px; }
+.bar-row { display: grid; grid-template-columns: 160px 1fr 80px; align-items: center; gap: 14px; }
+.bar-row .factor { font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.12em; }
+.bar-row .bar-track { height: 6px; background: var(--surface); border-radius: 999px; overflow: hidden; position: relative; }
+.bar-row .bar-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; transition: width 800ms var(--motion-out); }
+.bar-row .v { font-family: var(--mono); font-size: 12px; color: var(--ink); text-align: right; }
+.materiality-explanation { background: var(--surface); padding: 24px; border-radius: 16px; display: flex; flex-direction: column; gap: 14px; }
+.materiality-explanation .heading { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.materiality-explanation .formula { font-family: var(--mono); font-size: 11px; color: var(--ink-2); background: var(--surface-2); padding: 12px 16px; border-radius: 10px; line-height: 1.7; }
+.materiality-explanation .body { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+
+/* ============ Entity Dossier ============ */
+.dossier-grid { display: grid; grid-template-columns: 280px 1fr 320px; gap: 24px; align-items: flex-start; }
+.dossier-rail { background: var(--surface); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+.dossier-header { display: flex; flex-direction: column; gap: 4px; }
+.dossier-name { font-family: var(--display); font-size: 22px; font-weight: 500; color: var(--ink); line-height: 1.15; }
+.dossier-tag { display: flex; gap: 6px; flex-wrap: wrap; }
+.dossier-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dossier-stats .item { display: flex; flex-direction: column; gap: 2px; }
+.dossier-stats .v { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.dossier-stats .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.14em; text-transform: uppercase; }
+
+.dossier-main { background: var(--surface); border-radius: 16px; padding: 28px; }
+.dossier-section { margin-bottom: 28px; }
+.dossier-section .label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 12px; }
+.dossier-section .body p { color: var(--ink-2); margin-bottom: 8px; font-size: 14px; }
+.cite { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--accent-2); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; margin: 0 2px; cursor: pointer; text-decoration: none; }
+.cite:hover { background: var(--accent); color: white; }
+.dossier-timeline { display: flex; flex-direction: column; gap: 14px; position: relative; padding-left: 22px; }
+.dossier-timeline::before { content: ''; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+.timeline-item { position: relative; }
+.timeline-item::before { content: ''; position: absolute; left: -22px; top: 6px; width: 11px; height: 11px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 0 4px var(--bg-2); }
+.timeline-item.lower::before { background: var(--ink-3); }
+.timeline-item .when { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.timeline-item .what { font-size: 13.5px; color: var(--ink); margin-top: 2px; }
+
+.dossier-evidence { background: var(--surface); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.evidence-card { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; border: 1px solid transparent; transition: all 150ms var(--motion-out); }
+.evidence-card:hover { border-color: var(--line-strong); }
+.evidence-card .top { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); flex-wrap: wrap; }
+.evidence-card .src { color: var(--ink-2); }
+.evidence-card .tier { background: var(--green-soft); color: var(--green); padding: 1px 6px; border-radius: 4px; }
+.evidence-card .tier.t2 { background: var(--amber-soft); color: var(--amber); }
+.evidence-card .title { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.evidence-card .snippet { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+
+/* ============ War-game ============ */
+.wargame-grid { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+.wargame-board { background: var(--surface); border-radius: 16px; padding: 32px; min-height: 500px; }
+.payoff-matrix { display: grid; grid-template-columns: 80px 1fr 1fr; grid-template-rows: 40px 1fr 1fr; gap: 10px; height: 420px; margin-top: 24px; margin-left: 30px; }
+.payoff-matrix .col-head, .payoff-matrix .row-head { display: grid; place-items: center; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-2); }
+.payoff-matrix .row-head { writing-mode: vertical-rl; transform: rotate(180deg); }
+.payoff-cell { border-radius: 14px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: all 200ms var(--motion-out); position: relative; }
+.payoff-cell:hover { transform: scale(1.02); box-shadow: var(--shadow-md); }
+.payoff-cell.win { background: linear-gradient(135deg, rgba(91,201,125,0.16) 0%, rgba(91,201,125,0.06) 100%); border: 1px solid rgba(91,201,125,0.25); }
+.payoff-cell.lose { background: linear-gradient(135deg, rgba(227,107,107,0.14) 0%, rgba(227,107,107,0.04) 100%); border: 1px solid rgba(227,107,107,0.22); }
+.payoff-cell.neutral { background: linear-gradient(135deg, rgba(242,162,59,0.12) 0%, rgba(242,162,59,0.04) 100%); border: 1px solid rgba(242,162,59,0.20); }
+.payoff-cell.recommended { box-shadow: var(--shadow-glow); }
+.payoff-cell .delta { font-family: var(--display); font-size: 28px; font-weight: 500; letter-spacing: -0.02em; color: var(--ink); }
+.payoff-cell .delta.up::after { content: ' ▲'; color: var(--green); font-size: 14px; }
+.payoff-cell .delta.down::after { content: ' ▼'; color: var(--red); font-size: 14px; }
+.payoff-cell .desc { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; }
+.payoff-cell .ribbon { position: absolute; right: 14px; top: 14px; font-family: var(--mono); font-size: 9px; color: var(--accent-2); background: var(--accent-soft); padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.12em; }
+
+.wargame-side { background: var(--surface); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+.adversary { display: flex; flex-direction: column; gap: 10px; }
+.adversary .head { display: flex; align-items: center; gap: 10px; }
+.adversary .glyph { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); }
+.adversary .name { font-family: var(--display); font-size: 15px; font-weight: 500; }
+.adversary .archetype { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.posterior-bars { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); padding: 14px; border-radius: 10px; }
+.posterior-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.posterior-row .lab { font-size: 11.5px; color: var(--ink-2); }
+.posterior-row .pct { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.posterior-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
+.posterior-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 800ms var(--motion-out); }
+.posterior-bar .fill.amber { background: var(--amber); }
+.posterior-bar .fill.violet { background: var(--violet); }
+
+/* ============ Brief composer ============ */
+.composer-grid { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+.composer-doc { background: var(--surface); border-radius: 16px; padding: 56px 64px; min-height: 580px; position: relative; }
+.composer-doc .doc-meta { display: flex; gap: 16px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.composer-doc .doc-meta .state { background: var(--accent-soft); color: var(--accent-2); padding: 2px 8px; border-radius: 4px; }
+.composer-doc h1 { font-family: var(--display); font-size: 30px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.15; color: var(--ink); margin-bottom: 24px; }
+.composer-doc h2 { font-family: var(--display); font-size: 17px; font-weight: 500; color: var(--ink); margin-top: 28px; margin-bottom: 12px; }
+.composer-doc p { font-size: 15px; line-height: 1.7; color: var(--ink); margin-bottom: 14px; }
+.composer-doc .ai-suggest { margin: 12px 0; padding: 12px 16px; background: var(--accent-soft); border-radius: 10px; border-left: 3px solid var(--accent); display: flex; gap: 10px; align-items: flex-start; }
+.composer-doc .ai-suggest .icon { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: white; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
+.composer-doc .ai-suggest .body { flex: 1; }
+.composer-doc .ai-suggest .heading { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent-2); margin-bottom: 4px; }
+.composer-doc .ai-suggest p { font-size: 13.5px; margin-bottom: 6px; color: var(--ink); }
+.composer-doc .ai-suggest .actions { display: flex; gap: 6px; margin-top: 6px; }
+.composer-doc .options-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.composer-doc .option-card { background: var(--surface-2); border-radius: 12px; padding: 16px 18px; border: 1px solid var(--line); cursor: pointer; }
+.composer-doc .option-card.recommended { border-color: var(--green); box-shadow: 0 0 0 3px rgba(91,201,125,0.10); }
+.composer-doc .option-card .ord { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.composer-doc .option-card .ttl { font-family: var(--display); font-size: 16px; font-weight: 500; margin: 4px 0 8px; }
+.composer-doc .option-card .scoreline { display: flex; gap: 12px; font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+.composer-doc .option-card .scoreline .ok { color: var(--green); }
+.composer-doc .option-card .scoreline .alert { color: var(--amber); }
+.composer-side { display: flex; flex-direction: column; gap: 16px; }
+.composer-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.composer-card .label { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.composer-card .heading { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.composer-card .body { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.composer-card .row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+
+/* ============ Learning loop ============ */
+.learning-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+.learning-card { background: var(--surface); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+.learning-num { font-family: var(--display); font-size: 52px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; color: var(--ink); }
+.learning-num.amber { color: var(--amber); }
+.learning-num.green { color: var(--green); }
+.learning-num.red { color: var(--red); }
+.learning-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.learning-explain { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+.sparkline { height: 56px; width: 100%; margin-top: 8px; }
+.sparkline path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.sparkline .area { fill: var(--accent-soft); stroke: none; }
+.weights-table { background: var(--surface); border-radius: 16px; padding: 24px; }
+.weights-table .row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.weights-table .row:last-child { border-bottom: none; }
+.weights-table .row.head { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.weights-table .row .name { font-size: 13px; }
+.weights-table .row .from, .weights-table .row .to { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.weights-table .delta { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.weights-table .delta.up { color: var(--green); background: var(--green-soft); }
+.weights-table .delta.down { color: var(--red); background: var(--red-soft); }
+
+/* ============ Cmd-K overlay ============ */
+.cmdk-overlay { position: fixed; inset: 0; background: rgba(8,11,18,0.7); backdrop-filter: blur(12px); display: none; align-items: flex-start; justify-content: center; padding-top: 16vh; z-index: 100; }
+.cmdk-overlay.open { display: flex; }
+.cmdk-panel { width: 100%; max-width: 720px; background: var(--bg-2); border-radius: 20px; border: 1px solid var(--line-strong); box-shadow: var(--shadow-lg); overflow: hidden; animation: cmdkIn 200ms var(--motion-out); }
+@keyframes cmdkIn { from { opacity: 0; transform: translateY(-10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.cmdk-input { display: flex; gap: 14px; align-items: center; padding: 22px 26px; border-bottom: 1px solid var(--line); }
+.cmdk-input input { flex: 1; background: transparent; border: none; outline: none; font-family: var(--display); font-size: 22px; color: var(--ink); font-weight: 400; }
+.cmdk-input input::placeholder { color: var(--ink-3); font-style: italic; }
+.cmdk-results { padding: 12px; }
+.cmdk-section { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); padding: 10px 14px 6px; }
+.cmdk-row { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13.5px; color: var(--ink); }
+.cmdk-row:hover, .cmdk-row.focused { background: var(--surface-2); }
+.cmdk-row .glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--surface); display: grid; place-items: center; font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.cmdk-row .body { flex: 1; }
+.cmdk-row .ttl { font-weight: 500; }
+.cmdk-row .sub { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.cmdk-row .k { font-family: var(--mono); font-size: 9px; color: var(--ink-3); background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+.cmdk-foot { padding: 12px 22px; border-top: 1px solid var(--line); display: flex; gap: 24px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+
+/* ============ Footer ============ */
+.proto-credit { text-align: center; padding: 64px 0; font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.18em; }
+
+@media (max-width: 1100px) {
+  .pulse-grid, .dossier-grid, .wargame-grid, .composer-grid, .learning-grid, .materiality-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== MODE BANNER ========== -->
+<div class="mode-banner">
+  <span class="indicator" id="mode-indicator"><span class="dot"></span>SAMPLE DATA</span>
+  <span class="url">All shapes match production: <a href="https://myscience-production.up.railway.app/health" target="_blank">myscience-production.up.railway.app</a> · cryogenic22/myscience@main</span>
+  <div class="toggle">
+    <button id="btn-sample" class="active" onclick="setMode('sample')">SAMPLE</button>
+    <button id="btn-live" onclick="setMode('live')">LIVE</button>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<div class="hero">
+  <span class="hero-eyebrow"><span class="pulse"></span>Wired prototype · Real API contracts · 9 May 2026</span>
+  <h1 class="hero-title">
+    Every surface below is rendered from your <em>actual backend shapes.</em>
+  </h1>
+  <p class="hero-sub">
+    Each frame is annotated with the endpoint that powers it. Green tags = endpoint exists today (just needs the surface). Purple tags = aggregated from existing endpoints (one new endpoint composes the dossier). Amber tags = SPEC-036 / SPEC-037 / SPEC-031 explainer — new endpoints documented in the Phase 9 tech specs.
+  </p>
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-brand">Market <em class="accent">Zero</em></span>
+      <div class="topbar-nav">
+        <button class="active">Pulse</button>
+        <button>Dossier</button>
+        <button>War Room</button>
+        <button>Briefs</button>
+        <button>Learning</button>
+      </div>
+    </div>
+    <div class="cmd-k" onclick="openCmdK()">
+      Ask anything across your sources <span class="k">⌘ K</span>
+    </div>
+  </div>
+</div>
+
+<!-- ========== AGENT RAIL ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Live agent plane · Always on</div>
+  <div class="section-title">Sentinel, Strategist, Curator — three named agents.</div>
+  <p class="section-sub">Powered by <code>GET /agent/events</code> (exists today, returns the agent run event stream) plus <code>GET /steward/agents</code> (lists available autonomous agents, exists today). Phase 9 SPEC-037 wraps both behind <code>GET /agents/stream</code> as Server-Sent Events with reconnect.</p>
+
+  <div class="agent-rail" id="agent-rail">
+    <!-- rendered by render.agents() -->
+  </div>
+</div>
+
+<!-- ========== PULSE / SENSING FEED ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The morning ritual</div>
+  <div class="section-title">Your Pulse — Tuesday, 12 May 2026.</div>
+  <p class="section-sub">Three signals worth your attention, ranked by materiality, grounded in trusted sources. Each card shows the materiality factor breakdown one click away.</p>
+
+  <div class="frame">
+    <span class="frame-label">/pulse · 08:40 <span class="endpoint">GET /signals?status=shipped&impact=high&limit=10</span></span>
+    <span class="frame-status exists">EXISTS · api/routes/signals.py</span>
+    <div class="pulse-grid">
+      <div class="pulse-summary" id="pulse-summary"><!-- rendered --></div>
+      <div class="signal-list" id="signal-list"><!-- rendered --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MATERIALITY EXPLAINER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Trust as a primitive</div>
+  <div class="section-title">Why is the top signal scored 87?</div>
+  <p class="section-sub">The Materiality service already returns <code>materiality_factors</code> as a structured dict (<code>source_tier</code>, <code>entity_criticality</code>, <code>claim_type</code>, <code>recency</code>) with input, value, weight and contribution per factor. The drawer just renders that dict.</p>
+
+  <div class="frame">
+    <span class="frame-label">/pulse · materiality drawer <span class="endpoint">POST /materiality/score</span> + <span class="endpoint">GET /materiality/weights</span></span>
+    <span class="frame-status exists">EXISTS · api/routes/materiality.py</span>
+    <div class="materiality-grid">
+      <div class="materiality-bars" id="materiality-bars"><!-- rendered --></div>
+      <div class="materiality-explanation" id="materiality-explain"><!-- rendered --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ENTITY DOSSIER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The unit of thought</div>
+  <div class="section-title">The semaglutide dossier — everything we know, in one place.</div>
+  <p class="section-sub">Aggregated today from three existing endpoints: <code>GET /catalog/entity-profile/drug/{id}</code> (entity + properties + quality score) + <code>GET /graph/neighborhood/drug/{id}</code> (related entities) + <code>GET /signals?entity_id={id}</code> (recent signals). Phase 9 SPEC-036 introduces <code>GET /dossier/{type}/{slug}</code> as a single composed endpoint.</p>
+
+  <div class="frame">
+    <span class="frame-label">/dossier/drug/semaglutide <span class="endpoint aggregated">3 endpoints today → 1 endpoint after SPEC-036</span></span>
+    <span class="frame-status aggregated">AGGREGATED · 3 existing endpoints</span>
+    <div class="dossier-grid">
+      <div class="dossier-rail" id="dossier-rail"><!-- rendered --></div>
+      <div class="dossier-main" id="dossier-main"><!-- rendered --></div>
+      <div class="dossier-evidence" id="dossier-evidence"><!-- rendered --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== WAR-GAME BOARD ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The strategic surface</div>
+  <div class="section-title">The war-game board.</div>
+  <p class="section-sub">Powered today by <code>GET /war-rooms/{id}</code> (room with rounds and reactions) plus <code>POST /game-theory/bayesian</code> (adversary posteriors over types). Phase 9 SPEC adds <code>POST /war-rooms/{id}/payoff-matrix</code> as a single-call composer that the board renders directly.</p>
+
+  <div class="frame">
+    <span class="frame-label">/war-rooms/{id} · payoff view <span class="endpoint">GET /war-rooms/{id}</span> + <span class="endpoint">POST /game-theory/bayesian</span></span>
+    <span class="frame-status exists">EXISTS · api/routes/war_room.py + game_theory.py</span>
+    <div class="wargame-grid">
+      <div class="wargame-board" id="wargame-board"><!-- rendered --></div>
+      <div class="wargame-side" id="wargame-side"><!-- rendered --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== BRIEF COMPOSER ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>Writing-first</div>
+  <div class="section-title">Compose the brief by writing it.</div>
+  <p class="section-sub">Reads / writes via <code>GET /decision-briefs/{id}</code> + <code>PATCH /decision-briefs/{id}</code> + <code>POST /decision-briefs/{id}/options</code> + <code>POST /decision-briefs/{id}/transitions</code>. Inline AI suggestions stream from <code>POST /chat/stream</code> with a brief-context prompt. Phase 9 keeps the SPEC-023 state machine intact and pivots only the editor surface.</p>
+
+  <div class="frame">
+    <span class="frame-label">/briefs/{id} <span class="endpoint">GET /decision-briefs/{id}</span> + <span class="endpoint">POST /chat/stream</span></span>
+    <span class="frame-status exists">EXISTS · api/routes/decision_briefs.py + chat.py</span>
+    <div class="composer-grid">
+      <div class="composer-doc" id="composer-doc"><!-- rendered --></div>
+      <div class="composer-side" id="composer-side"><!-- rendered --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== LEARNING LOOP ========== -->
+<div class="shell">
+  <div class="section-eyebrow"><span class="dot"></span>The flywheel closes here</div>
+  <div class="section-title">What did the system learn this week?</div>
+  <p class="section-sub">Calibration, outcomes and weight changes are already produced by three endpoints: <code>GET /metrics/fair-score</code> (FAIR data quality), <code>GET /learning/runs</code> (model retraining jobs), and <code>GET /metrics/ctx-telemetry</code> (CTX context-assembly metrics). The page composes them into a single weekly retro view.</p>
+
+  <div class="frame">
+    <span class="frame-label">/learning · weekly retro <span class="endpoint">GET /learning/runs</span> + <span class="endpoint">GET /metrics/fair-score</span> + <span class="endpoint">GET /learning/source-attributions</span></span>
+    <span class="frame-status aggregated">AGGREGATED · 3 existing endpoints</span>
+    <div class="learning-grid" id="learning-grid"><!-- rendered --></div>
+    <div class="weights-table" id="weights-table" style="margin-top:24px;"><!-- rendered --></div>
+  </div>
+</div>
+
+<!-- ========== CMD-K OVERLAY ========== -->
+<div class="cmdk-overlay" id="cmdk">
+  <div class="cmdk-panel">
+    <div class="cmdk-input">
+      <span style="font-family:var(--mono);font-size:14px;color:var(--accent);">⌘</span>
+      <input type="text" placeholder="Ask anything across your sources..." autofocus />
+      <span class="k">Esc to close</span>
+    </div>
+    <div class="cmdk-results">
+      <div class="cmdk-section">Suggested for your context · <span style="color:var(--accent-2)">POST /ask</span></div>
+      <div class="cmdk-row focused">
+        <div class="glyph">?</div>
+        <div class="body">
+          <div class="ttl">What changed for semaglutide overnight?</div>
+          <div class="sub">POST /ask {question, context_entities:["drug-000123"]} → returns {id, answer, answer_sources[]}</div>
+        </div>
+        <span class="k">↵</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">⤳</div>
+        <div class="body">
+          <div class="ttl">Compare Lilly's CRL pattern to Roche 2024</div>
+          <div class="sub">POST /chat with intent_hint="compare" → streamed via /chat/stream SSE</div>
+        </div>
+        <span class="k">↵</span>
+      </div>
+      <div class="cmdk-section">Open a dossier · <span style="color:var(--accent-2)">GET /catalog/entity-profile/{type}/{id}</span></div>
+      <div class="cmdk-row">
+        <div class="glyph">DR</div>
+        <div class="body">
+          <div class="ttl">semaglutide</div>
+          <div class="sub">Drug · drug-000123 · Novo Nordisk · GLP-1 RA · 156 trials</div>
+        </div>
+        <span class="k">⏎</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">CO</div>
+        <div class="body">
+          <div class="ttl">Eli Lilly</div>
+          <div class="sub">Company · company-LILLY · NYSE:LLY · 89 tracked assets</div>
+        </div>
+        <span class="k">⏎</span>
+      </div>
+      <div class="cmdk-section">Take an action · <span style="color:var(--accent-2)">POST /decision-briefs</span></div>
+      <div class="cmdk-row">
+        <div class="glyph">+</div>
+        <div class="body">
+          <div class="ttl">New decision brief</div>
+          <div class="sub">POST /decision-briefs {question, trigger_kind:"manual", time_horizon_days}</div>
+        </div>
+        <span class="k">⌘⇧N</span>
+      </div>
+      <div class="cmdk-row">
+        <div class="glyph">⚔</div>
+        <div class="body">
+          <div class="ttl">Open a war room for Q3 launch</div>
+          <div class="sub">POST /war-rooms {title, scenario_question, primary_entity_*}</div>
+        </div>
+      </div>
+    </div>
+    <div class="cmdk-foot">
+      <span>↑↓ navigate</span><span>↵ select</span><span>esc close</span><span style="margin-left:auto">Wraps SPEC-035 ask-graph + CTX pipeline</span>
+    </div>
+  </div>
+</div>
+
+<div class="proto-credit">
+  Market Zero — Wired future-state prototype · Each frame annotated with its real endpoint · 9 May 2026
+</div>
+
+<!-- ========================================================
+     API CLIENT + SAMPLE DATA + RENDERERS
+     ======================================================== -->
+<script>
+// =====================================================================
+// CONFIG
+// =====================================================================
+const API_BASE = 'https://myscience-production.up.railway.app';
+let MODE = 'sample';  // 'sample' | 'live'
+
+// Auto-injected demo token matches CIPage.tsx auto-login behaviour.
+// In production you'd POST /auth/login first; the bearer goes here.
+const AUTH_TOKEN = (typeof localStorage !== 'undefined' && localStorage.getItem('mz_auth_token')) || 'demo-token';
+
+const headers = () => ({
+  'Content-Type': 'application/json',
+  ...(AUTH_TOKEN ? { 'Authorization': `Bearer ${AUTH_TOKEN}` } : {})
+});
+
+// =====================================================================
+// API CLIENT — every call matches a real endpoint in api/routes/*.py
+// =====================================================================
+const api = {
+  // -------- Signals (api/routes/signals.py) --------
+  listSignals: async (params = {}) => {
+    if (MODE === 'sample') return SAMPLE.signals;
+    const qs = new URLSearchParams({ status: 'shipped', impact: 'high', limit: '10', ...params });
+    const r = await fetch(`${API_BASE}/signals?${qs}`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- Materiality (api/routes/materiality.py) --------
+  scoreMateriality: async (signal_id) => {
+    if (MODE === 'sample') return SAMPLE.materiality;
+    const r = await fetch(`${API_BASE}/materiality/score`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ signal_id, source_tier: 1, entity_criticality: 'focal', claim_type: 'regulatory_action', age_days: 0.25 })
+    });
+    return r.json();
+  },
+  getMaterialityWeights: async () => {
+    if (MODE === 'sample') return SAMPLE.weights;
+    const r = await fetch(`${API_BASE}/materiality/weights`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- Entity (api/routes/catalog.py + entities.py + graph.py) --------
+  getEntityProfile: async (type, id) => {
+    if (MODE === 'sample') return SAMPLE.entityProfile;
+    const r = await fetch(`${API_BASE}/catalog/entity-profile/${type}/${id}`, { headers: headers() });
+    return r.json();
+  },
+  getNeighborhood: async (type, id) => {
+    if (MODE === 'sample') return SAMPLE.neighborhood;
+    const r = await fetch(`${API_BASE}/graph/neighborhood/${type}/${id}`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- War rooms (api/routes/war_room.py) --------
+  getWarRoom: async (id) => {
+    if (MODE === 'sample') return SAMPLE.warRoom;
+    const r = await fetch(`${API_BASE}/war-rooms/${id}`, { headers: headers() });
+    return r.json();
+  },
+  bayesianGame: async (payload) => {
+    if (MODE === 'sample') return SAMPLE.bayesianResult;
+    const r = await fetch(`${API_BASE}/game-theory/bayesian`, {
+      method: 'POST', headers: headers(), body: JSON.stringify(payload)
+    });
+    return r.json();
+  },
+
+  // -------- Decision briefs (api/routes/decision_briefs.py) --------
+  getBrief: async (id) => {
+    if (MODE === 'sample') return SAMPLE.brief;
+    const r = await fetch(`${API_BASE}/decision-briefs/${id}`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- Agents (api/routes/agent.py + steward.py) --------
+  getAgentEvents: async () => {
+    if (MODE === 'sample') return SAMPLE.agentEvents;
+    const r = await fetch(`${API_BASE}/agent/events`, { headers: headers() });
+    return r.json();
+  },
+  getStewardAgents: async () => {
+    if (MODE === 'sample') return SAMPLE.stewardAgents;
+    const r = await fetch(`${API_BASE}/steward/agents`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- Learning (api/routes/learning.py + metrics.py) --------
+  getLearningRuns: async () => {
+    if (MODE === 'sample') return SAMPLE.learningRuns;
+    const r = await fetch(`${API_BASE}/learning/runs`, { headers: headers() });
+    return r.json();
+  },
+  getFairScore: async () => {
+    if (MODE === 'sample') return SAMPLE.fairScore;
+    const r = await fetch(`${API_BASE}/metrics/fair-score`, { headers: headers() });
+    return r.json();
+  },
+  getSourceAttributions: async () => {
+    if (MODE === 'sample') return SAMPLE.sourceAttributions;
+    const r = await fetch(`${API_BASE}/learning/source-attributions`, { headers: headers() });
+    return r.json();
+  },
+
+  // -------- Health (api/routes/__init__.py /health) --------
+  health: async () => {
+    const r = await fetch(`${API_BASE}/health`);
+    return r.json();
+  }
+};
+
+// =====================================================================
+// SAMPLE DATA — every shape matches the actual Pydantic schema
+// Drawn from real entities discovered in the codebase
+// =====================================================================
+const SAMPLE = {
+  // GET /signals — matches services/signals shape (api/routes/signals.py)
+  signals: {
+    signals: [
+      {
+        id: 'a8f2-3c91-2026-0509-001', event_id: 'FDA-CRL-2026-0509-Lilly',
+        kbq_tags: ['KBQ-3-Regulatory', 'KBQ-6-SWOT-Threat'],
+        headline: 'Eli Lilly receives FDA Complete Response Letter on tirzepatide oncology label expansion',
+        summary: 'CRL cites manufacturing chemistry, not safety or efficacy. Validates the second-line CRL pattern your March watchlist flagged. Affects three competitor assets in your space.',
+        direction: 'negative', confidence_tier: 'tier_1', trust_score: 0.94,
+        impact_tier: 'high', impact_score: 87,
+        rule_version_id: 'v2.1-signals-2026',
+        primary_entity_type: 'drug', primary_entity_id: 'drug-tirzepatide', primary_entity_name: 'tirzepatide',
+        related_entity_ids: ['company-LLY', 'trial-NCT05156983', 'mechanism-GIP-GLP1'],
+        evidence_document_ids: ['doc-fda-2026-0509', 'doc-reuters-2026-0509', 'doc-lly-pr-2026-0509'],
+        status: 'shipped',
+        created_at: '2026-05-09T03:42:00Z', shipped_at: '2026-05-09T08:15:00Z'
+      },
+      {
+        id: 'b9e3-4d02-2026-0508-002', event_id: 'SEC-8K-2026-0508-AZN',
+        kbq_tags: ['KBQ-7-Financial', 'KBQ-4-Pricing'],
+        headline: 'AstraZeneca cuts FY26 oncology revenue guidance 4–6% on osimertinib pricing pressure',
+        summary: 'First downward revision in 11 quarters. Curator flagged similar guidance language to Roche\'s 2024 pre-divestiture filing.',
+        direction: 'negative', confidence_tier: 'tier_1', trust_score: 0.91,
+        impact_tier: 'high', impact_score: 74,
+        primary_entity_type: 'company', primary_entity_id: 'company-AZN', primary_entity_name: 'AstraZeneca',
+        related_entity_ids: ['drug-osimertinib', 'ta-oncology'],
+        evidence_document_ids: ['doc-sec-8k-2026-0508-azn'],
+        status: 'shipped',
+        created_at: '2026-05-08T22:12:00Z', shipped_at: '2026-05-09T01:30:00Z'
+      },
+      {
+        id: 'c1d4-5e13-2026-0508-003', event_id: 'CT-NCT04964220-2026-0508',
+        kbq_tags: ['KBQ-1-Clinical', 'KBQ-5-Pipeline'],
+        headline: 'KEYNOTE-869 enrolment update: Pfizer adds 4 EU sites, completion shifts to Q1 2027',
+        summary: 'Two-quarter delay on the trial you have been tracking since November. Doesn\'t change your Q3 launch window.',
+        direction: 'neutral', confidence_tier: 'tier_1', trust_score: 0.96,
+        impact_tier: 'medium', impact_score: 62,
+        primary_entity_type: 'trial', primary_entity_id: 'trial-NCT04964220', primary_entity_name: 'KEYNOTE-869',
+        related_entity_ids: ['company-PFE', 'drug-amivantamab'],
+        evidence_document_ids: ['doc-ct-2026-0508-NCT04964220'],
+        status: 'shipped',
+        created_at: '2026-05-08T15:30:00Z', shipped_at: '2026-05-08T17:45:00Z'
+      }
+    ],
+    count: 3, limit: 10, offset: 0
+  },
+
+  // POST /materiality/score — matches services/materiality.py:MaterialityResult
+  materiality: {
+    materiality_score: 87,
+    materiality_factors: {
+      source_tier:         { input: 1, value: 1.00, weight: 0.40, contribution: 40.0 },
+      entity_criticality:  { input: 'focal', value: 1.00, weight: 0.30, contribution: 30.0 },
+      claim_type:          { input: 'regulatory_action', value: 0.95, weight: 0.20, contribution: 19.0 },
+      recency:             { input: 0.25, value: 0.99, weight: 0.10, contribution: 9.9 }
+    },
+    score_method: 'factor_attributed_v1',
+    weights_config_id: 'wc-2026-q2-001'
+  },
+
+  // GET /materiality/weights
+  weights: {
+    weights: { source_tier: 0.40, entity_criticality: 0.30, claim_type: 0.20, recency: 0.10 },
+    tier_values: { '1': 1.0, '2': 0.7, '3': 0.4, '4': 0.6 },
+    claim_type_values: { regulatory_action: 0.95, clinical_readout: 1.0, safety_signal: 0.85 },
+    criticality_values: { focal: 1.0, top_competitor: 0.7, watched: 0.5, other: 0.2 },
+    recency_half_life_days: 30.0
+  },
+
+  // GET /catalog/entity-profile/drug/drug-000123 — matches drugs table + cross-links
+  entityProfile: {
+    id: 'drug-tirzepatide',
+    generic_name: 'tirzepatide',
+    trade_names: ['Mounjaro', 'Zepbound'],
+    company_id: 'company-LLY', company_name: 'Eli Lilly',
+    mechanism_id: 'mechanism-GIP-GLP1', mechanism_name: 'GIP / GLP-1 Receptor Agonist',
+    therapeutic_area_id: 'ta-oncology', therapeutic_area_name: 'Oncology',
+    fda_status: 'phase_3', approval_date: null,
+    next_catalyst: '2026-Q3', next_catalyst_kind: 'FDA decision',
+    trial_count: 14, active_trial_count: 14,
+    pipeline_score: 8.4, active_pipeline_score: 7.9,
+    quality_score: 9.1, connection_count: 412,
+    data_freshness: '2026-05-09T03:42:00Z',
+    watchers: 5
+  },
+
+  // GET /graph/neighborhood/drug/drug-tirzepatide — matches SubgraphResponse
+  neighborhood: {
+    nodes: [
+      { entity_id: 'company-LLY', entity_type: 'company', label: 'Eli Lilly' },
+      { entity_id: 'mechanism-GIP-GLP1', entity_type: 'mechanism', label: 'GIP / GLP-1 RA' },
+      { entity_id: 'trial-NCT05156983', entity_type: 'trial', label: 'NCT05156983' },
+      { entity_id: 'company-PFE', entity_type: 'company', label: 'Pfizer (competitor)' },
+      { entity_id: 'company-AZN', entity_type: 'company', label: 'AstraZeneca (competitor)' }
+    ],
+    edges: [
+      { source_id: 'drug-tirzepatide', target_id: 'company-LLY', link_type: 'developed_by', confidence: 1.0 },
+      { source_id: 'drug-tirzepatide', target_id: 'mechanism-GIP-GLP1', link_type: 'has_mechanism', confidence: 1.0 },
+      { source_id: 'drug-tirzepatide', target_id: 'trial-NCT05156983', link_type: 'tested_in', confidence: 1.0 },
+      { source_id: 'drug-tirzepatide', target_id: 'company-PFE', link_type: 'competes_with', confidence: 0.82 },
+      { source_id: 'drug-tirzepatide', target_id: 'company-AZN', link_type: 'competes_with', confidence: 0.78 }
+    ],
+    center_entity_id: 'drug-tirzepatide', node_count: 5, edge_count: 5
+  },
+
+  // GET /war-rooms/{id}
+  warRoom: {
+    id: 'wr-q3-launch-001',
+    title: 'Q3 launch — Compound Y vs Lilly CRL',
+    owner_user_id: 'user-maya',
+    scenario_question: 'If Lilly resolves the CRL by Q3 vs Q4 — and Pfizer responds aggressively or holds back — what does our market share look like?',
+    primary_entity_type: 'drug', primary_entity_id: 'drug-tirzepatide', primary_entity_name: 'tirzepatide',
+    source_signal_id: 'a8f2-3c91-2026-0509-001',
+    game_phase: 'round_2', status: 'active',
+    created_at: '2026-05-09T14:00:00Z', updated_at: '2026-05-09T14:23:00Z',
+    rounds: [
+      {
+        id: 'round-001', round_number: 1,
+        player_company_id: 'company-OURS', player_company_name: 'Our company',
+        move_type: 'accelerate_launch', move_payload: { timing: 'Q3', budget_increase_pct: 35 },
+        notes: 'Pre-empt Pfizer if Lilly delayed',
+        reactions: [
+          { id: 'rx-1', competitor_company_name: 'Pfizer', reaction_type: 'counter_launch', headline: 'Pfizer pulls amivantamab launch forward 4 weeks', confidence_score: 0.74 },
+          { id: 'rx-2', competitor_company_name: 'AstraZeneca', reaction_type: 'pricing_action', headline: 'AZ cuts osimertinib EU pricing 8% to defend share', confidence_score: 0.68 }
+        ]
+      }
+    ]
+  },
+
+  // POST /game-theory/bayesian — matches services/game_theory shape
+  bayesianResult: {
+    payoff_matrix: [
+      { player: 'lilly_q3', adversary: 'pfizer_aggressive', delta_pct: -4.2, confidence: 0.71, recommended: false, descriptor: 'If Lilly recovers fast and Pfizer launches first, we lose share to both.' },
+      { player: 'lilly_q3', adversary: 'pfizer_hold',       delta_pct:  0.8, confidence: 0.64, recommended: false, descriptor: 'Lilly recovers but Pfizer waits. We hold share.' },
+      { player: 'lilly_q4', adversary: 'pfizer_aggressive', delta_pct:  6.4, confidence: 0.82, recommended: true,  descriptor: 'Lilly delayed, Pfizer pre-empts our segment. We accelerate launch, capture share.' },
+      { player: 'lilly_q4', adversary: 'pfizer_hold',       delta_pct:  3.1, confidence: 0.79, recommended: false, descriptor: 'Both rivals slow. We launch on schedule and consolidate.' }
+    ],
+    posteriors: {
+      pfizer: { aggressive_growth: 0.61, defensive_consolidator: 0.28, cash_constrained: 0.11, last_evidence: 'KEYNOTE-869 enrolment +4 EU sites, 14m ago' },
+      lilly:  { resolves_q3: 0.38, slips_q4: 0.47, slips_2027: 0.15, last_evidence: 'FDA CRL 6h ago' }
+    },
+    iterations: 1200, confidence: 0.87,
+    counter_argument: 'If you discount the FDA CRL recovery time below 90 days, the recommended cell flips to the bottom-right. Worth stress-testing with your CMC contacts before committing.'
+  },
+
+  // GET /decision-briefs/{id} — matches SPEC-023 schema
+  brief: {
+    id: 'brief-d2026-0247',
+    owner_user_id: 'user-maya',
+    question: 'Should we accelerate our Q3 launch in response to the Lilly CRL?',
+    state: 'draft',
+    trigger_kind: 'signal',
+    trigger_signal_ids: ['a8f2-3c91-2026-0509-001'],
+    trigger_metadata: { signal_impact_score: 87, market_window_days: 90 },
+    stakeholders: ['Brand lead (Sasha)', 'R&D portfolio (Dev)', 'CCO office (one-pager)'],
+    time_horizon_days: 90,
+    confidence_to_proceed: 0.72,
+    options: [
+      { id: 'opt-1', label: 'Accelerate Q3 launch', predicted_outcome: '+6.4% share', cost_estimate: 22000000, risk_notes: 'Pfizer aggressive scenario', recommended: true, confidence: 0.82 },
+      { id: 'opt-2', label: 'Hold Q3, accelerate marketing', predicted_outcome: '+2.1% share', cost_estimate: 4000000, risk_notes: 'Slower share gain', recommended: false, confidence: 0.76 }
+    ],
+    evidence_refs: [{ type: 'signal', id: 'a8f2-3c91-2026-0509-001', confidence: 0.94 }],
+    created_at: '2026-05-09T14:00:00Z',
+    updated_at: '2026-05-09T14:23:00Z'
+  },
+
+  // GET /agent/events + /steward/agents — wrapped into the future Live Agent Plane
+  agentEvents: [
+    { agent: 'sentinel', kind: 'progress', activity: 'Scanning FDA Orange Book for label changes on EGFR inhibitors', entity_refs: ['ta-oncology'], last_seen_at: '2026-05-09T14:21:00Z' },
+    { agent: 'strategist', kind: 'progress', activity: 'Running 1,200 Monte Carlo trials for war room wr-q3-launch-001', entity_refs: ['drug-tirzepatide'], last_seen_at: '2026-05-09T14:23:00Z' },
+    { agent: 'curator', kind: 'completed', activity: 'Adjusted Reuters source weight 0.78 → 0.82 after 4 outcome matches', entity_refs: [], last_seen_at: '2026-05-09T14:09:00Z' }
+  ],
+  stewardAgents: { agents: [{ name: 'sentinel', enabled: true }, { name: 'strategist', enabled: true }, { name: 'curator', enabled: true }] },
+
+  // GET /learning/runs + /metrics/fair-score + /learning/source-attributions
+  learningRuns: { runs: [
+    { run_id: 'lr-2026-0506', status: 'completed', metrics: { calibration_pct: 71, prior_calibration_pct: 78, outcomes_verified: 11, outcomes_missed: 2, outcomes_cancelled: 1 }, completed_at: '2026-05-06T22:00:00Z' }
+  ]},
+  fairScore: { overall: 0.74, findable: 0.81, accessible: 0.76, interoperable: 0.69, reusable: 0.71, sparkline_12mo: [78,77,79,76,75,77,76,74,73,72,71,71] },
+  sourceAttributions: [
+    { source: 'FDA Orange Book',      from: 0.87, to: 0.92, delta: +0.05, evidence_count: 3 },
+    { source: 'Reuters Health',       from: 0.78, to: 0.82, delta: +0.04, evidence_count: 4 },
+    { source: 'SEC 8-K filings',      from: 0.84, to: 0.86, delta: +0.02, evidence_count: 2 },
+    { source: 'FiercePharma blog',    from: 0.62, to: 0.55, delta: -0.07, evidence_count: 1 },
+    { source: 'Industry analyst (X)', from: 0.51, to: 0.42, delta: -0.09, evidence_count: 2 }
+  ]
+};
+
+// =====================================================================
+// RENDERERS
+// =====================================================================
+const $ = id => document.getElementById(id);
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const render = {
+  agents: async () => {
+    const ev = await api.getAgentEvents();
+    const byAgent = { sentinel: null, strategist: null, curator: null };
+    ev.forEach(e => { byAgent[e.agent] = e; });
+    const meta = {
+      sentinel:   { glyph: 'SE', name: 'Sentinel',   role: 'Sense · 24 sources' },
+      strategist: { glyph: 'ST', name: 'Strategist', role: 'Frame · Simulate' },
+      curator:    { glyph: 'CU', name: 'Curator',    role: 'Learn · Recalibrate' }
+    };
+    $('agent-rail').innerHTML = ['sentinel','strategist','curator'].map(k => {
+      const e = byAgent[k] || { activity: 'Idle', kind: 'progress' };
+      const m = meta[k];
+      return `
+        <div class="agent-card">
+          <div class="agent-head">
+            <div class="agent-glyph ${k}">${m.glyph}</div>
+            <div><div class="agent-name">${m.name}</div><div class="agent-role">${m.role}</div></div>
+            <div style="margin-left:auto" class="agent-status"><span class="live"></span>${e.kind === 'completed' ? 'Just completed' : 'Live'}</div>
+          </div>
+          <div class="agent-activity">${escapeHtml(e.activity)}</div>
+          <div class="agent-progress"><div class="fill"></div></div>
+        </div>`;
+    }).join('');
+  },
+
+  pulse: async () => {
+    const data = await api.listSignals();
+    const top = data.signals[0];
+    $('pulse-summary').innerHTML = `
+      <div>
+        <div class="agent-role" style="margin-bottom:8px">Sentinel · ${data.signals.length} signals scored above your attention threshold</div>
+        <div style="font-family:var(--display);font-size:18px;font-weight:500;color:var(--ink);line-height:1.3;">From ${data.count} of ${data.count} candidates · refresh 32s ago</div>
+      </div>
+      <div class="pulse-ring">
+        <svg width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="76" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
+          <circle cx="90" cy="90" r="76" fill="none" stroke="url(#grad)" stroke-width="10" stroke-linecap="round"
+            stroke-dasharray="478" stroke-dashoffset="${478 - 478 * (top.impact_score/100)}"/>
+          <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#5B8CFF"/><stop offset="100%" stop-color="#7AA2FF"/>
+          </linearGradient></defs>
+        </svg>
+        <div class="center"><div class="num">${top.impact_score}</div><div class="label">Top signal</div></div>
+      </div>
+      <div class="pulse-meta">
+        <div class="item"><div class="v">${data.signals.filter(s=>s.impact_score>=70).length}</div><div class="l">Above threshold</div></div>
+        <div class="item"><div class="v">${data.count}</div><div class="l">Tracked overnight</div></div>
+        <div class="item"><div class="v">71%</div><div class="l">30-day calibration</div></div>
+        <div class="item"><div class="v">4</div><div class="l">Sources active</div></div>
+      </div>`;
+
+    $('signal-list').innerHTML = data.signals.map((s, i) => {
+      const entityClass = s.primary_entity_type;
+      const entityLabel = s.primary_entity_name;
+      const ageH = Math.round((Date.now() - new Date(s.shipped_at || s.created_at).getTime()) / 36e5);
+      return `
+        <div class="signal-card ${i < 2 ? 'unread' : 'read'}">
+          <div class="signal-score"><div class="v">${s.impact_score}</div><div class="l">Materiality</div></div>
+          <div class="signal-body">
+            <div class="meta">
+              <span class="source">${s.confidence_tier === 'tier_1' ? 'Tier 1 source' : 'Tier 2'}</span>
+              <span class="dot">•</span><span>${ageH}h ago</span>
+              <span class="dot">•</span><span class="kbq">${s.kbq_tags[0]}</span>
+              <span class="dot">•</span><span style="color:${s.trust_score >= 0.9 ? 'var(--green)' : 'var(--amber)'}">${Math.round(s.trust_score*100)}% trust</span>
+            </div>
+            <div class="headline">${escapeHtml(s.headline)}</div>
+            <div class="summary">${escapeHtml(s.summary)}</div>
+            ${i === 0 ? `<div class="quote">Sentinel surfaced this ${ageH-2}h before public news because it cross-referenced an FDA docket update with a pattern from your March watchlist.</div>` : ''}
+          </div>
+          <div class="signal-actions">
+            <span class="entity-pill ${entityClass}"><span class="swatch"></span>${escapeHtml(entityLabel)}</span>
+            ${i === 0 ? '<button class="btn primary">Open dossier →</button><button class="btn">Frame as decision</button>' : '<button class="btn">View thread</button>'}
+          </div>
+        </div>`;
+    }).join('');
+  },
+
+  materiality: async () => {
+    const m = await api.scoreMateriality('a8f2-3c91-2026-0509-001');
+    const colors = { source_tier: 'var(--green)', entity_criticality: 'var(--accent)', claim_type: 'var(--violet)', recency: 'var(--teal)' };
+    const labels = { source_tier: 'Source tier', entity_criticality: 'Entity criticality', claim_type: 'Claim type', recency: 'Recency decay' };
+    let bars = Object.entries(m.materiality_factors).map(([k, f]) => `
+      <div class="bar-row">
+        <div class="factor">${labels[k] || k}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${f.value*100}%; background:${colors[k] || 'var(--accent)'}"></div></div>
+        <div class="v">${f.value.toFixed(2)} × ${f.weight.toFixed(2)}</div>
+      </div>`).join('');
+    bars += `
+      <div class="bar-row" style="margin-top:10px;border-top:1px solid var(--line);padding-top:14px;">
+        <div class="factor" style="color:var(--ink)">Composite</div>
+        <div class="bar-track" style="height:10px"><div class="bar-fill" style="width:${m.materiality_score}%; background: linear-gradient(90deg, var(--accent), var(--accent-2));"></div></div>
+        <div class="v" style="color:var(--ink); font-weight:600;">${m.materiality_score}</div>
+      </div>`;
+    $('materiality-bars').innerHTML = bars;
+
+    const f = m.materiality_factors;
+    $('materiality-explain').innerHTML = `
+      <div class="agent-role">Curator · explained the score · weights_config_id ${m.weights_config_id}</div>
+      <div class="heading">Source = FDA primary docket. Entity = focal compound. Claim = regulatory_action. Posted 6h ago.</div>
+      <div class="formula">${m.materiality_score} = ${f.source_tier.value.toFixed(2)}×${f.source_tier.weight.toFixed(2)} + ${f.entity_criticality.value.toFixed(2)}×${f.entity_criticality.weight.toFixed(2)} + ${f.claim_type.value.toFixed(2)}×${f.claim_type.weight.toFixed(2)} + ${f.recency.value.toFixed(2)}×${f.recency.weight.toFixed(2)}<br>     = ${(f.source_tier.contribution/100).toFixed(2)} + ${(f.entity_criticality.contribution/100).toFixed(2)} + ${(f.claim_type.contribution/100).toFixed(2)} + ${(f.recency.contribution/100).toFixed(2)}</div>
+      <div class="body">Source tier is weighted highest (0.40) because tier-1 regulatory filings were 78% predictive of meaningful market reactions in your past 90 days. Entity criticality reflects that tirzepatide is on your top-5 watchlist (focal = 1.00). Claim type "regulatory_action" is the second-highest in the registry (0.95).</div>
+      <div style="display:flex;gap:8px;"><button class="btn primary">View source registry</button><button class="btn">Tune weights</button></div>`;
+  },
+
+  dossier: async () => {
+    const [profile, neighborhood, signals] = await Promise.all([
+      api.getEntityProfile('drug', 'drug-tirzepatide'),
+      api.getNeighborhood('drug', 'drug-tirzepatide'),
+      api.listSignals()
+    ]);
+    const sigForEntity = signals.signals.filter(s => s.primary_entity_id === 'drug-tirzepatide' || (s.related_entity_ids||[]).includes('drug-tirzepatide'));
+
+    $('dossier-rail').innerHTML = `
+      <div class="dossier-header">
+        <div class="agent-role">Drug · ${profile.company_name} · INN</div>
+        <div class="dossier-name">${profile.generic_name}</div>
+        <div class="dossier-tag">
+          <span class="entity-pill mechanism"><span class="swatch"></span>${profile.mechanism_name}</span>
+          <span class="entity-pill ta"><span class="swatch"></span>${profile.therapeutic_area_name}</span>
+        </div>
+      </div>
+      <div class="dossier-stats">
+        <div class="item"><div class="v">${profile.fda_status.replace('_',' ')}</div><div class="l">Status</div></div>
+        <div class="item"><div class="v">${profile.next_catalyst}</div><div class="l">Next catalyst</div></div>
+        <div class="item"><div class="v">${profile.active_trial_count}</div><div class="l">Active trials</div></div>
+        <div class="item"><div class="v">${sigForEntity.length}</div><div class="l">Tracked signals</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-2);">
+        <div style="display:flex;"><span style="width:22px;height:22px;border-radius:50%;background:#5B8CFF;border:2px solid var(--surface);display:grid;place-items:center;font-size:9px;color:white">M</span><span style="width:22px;height:22px;border-radius:50%;background:#F2A23B;border:2px solid var(--surface);margin-left:-6px;display:grid;place-items:center;font-size:9px;color:white">D</span><span style="width:22px;height:22px;border-radius:50%;background:#B68CFF;border:2px solid var(--surface);margin-left:-6px;display:grid;place-items:center;font-size:9px;color:white">+${profile.watchers-2}</span></div>
+        <span>${profile.watchers} analysts watching</span>
+      </div>
+      <button class="btn primary">Add to my watchlist</button>`;
+
+    const competitors = neighborhood.nodes.filter(n => n.entity_type === 'company' && n.entity_id !== profile.company_id);
+    $('dossier-main').innerHTML = `
+      <div class="dossier-section">
+        <div class="label">Synthesis · written by Strategist · edited by you</div>
+        <div class="body">
+          <p>${profile.generic_name} is ${profile.company_name}'s lead asset in ${profile.therapeutic_area_name.toLowerCase()}, with primary endpoint readout in EU and an FDA filing under review. As of 6 hours ago<a class="cite">FDA-001</a>, the FDA issued a Complete Response Letter citing manufacturing chemistry, not safety or efficacy.</p>
+          <p>Comparable assets — ${competitors.map(c => `<a class="cite">${c.label}</a>`).join(' and ')} — have second-line filings due in the same window. If ${profile.company_name} resolves the CMC concerns within 60 days, the launch shifts by one quarter; if longer, the field opens.</p>
+        </div>
+      </div>
+      <div class="dossier-section">
+        <div class="label">Recent moves · Last 30 days · ${sigForEntity.length} signals · graph: ${neighborhood.edge_count} edges</div>
+        <div class="dossier-timeline">
+          ${sigForEntity.map(s => `<div class="timeline-item"><div class="when">${Math.round((Date.now()-new Date(s.created_at).getTime())/36e5)}h ago · ${s.kbq_tags[0]}</div><div class="what">${escapeHtml(s.headline)}</div></div>`).join('')}
+          <div class="timeline-item lower"><div class="when">11 days ago · Phase 3 readout</div><div class="what">Primary endpoint hit on EU pivotal trial; PFS HR 0.61, p&lt;0.001</div></div>
+          <div class="timeline-item lower"><div class="when">28 days ago · Patent grant</div><div class="what">USPTO grants composition-of-matter through 2041</div></div>
+        </div>
+      </div>
+      <div class="dossier-section">
+        <div class="label">Open decisions · Your team</div>
+        <div class="evidence-card" style="background:var(--accent-soft);border-color:var(--accent);">
+          <div class="top"><span class="src" style="color:var(--accent-2)">Decision draft</span><span style="color:var(--ink-3)">Owner: you · Started 14:00 today</span></div>
+          <div class="title">Should we accelerate our Q3 launch in response to the Lilly CRL?</div>
+          <div class="snippet">2 options · Strategist running 1,200 Monte Carlo trials · 0/3 stakeholder reviews</div>
+        </div>
+      </div>`;
+
+    $('dossier-evidence').innerHTML = `
+      <div class="agent-role">Evidence pile · ${sigForEntity.flatMap(s=>s.evidence_document_ids||[]).length} items · grounded</div>
+      ${sigForEntity[0]?.evidence_document_ids?.slice(0, 3).map((id, i) => `
+        <div class="evidence-card">
+          <div class="top">
+            <span class="src">${i === 0 ? 'FDA.gov · Docket' : i === 1 ? 'Reuters Health' : 'Lilly press release'}</span>
+            <span class="tier ${i < 2 ? '' : 't2'}">TIER ${i < 2 ? '1' : '2'}</span>
+            <span>${id.includes('2026-0509') ? '09 May, 03:42 GMT' : ''}</span>
+          </div>
+          <div class="title">${i === 0 ? 'FDA-2026-D-1842 — Complete Response Letter' : i === 1 ? 'Lilly\'s tirzepatide hits regulatory snag in oncology label push' : 'Lilly to address CMC concerns within 60-day target'}</div>
+          <div class="snippet">"${i === 0 ? '...the application cannot be approved in its current form. Specific deficiencies in Chemistry, Manufacturing, and Controls (CMC) are outlined...' : i === 1 ? 'The Indianapolis-based drugmaker said the Complete Response Letter cited manufacturing concerns rather than safety...' : 'CFO confirmed on investor call that the company expects to resolve CMC findings within Lilly\'s 60-day target window...'}"</div>
+        </div>`).join('') || ''}
+      <button class="btn ghost">+ ${sigForEntity.flatMap(s=>s.evidence_document_ids||[]).length - 3} more items from /evidence-ledger</button>`;
+  },
+
+  wargame: async () => {
+    const [room, game] = await Promise.all([api.getWarRoom('wr-q3-launch-001'), api.bayesianGame({})]);
+    $('wargame-board').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;">
+        <div>
+          <div class="agent-role">Strategist · ${game.iterations.toLocaleString()} Monte Carlo trials · ${Math.round(game.confidence*100)}% confidence</div>
+          <div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;line-height:1.3;">${escapeHtml(room.scenario_question)}</div>
+        </div>
+        <button class="btn">Re-run with new data</button>
+      </div>
+      <div class="payoff-matrix">
+        <div></div>
+        <div class="col-head">Pfizer aggressive</div>
+        <div class="col-head">Pfizer holds back</div>
+        <div class="row-head">Lilly Q3</div>
+        ${[0,1].map(i => {
+          const c = game.payoff_matrix[i];
+          const cls = c.delta_pct < 0 ? 'lose' : c.delta_pct < 2 ? 'neutral' : 'win';
+          const dir = c.delta_pct >= 0 ? 'up' : 'down';
+          return `<div class="payoff-cell ${cls} ${c.recommended?'recommended':''}">${c.recommended?'<div class="ribbon">Recommended</div>':''}<div class="delta ${dir}">${c.delta_pct >= 0 ? '+' : ''}${c.delta_pct}%</div><div class="desc">${escapeHtml(c.descriptor)} Strategist confidence: ${Math.round(c.confidence*100)}%</div></div>`;
+        }).join('')}
+        <div class="row-head">Lilly Q4+</div>
+        ${[2,3].map(i => {
+          const c = game.payoff_matrix[i];
+          const cls = c.delta_pct < 0 ? 'lose' : c.delta_pct < 2 ? 'neutral' : 'win';
+          const dir = c.delta_pct >= 0 ? 'up' : 'down';
+          return `<div class="payoff-cell ${cls} ${c.recommended?'recommended':''}">${c.recommended?'<div class="ribbon">Recommended · counter →</div>':''}<div class="delta ${dir}">${c.delta_pct >= 0 ? '+' : ''}${c.delta_pct}%</div><div class="desc">${escapeHtml(c.descriptor)} Strategist confidence: ${Math.round(c.confidence*100)}%</div></div>`;
+        }).join('')}
+      </div>`;
+
+    const renderPosterior = (label, archetype, posteriors) => {
+      const colors = { aggressive_growth: '', defensive_consolidator: 'amber', cash_constrained: 'violet', resolves_q3: '', slips_q4: 'amber', slips_2027: 'violet' };
+      return Object.entries(posteriors).filter(([k]) => k !== 'last_evidence').map(([k, v]) => `
+        <div class="posterior-row"><span class="lab">${k.replace(/_/g,' ')}</span><span class="pct">${Math.round(v*100)}%</span></div>
+        <div class="posterior-bar"><div class="fill ${colors[k] || ''}" style="width:${v*100}%"></div></div>`).join('');
+    };
+
+    $('wargame-side').innerHTML = `
+      <div class="adversary">
+        <div class="head"><div class="glyph">PF</div><div><div class="name">Pfizer</div><div class="archetype">Adversary type · posterior</div></div></div>
+        <div class="posterior-bars">${renderPosterior('Pfizer','adversary', game.posteriors.pfizer)}</div>
+        <div class="agent-activity" style="font-size:11px;">${escapeHtml(game.posteriors.pfizer.last_evidence)}</div>
+      </div>
+      <div class="adversary">
+        <div class="head"><div class="glyph">LY</div><div><div class="name">Lilly</div><div class="archetype">Recovery scenarios</div></div></div>
+        <div class="posterior-bars">${renderPosterior('Lilly','recovery', game.posteriors.lilly)}</div>
+      </div>
+      <div style="background:var(--accent-soft); border-radius:12px; padding:14px 16px; border:1px solid var(--accent);">
+        <div class="agent-role" style="color:var(--accent-2);margin-bottom:6px;">Strategist · counter-argument</div>
+        <div style="font-size:12.5px;color:var(--ink); line-height:1.55;">${escapeHtml(game.counter_argument)}</div>
+      </div>`;
+  },
+
+  brief: async () => {
+    const b = await api.getBrief('brief-d2026-0247');
+    $('composer-doc').innerHTML = `
+      <div class="doc-meta">
+        <span>Decision brief · ${b.id}</span>
+        <span class="state">${b.state}</span>
+        <span>Owner · Maya Chen</span>
+        <span>Updated ${Math.round((Date.now()-new Date(b.updated_at).getTime())/6e4)} minutes ago · Strategist suggesting</span>
+      </div>
+      <h1>${escapeHtml(b.question)}</h1>
+      <p>The Lilly Complete Response Letter on tirzepatide<a class="cite">FDA-001</a> creates a 60-90 day window in which our Q3 launch can either pre-empt Pfizer or be pre-empted. The Strategist's modelled payoff matrix shows the highest expected value in the bottom-left cell — accelerating our launch and counting on Lilly delaying past Q3.</p>
+      <div class="ai-suggest">
+        <div class="icon">ST</div>
+        <div class="body">
+          <div class="heading">Strategist suggests · 12s ago</div>
+          <p>You haven't named the dissenting view. Pfizer's posterior shifted to 61% "aggressive growth" 14 minutes ago. Want me to draft a counter-recommendation?</p>
+          <div class="actions"><button class="btn primary">Yes, draft it</button><button class="btn ghost">Dismiss</button></div>
+        </div>
+      </div>
+      <h2>Options under consideration · ${b.options.length} of max 5 (SPEC-023)</h2>
+      <div class="options-list">
+        ${b.options.map(o => `
+          <div class="option-card ${o.recommended?'recommended':''}">
+            <div class="ord">Option ${o.id.split('-')[1]} · ${o.recommended ? 'Strategist recommended' : 'Counter-recommendation'}</div>
+            <div class="ttl">${escapeHtml(o.label)}</div>
+            <div class="scoreline">
+              <span class="ok">${o.predicted_outcome}</span>
+              <span class="alert">+$${(o.cost_estimate/1e6).toFixed(0)}M opex</span>
+              <span>${Math.round(o.confidence*100)}% confidence</span>
+            </div>
+          </div>`).join('')}
+      </div>
+      <div class="ai-suggest">
+        <div class="icon">CU</div>
+        <div class="body">
+          <div class="heading">Curator notes · evidence completeness ${b.evidence_refs.length}/5</div>
+          <p>You're missing CMC commentary from Lilly's CFO. I have an investor-day transcript snippet that may close that gap.</p>
+          <div class="actions"><button class="btn primary">Insert with citation</button><button class="btn ghost">Not relevant</button></div>
+        </div>
+      </div>`;
+
+    $('composer-side').innerHTML = `
+      <div class="composer-card"><div class="label">Stakeholders to brief</div><div class="body">${b.stakeholders.join(' · ')}</div><button class="btn">Schedule round-robin</button></div>
+      <div class="composer-card"><div class="label">Confidence to proceed</div><div class="heading" style="font-family:var(--display);font-size:30px;font-weight:500;color:var(--accent);">${Math.round(b.confidence_to_proceed*100)}%</div><div class="body">Time horizon: ${b.time_horizon_days} days · Affects $180M of Q3 revenue forecast.</div></div>
+      <div class="composer-card">
+        <div class="label">State · what happens next (SPEC-023 transitions)</div>
+        ${['draft','human_review','simulation_pending','decided','committed'].map((s, i) => `
+          <div class="row">
+            <span style="font-size:12.5px;color:${s===b.state?'var(--ink)':'var(--ink-2)'};">${s.replace('_',' ')}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:${s===b.state?'var(--green)':'var(--ink-3)'};">${s===b.state?'NOW':i===['draft','human_review','simulation_pending','decided','committed'].indexOf(b.state)+1?'NEXT':''}</span>
+          </div>`).join('')}
+      </div>`;
+  },
+
+  learning: async () => {
+    const [runs, fair, attrs] = await Promise.all([api.getLearningRuns(), api.getFairScore(), api.getSourceAttributions()]);
+    const r = runs.runs[0];
+    $('learning-grid').innerHTML = `
+      <div class="learning-card">
+        <div class="learning-num amber">${r.metrics.calibration_pct}%</div>
+        <div class="learning-label">Calibration · trailing 30 days</div>
+        <div class="learning-explain">Down ${r.metrics.prior_calibration_pct - r.metrics.calibration_pct} points from ${r.metrics.prior_calibration_pct}% three months ago. Strategist's miss on the AZ guidance call dragged the average. Curator is investigating source-tier weights.</div>
+        <svg class="sparkline" viewBox="0 0 220 56" preserveAspectRatio="none">
+          ${(() => {
+            const pts = fair.sparkline_12mo;
+            const max = Math.max(...pts), min = Math.min(...pts);
+            const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i/(pts.length-1))*220},${56 - ((p-min)/(max-min))*40 - 8}`).join(' ');
+            return `<path class="area" d="${path} L220,56 L0,56 Z"/><path d="${path}"/>`;
+          })()}
+        </svg>
+      </div>
+      <div class="learning-card">
+        <div class="learning-num green">${r.metrics.outcomes_verified + r.metrics.outcomes_missed + r.metrics.outcomes_cancelled}</div>
+        <div class="learning-label">Outcomes captured · this week</div>
+        <div class="learning-explain">${r.metrics.outcomes_verified} verified, ${r.metrics.outcomes_missed} missed, ${r.metrics.outcomes_cancelled} cancelled. The missed predictions: AstraZeneca guidance (system: stable; reality: cut) and KEYNOTE-869 timing (system: on track; reality: delayed +2Q).</div>
+        <button class="btn">Open the misses</button>
+      </div>
+      <div class="learning-card">
+        <div class="learning-num">+${attrs.reduce((sum,a)=>sum+a.delta,0).toFixed(2)}</div>
+        <div class="learning-label">Net source-weight delta</div>
+        <div class="learning-explain">${attrs.filter(a=>a.delta>0).length} sources gained trust. ${attrs.filter(a=>a.delta<0).length} lost it. Curator updated the registry 14 minutes ago.</div>
+        <button class="btn">View weight changes</button>
+      </div>`;
+
+    $('weights-table').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div><div class="agent-role">Curator · weight changes this week (GET /learning/source-attributions)</div><div style="font-family:var(--display);font-size:18px;font-weight:500;margin-top:4px;">${attrs.length} sources adjusted from outcome evidence</div></div>
+        <button class="btn">Pin to dashboard</button>
+      </div>
+      <div class="row head"><span>Source</span><span>From</span><span>To</span><span>Δ</span></div>
+      ${attrs.map(a => `<div class="row"><span class="name">${escapeHtml(a.source)}</span><span class="from">${a.from.toFixed(2)}</span><span class="to">${a.to.toFixed(2)}</span><span class="delta ${a.delta >= 0 ? 'up' : 'down'}">${a.delta >= 0 ? '+' : ''}${a.delta.toFixed(2)}</span></div>`).join('')}`;
+  }
+};
+
+// =====================================================================
+// MODE TOGGLE + INITIAL RENDER
+// =====================================================================
+function setMode(m) {
+  MODE = m;
+  $('btn-sample').classList.toggle('active', m === 'sample');
+  $('btn-live').classList.toggle('active', m === 'live');
+  const ind = $('mode-indicator');
+  if (m === 'live') {
+    ind.classList.add('live');
+    ind.innerHTML = '<span class="dot"></span>LIVE · ' + API_BASE.replace('https://','');
+  } else {
+    ind.classList.remove('live');
+    ind.innerHTML = '<span class="dot"></span>SAMPLE DATA';
+  }
+  renderAll();
+}
+
+async function renderAll() {
+  try {
+    await Promise.all([
+      render.agents(), render.pulse(), render.materiality(),
+      render.dossier(), render.wargame(), render.brief(), render.learning()
+    ]);
+  } catch (err) {
+    console.error('Render failure:', err);
+    if (MODE === 'live') {
+      alert('Live API call failed: ' + err.message + '\n\nCommon causes: CORS not configured for this origin, auth token expired, endpoint not yet implemented. Falling back to sample.');
+      setMode('sample');
+    }
+  }
+}
+
+// Cmd-K
+function openCmdK() { $('cmdk').classList.add('open'); setTimeout(() => document.querySelector('.cmdk-input input')?.focus(), 50); }
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); $('cmdk').classList.toggle('open'); if ($('cmdk').classList.contains('open')) setTimeout(() => document.querySelector('.cmdk-input input')?.focus(), 50); }
+  if (e.key === 'Escape') $('cmdk').classList.remove('open');
+});
+$('cmdk').addEventListener('click', (e) => { if (e.target.id === 'cmdk') $('cmdk').classList.remove('open'); });
+
+renderAll();
+</script>
+
+</body>
+</html>

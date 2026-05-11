@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agentic War-Game Cockpit — human + agent + digital twin collaboration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0E16; --bg-2: #0E1320; --surface: #141A2A; --surface-2: #1B2236; --surface-3: #232C44;
+  --ink: #E6EAF2; --ink-2: #A3ACBD; --ink-3: #6F7A91; --ink-4: #4A5266;
+  --accent: #5B8CFF; --accent-2: #7AA2FF; --accent-soft: rgba(91,140,255,0.12);
+  --amber: #F2A23B; --amber-soft: rgba(242,162,59,0.14);
+  --green: #5BC97D; --green-soft: rgba(91,201,125,0.12);
+  --red: #E36B6B; --red-soft: rgba(227,107,107,0.12);
+  --violet: #B68CFF; --violet-soft: rgba(182,140,255,0.14);
+  --teal: #4ED4D0; --teal-soft: rgba(78,212,208,0.14);
+  --line: rgba(255,255,255,0.06); --line-strong: rgba(255,255,255,0.12);
+  --display: 'Syne', Georgia, serif; --body: 'DM Sans', -apple-system, sans-serif; --mono: 'DM Mono', ui-monospace, monospace;
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.35); --shadow-lg: 0 24px 64px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 0 1px var(--violet-soft), 0 12px 36px rgba(182,140,255,0.18);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+body { background: radial-gradient(circle at 15% -10%, rgba(182,140,255,0.07) 0%, transparent 45%), radial-gradient(circle at 85% 110%, rgba(91,140,255,0.05) 0%, transparent 50%), var(--bg); padding-bottom: 120px; }
+
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.85); } }
+@keyframes sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(110%); } }
+@keyframes thinking { 0%,100% { opacity:0.4; } 50% { opacity:1; } }
+@keyframes breathe { 0%,100% { transform: scale(1); opacity:0.85; } 50% { transform: scale(1.04); opacity:1; } }
+
+/* ========== SHELL ========== */
+.shell { max-width: 1400px; margin: 0 auto; padding: 0 32px; }
+
+/* Top status bar */
+.status-bar { position: sticky; top: 0; z-index: 100; background: rgba(20,26,42,0.95); backdrop-filter: blur(24px); border-bottom: 1px solid var(--line); padding: 12px 32px; display: flex; gap: 24px; align-items: center; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.status-bar .live-tag { display: inline-flex; gap: 8px; align-items: center; padding: 4px 10px; border-radius: 999px; background: var(--violet-soft); color: var(--violet); border: 1px solid var(--violet); }
+.status-bar .live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); animation: pulse 1.4s ease-in-out infinite; }
+.status-bar .nav { margin-left: auto; display: flex; gap: 14px; }
+.status-bar .nav a { color: var(--ink-3); text-decoration: none; padding: 4px 0; }
+.status-bar .nav a:hover { color: var(--ink); }
+
+/* ========== HERO ========== */
+.hero { padding: 64px 32px 56px; max-width: 1400px; margin: 0 auto; }
+.eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--violet); display: inline-flex; gap: 10px; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--violet-soft); margin-bottom: 24px; }
+.eyebrow .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); animation: pulse 1.6s ease-in-out infinite; }
+.hero-title { font-family: var(--display); font-size: clamp(40px, 5.4vw, 64px); font-weight: 400; line-height: 1.05; letter-spacing: -0.035em; margin-bottom: 24px; max-width: 1080px; }
+.hero-title em { font-style: italic; color: var(--violet); }
+.hero-sub { font-size: 17px; line-height: 1.6; color: var(--ink-2); max-width: 820px; margin-bottom: 28px; }
+.hero-stat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 32px; }
+.hero-stat-card { background: var(--surface); border-radius: 12px; padding: 16px 18px; }
+.hero-stat-card .v { font-family: var(--display); font-size: 26px; font-weight: 500; line-height: 1; letter-spacing: -0.03em; }
+.hero-stat-card .v.violet { color: var(--violet); }
+.hero-stat-card .v.green { color: var(--green); }
+.hero-stat-card .v.amber { color: var(--amber); }
+.hero-stat-card .l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-top: 6px; }
+.hero-stat-card .b { font-size: 11.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+
+/* ========== SECTION ========== */
+.section { padding: 56px 32px; max-width: 1400px; margin: 0 auto; }
+.section-eyebrow { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.section-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 10px var(--violet); }
+.section-title { font-family: var(--display); font-size: 32px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; margin-bottom: 12px; }
+.section-sub { font-size: 15px; color: var(--ink-2); max-width: 820px; margin-bottom: 32px; }
+
+/* ========== AGENT WORKFORCE GRID ========== */
+.workforce-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.workforce-block { background: var(--bg-2); border-radius: 18px; padding: 24px; }
+.workforce-block .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.workforce-block .ttl { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.workforce-block .meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+
+.agent-card { background: var(--surface); border-radius: 14px; padding: 16px 18px; margin-bottom: 10px; display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center; transition: all 200ms ease; cursor: pointer; }
+.agent-card:hover { background: var(--surface-2); }
+.agent-card .glyph { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-family: var(--display); font-weight: 600; font-size: 14px; }
+.agent-card .glyph.sentinel { background: var(--teal-soft); color: var(--teal); }
+.agent-card .glyph.strategist { background: var(--violet-soft); color: var(--violet); }
+.agent-card .glyph.curator { background: var(--green-soft); color: var(--green); }
+.agent-card .body .name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.agent-card .body .role { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 2px; }
+.agent-card .body .now { font-family: var(--mono); font-size: 11px; color: var(--ink-2); margin-top: 6px; }
+.agent-card .now .doing { color: var(--violet); }
+.agent-card .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.4s ease-in-out infinite; }
+.agent-card .stats { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; text-align: right; }
+.agent-card .stats .n { font-family: var(--display); font-size: 16px; font-weight: 500; color: var(--ink); }
+
+/* Adversary twins */
+.twin-card { background: var(--surface); border-radius: 14px; padding: 16px 18px; margin-bottom: 10px; cursor: pointer; transition: all 200ms ease; border-left: 3px solid var(--ink-3); }
+.twin-card:hover { background: var(--surface-2); }
+.twin-card.aggressive { border-left-color: var(--red); }
+.twin-card.defensive { border-left-color: var(--amber); }
+.twin-card.constrained { border-left-color: var(--violet); }
+.twin-card.regulator { border-left-color: var(--accent); }
+.twin-card.payer { border-left-color: var(--green); }
+.twin-card.kol { border-left-color: var(--teal); }
+.twin-card .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.twin-card .name { font-family: var(--display); font-size: 14px; font-weight: 500; }
+.twin-card .archetype { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.twin-card .posture { font-family: var(--mono); font-size: 11px; color: var(--ink-2); margin-bottom: 6px; }
+.twin-card .posture .strong { color: var(--ink); font-weight: 500; }
+.twin-card .last-update { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+.twin-card .last-update .delta { padding: 1px 5px; border-radius: 3px; }
+.twin-card .last-update .delta.up { color: var(--red); background: var(--red-soft); }
+.twin-card .last-update .delta.down { color: var(--green); background: var(--green-soft); }
+
+/* ========== CONTINUOUS SIMULATION FEED ========== */
+.sim-feed { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+.sim-summary { display: flex; flex-direction: column; gap: 10px; }
+.sim-summary .card { background: var(--surface); border-radius: 12px; padding: 16px 18px; }
+.sim-summary .num { font-family: var(--display); font-size: 28px; font-weight: 500; line-height: 1; letter-spacing: -0.03em; }
+.sim-summary .num.violet { color: var(--violet); }
+.sim-summary .num.amber { color: var(--amber); }
+.sim-summary .num.green { color: var(--green); }
+.sim-summary .lab { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 4px; }
+.sim-summary .desc { font-size: 11.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+
+.sim-list { display: flex; flex-direction: column; gap: 10px; }
+.sim-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; display: grid; grid-template-columns: 60px 1fr auto; gap: 16px; align-items: flex-start; transition: all 200ms ease; cursor: pointer; }
+.sim-card:hover { background: var(--surface-2); }
+.sim-card.attention { border-left: 3px solid var(--amber); }
+.sim-card.running { border-left: 3px solid var(--violet); }
+.sim-card.done { border-left: 3px solid var(--green); }
+.sim-card.queued { opacity: 0.7; }
+.sim-status { text-align: center; }
+.sim-status .badge { font-family: var(--mono); font-size: 8px; padding: 3px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.14em; display: inline-block; margin-bottom: 6px; }
+.sim-status .badge.attention { background: var(--amber-soft); color: var(--amber); }
+.sim-status .badge.running { background: var(--violet-soft); color: var(--violet); animation: thinking 1.6s ease-in-out infinite; }
+.sim-status .badge.done { background: var(--green-soft); color: var(--green); }
+.sim-status .badge.queued { background: var(--surface-2); color: var(--ink-3); }
+.sim-status .when { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; }
+.sim-body .scenario { font-family: var(--display); font-size: 14.5px; font-weight: 500; line-height: 1.3; margin-bottom: 6px; }
+.sim-body .agents { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.sim-body .agent-tag { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; }
+.sim-body .agent-tag.s { background: var(--teal-soft); color: var(--teal); }
+.sim-body .agent-tag.t { background: var(--violet-soft); color: var(--violet); }
+.sim-body .agent-tag.c { background: var(--green-soft); color: var(--green); }
+.sim-body .agent-tag.adv { background: var(--surface-2); color: var(--ink-2); }
+.sim-body .summary { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+.sim-body .summary .key { color: var(--ink); }
+.sim-body .live-thinking { display: flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--violet); margin-top: 6px; }
+.sim-body .live-thinking .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--violet); animation: thinking 1s ease-in-out infinite; }
+.sim-body .live-thinking .dot:nth-child(2) { animation-delay: 0.2s; }
+.sim-body .live-thinking .dot:nth-child(3) { animation-delay: 0.4s; }
+.sim-card .actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+
+/* ========== DIGITAL TWIN DEEP-DIVE ========== */
+.twin-detail { background: var(--bg-2); border-radius: 20px; padding: 28px; }
+.twin-header { display: flex; gap: 18px; align-items: center; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.twin-header .glyph { width: 56px; height: 56px; border-radius: 16px; background: var(--red-soft); color: var(--red); display: grid; place-items: center; font-family: var(--display); font-weight: 600; font-size: 24px; }
+.twin-header .info { flex: 1; }
+.twin-header .info .nm { font-family: var(--display); font-size: 24px; font-weight: 500; }
+.twin-header .info .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 4px; }
+.twin-header .live { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 11px; color: var(--green); }
+.twin-header .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.4s ease-in-out infinite; }
+
+.twin-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.twin-block { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.twin-block .h { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; }
+.twin-block .ttl { font-family: var(--display); font-size: 16px; font-weight: 500; margin-bottom: 12px; }
+
+.state-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 6px 0; font-size: 12.5px; }
+.state-row .lab { color: var(--ink-2); }
+.state-row .val { font-family: var(--mono); font-weight: 500; }
+.state-row .val.ok { color: var(--green); }
+.state-row .val.warn { color: var(--amber); }
+.state-row .val.bad { color: var(--red); }
+.state-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; grid-column: 1/-1; margin-top: 4px; }
+.state-bar .fill { height: 100%; border-radius: 999px; }
+.state-bar .fill.green { background: var(--green); }
+.state-bar .fill.amber { background: var(--amber); }
+.state-bar .fill.red { background: var(--red); }
+.state-bar .fill.violet { background: var(--violet); }
+
+.posterior-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 5px 0; font-size: 12.5px; }
+.posterior-row .lab { color: var(--ink-2); }
+.posterior-row .pct { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+.posterior-bar { grid-column: 1/-1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
+.posterior-bar .fill { height: 100%; border-radius: 999px; background: var(--red); }
+.posterior-bar .fill.amber { background: var(--amber); }
+.posterior-bar .fill.violet { background: var(--violet); }
+
+.evidence-feed .item { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.evidence-feed .item:last-child { border-bottom: none; }
+.evidence-feed .item .when { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; }
+.evidence-feed .item .what { color: var(--ink); margin-top: 2px; line-height: 1.5; }
+.evidence-feed .item .delta { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+.evidence-feed .item .delta.up { color: var(--red); background: var(--red-soft); }
+.evidence-feed .item .delta.down { color: var(--green); background: var(--green-soft); }
+
+/* ========== LIVE COCKPIT ========== */
+.cockpit { background: var(--bg-2); border-radius: 24px; padding: 28px; }
+.cockpit-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.cockpit-head .info .h { font-family: var(--mono); font-size: 10px; color: var(--violet); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
+.cockpit-head .info .h .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); animation: pulse 1.4s ease-in-out infinite; }
+.cockpit-head .info .scenario { font-family: var(--display); font-size: 22px; font-weight: 500; line-height: 1.3; max-width: 720px; margin-bottom: 8px; }
+.cockpit-head .info .ctx { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: flex; gap: 12px; flex-wrap: wrap; }
+.cockpit-head .controls { display: flex; gap: 8px; }
+
+.cockpit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.cockpit-col { display: flex; flex-direction: column; gap: 14px; }
+.thinking-card { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.thinking-card .head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+.thinking-card .glyph { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.thinking-card .glyph.t { background: var(--violet-soft); color: var(--violet); }
+.thinking-card .glyph.s { background: var(--teal-soft); color: var(--teal); }
+.thinking-card .glyph.c { background: var(--green-soft); color: var(--green); }
+.thinking-card .name { font-family: var(--display); font-size: 13px; font-weight: 500; }
+.thinking-card .role { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 1px; }
+.thinking-card .timer { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--violet); display: flex; gap: 6px; align-items: center; }
+.thinking-card .timer .spinner { width: 12px; height: 12px; border: 2px solid rgba(182,140,255,0.30); border-top-color: var(--violet); border-radius: 50%; animation: thinking-spin 1s linear infinite; }
+@keyframes thinking-spin { to { transform: rotate(360deg); } }
+
+.thinking-stream { font-family: var(--mono); font-size: 11px; color: var(--ink-2); line-height: 1.7; padding-left: 14px; border-left: 2px solid var(--violet-soft); }
+.thinking-stream .step { padding: 4px 0; }
+.thinking-stream .step.done { color: var(--green); }
+.thinking-stream .step.now { color: var(--violet); }
+.thinking-stream .step.queued { color: var(--ink-3); opacity: 0.6; }
+
+.adv-response-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.adv-response { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; }
+.adv-response .nm { font-family: var(--display); font-size: 12px; font-weight: 500; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
+.adv-response .nm .dot { width: 6px; height: 6px; border-radius: 50%; }
+.adv-response .nm .dot.r { background: var(--red); }
+.adv-response .nm .dot.a { background: var(--amber); }
+.adv-response .nm .dot.v { background: var(--violet); }
+.adv-response .nm .dot.t { background: var(--teal); }
+.adv-response .pred { font-size: 11px; color: var(--ink-2); line-height: 1.45; margin-bottom: 6px; }
+.adv-response .conf { font-family: var(--mono); font-size: 10px; }
+.adv-response .conf .v { color: var(--ink); }
+
+.stress-test-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.stress-row { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-size: 11.5px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.stress-row .what { color: var(--ink-2); }
+.stress-row .what .key { color: var(--ink); }
+.stress-row .delta { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.stress-row .delta.flip { background: var(--amber-soft); color: var(--amber); }
+.stress-row .delta.same { background: var(--green-soft); color: var(--green); }
+
+.override-controls { background: var(--surface); border-radius: 14px; padding: 18px 20px; }
+.override-controls .h { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 12px; display: flex; gap: 6px; align-items: center; }
+.override-row { display: grid; grid-template-columns: 140px 1fr 60px; gap: 12px; align-items: center; padding: 8px 0; }
+.override-row .lab { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.override-row input[type=range] { width: 100%; }
+.override-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); text-align: right; }
+
+.recommendation-card { background: linear-gradient(135deg, rgba(91,201,125,0.16) 0%, rgba(91,140,255,0.06) 100%); border: 1px solid rgba(91,201,125,0.30); border-radius: 14px; padding: 20px 22px; }
+.recommendation-card .h { font-family: var(--mono); font-size: 10px; color: var(--green); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 10px; }
+.recommendation-card .ttl { font-family: var(--display); font-size: 18px; font-weight: 500; line-height: 1.3; margin-bottom: 8px; }
+.recommendation-card .body { font-size: 13px; color: var(--ink); line-height: 1.6; margin-bottom: 14px; }
+.recommendation-card .actions { display: flex; gap: 8px; }
+
+/* ========== AUTHORITY SPECTRUM ========== */
+.spectrum { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.spectrum-level { background: var(--surface); border-radius: 14px; padding: 18px 16px; border-top: 4px solid; }
+.spectrum-level.l1 { border-top-color: var(--ink-3); }
+.spectrum-level.l2 { border-top-color: var(--teal); }
+.spectrum-level.l3 { border-top-color: var(--accent); }
+.spectrum-level.l4 { border-top-color: var(--violet); }
+.spectrum-level.l5 { border-top-color: var(--amber); }
+.spectrum-level .level-num { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 4px; }
+.spectrum-level .name { font-family: var(--display); font-size: 14px; font-weight: 500; line-height: 1.3; margin-bottom: 8px; }
+.spectrum-level .who-decides { font-family: var(--mono); font-size: 10px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.spectrum-level .desc { font-size: 11.5px; color: var(--ink-2); line-height: 1.55; margin-bottom: 10px; }
+.spectrum-level .example { font-family: var(--mono); font-size: 10px; color: var(--ink-3); background: var(--surface-2); padding: 8px 10px; border-radius: 6px; line-height: 1.5; }
+.spectrum-level .example .key { color: var(--ink); }
+
+/* ========== DELEGATION ========== */
+.delegate-flow { display: grid; grid-template-columns: 1fr 24px 1fr 24px 1fr; gap: 12px; align-items: stretch; }
+.delegate-step { background: var(--surface); border-radius: 14px; padding: 20px 22px; }
+.delegate-step .when { font-family: var(--mono); font-size: 10px; color: var(--violet); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
+.delegate-step .who { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; }
+.delegate-step .ttl { font-family: var(--display); font-size: 16px; font-weight: 500; line-height: 1.3; margin-bottom: 10px; }
+.delegate-step .body { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin-bottom: 12px; }
+.delegate-arrow { display: grid; place-items: center; color: var(--ink-3); font-family: var(--mono); font-size: 18px; }
+
+.queue-card { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; font-size: 12px; }
+.queue-card .q { color: var(--ink); margin-bottom: 4px; line-height: 1.4; }
+.queue-card .params { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; }
+
+.morning-result { background: var(--surface-2); border-radius: 10px; padding: 14px; margin-bottom: 8px; border-left: 3px solid var(--green); }
+.morning-result.flag { border-left-color: var(--amber); }
+.morning-result .head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; }
+.morning-result .head .badge { padding: 2px 6px; border-radius: 3px; }
+.morning-result .head .badge.ok { background: var(--green-soft); color: var(--green); }
+.morning-result .head .badge.flag { background: var(--amber-soft); color: var(--amber); }
+.morning-result .body { font-size: 12.5px; color: var(--ink); line-height: 1.5; }
+
+/* ========== FUTURE WORKFORCE ========== */
+.future-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.future-card { background: var(--bg-2); border-radius: 16px; padding: 24px 26px; }
+.future-card .stage { font-family: var(--mono); font-size: 10px; color: var(--violet); text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 8px; }
+.future-card .when { font-family: var(--display); font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; margin-bottom: 6px; }
+.future-card .ttl { font-family: var(--display); font-size: 16px; font-weight: 500; margin-bottom: 14px; line-height: 1.3; }
+.future-card .body { font-size: 13px; color: var(--ink-2); line-height: 1.65; margin-bottom: 14px; }
+.future-card .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.future-card .stat .v { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.future-card .stat .l { font-family: var(--mono); font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 2px; }
+
+/* ========== UI primitives ========== */
+.btn { font-family: var(--body); font-size: 12px; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
+.btn.primary { background: var(--violet); color: white; border-color: var(--violet); }
+.btn.primary:hover { background: var(--violet); opacity: 0.9; }
+.btn.green { background: var(--green); color: var(--bg); border-color: var(--green); font-weight: 600; }
+.btn.amber { color: var(--amber); border-color: rgba(242,162,59,0.3); }
+.btn.ghost { border-color: transparent; }
+
+@media (max-width: 1100px) {
+  .workforce-grid, .sim-feed, .twin-grid, .cockpit-grid, .future-grid { grid-template-columns: 1fr !important; }
+  .spectrum { grid-template-columns: 1fr 1fr; }
+  .delegate-flow { grid-template-columns: 1fr; }
+  .delegate-arrow { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== STATUS BAR ========== -->
+<div class="status-bar">
+  <span class="live-tag"><span class="dot"></span>WAR-GAME COCKPIT · LIVE</span>
+  <span>3 internal agents · 6 adversary twins · 47 scenarios run today · 5 awaiting your judgement</span>
+  <div class="nav">
+    <a href="#workforce">Workforce</a>
+    <a href="#feed">Feed</a>
+    <a href="#twin">Twin</a>
+    <a href="#cockpit">Cockpit</a>
+    <a href="#authority">Authority</a>
+    <a href="#delegate">Delegate</a>
+    <a href="#future">Future</a>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<div class="hero">
+  <span class="eyebrow"><span class="pulse"></span>Agentic war-gaming · continuous · collaborative · calibrated</span>
+  <h1 class="hero-title">War-gaming becomes <em>ambient</em>. The agents simulate continuously. You tune in when something interesting happens.</h1>
+  <p class="hero-sub">
+    Today, war-gaming is a meeting you schedule. In the future state, six adversary digital twins are continuously modelled, three internal agents (Sentinel, Strategist, Curator) run scenarios against them in the background, and the system surfaces only what crosses your attention threshold. You choose your interaction mode — watch, nudge, co-pilot, delegate, or override. Decisions get made on a calibrated authority spectrum from agent-auto to human-only.
+  </p>
+  <div class="hero-stat">
+    <div class="hero-stat-card"><div class="v violet">47</div><div class="l">Scenarios run today</div><div class="b">All entirely without your involvement</div></div>
+    <div class="hero-stat-card"><div class="v amber">5</div><div class="l">Awaiting your judgement</div><div class="b">Findings that crossed your attention threshold</div></div>
+    <div class="hero-stat-card"><div class="v green">87%</div><div class="l">Strategist confidence</div><div class="b">Average across today's simulations</div></div>
+    <div class="hero-stat-card"><div class="v">6</div><div class="l">Adversary twins live</div><div class="b">Pfizer, Lilly, AZN, FDA, payer, KOL</div></div>
+  </div>
+</div>
+
+<!-- ========== SECTION 1 · WORKFORCE ========== -->
+<section id="workforce" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The workforce</div>
+  <div class="section-title">Three internal agents. Six adversary digital twins. All running continuously.</div>
+  <p class="section-sub">The internal team makes the decisions about what to simulate, runs the maths, and validates the outputs. The adversary twins are continuously updated models of your competitors — their cash position, pipeline pressure, regulatory posture, behavioural archetype. Click any to inspect the live state.</p>
+
+  <div class="workforce-grid">
+    <div class="workforce-block">
+      <div class="head">
+        <div class="ttl">Internal team · always working</div>
+        <div class="meta">3 agents · 18 active jobs</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="glyph sentinel">SE</div>
+        <div class="body">
+          <div class="name">Sentinel</div>
+          <div class="role">Sense · 15 sources · 24/7</div>
+          <div class="now">Now: <span class="doing">scanning FDA Orange Book + ClinicalTrials.gov for Q3 catalysts</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <span class="live-dot"></span>
+          <div class="stats"><span class="n">571</span><br>signals 24h</div>
+        </div>
+      </div>
+
+      <div class="agent-card">
+        <div class="glyph strategist">ST</div>
+        <div class="body">
+          <div class="name">Strategist</div>
+          <div class="role">Frame · Simulate · Bayesian + Stackelberg</div>
+          <div class="now">Now: <span class="doing">running 1,200 Monte Carlo trials for tirzepatide Q3 launch scenario</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <span class="live-dot"></span>
+          <div class="stats"><span class="n">47</span><br>sims today</div>
+        </div>
+      </div>
+
+      <div class="agent-card">
+        <div class="glyph curator">CU</div>
+        <div class="body">
+          <div class="name">Curator</div>
+          <div class="role">Validate · Calibrate · Recalibrate</div>
+          <div class="now">Now: <span class="doing">recomputing source weights after 4 verified outcomes from Q1 decisions</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <span class="live-dot"></span>
+          <div class="stats"><span class="n">14</span><br>weights updated</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="workforce-block">
+      <div class="head">
+        <div class="ttl">Adversary digital twins · live state</div>
+        <div class="meta">6 twins · posteriors updating</div>
+      </div>
+
+      <div class="twin-card aggressive">
+        <div class="top"><span class="name">Pfizer Oncology</span><span class="archetype">Top competitor · oncology</span></div>
+        <div class="posture">Posture: <span class="strong">61% aggressive growth</span> · 28% defensive · 11% cash-constrained</div>
+        <div class="last-update">Updated 14m ago · KEYNOTE-869 enrolment +4 EU sites <span class="delta up">+8 aggressive</span></div>
+      </div>
+
+      <div class="twin-card defensive">
+        <div class="top"><span class="name">Eli Lilly</span><span class="archetype">Adjacent competitor</span></div>
+        <div class="posture">Posture: <span class="strong">47% slips Q4</span> · 38% resolves Q3 · 15% slips 2027</div>
+        <div class="last-update">Updated 6h ago · FDA CRL on tirzepatide <span class="delta up">+12 delay risk</span></div>
+      </div>
+
+      <div class="twin-card defensive">
+        <div class="top"><span class="name">AstraZeneca</span><span class="archetype">Watched · oncology pricing</span></div>
+        <div class="posture">Posture: <span class="strong">68% defensive consolidator</span> · 21% pivot · 11% acquire</div>
+        <div class="last-update">Updated 11h ago · FY26 oncology guidance cut −4 to −6% <span class="delta up">+9 defensive</span></div>
+      </div>
+
+      <div class="twin-card regulator">
+        <div class="top"><span class="name">FDA Oncology Centre</span><span class="archetype">Regulator · CDER ODE-2</span></div>
+        <div class="posture">Posture: <span class="strong">62% strict on CMC</span> · 23% accommodating · 15% data-driven</div>
+        <div class="last-update">Updated 6h ago · Lilly CRL pattern matches 2024 cluster</div>
+      </div>
+
+      <div class="twin-card payer">
+        <div class="top"><span class="name">CVS Health PBM</span><span class="archetype">Payer · oncology formulary</span></div>
+        <div class="posture">Posture: <span class="strong">54% tier-3 default for new oncology</span> · 31% tier-2 with REMS · 15% prior auth</div>
+        <div class="last-update">Updated 2d ago · NADAC update on osimertinib pricing</div>
+      </div>
+
+      <div class="twin-card kol">
+        <div class="top"><span class="name">ASCO KOL panel · second-line</span><span class="archetype">KOL · 12 panellists modelled</span></div>
+        <div class="posture">Posture: <span class="strong">71% prefer combination over mono</span> · split on sequencing</div>
+        <div class="last-update">Updated 7d ago · pre-ASCO abstracts ingested</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 2 · CONTINUOUS SIMULATION FEED ========== -->
+<section id="feed" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The continuous simulation feed</div>
+  <div class="section-title">Forty-seven scenarios ran today. Five need you. Forty-two don't.</div>
+  <p class="section-sub">Strategist runs scenarios proactively — when a signal arrives, when a posterior shifts, when a calendar trigger fires (pre-ASCO, pre-quarterly), when a counterfactual variant of an existing scenario hasn't been tested in 30 days. Most return "no material finding". A few cross your attention threshold and surface here. You read the headline; the maths is one click below.</p>
+
+  <div class="sim-feed">
+    <div class="sim-summary">
+      <div class="card">
+        <div class="num violet">47</div>
+        <div class="lab">Scenarios run today</div>
+        <div class="desc">38 routine reruns · 9 triggered by new evidence</div>
+      </div>
+      <div class="card">
+        <div class="num amber">5</div>
+        <div class="lab">Need your attention</div>
+        <div class="desc">Findings that crossed your threshold or contradicted prior</div>
+      </div>
+      <div class="card">
+        <div class="num">3</div>
+        <div class="lab">Currently running</div>
+        <div class="desc">Strategist or Curator working now</div>
+      </div>
+      <div class="card">
+        <div class="num green">$2.40</div>
+        <div class="lab">Cost today</div>
+        <div class="desc">LLM gateway · 47 sims · avg $0.05</div>
+      </div>
+    </div>
+
+    <div class="sim-list">
+
+      <div class="sim-card attention">
+        <div class="sim-status">
+          <span class="badge attention">ATTENTION</span>
+          <div class="when">2m ago</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Triggered by Lilly CRL: "If Lilly resolves CMC in 60 days, what's our window?"</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag s">Sentinel</span><span class="agent-tag adv">Pfizer-Twin</span><span class="agent-tag adv">Lilly-Twin</span></div>
+          <div class="summary"><span class="key">Recommendation flipped</span> from "hold Q3" (yesterday) to "accelerate Q3" (now). Pfizer-Twin posterior shifted to 61% aggressive 14m ago after KEYNOTE-869 enrolment update. The recommended cell now has +6.4% share gain at 82% confidence.</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary">Open in cockpit →</button>
+          <button class="btn">Why flipped?</button>
+        </div>
+      </div>
+
+      <div class="sim-card running">
+        <div class="sim-status">
+          <span class="badge running">RUNNING</span>
+          <div class="when">37s ago</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Pre-ASCO scenario: "What does the second-line landscape look like if KEYNOTE-869 reads positive?"</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag adv">Pfizer-Twin</span><span class="agent-tag adv">KOL-Twin</span></div>
+          <div class="summary">Calendar-triggered (pre-ASCO 2026 review). Running 1,200 Monte Carlo trials with 4 player options × 3 KOL acceptance scenarios.</div>
+          <div class="live-thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Strategist · processing iteration 643/1200</div>
+        </div>
+        <div class="actions"><button class="btn">Watch live</button></div>
+      </div>
+
+      <div class="sim-card attention">
+        <div class="sim-status">
+          <span class="badge attention">ATTENTION</span>
+          <div class="when">1h ago</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Stress-test: "Does the Q3 recommendation hold if Pfizer's adversary type is 80% aggressive instead of 61%?"</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag c">Curator</span><span class="agent-tag adv">Pfizer-Twin</span></div>
+          <div class="summary"><span class="key">Recommendation holds</span> with confidence dropping from 82% to 71%. The bottom-left cell remains the highest-EV option but the worst-case downside expands by 1.3 share points. Curator says: "robust to your most aggressive Pfizer assumption".</div>
+        </div>
+        <div class="actions"><button class="btn primary">Add to brief</button><button class="btn">Run the inverse</button></div>
+      </div>
+
+      <div class="sim-card done">
+        <div class="sim-status">
+          <span class="badge done">NO ACTION</span>
+          <div class="when">3h ago</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Routine: "AZN guidance cut — does it change the GLP-1 oncology landscape model?"</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag adv">AZN-Twin</span></div>
+          <div class="summary">No material finding. AZN posterior shifted +9% defensive but does not affect any open decision in your portfolio. Filed for the weekly review.</div>
+        </div>
+        <div class="actions"><button class="btn ghost">Open silently</button></div>
+      </div>
+
+      <div class="sim-card attention">
+        <div class="sim-status">
+          <span class="badge attention">ATTENTION</span>
+          <div class="when">5h ago</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Counterfactual: "If we had launched Q1 instead of waiting, where would we be now?"</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag c">Curator</span></div>
+          <div class="summary"><span class="key">+2.1% share gain</span> over actual trajectory, but with a 34% probability of a CRL-style regulatory delay (we hadn't completed CMC). Curator flagged this for retrospective calibration: the Q1 decision was correct under uncertainty even though the Q3 outcome would have been better.</div>
+        </div>
+        <div class="actions"><button class="btn primary">Promote to learning loop</button></div>
+      </div>
+
+      <div class="sim-card running">
+        <div class="sim-status">
+          <span class="badge running">RUNNING</span>
+          <div class="when">just now</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">Multi-twin sensitivity: "Across all 6 adversary twins, which scenarios am I most exposed to?"</div>
+          <div class="agents"><span class="agent-tag c">Curator</span><span class="agent-tag adv">All 6 twins</span></div>
+          <div class="summary">Weekly Curator-driven sensitivity sweep. Currently running 2,400 simulations across 12 baseline scenarios × 6 twin posterior variants.</div>
+          <div class="live-thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Curator · Pfizer 6/6 done · Lilly 4/6 · AZN 2/6 · others queued</div>
+        </div>
+        <div class="actions"><button class="btn">Run nightly?</button></div>
+      </div>
+
+      <div class="sim-card queued">
+        <div class="sim-status">
+          <span class="badge queued">QUEUED</span>
+          <div class="when">tonight</div>
+        </div>
+        <div class="sim-body">
+          <div class="scenario">"Run the full Q3 launch decision against 100 random seed perturbations" · Maya delegated · est 4h</div>
+          <div class="agents"><span class="agent-tag t">Strategist</span><span class="agent-tag c">Curator</span></div>
+          <div class="summary">Will run after midnight. Findings will land in tomorrow morning's Pulse. You'll get a notification.</div>
+        </div>
+        <div class="actions"><button class="btn">Edit params</button><button class="btn ghost">Cancel</button></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 3 · DIGITAL TWIN DEEP-DIVE ========== -->
+<section id="twin" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Digital twin deep-dive</div>
+  <div class="section-title">Pfizer Oncology — what we currently model.</div>
+  <p class="section-sub">A digital twin is a continuously-updated structured model of an actor: their state (cash, pipeline, pressure), their behavioural posterior (what they'd do across scenarios), and the evidence stream that updates both. The Strategist reasons against this model in every scenario; the Curator updates it whenever new evidence arrives.</p>
+
+  <div class="twin-detail">
+    <div class="twin-header">
+      <div class="glyph">PF</div>
+      <div class="info">
+        <div class="nm">Pfizer Oncology</div>
+        <div class="meta">Adversary digital twin · top competitor · oncology · last evidence 14m ago</div>
+      </div>
+      <div class="live"><span class="dot"></span>POSTERIOR LIVE</div>
+    </div>
+
+    <div class="twin-grid">
+
+      <div class="twin-block">
+        <div class="h">State · what we believe is true</div>
+        <div class="ttl">Modelled position</div>
+        <div class="state-row"><span class="lab">Cash position (Q1 26)</span><span class="val ok">$33.7B</span><div class="state-bar"><div class="fill green" style="width:78%;"></div></div></div>
+        <div class="state-row"><span class="lab">Pipeline pressure</span><span class="val warn">High (Q4 catalysts)</span><div class="state-bar"><div class="fill amber" style="width:74%;"></div></div></div>
+        <div class="state-row"><span class="lab">M&amp;A appetite</span><span class="val warn">Active (3 deals 90d)</span><div class="state-bar"><div class="fill amber" style="width:62%;"></div></div></div>
+        <div class="state-row"><span class="lab">Regulatory posture</span><span class="val ok">Co-operative w/ FDA</span><div class="state-bar"><div class="fill green" style="width:81%;"></div></div></div>
+        <div class="state-row"><span class="lab">Investor pressure</span><span class="val bad">Elevated (down 11%)</span><div class="state-bar"><div class="fill red" style="width:68%;"></div></div></div>
+        <div class="state-row"><span class="lab">Manufacturing capacity</span><span class="val ok">Excess</span><div class="state-bar"><div class="fill green" style="width:88%;"></div></div></div>
+      </div>
+
+      <div class="twin-block">
+        <div class="h">Posterior · what they'd do</div>
+        <div class="ttl">Behavioural archetype</div>
+        <div class="posterior-row"><span class="lab">Aggressive growth</span><span class="pct">61%</span></div>
+        <div class="posterior-bar"><div class="fill" style="width:61%;"></div></div>
+        <div class="posterior-row"><span class="lab">Defensive consolidator</span><span class="pct">28%</span></div>
+        <div class="posterior-bar"><div class="fill amber" style="width:28%;"></div></div>
+        <div class="posterior-row"><span class="lab">Cash-constrained</span><span class="pct">11%</span></div>
+        <div class="posterior-bar"><div class="fill violet" style="width:11%;"></div></div>
+
+        <div class="h" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">Per-action probability · this scenario</div>
+        <div class="posterior-row"><span class="lab">Pull amivantamab launch forward</span><span class="pct">74%</span></div>
+        <div class="posterior-bar"><div class="fill" style="width:74%;"></div></div>
+        <div class="posterior-row"><span class="lab">Cut amivantamab pricing</span><span class="pct">42%</span></div>
+        <div class="posterior-bar"><div class="fill amber" style="width:42%;"></div></div>
+        <div class="posterior-row"><span class="lab">Acquire smaller GLP-1</span><span class="pct">31%</span></div>
+        <div class="posterior-bar"><div class="fill violet" style="width:31%;"></div></div>
+      </div>
+
+      <div class="twin-block">
+        <div class="h">Evidence stream · what's updating the twin</div>
+        <div class="ttl">Last 7 evidence items</div>
+        <div class="evidence-feed">
+          <div class="item"><div class="when">14m ago · CT.gov</div><div class="what">KEYNOTE-869 +4 EU enrolment sites <span class="delta up">+8 aggressive</span></div></div>
+          <div class="item"><div class="when">2d ago · SEC 8-K</div><div class="what">$1.2B share buyback announced <span class="delta up">+5 aggressive</span></div></div>
+          <div class="item"><div class="when">4d ago · Earnings call</div><div class="what">CEO: "we will defend leadership in oncology" <span class="delta up">+3 aggressive</span></div></div>
+          <div class="item"><div class="when">6d ago · ENDPTS</div><div class="what">CMO transition announced <span class="delta down">−4 aggressive</span></div></div>
+          <div class="item"><div class="when">9d ago · CT.gov</div><div class="what">3 trial timing pulls of 4-6 weeks <span class="delta up">+6 aggressive</span></div></div>
+          <div class="item"><div class="when">11d ago · NEJM</div><div class="what">Amivantamab Phase 3 PFS positive HR 0.58 <span class="delta up">+11 aggressive</span></div></div>
+          <div class="item"><div class="when">14d ago · 10-Q</div><div class="what">Oncology revenue beat +7%, guidance raised</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn">View 90d trajectory</button>
+          <button class="btn">Compare to Lilly-Twin</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 4 · LIVE COCKPIT ========== -->
+<section id="cockpit" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The live cockpit · co-pilot mode</div>
+  <div class="section-title">When you tune in, the agents are mid-thought. You can watch, override, or take the wheel.</div>
+  <p class="section-sub">This is the surface where human and agents collaborate in real time on a specific scenario. Strategist's reasoning streams in the left column. Curator's grounding checks stream in the right. Six adversary twins predict their responses. Stress-test variants run beside the baseline. You can tune any assumption with a slider; the simulation reruns in seconds.</p>
+
+  <div class="cockpit">
+    <div class="cockpit-head">
+      <div class="info">
+        <div class="h"><span class="dot"></span>Live cockpit · 5 agents working · co-pilot mode</div>
+        <div class="scenario">If Lilly resolves the CRL by Q3 vs Q4 — and Pfizer responds aggressively or holds back — what does our market share look like?</div>
+        <div class="ctx"><span>Sim seed 4729-a</span><span>1,200 Monte Carlo</span><span>87% confidence</span><span>$0.07 cost</span><span>started 47s ago</span></div>
+      </div>
+      <div class="controls">
+        <button class="btn primary">⏸ Pause agents</button>
+        <button class="btn">⌥ Take the wheel</button>
+        <button class="btn green">⤳ Delegate overnight</button>
+      </div>
+    </div>
+
+    <div class="cockpit-grid">
+      <div class="cockpit-col">
+
+        <div class="thinking-card">
+          <div class="head">
+            <div class="glyph t">ST</div>
+            <div>
+              <div class="name">Strategist</div>
+              <div class="role">Reasoning live · Bayesian + Stackelberg</div>
+            </div>
+            <div class="timer"><div class="spinner"></div>14s</div>
+          </div>
+          <div class="thinking-stream">
+            <div class="step done">✓ loaded scenario question + 11 evidence refs</div>
+            <div class="step done">✓ pulled Pfizer-Twin posterior (aggressive 61%)</div>
+            <div class="step done">✓ pulled Lilly-Twin recovery distribution (Q3 38% / Q4 47%)</div>
+            <div class="step done">✓ built 2x2 payoff matrix (4 cells, 4 player options)</div>
+            <div class="step done">✓ ran 1,200 Monte Carlo trials per cell</div>
+            <div class="step done">✓ computed posterior statistics (mean, std, p10/p50/p90)</div>
+            <div class="step now">→ identifying the highest-EV cell + counter-argument...</div>
+            <div class="step queued">— synthesizing the recommendation paragraph</div>
+            <div class="step queued">— passing to Curator for grounding validation</div>
+          </div>
+        </div>
+
+        <div class="thinking-card">
+          <div class="head">
+            <div class="glyph s">SE</div>
+            <div>
+              <div class="name">Sentinel</div>
+              <div class="role">Watching for invalidating evidence</div>
+            </div>
+            <div class="timer">2s</div>
+          </div>
+          <div class="thinking-stream">
+            <div class="step done">✓ subscribed to FDA Orange Book changes for tirzepatide</div>
+            <div class="step done">✓ subscribed to CT.gov updates for KEYNOTE-869, NCT05156983</div>
+            <div class="step done">✓ subscribed to Pfizer + Lilly + AZN earnings calendar</div>
+            <div class="step now">→ polling · 0 new signals in last 60s</div>
+          </div>
+        </div>
+
+        <div class="thinking-card">
+          <div class="head">
+            <div class="glyph c">CU</div>
+            <div>
+              <div class="name">Curator</div>
+              <div class="role">Validating grounding · waiting on Strategist</div>
+            </div>
+            <div class="timer">queued</div>
+          </div>
+          <div class="thinking-stream">
+            <div class="step queued">— validate Strategist's citations once recommendation arrives</div>
+            <div class="step queued">— check counter-rec is real prose, not templated</div>
+            <div class="step queued">— flag any unverified numbers</div>
+            <div class="step queued">— record outcome reference for Q4 calibration</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="cockpit-col">
+
+        <div class="thinking-card">
+          <div class="head">
+            <div class="glyph" style="background:var(--surface-2);color:var(--ink-2);">AT</div>
+            <div>
+              <div class="name">Adversary twins · predicting reactions</div>
+              <div class="role">Each twin computing their best response · live</div>
+            </div>
+            <div class="timer">3s</div>
+          </div>
+          <div class="adv-response-grid">
+            <div class="adv-response">
+              <div class="nm"><span class="dot r"></span>Pfizer-Twin</div>
+              <div class="pred">Pulls amivantamab launch forward 4-6 weeks. 74% probability under aggressive archetype.</div>
+              <div class="conf">conf <span class="v">0.82</span></div>
+            </div>
+            <div class="adv-response">
+              <div class="nm"><span class="dot a"></span>Lilly-Twin</div>
+              <div class="pred">CMC remediation likely 75-95 days. Bayesian distribution over recovery time.</div>
+              <div class="conf">conf <span class="v">0.71</span></div>
+            </div>
+            <div class="adv-response">
+              <div class="nm"><span class="dot a"></span>AZN-Twin</div>
+              <div class="pred">Cuts osimertinib EU pricing 6-9% to defend share. Confirms guidance trajectory.</div>
+              <div class="conf">conf <span class="v">0.68</span></div>
+            </div>
+            <div class="adv-response">
+              <div class="nm"><span class="dot v"></span>FDA-Twin</div>
+              <div class="pred">If CMC properly addressed, low re-CRL risk. Class-2 resubmission cycle ~6 months.</div>
+              <div class="conf">conf <span class="v">0.79</span></div>
+            </div>
+            <div class="adv-response">
+              <div class="nm"><span class="dot t"></span>Payer-Twin</div>
+              <div class="pred">Tier-3 default for our launch unless we pre-negotiate. PA likely.</div>
+              <div class="conf">conf <span class="v">0.62</span></div>
+            </div>
+            <div class="adv-response">
+              <div class="nm"><span class="dot t"></span>KOL-Twin</div>
+              <div class="pred">Will adopt early if combination data is clean. 71% panel preference for combo.</div>
+              <div class="conf">conf <span class="v">0.66</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="thinking-card">
+          <div class="head">
+            <div class="glyph t">ST</div>
+            <div>
+              <div class="name">Stress tests · 8 variants ran beside the baseline</div>
+              <div class="role">Sensitivity sweep · which assumptions matter</div>
+            </div>
+            <div class="timer">complete</div>
+          </div>
+          <div class="stress-test-grid">
+            <div class="stress-row"><div class="what">If <span class="key">Pfizer aggressive 80%</span> instead of 61%</div><div class="delta same">holds</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">Lilly recovery 60d</span> instead of 90d</div><div class="delta flip">flips</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">our cost +50%</span></div><div class="delta same">holds</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">FDA strict on us too</span></div><div class="delta flip">flips</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">payer tier-2 not tier-3</span></div><div class="delta same">holds</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">KOL panel split 50/50</span></div><div class="delta same">holds</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">AZN cuts pricing 12%</span></div><div class="delta same">holds</div></div>
+            <div class="stress-row"><div class="what">If <span class="key">we launch 4w later</span></div><div class="delta flip">flips</div></div>
+          </div>
+        </div>
+
+        <div class="override-controls">
+          <div class="h"><span style="color:var(--accent-2)">⌥ override</span> · Tune any assumption · sim reruns in 4s</div>
+          <div class="override-row"><span class="lab">Pfizer aggressive</span><input type="range" min="0" max="100" value="61"/><span class="v">61%</span></div>
+          <div class="override-row"><span class="lab">Lilly recovery (days)</span><input type="range" min="30" max="180" value="90"/><span class="v">90d</span></div>
+          <div class="override-row"><span class="lab">FDA-twin strictness</span><input type="range" min="0" max="100" value="62"/><span class="v">62%</span></div>
+          <div class="override-row"><span class="lab">Our launch slip</span><input type="range" min="0" max="12" value="0"/><span class="v">0w</span></div>
+          <div style="display:flex;gap:8px;margin-top:10px;"><button class="btn primary">Re-run with these</button><button class="btn">Reset to live posteriors</button></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">
+      <div class="recommendation-card">
+        <div class="h">Recommendation · ready · Strategist + Curator agree · 1 dissent</div>
+        <div class="ttl">Accelerate Q3 launch · bottom-left cell · +6.4% expected share · 82% confidence</div>
+        <div class="body">Robust to your most aggressive Pfizer assumption (holds). Vulnerable to Lilly recovering in 60 days (flips), to FDA being strict on us too (flips), and to a 4-week slip in our own timing (flips). Strategist counter-argument: "if you discount Lilly recovery time below 90 days, the bottom-right cell becomes optimal — worth checking with your CMC contacts before committing."</div>
+        <div class="actions">
+          <button class="btn green">Accept · promote to brief</button>
+          <button class="btn primary">Defer · run more variants</button>
+          <button class="btn">Ask the team</button>
+          <button class="btn ghost">Reject · I disagree</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 5 · AUTHORITY SPECTRUM ========== -->
+<section id="authority" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The authority spectrum</div>
+  <div class="section-title">Five levels of agent autonomy. Bounded, calibrated, auditable.</div>
+  <p class="section-sub">Not every decision needs a human. And not every decision should be made by an agent. The five-level spectrum below is how the platform maps decision authority — from level 1 (agents observe only, humans decide everything) to level 5 (agents decide and act, humans audit retrospectively). Each scenario type has a default level the team can change. Authority can be earned (an agent that calibrates well over time can be promoted) or revoked.</p>
+
+  <div class="spectrum">
+    <div class="spectrum-level l1">
+      <div class="level-num">L1</div>
+      <div class="name">Watch only</div>
+      <div class="who-decides">Human · 100%</div>
+      <div class="desc">Agents observe and surface. Humans decide everything. Default for first-time scenarios, novel TAs, or whenever calibration is unknown.</div>
+      <div class="example"><span class="key">Example:</span> a new adversary twin (just-onboarded competitor) — the system shows you the modelled posterior but does not run scenarios against it without your approval.</div>
+    </div>
+
+    <div class="spectrum-level l2">
+      <div class="level-num">L2</div>
+      <div class="name">Suggest</div>
+      <div class="who-decides">Human · 95%</div>
+      <div class="desc">Agents run analyses and propose findings. Humans review every output before it shapes a decision. Default for high-stakes financial impact (>$50M).</div>
+      <div class="example"><span class="key">Example:</span> "should we accelerate Q3 launch" — agents do the war-game, you decide every time. The agents' work is input, not output.</div>
+    </div>
+
+    <div class="spectrum-level l3">
+      <div class="level-num">L3</div>
+      <div class="name">Recommend</div>
+      <div class="who-decides">Human approves · 80%</div>
+      <div class="desc">Agents have done the analysis, made the call, and pre-drafted the brief. Humans approve, edit, or reject. Default once an agent's calibration on a scenario type exceeds 0.70.</div>
+      <div class="example"><span class="key">Example:</span> "weekly stress-test of Q3 plan against new Pfizer evidence" — Strategist auto-runs every Monday, drafts the changes, you approve the diff in 2 minutes.</div>
+    </div>
+
+    <div class="spectrum-level l4">
+      <div class="level-num">L4</div>
+      <div class="name">Act with notice</div>
+      <div class="who-decides">Agent · with audit</div>
+      <div class="desc">Agents act within bounded authority. Humans are notified after the fact. Default for low-stakes or reversible actions (parameter tuning, scenario re-runs, posterior updates).</div>
+      <div class="example"><span class="key">Example:</span> "update Pfizer posterior when new evidence arrives" — Curator updates without asking; you see the diff in the morning.</div>
+    </div>
+
+    <div class="spectrum-level l5">
+      <div class="level-num">L5</div>
+      <div class="name">Auto · audit-only</div>
+      <div class="who-decides">Agent · 100%</div>
+      <div class="desc">Agents act fully autonomously. Humans audit retrospectively. Default for housekeeping (rerunning stale scenarios, recomputing source weights, archiving stale twins).</div>
+      <div class="example"><span class="key">Example:</span> "rerun any scenario whose underlying evidence has shifted >10% in 30 days" — runs automatically, surfaces only if findings change materially.</div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px;background:var(--surface);border-radius:14px;padding:20px 24px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:300px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.16em;margin-bottom:6px;">How authority is earned (or revoked)</div>
+        <div style="font-family:var(--display);font-size:18px;font-weight:500;margin-bottom:8px;">Curator runs a calibration window per agent per scenario type</div>
+        <div style="font-size:13px;color:var(--ink-2);line-height:1.6;">Strategist on "Q3 launch under regulatory uncertainty" has run 14 scenarios over 90 days, calibration 0.78 — eligible for L3 (recommend). Strategist on "M&A scenario in TA we don't track" has 0 calibration data — locked to L1 (watch only). When calibration drops, the agent is auto-demoted; when it rises, you're invited to promote.</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn">View calibration table</button>
+        <button class="btn primary">Set defaults per scenario type</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 6 · DELEGATION ========== -->
+<section id="delegate" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>Delegation · "run while I sleep"</div>
+  <div class="section-title">Queue a scenario in the morning. Read the verdict at 7am.</div>
+  <p class="section-sub">Some scenarios are too expensive to run in real time (full sensitivity sweeps, deep counterfactuals, multi-twin sensitivity). You queue them with parameters; agents run overnight; findings land in your morning Pulse. The verdict is auditable end-to-end — every iteration is logged, every assumption is preserved, every cell of every payoff matrix is replayable.</p>
+
+  <div class="delegate-flow">
+    <div class="delegate-step">
+      <div class="when">17:30 today · you</div>
+      <div class="who">DELEGATE · L3 authorised</div>
+      <div class="ttl">Maya queues a scenario before leaving</div>
+      <div class="body">"Run the full Q3 launch decision against 100 random seed perturbations. Then run a sensitivity sweep across all 6 adversary twins. Wake me up only if the recommendation flips or confidence drops below 65%."</div>
+      <div class="queue-card">
+        <div class="q">Q3 launch · 100-seed Monte Carlo · 6-twin sensitivity</div>
+        <div class="params">est 4h · cost ~$1.20 · est completion 03:45 GMT</div>
+      </div>
+      <div style="display:flex;gap:6px;"><button class="btn primary">Queue</button><button class="btn">Edit params</button></div>
+    </div>
+
+    <div class="delegate-arrow">→</div>
+
+    <div class="delegate-step">
+      <div class="when">23:00 - 03:45 · agents</div>
+      <div class="who">EXECUTE · Strategist + Curator</div>
+      <div class="ttl">Agents run overnight, log everything</div>
+      <div class="body">2,400 simulations across 6 twin posterior variants × 4 player options × 100 seed perturbations. Strategist runs the maths. Curator validates each finding. Every iteration logged to game_theory_runs with seed, parameters, payoff matrix, posterior snapshots. Reproducible end-to-end.</div>
+      <div style="background:var(--surface-2);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--ink-2);line-height:1.7;">
+        23:01 · Strategist began iteration 1<br>
+        00:14 · Curator validating batch 1 of 24<br>
+        02:38 · sensitivity sweep complete<br>
+        03:42 · final synthesis written<br>
+        03:45 · pushed to morning Pulse
+      </div>
+    </div>
+
+    <div class="delegate-arrow">→</div>
+
+    <div class="delegate-step">
+      <div class="when">07:00 tomorrow · Pulse</div>
+      <div class="who">REPORT · waiting for you</div>
+      <div class="ttl">Verdict + diff + replayable maths</div>
+      <div class="body">The recommendation held across 87 of 100 seeds. Confidence remained above 65% in all 6 twin variants. Two new sensitivity findings: "Lilly recovery <60d" remains the dominant flip risk (worth a CMC contact); "FDA-twin strict on us too" is more likely than yesterday's posterior suggested.</div>
+      <div class="morning-result">
+        <div class="head"><span class="badge ok">RECOMMENDATION HELD</span><span style="color:var(--ink-3);">87/100 seeds agree · conf 0.78-0.84 across twins</span></div>
+        <div class="body">Robust verdict — accept and proceed to commit phase.</div>
+      </div>
+      <div class="morning-result flag">
+        <div class="head"><span class="badge flag">NEW FINDING</span><span style="color:var(--ink-3);">FDA-twin posterior shifted</span></div>
+        <div class="body">Worth checking before you finalise the brief.</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;"><button class="btn green">Accept verdict</button><button class="btn">Replay any seed</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECTION 7 · FUTURE WORKFORCE ========== -->
+<section id="future" class="section">
+  <div class="section-eyebrow"><span class="dot"></span>The future of this · how the workforce scales</div>
+  <div class="section-title">Three agents today. Thirty next year. Three hundred the year after.</div>
+  <p class="section-sub">Today the three internal agents and six adversary twins handle one analyst's portfolio. As the platform scales — to a full pharma BD&L team, to a regulatory affairs group, to medical affairs — the agent population scales with it. Specialised agents per TA, per competitor, per scenario type. The orchestration layer (a future Mediator agent) synthesises across them. The trust spine, the calibration loop, and the authority spectrum stay the same.</p>
+
+  <div class="future-grid">
+    <div class="future-card">
+      <div class="stage">TODAY · production</div>
+      <div class="when">3 + 6</div>
+      <div class="ttl">Internal agents + adversary twins</div>
+      <div class="body">Sentinel, Strategist, Curator. Six adversary twins covering top competitors, FDA, payer, KOL. One analyst's portfolio. Authority defaults to L1-L2 (watch and suggest). Calibration data accumulating.</div>
+      <div class="stats-row">
+        <div class="stat"><div class="v">1</div><div class="l">Analyst served</div></div>
+        <div class="stat"><div class="v">47</div><div class="l">Sims/day</div></div>
+      </div>
+    </div>
+
+    <div class="future-card">
+      <div class="stage">12 MONTHS · plausible</div>
+      <div class="when">9 + 30</div>
+      <div class="ttl">Specialised teams emerge</div>
+      <div class="body">Strategist splits into TA-specific instances (oncology, cardio, immunology). New roles: Forecaster (long-horizon), Mediator (synthesises multi-agent disagreements). Adversary twins cover 30+ competitors with deeper behavioural modelling. Authority climbs to L3-L4 for well-calibrated scenario types. Six analysts share the workforce.</div>
+      <div class="stats-row">
+        <div class="stat"><div class="v">6</div><div class="l">Analysts served</div></div>
+        <div class="stat"><div class="v">~400</div><div class="l">Sims/day</div></div>
+      </div>
+    </div>
+
+    <div class="future-card">
+      <div class="stage">24 MONTHS · ambitious</div>
+      <div class="when">∞</div>
+      <div class="ttl">Agents become a team capability</div>
+      <div class="body">Each BD&L analyst, each medical affairs lead, each regulatory specialist has a personal team of agents. Adversary twins are the canonical way to think about every external actor. Decision authority is calibrated per agent, per scenario type, per stake-size. The Mediator orchestrates across hundreds of concurrent agent runs. War-gaming is no longer a meeting — it's the background state of the company.</div>
+      <div class="stats-row">
+        <div class="stat"><div class="v">Whole org</div><div class="l">Served</div></div>
+        <div class="stat"><div class="v">1000s</div><div class="l">Sims/day</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px;display:grid;grid-template-columns:repeat(4, 1fr);gap:14px;">
+    <div style="background:var(--surface);border-radius:12px;padding:16px 18px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px;">Stays the same · regardless of scale</div>
+      <div style="font-family:var(--display);font-size:14px;font-weight:500;line-height:1.3;">Trust spine · every output cites grounding evidence</div>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:16px 18px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px;">Stays the same</div>
+      <div style="font-family:var(--display);font-size:14px;font-weight:500;line-height:1.3;">Calibration loop · Curator continuously re-weights</div>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:16px 18px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px;">Stays the same</div>
+      <div style="font-family:var(--display);font-size:14px;font-weight:500;line-height:1.3;">Authority spectrum · 5 levels, earned not granted</div>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:16px 18px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px;">Stays the same</div>
+      <div style="font-family:var(--display);font-size:14px;font-weight:500;line-height:1.3;">Forensics · every commit snapshots state for replay</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CLOSING ========== -->
+<section class="section">
+  <div style="background:var(--bg-2);border-radius:24px;padding:48px;text-align:center;max-width:1000px;margin:0 auto;">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--violet);text-transform:uppercase;letter-spacing:0.22em;margin-bottom:24px;">The argument in one paragraph</div>
+    <div style="font-family:var(--display);font-size:28px;font-weight:400;font-style:italic;line-height:1.4;color:var(--ink);max-width:820px;margin:0 auto 24px;letter-spacing:-0.02em;">
+      War-gaming is too important to be a meeting. The agents will simulate continuously whether you watch or not. The question is whether the platform makes their work <em style="color:var(--violet);">visible, calibrated, contestable, and bounded</em> — or whether it lets them run silently and hands you a summary you can't interrogate.
+    </div>
+    <div style="font-size:15px;color:var(--ink-2);max-width:780px;margin:0 auto;line-height:1.7;">
+      The cockpit is the answer to that question. Agents do the work; humans do the judgement; the authority spectrum decides who acts. Every output is grounded, every iteration is replayable, every calibration is visible. The future workforce scales the same model — more agents, more twins, more scenarios, same trust spine.
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
