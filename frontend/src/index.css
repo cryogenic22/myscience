@@ -1,14 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Syne:wght@400..800&display=swap');
 @import "tailwindcss";
+/* Fonts loaded once via index.html — Fraunces (display), DM Sans (body),
+   DM Mono (technical). The previous @import here doubled the request and
+   pulled in Syne which is no longer the canonical display family. */
 
 /* ══════════════════════════════════════════════════════
    DESIGN TOKENS — Market Zero
    Palette: warm white · deep slate · single blue accent
    ══════════════════════════════════════════════════════ */
 @theme {
-  --font-display: 'Syne', 'Fraunces', Georgia, serif;
-  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Loop #11 — Fraunces is canonical display, per CLAUDE.md memory. */
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ── Loop #11 — Type scale.
+     Use these via the `mz-text-*` utility classes below instead of
+     ad-hoc `text-[Npx]` arbitrary values. */
+  --text-xs:       11px;
+  --text-sm:       12px;
+  --text-base:     14px;
+  --text-md:       15px;
+  --text-lg:       18px;
+  --text-xl:       22px;
+  --text-display:  28px;
+  --text-hero:     clamp(42px, 6vw, 80px);
 
   /* Background */
   --color-bg:           #FAFAF8;
@@ -28,13 +43,15 @@
   --color-accent-dark:  #1558D6;
   --color-accent-soft:  rgba(28, 110, 247, 0.08);
 
-  /* Borders — set to transparent for Apple-style borderless design.
-     Components use var(--color-line) in inline styles; making it
-     transparent kills all decorative borders without editing TSX. */
+  /* Borders — kept faint as a relic of the legacy borderless intent.
+     **Loop #11 direction:** stop drawing 1px boxes around panels;
+     use background-elevation tiers (--color-surface,
+     --color-surface-2, --color-surface-3) + shadows for separation.
+     The `--color-divider` token is for the one-pixel rule between
+     major top-level sections (e.g. app top-bar / body), not for
+     wrapping cards. */
   --color-line:         rgba(0,0,0,0.06);
   --color-line-2:       rgba(0,0,0,0.04);
-
-  /* When a visible divider is truly needed, use --color-divider explicitly */
   --color-divider:      #EBEBEA;
   --color-divider-2:    rgba(0,0,0,0.05);
 
@@ -164,7 +181,10 @@ html {
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.6;
-  letter-spacing: -0.01em;
+  /* Loop #11 — removed global `letter-spacing: -0.01em`. That negative
+     tracking compounded with dense layouts and made body text feel
+     squeezed. Tracking is now applied only on display headings via
+     `.mz-text-display` / `.mz-text-hero` below. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--color-bg);
@@ -180,7 +200,21 @@ body { height: 100%; overflow: hidden; background: var(--color-bg); }
 /* ══════════════════════════════════════════════════════
    TYPOGRAPHY UTILITIES
    ══════════════════════════════════════════════════════ */
+/* Loop #11 — explicit utility classes mapped to design tokens.
+   Use these instead of Tailwind's built-in `font-serif` (which
+   resolves to Georgia) or arbitrary `text-[Npx]` values. */
 .font-display { font-family: var(--font-display); }
+.font-body    { font-family: var(--font-body); }
+.font-mono    { font-family: var(--font-mono); }
+
+.mz-text-xs       { font-size: var(--text-xs);      line-height: 1.45; }
+.mz-text-sm       { font-size: var(--text-sm);      line-height: 1.5; }
+.mz-text-base     { font-size: var(--text-base);    line-height: 1.55; }
+.mz-text-md       { font-size: var(--text-md);      line-height: 1.6; }
+.mz-text-lg       { font-size: var(--text-lg);      line-height: 1.4; }
+.mz-text-xl       { font-size: var(--text-xl);      line-height: 1.3;  font-family: var(--font-display); letter-spacing: -0.015em; }
+.mz-text-display  { font-size: var(--text-display); line-height: 1.15; font-family: var(--font-display); letter-spacing: -0.02em; }
+.mz-text-hero     { font-size: var(--text-hero);    line-height: 1.08; font-family: var(--font-display); letter-spacing: -0.025em; font-weight: 300; }
 
 .text-hero {
   font-family: var(--font-display);

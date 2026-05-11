@@ -32,13 +32,16 @@ export default function AgentIdentityStrip({ statuses, className = '' }: Props) 
         const meta = AGENTS[id];
         const status = statuses?.[id];
         return (
-          <div key={id} className="flex items-center gap-2 min-w-0">
+          <div key={id} className="flex items-center gap-2.5 min-w-0">
             <AgentGlyph agent={id} status={status} />
             <div className="leading-tight min-w-0">
-              <div className="text-[12px] font-medium" style={{ color: 'var(--color-ink-2)' }}>
+              <div className="mz-text-sm font-medium" style={{ color: 'var(--color-ink-2)' }}>
                 {meta.name}
               </div>
-              <div className="text-[10px] uppercase tracking-wide truncate" style={{ color: 'var(--color-ink-4)' }}>
+              <div
+                className="mz-text-xs uppercase truncate"
+                style={{ color: 'var(--color-ink-4)', letterSpacing: '0.06em', marginTop: '1px' }}
+              >
                 {meta.role}
               </div>
             </div>
