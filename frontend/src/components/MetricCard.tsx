@@ -30,20 +30,20 @@ export default function MetricCard({ type, data, entityName }: Props) {
         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand-dark">
           {ICONS[type]}
         </div>
-        <span className="flex-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="flex-1 mz-text-xs font-semibold uppercase tracking-wide text-slate-400">
           {LABELS[type]}
         </span>
       </div>
 
       {/* Entity name */}
       {entityName && (
-        <div className="mb-1.5 truncate text-[12px] font-semibold text-slate-800" style={{ paddingLeft: '32px' }}>
+        <div className="mb-1.5 truncate mz-text-sm font-semibold text-slate-800" style={{ paddingLeft: '32px' }}>
           {entityName}
         </div>
       )}
 
       {/* Summary metrics */}
-      <div className="space-y-1 text-[12px]">
+      <div className="space-y-1 mz-text-sm">
         {type === 'pipeline' && <PipelineSummary data={data} />}
         {type === 'success_rate' && <SuccessRateSummary data={data} />}
         {type === 'evidence' && <EvidenceSummary data={data} />}
@@ -136,7 +136,7 @@ function MetricRow({ label, value, bold }: { label: string; value: unknown; bold
   return (
     <div className="flex items-baseline justify-between">
       <span className="text-slate-500">{label}</span>
-      <span className={bold ? 'text-[14px] font-semibold text-slate-900' : 'font-medium text-slate-600'}>
+      <span className={bold ? 'mz-text-base font-semibold text-slate-900' : 'font-medium text-slate-600'}>
         {formatValue(value)}
       </span>
     </div>
@@ -147,14 +147,14 @@ function PhaseBar({ label, count, max, color }: { label: string; count: number; 
   const pct = Math.min((count / max) * 100, 100);
   return (
     <div className="flex-1">
-      <div className="mb-0.5 text-center text-[10px] text-slate-400">{label}</div>
+      <div className="mb-0.5 text-center mz-text-xs text-slate-400">{label}</div>
       <div className="relative h-7 overflow-hidden rounded-md bg-slate-100">
         <div
           className={`absolute bottom-0 left-0 right-0 ${color} rounded-md transition-all duration-700`}
           style={{ height: `${pct}%` }}
         />
       </div>
-      <div className="mt-0.5 text-center text-[10px] font-medium text-slate-600">{count}</div>
+      <div className="mt-0.5 text-center mz-text-xs font-medium text-slate-600">{count}</div>
     </div>
   );
 }

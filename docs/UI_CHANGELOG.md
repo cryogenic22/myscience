@@ -11,6 +11,73 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #12 — type-scale migration: pages + visible primitives)
+
+Loop #11 shipped the type scale; this loop puts it to work. Migrated
+all six top-level page files plus four cross-page primitives. The
+remaining ~46 deep component files keep their `text-[Npx]` for now
+(filed as Loop #13b follow-up; the codemod is checked in and ready).
+
+### Scale changes
+
+- Added `mz-text-sm-2` (13px), `mz-text-md-2` (16px),
+  `mz-text-lg-2` (20px), `mz-text-xl-2` (24px) so the codemod can
+  do exact 1:1 substitutions instead of rounding.
+- `mz-text-xl/display/hero` no longer bundle `font-family:
+  var(--font-display)`. Scale classes are now pure size + leading
+  + (for big sizes) letter-spacing. Callers pair them with
+  `font-display` / `font-mono` to pick the family explicitly. This
+  makes the codemod safe.
+
+### Surfaces touched
+
+| File | Substitutions |
+|---|---|
+| `pages/LandingPage.tsx` | 1 (hero CTA → `mz-text-hero`) |
+| `pages/CIPage.tsx` | 5 |
+| `pages/SearchPage.tsx` | 5 |
+| `pages/ConnectorsPage.tsx` | 5 |
+| `pages/WorkspacePage.tsx`, `NewWorkspace.tsx` | 0 (already clean) |
+| `components/layout/TopBar.tsx` | 2 |
+| `components/MetricCard.tsx` | 6 |
+| `components/EvidenceCard.tsx` | 8 |
+| `components/primitives/AgentStatusBar.tsx` | 0 (Tailwind named sizes) |
+
+32 substitutions across 10 files in total.
+
+### Codemod
+
+`scripts/migrate_text_sizes.py` — pure-Python idempotent substring
+rewriter. Run as `python -m scripts.migrate_text_sizes [PATH ...]`.
+Default path `frontend/src`. Skips `__tests__`/`test`/`dist`. Checked
+in so Loop #13b can finish the deep-component migration in one
+command.
+
+### Drive-by
+
+`DossierPage.CenteredMessage` (the loading / error / 404 panel) now
+declares `font-display` explicitly — its `mz-text-xl` heading would
+have silently lost the display font when the scale unbundled.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **359 passing, 22 todo,
+  0 failures** (53 files; +10 over Loop #11).
+
+### Regression guard
+
+`__tests__/design-system/loop12-type-scale.test.ts` reads the 10
+migrated files as text and asserts zero `text-[Npx]` remains. If a
+future change reintroduces an arbitrary size on any of these
+surfaces, the test fails loudly.
+
+### Spec
+
+`specs/SPEC_LOOP_12_type_scale_migration.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #11 — design system fixup)
 
 User feedback: "the whole UI is looking quite ugly with font types

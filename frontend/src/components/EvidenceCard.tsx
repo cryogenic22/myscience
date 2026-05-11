@@ -53,41 +53,41 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
   const freshness = freshnessBadge(provenance ?? {});
 
   return (
-    <div className={`rounded-md border border-slate-200/75 bg-white/88 text-[12px] shadow-sm transition-all ${
+    <div className={`rounded-md border border-slate-200/75 bg-white/88 mz-text-sm shadow-sm transition-all ${
       highlighted ? 'ring-2 ring-brand/10' : 'hover:border-slate-300 hover:shadow-md'
     }`} style={{ padding: '14px 16px' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           {index !== undefined && (
-            <span className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-slate-50 mz-text-xs font-bold text-slate-500">
               {index}
             </span>
           )}
-          <span className={`flex items-center gap-1 rounded-sm text-[10px] font-medium ${SOURCE_COLORS[source] ?? SOURCE_COLORS.search}`} style={{ padding: '4px 10px' }}>
+          <span className={`flex items-center gap-1 rounded-sm mz-text-xs font-medium ${SOURCE_COLORS[source] ?? SOURCE_COLORS.search}`} style={{ padding: '4px 10px' }}>
             {SOURCE_ICONS[source] ?? SOURCE_ICONS.search}
             {source}
           </span>
-          <span className="text-[10px] text-slate-400 capitalize">{entityType.replace('_', ' ')}</span>
+          <span className="mz-text-xs text-slate-400 capitalize">{entityType.replace('_', ' ')}</span>
           {sourceTypeLabel && (
-            <span className="rounded-sm bg-slate-100 text-[10px] text-slate-500" style={{ padding: '2px 6px' }}>
+            <span className="rounded-sm bg-slate-100 mz-text-xs text-slate-500" style={{ padding: '2px 6px' }}>
               {sourceTypeLabel}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {freshness && (
-            <span className={`rounded-sm text-[10px] font-medium ${freshness.color}`} style={{ padding: '2px 6px' }}>
+            <span className={`rounded-sm mz-text-xs font-medium ${freshness.color}`} style={{ padding: '2px 6px' }}>
               {freshness.label}
             </span>
           )}
-          <span className="text-[10px] font-medium text-slate-400">
+          <span className="mz-text-xs font-medium text-slate-400">
             {(relevance * 100).toFixed(0)}% relevant
           </span>
         </div>
       </div>
       <p className="text-slate-600 leading-relaxed line-clamp-3">{content}</p>
       {(sourceApi || sourceUrl) && (
-        <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+        <div className="mt-2 flex items-center gap-1 mz-text-xs text-slate-400">
           <ExternalLink size={10} />
           {sourceUrl ? (
             <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-brand-dark hover:underline truncate">

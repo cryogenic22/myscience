@@ -43,7 +43,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
 
         {/* Brand */}
         <span
-          className="font-display text-[15px] font-light shrink-0"
+          className="font-display mz-text-md font-light shrink-0"
           style={{ color: 'var(--color-ink-3)', letterSpacing: '-0.01em' }}
         >
           {PRODUCT_NAME}
@@ -82,7 +82,7 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
         {/* Breadcrumb */}
         {breadcrumb && (
           <div
-            className="hidden lg:block truncate text-[12px] flex-1 text-center"
+            className="hidden lg:block truncate mz-text-sm flex-1 text-center"
             style={{ color: 'var(--color-ink-4)' }}
           >
             {breadcrumb}

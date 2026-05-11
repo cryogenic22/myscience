@@ -283,7 +283,7 @@ function ScaffoldShell({ children }: { children: React.ReactNode }) {
 function CenteredMessage({ heading, body }: { heading: string; body: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3" style={{ padding: '48px' }}>
-      <h2 className="mz-text-xl" style={{ color: 'var(--color-ink)' }}>{heading}</h2>
+      <h2 className="font-display mz-text-xl" style={{ color: 'var(--color-ink)' }}>{heading}</h2>
       <p className="mz-text-sm text-center" style={{ color: 'var(--color-ink-3)', maxWidth: '480px', lineHeight: '1.55' }}>{body}</p>
     </div>
   );

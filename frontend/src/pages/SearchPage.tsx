@@ -471,7 +471,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                   Market Zero
                 </h1>
                 <p
-                  className="mt-3 text-[14px]"
+                  className="mt-3 mz-text-base"
                   style={{ color: 'var(--color-ink-4)' }}
                 >
                   Pharmaceutical intelligence search
@@ -535,7 +535,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                   type="button"
                   onClick={() => void doSearch()}
                   disabled={!query.trim() || isLoading}
-                  className="rounded-lg text-[13px] font-medium transition-all disabled:opacity-30"
+                  className="rounded-lg mz-text-sm-2 font-medium transition-all disabled:opacity-30"
                   style={{
                     padding: '0 20px',
                     height: '38px',
@@ -552,7 +552,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                     setQuery(lucky);
                     void doSearch(lucky);
                   }}
-                  className="rounded-lg text-[13px] font-medium transition-all"
+                  className="rounded-lg mz-text-sm-2 font-medium transition-all"
                   style={{
                     padding: '0 20px',
                     height: '38px',
@@ -569,7 +569,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
             {hasSearched && (
               <div className="mt-3 flex items-center justify-between">
                 <div
-                  className="text-[12px]"
+                  className="mz-text-sm"
                   style={{ color: 'var(--color-ink-3)' }}
                 >
                   {totalResults > 0
@@ -600,7 +600,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
             {/* Result count — only when searched */}
             {hasSearched && totalResults > 0 && (
               <div
-                className="mt-3 text-[12px]"
+                className="mt-3 mz-text-sm"
                 style={{ color: 'var(--color-ink-3)' }}
               >
                 {selectedTherapeuticAreas.length > 0

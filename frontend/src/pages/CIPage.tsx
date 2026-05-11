@@ -103,10 +103,10 @@ export default function CIPage() {
             <ArrowLeft size={16} />
           </button>
           <div className="flex flex-col flex-1">
-            <span className="font-display text-[15px] font-medium tracking-tight" style={{ color: 'var(--color-ink)' }}>
+            <span className="font-display mz-text-md font-medium tracking-tight" style={{ color: 'var(--color-ink)' }}>
               {PRODUCT_NAME}
             </span>
-            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--color-ink-4)' }}>
+            <span className="mz-text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--color-ink-4)' }}>
               Cockpit
             </span>
           </div>
@@ -144,11 +144,11 @@ export default function CIPage() {
           <AgentIdentityStrip />
           
           <div className="flex items-center justify-between">
-            <a href="/connectors" className="text-[11px] font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
+            <a href="/connectors" className="mz-text-xs font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
               Connectors →
             </a>
             {role && (
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded" style={{ background: 'var(--color-surface-2)', color: 'var(--color-ink-3)' }}>
+              <span className="mz-text-xs uppercase font-mono px-2 py-0.5 rounded" style={{ background: 'var(--color-surface-2)', color: 'var(--color-ink-3)' }}>
                 {role}
               </span>
             )}
@@ -219,7 +219,7 @@ export default function CIPage() {
               style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-ink-3)' }}
             >
               <t.icon size={20} />
-              <span className="text-[10px] font-medium">{t.label}</span>
+              <span className="mz-text-xs font-medium">{t.label}</span>
             </button>
           );
         })}
