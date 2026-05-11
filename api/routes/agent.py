@@ -13,14 +13,70 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
+# BE-3 — Phase 8 verification mandates the noun form for the public
+# agent identity. Today event producers tag events with codename slugs
+# like ``research_agent`` / ``data_steward``; this map normalises them
+# to the three external names PB-201's AgentRail cares about.
+_AGENT_NAME_MAP: dict[str, str] = {
+    # Strategist — formulates strategy / runs simulations / drafts briefs
+    "research_agent": "strategist",
+    "researcher": "strategist",
+    "strategist": "strategist",
+    "war_game": "strategist",
+    "framing_triggers": "strategist",
+    # Curator — curates data, marks outcomes, scores evidence
+    "data_steward": "curator",
+    "steward": "curator",
+    "curator": "curator",
+    "feedback_loops": "curator",
+    "learning_service": "curator",
+    # Sentinel — sensing / monitoring / conversation_memory + everything else
+    "conversation_memory": "sentinel",
+    "memory": "sentinel",
+    "sensing": "sentinel",
+    "sentinel": "sentinel",
+    "monitor": "sentinel",
+}
+
+VALID_AGENTS = ("sentinel", "strategist", "curator")
+
+
+def _normalize_agent_name(agent_type: str | None) -> str:
+    """Map a code-side agent_type slug to the public noun form.
+
+    Unknown / empty → "sentinel" so events are never tagged as
+    ``None`` (the AgentRail can't render a None tile)."""
+    if not agent_type:
+        return "sentinel"
+    key = str(agent_type).lower()
+    if key in _AGENT_NAME_MAP:
+        return _AGENT_NAME_MAP[key]
+    # Substring match for prefixed variants like research_agent_v2
+    for slug, name in _AGENT_NAME_MAP.items():
+        if slug in key:
+            return name
+    return "sentinel"
+
+
 @router.get("/events")
 def get_agent_events(
     event_type: Optional[str] = Query(None),
     agent_type: Optional[str] = Query(None),
+    agent: Optional[str] = Query(None, description="sentinel|strategist|curator"),
     limit: int = Query(50, ge=1, le=200),
     db: Database = Depends(get_db),
 ):
-    """Get recent agent events from the event stream."""
+    """Get recent agent events from the event stream.
+
+    BE-3 — every returned event carries a non-null `agent` field with
+    one of {sentinel, strategist, curator}. The legacy `agent_type`
+    field stays in the payload for back-compat. Filtering by `agent`
+    (the noun form) is preferred; `agent_type` filter is still honoured
+    for callers that know the slug.
+    """
+    if agent and agent not in VALID_AGENTS:
+        return {"events": [], "total": 0,
+                "error": f"agent must be one of {VALID_AGENTS}"}
     try:
         conditions = []
         params = []
@@ -43,7 +99,17 @@ def get_agent_events(
                 LIMIT %s""",
             params,
         )
-        return {"events": [dict(r) for r in rows], "total": len(rows)}
+        events = []
+        for r in rows:
+            ev = dict(r)
+            ev["agent"] = _normalize_agent_name(ev.get("agent_type"))
+            events.append(ev)
+        # Apply the optional public-name filter AFTER normalization so a
+        # query like ?agent=curator catches events whose raw agent_type
+        # is "data_steward".
+        if agent:
+            events = [e for e in events if e["agent"] == agent]
+        return {"events": events, "total": len(events)}
     except Exception:
         return {"events": [], "total": 0}
 
