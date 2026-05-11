@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import DossierPage from '../../src/pages/DossierPage';
+import { ThemeProvider } from '../../src/hooks/useTheme';
 
 // Mock the hook so we control the dossier payload per test.
 vi.mock('../../src/hooks/useDossier', () => ({
@@ -12,11 +13,13 @@ import { useDossier } from '../../src/hooks/useDossier';
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/dossier/:entityType/:slug" element={<DossierPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/dossier/:entityType/:slug" element={<DossierPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
