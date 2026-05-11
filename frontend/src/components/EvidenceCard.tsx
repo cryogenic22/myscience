@@ -53,8 +53,8 @@ export default function EvidenceCard({ source, entityType, content, relevance, p
   const freshness = freshnessBadge(provenance ?? {});
 
   return (
-    <div className={`rounded-md border border-line bg-white/88 mz-text-sm shadow-sm transition-all ${
-      highlighted ? 'ring-2 ring-brand/10' : 'hover:border-line hover:shadow-md'
+    <div className={`mz-elevated rounded-md border border-line bg-white/88 mz-text-sm shadow-sm ${
+      highlighted ? 'ring-2 ring-brand/10' : ''
     }`} style={{ padding: '14px 16px' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
