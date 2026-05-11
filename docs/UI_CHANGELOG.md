@@ -11,6 +11,70 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #16 — fix 401 cycles from broken demo auto-login)
+
+User reported recurring `{"error":{"code":401,"type":"unauthorized",
+"message":"authentication required"}}` errors. Root cause traced to
+`CIPage.tsx:78`: the auto-login stored the literal string
+`'demo-token'` as `mz_auth_token` — the backend cannot decode that
+as a JWT, so every protected fetch returned 401. The pre-existing
+`expectJson` 401-handler then cleared the token and redirected to
+`/`, where the user navigated back to `/ci`, the auto-login re-set
+`'demo-token'`, and the cycle repeated.
+
+### Fix
+
+New hook `src/hooks/useDemoAutoLogin.ts` that:
+
+- Reads `localStorage.mz_auth_token`.
+- If it equals the legacy `'demo-token'` literal, wipes it (so
+  existing broken sessions self-heal on next visit).
+- If it's absent, `POST /auth/login` against the seeded
+  `enterprise@demo.market-zero.io / demo` account and stores the
+  returned real JWT + role.
+- If the login itself fails (DB down, account not seeded), leaves
+  the token empty — anonymous is **better than a bad token**
+  because it doesn't trigger the AUTH_EXPIRED cycle.
+
+`CIPage` replaced its inline `useEffect` shim with
+`useDemoAutoLogin()`.
+
+### Tests
+
+6 vitest cases pin:
+
+- no-op when a non-legacy token exists
+- wipes the legacy `'demo-token'` literal
+- POSTs the demo credentials (`/auth/login`, content-type, body)
+- stores the real `access_token` + `role`
+- does NOT leave a broken token if login fails
+- does NOT reload the page when `reloadOnSuccess: false`
+  (the consumer opt-in for tests)
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run` → **524 passing, 22 todo, 0 failures**
+  (57 files; +7 over Loop #15)
+
+### What was NOT changed
+
+`AgentStatusBar` import — already removed in Loop #10. The
+`useEffect` line above the hook (route-change tab sync) stays.
+
+### Why this is a real bug, not a "demo only" artifact
+
+It would affect every user hitting `/ci` who didn't go through
+the real login flow first — including evaluators and anyone
+sharing a link. The fix makes the demo work end-to-end against the
+seeded enterprise account.
+
+### Spec
+
+`specs/SPEC_LOOP_16_fix_demo_login.md` — Status: **Shipped 2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #15 — PB-401 TipTap brief composer scaffold)
 
 Closes PB-401. Installs TipTap and ships the editor surface,
