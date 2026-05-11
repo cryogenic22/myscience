@@ -1,6 +1,9 @@
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { useDossier } from '../hooks/useDossier';
 import type { DossierEntityType, DossierEvidence } from '../types/dossier';
+import { PRODUCT_NAME } from '../brand';
+import { ThemeToggle } from '../components/primitives/ThemeToggle';
 
 /**
  * Entity dossier — three-column layout (identity rail · synthesis
@@ -78,7 +81,7 @@ export default function DossierPage() {
 
   return (
     <ScaffoldShell>
-      <header
+      <div
         className="flex items-baseline gap-3 flex-wrap"
         style={{
           padding: '20px 24px 16px 24px',
@@ -106,7 +109,7 @@ export default function DossierPage() {
         <span className="text-[12px] ml-auto" style={{ color: 'var(--color-ink-4)' }}>
           Last updated {new Date(entity.updated_at).toLocaleDateString()}
         </span>
-      </header>
+      </div>
 
       <div className="flex-1 grid overflow-hidden" style={{ gridTemplateColumns: '240px 1fr 320px' }}>
         {/* Identity rail */}
@@ -225,11 +228,44 @@ export default function DossierPage() {
 }
 
 function ScaffoldShell({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
   return (
     <div
       className="flex flex-col h-screen"
       style={{ background: 'var(--color-surface)', color: 'var(--color-ink)' }}
     >
+      <header
+        className="shrink-0 flex items-center gap-4"
+        style={{
+          height: '52px',
+          padding: '0 20px',
+          borderBottom: '1px solid var(--color-line)',
+          background: 'var(--color-surface)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/ci')}
+          className="btn-icon"
+          aria-label="Back"
+          title="Back to cockpit"
+        >
+          <ArrowLeft size={15} />
+        </button>
+        <span
+          className="font-display text-[15px] font-light"
+          style={{ color: 'var(--color-ink-3)', letterSpacing: '-0.01em' }}
+        >
+          {PRODUCT_NAME}
+        </span>
+        <div className="h-4 w-px" style={{ background: 'var(--color-line)' }} />
+        <span className="font-display text-[15px]" style={{ color: 'var(--color-ink)' }}>
+          Dossier
+        </span>
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
+      </header>
       {children}
     </div>
   );

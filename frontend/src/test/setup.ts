@@ -70,3 +70,18 @@ globalThis.ResizeObserver = class ResizeObserver {
 // Mock pointer capture
 Element.prototype.setPointerCapture = () => {};
 Element.prototype.releasePointerCapture = () => {};
+
+// Mock matchMedia for ThemeProvider (uses prefers-color-scheme).
+// jsdom omits it; tests that mount ThemeProvider need a stub.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }) as unknown as MediaQueryList;
+}

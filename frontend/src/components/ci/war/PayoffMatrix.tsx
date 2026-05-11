@@ -1,4 +1,5 @@
 import type { PayoffCell, PayoffMatrix as PayoffMatrixT, PayoffOutcome } from '../../../types/payoff';
+import { AGENTS } from '../../primitives/AgentGlyph';
 
 /**
  * 2×2 payoff matrix view. Renders one cell per (our_move,
@@ -40,17 +41,10 @@ export default function PayoffMatrix({ matrix }: Props) {
 
   if (rows.length === 0 || cols.length === 0) {
     return (
-      <section
-        className="rounded-md"
-        style={{
-          padding: '20px',
-          border: '1px solid var(--color-line)',
-          background: 'var(--color-surface)',
-        }}
-      >
+      <section className="mb-4">
         <h3
-          className="font-serif text-[16px] mb-2"
-          style={{ color: 'var(--color-ink)' }}
+          className="font-serif text-[14px] mb-1"
+          style={{ color: 'var(--color-ink-2)' }}
         >
           Payoff matrix
         </h3>
@@ -62,21 +56,9 @@ export default function PayoffMatrix({ matrix }: Props) {
   }
 
   return (
-    <section
-      className="rounded-md"
-      style={{
-        border: '1px solid var(--color-line)',
-        background: 'var(--color-surface)',
-      }}
-    >
-      <header
-        className="flex items-baseline justify-between"
-        style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--color-line)',
-        }}
-      >
-        <h3 className="font-serif text-[16px]" style={{ color: 'var(--color-ink)' }}>
+    <section className="mb-5">
+      <header className="flex items-baseline justify-between mb-2">
+        <h3 className="font-serif text-[14px]" style={{ color: 'var(--color-ink-2)' }}>
           Payoff matrix
         </h3>
         <span className="text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
@@ -84,7 +66,7 @@ export default function PayoffMatrix({ matrix }: Props) {
         </span>
       </header>
 
-      <div style={{ padding: '16px 20px', overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto' }}>
         <table
           className="w-full border-collapse"
           style={{ minWidth: '420px' }}
@@ -155,7 +137,7 @@ export default function PayoffMatrix({ matrix }: Props) {
                         padding: '12px',
                         background: OUTCOME_BACKGROUND[cell.outcome],
                         border: isRecommended
-                          ? '2px solid var(--color-accent)'
+                          ? `2px solid rgb(${AGENTS.strategist.rgb})`
                           : `1px solid ${OUTCOME_BORDER[cell.outcome]}`,
                         borderRadius: '6px',
                         verticalAlign: 'top',
@@ -175,10 +157,12 @@ export default function PayoffMatrix({ matrix }: Props) {
                       </div>
                       {isRecommended && (
                         <div
+                          data-agent="strategist"
                           className="text-[10px] uppercase tracking-wide mt-2 font-medium"
-                          style={{ color: 'var(--color-accent)' }}
+                          style={{ color: `rgb(${AGENTS.strategist.rgb})` }}
+                          title="Recommended by the Strategist agent based on posterior delta × confidence"
                         >
-                          Recommended
+                          Strategist recommends
                         </div>
                       )}
                     </td>

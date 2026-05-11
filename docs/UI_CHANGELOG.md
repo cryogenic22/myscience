@@ -11,6 +11,63 @@ Screenshots of material visual changes live under `docs/screenshots/`.
 
 ---
 
+## 2026-05-11 (Loop #10 — UI integration pass)
+
+Targeted polish so Loops 5–9's surfaces read as one app, not five
+strangers.
+
+### Four changes
+
+- **CI cockpit sidebar** — retired the legacy `AgentStatusBar`
+  mount. The named-agent strip from Loop #8 is the canonical
+  identity surface now; the static "Flywheel Active · 4 Agents
+  Active" label was redundant.
+- **`DossierPage` shared chrome** — added the 52px app header bar
+  used by `ConnectorsPage` (back button → `/ci`, `PRODUCT_NAME`,
+  vertical separator, "Dossier" breadcrumb, right-aligned
+  `ThemeToggle`). Inner entity-name header demoted from `<header>`
+  to `<div>` so AT announce one banner per page.
+- **War-room Strategy group** — payoff matrix + autonomous move
+  suggestions + move selector consolidated into one bordered
+  `<section aria-label="Strategy">` with an uppercase heading and a
+  caption ("Strategist · payoff matrix · move"). `PayoffMatrix`
+  dropped its own outer card border so it integrates as a
+  sub-section.
+- **Strategist tint on the recommended payoff cell** — caption
+  reads "Strategist recommends" (not generic "Recommended") with
+  the violet `AGENTS.strategist.rgb` and a matching cell border, so
+  the eye reads recommended → Strategist rather than recommended →
+  generic accent.
+
+### Drive-by
+
+`src/test/setup.ts` gained a `window.matchMedia` shim so any test
+mounting `ThemeProvider` works in jsdom. Side benefit: closed the
+intermittent flake in `DecisionWorkspace.test.tsx` cmd+enter test
+that surfaced in Loops 8–9.
+
+### Quality gate
+
+- `npx tsc --noEmit` → clean
+- `npx vitest run --no-file-parallelism` → **345 passing, 22 todo,
+  0 failures** (51 files; +6 over Loop #9; the previously-flaky
+  cmd+enter test now passes consistently).
+- `python -m scripts.validate_product_backlog` → OK
+
+### Out of scope (filed for follow-ups)
+
+- Sentinel tint on signal cards · Curator tint on evidence rows
+- Cockpit-style chrome on `/search`, `/workspace`, `/newui`
+- Replacing `AgentStatusBar` in `LandingPage` + `SensingFeed`
+  (different status semantics, not the cockpit redundancy)
+
+### Spec
+
+`specs/SPEC_LOOP_10_ui_integration.md` — Status: **Shipped
+2026-05-11**.
+
+---
+
 ## 2026-05-11 (Loop #9 — swap PB-301 + PB-501 from mock to live BE)
 
 Backend trio (BE-3 PR #50, BE-6 PR #57, BE-8 PR #59) merged earlier

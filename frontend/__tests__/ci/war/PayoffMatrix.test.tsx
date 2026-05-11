@@ -63,7 +63,7 @@ describe('PayoffMatrix (PB-501)', () => {
     const recommended = document.querySelector('[data-recommended="true"]');
     expect(recommended).not.toBeNull();
     expect(within(recommended as HTMLElement).getByText('+12.0%')).toBeDefined();
-    expect(within(recommended as HTMLElement).getByText(/recommended/i)).toBeDefined();
+    expect(within(recommended as HTMLElement).getByText(/recommend/i)).toBeDefined();
   });
 
   it('renders the empty-state message when the matrix has zero cells', () => {

@@ -174,28 +174,55 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         )}
       </div>
 
-      {/* PB-501 — Payoff matrix panel (mock until BE-8 lands). */}
-      <PayoffMatrixSection roomId={roomId} />
-
-      {/* Phase A.5 — Autonomous move suggestions */}
-      <MoveSuggestions
-        roomId={roomId}
-        signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
-        onPick={(move_type, payload) => {
-          selectorRef.current?.applySuggestion(move_type, payload);
+      {/* Strategy group — payoff matrix + autonomous suggestions + move
+          selector. Loop #10 consolidated these three siblings into one
+          panel so the analyst reads them as a single decision surface. */}
+      <section
+        aria-label="Strategy"
+        className="mb-6 rounded-md"
+        style={{
+          border: '1px solid var(--color-line)',
+          background: 'var(--color-surface)',
         }}
-      />
+      >
+        <header
+          className="flex items-baseline justify-between"
+          style={{
+            padding: '12px 20px',
+            borderBottom: '1px solid var(--color-line)',
+          }}
+        >
+          <h2
+            className="text-[10px] uppercase font-medium"
+            style={{ color: 'var(--color-ink-4)', letterSpacing: '0.08em' }}
+          >
+            Strategy
+          </h2>
+          <span className="text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
+            Strategist · payoff matrix · move
+          </span>
+        </header>
 
-      {/* Move selector */}
-      <div className="mb-6">
-        <MoveSelector
-          ref={selectorRef}
-          onSubmit={handleSubmit}
-          busy={busy}
-          initialMoveType={suggestedMove}
-          roomId={roomId}
-        />
-      </div>
+        <div style={{ padding: '16px 20px 4px 20px' }}>
+          <PayoffMatrixSection roomId={roomId} />
+          <MoveSuggestions
+            roomId={roomId}
+            signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
+            onPick={(move_type, payload) => {
+              selectorRef.current?.applySuggestion(move_type, payload);
+            }}
+          />
+          <div className="mb-2">
+            <MoveSelector
+              ref={selectorRef}
+              onSubmit={handleSubmit}
+              busy={busy}
+              initialMoveType={suggestedMove}
+              roomId={roomId}
+            />
+          </div>
+        </div>
+      </section>
 
       {error && (
         <div

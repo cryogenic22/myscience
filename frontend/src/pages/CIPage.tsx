@@ -11,7 +11,6 @@ import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
-import { AgentStatusBar } from '../components/primitives/AgentStatusBar';
 import AgentIdentityStrip from '../components/primitives/AgentIdentityStrip';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 
@@ -143,7 +142,6 @@ export default function CIPage() {
           {/* PB-201 — three named agents felt across surfaces. PB-202 will
               swap the static `statuses` prop for SSE-driven values via BE-4. */}
           <AgentIdentityStrip />
-          <AgentStatusBar status="sensing" message="Flywheel Active" agentCount={4} />
           
           <div className="flex items-center justify-between">
             <a href="/connectors" className="text-[11px] font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
