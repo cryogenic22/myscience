@@ -1088,6 +1088,14 @@ export const bridgeApi = {
     }),
 };
 
+export const agentsApi = {
+  activity: (): Promise<import('./types/agents').AgentActivityResponse> =>
+    fetch(`${BASE}/agents/activity`).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
 export const evidenceApi = {
   byIds: (
     ids: string[],

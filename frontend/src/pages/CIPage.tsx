@@ -12,6 +12,8 @@ import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import AgentIdentityStrip from '../components/primitives/AgentIdentityStrip';
+import AgentActivityFeed from '../components/primitives/AgentActivityFeed';
+import { useAgentActivity } from '../hooks/useAgentActivity';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
@@ -136,9 +138,9 @@ export default function CIPage() {
 
         {/* Global Telemetry & Footer */}
         <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: 'var(--color-line-2)' }}>
-          {/* PB-201 — three named agents felt across surfaces. PB-202 will
-              swap the static `statuses` prop for SSE-driven values via BE-4. */}
-          <AgentIdentityStrip />
+          {/* Loop #21 — live agent activity feed (polls /agents/activity).
+              Falls back to the static identity strip if the API errors. */}
+          <CIPageAgentSection />
           
           <div className="flex items-center justify-between">
             <a href="/connectors" className="mz-text-xs font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
@@ -224,4 +226,14 @@ export default function CIPage() {
 
     </div>
   );
+}
+
+function CIPageAgentSection() {
+  const { activities, loading, error } = useAgentActivity();
+  if (error) {
+    // Hard-fail fallback: never break the sidebar — show the static
+    // identity strip instead.
+    return <AgentIdentityStrip />;
+  }
+  return <AgentActivityFeed activities={activities} loading={loading} />;
 }
