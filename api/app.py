@@ -814,13 +814,31 @@ def create_app() -> FastAPI:
         async def serve_root():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
-        # Frontend routes (workspace, search) → index.html
+        # Frontend routes — explicit handlers take precedence over the
+        # auto-collected API prefix middleware. Required for any React
+        # route whose first path segment also belongs to a backend router
+        # (e.g. /bridge collides with POST /bridge/moments).
         @app.get("/workspace")
         @app.get("/search")
         @app.get("/newui")
         @app.get("/connectors")
         @app.get("/ci")
+        @app.get("/bridge")
+        @app.get("/briefs")
+        @app.get("/briefs/new")
         async def serve_frontend_routes():
+            return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+        # Parameterized React routes. /dossier/... is intentionally omitted
+        # because /dossier/{entity_type}/{slug_or_id} is also a backend API
+        # route (mounted at root for backward-compat) — the API wins by
+        # registration order, so a SPA shim here would never be reached.
+        @app.get("/ci/decisions/{decision_id}")
+        async def serve_ci_decision(decision_id: str):
+            return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+        @app.get("/ci/legacy-decisions/{decision_id}")
+        async def serve_ci_legacy_decision(decision_id: str):
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
     return app
