@@ -202,6 +202,14 @@ except Exception as _e:
     logger.error("Failed to import evidence_batch router (Loop #19): %s", _e)
     _EVIDENCE_BATCH_ROUTER_OK = False
 
+# Loop #21 — Agent activity feed
+try:
+    from api.routes import agents_activity as agents_activity_route
+    _AGENTS_ACTIVITY_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import agents_activity router (Loop #21): %s", _e)
+    _AGENTS_ACTIVITY_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -328,6 +336,8 @@ def create_app() -> FastAPI:
         all_routers.append(bridge_route.router)
     if _EVIDENCE_BATCH_ROUTER_OK:
         all_routers.append(evidence_batch_route.router)
+    if _AGENTS_ACTIVITY_ROUTER_OK:
+        all_routers.append(agents_activity_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
