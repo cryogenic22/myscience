@@ -5,6 +5,7 @@ import {
   Telescope, Bot, FileText,
 } from 'lucide-react';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
+import MomentView from '../components/helix/MomentView';
 import {
   signalsApi, decisionBriefsApi, bridgeApi,
   type Signal,
@@ -36,6 +37,7 @@ export default function BridgePage() {
   const [categoryFilter, setCategoryFilter] = useState<ImpactCategoryId | 'all'>('all');
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
+  const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
 
   useEffect(() => {
     void signalsApi.list({ limit: 30 }).then((r) => setSignals(r.signals)).catch(() => setSignals([]));
@@ -69,7 +71,7 @@ export default function BridgePage() {
         <HelixHeader ledgerOpen={ledgerOpen} setLedgerOpen={setLedgerOpen} />
         <main className="flex-1 overflow-auto" style={{ padding: '20px 24px' }}>
           <BridgeModeToggle mode={mode} setMode={setMode} />
-          {topMoment && <HeroStrip moment={topMoment} />}
+          {topMoment && <HeroStrip moment={topMoment} onOpen={setActiveMoment} />}
           <div
             className="grid"
             style={{
@@ -84,11 +86,14 @@ export default function BridgePage() {
               setCategoryFilter={setCategoryFilter}
             />
             <TwinZone hoverNode={hoverNode} setHoverNode={setHoverNode} />
-            <MomentsZone moments={moments} />
+            <MomentsZone moments={moments} onOpen={setActiveMoment} />
           </div>
         </main>
       </div>
       {ledgerOpen && <DecisionLedgerSlideOver close={() => setLedgerOpen(false)} />}
+      {activeMoment && (
+        <MomentView moment={activeMoment} signals={signals} close={() => setActiveMoment(null)} />
+      )}
     </div>
   );
 }
@@ -334,7 +339,7 @@ function BridgeModeToggle({
 
 // ── Hero strip ─────────────────────────────────────────────────
 
-function HeroStrip({ moment }: { moment: Moment }) {
+function HeroStrip({ moment, onOpen }: { moment: Moment; onOpen?: (m: Moment) => void }) {
   return (
     <section
       className="flex items-center gap-5"
@@ -368,6 +373,7 @@ function HeroStrip({ moment }: { moment: Moment }) {
       </div>
       <button
         type="button"
+        onClick={() => onOpen?.(moment)}
         className="mz-text-sm font-display"
         style={{
           padding: '10px 16px',
@@ -794,7 +800,7 @@ function TwinZone({
 
 // ── Moments zone ───────────────────────────────────────────────
 
-function MomentsZone({ moments }: { moments: Moment[] }) {
+function MomentsZone({ moments, onOpen }: { moments: Moment[]; onOpen?: (m: Moment) => void }) {
   return (
     <section
       aria-label="AI Moments"
@@ -822,13 +828,13 @@ function MomentsZone({ moments }: { moments: Moment[] }) {
           No moments synthesised yet. The synthesizer needs tier-1 signals to fire.
         </p>
       ) : (
-        moments.map((m, i) => <MomentCard key={m.id} moment={m} idx={i} />)
+        moments.map((m, i) => <MomentCard key={m.id} moment={m} idx={i} onClick={() => onOpen?.(m)} />)
       )}
     </section>
   );
 }
 
-function MomentCard({ moment, idx }: { moment: Moment; idx: number }) {
+function MomentCard({ moment, idx, onClick }: { moment: Moment; idx: number; onClick?: () => void }) {
   const cat = IMPACT_CATEGORIES.find((c) => c.id === moment.category) ?? IMPACT_CATEGORIES[2];
   const hours = moment.expires_hours;
   const urgencyColor =
@@ -839,6 +845,7 @@ function MomentCard({ moment, idx }: { moment: Moment; idx: number }) {
   return (
     <article
       className="mz-elevated"
+      onClick={onClick}
       style={{
         background: 'var(--color-surface-2)',
         border: '1px solid var(--color-divider)',
