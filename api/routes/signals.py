@@ -71,6 +71,7 @@ def _row_to_dict(row: dict) -> dict:
         "evidence_document_ids": [
             str(d) for d in (row.get("evidence_document_ids") or [])
         ],
+        "materiality_factors": row.get("materiality_factors"),
         "status": row.get("status"),
         "superseded_by": str(row["superseded_by"]) if row.get("superseded_by") else None,
         "supersedence_reason": row.get("supersedence_reason"),
@@ -140,7 +141,8 @@ def list_signals(
                confidence_tier, trust_score, impact_tier, impact_score,
                rule_version_id, primary_entity_type, primary_entity_id,
                primary_entity_name, related_entity_ids,
-               evidence_document_ids, status, superseded_by,
+               evidence_document_ids, materiality_factors,
+               status, superseded_by,
                supersedence_reason, created_at, reviewed_by, reviewed_at,
                shipped_at
         FROM signals
@@ -185,7 +187,8 @@ def get_signal(signal_id: str, db: Database = Depends(get_db)):
                       confidence_tier, trust_score, impact_tier, impact_score,
                       rule_version_id, primary_entity_type, primary_entity_id,
                       primary_entity_name, related_entity_ids,
-                      evidence_document_ids, status, superseded_by,
+                      evidence_document_ids, materiality_factors,
+                      status, superseded_by,
                       supersedence_reason, created_at, reviewed_by, reviewed_at,
                       shipped_at
                FROM signals WHERE id::text = %s""",

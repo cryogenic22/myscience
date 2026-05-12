@@ -1023,6 +1023,8 @@ export interface Signal {
   primary_entity_name: string | null;
   related_entity_ids: string[];
   evidence_document_ids: string[];
+  /** Loop #20 — Per-signal materiality breakdown (when scored). */
+  materiality_factors?: import('./types/materiality').MaterialityFactors | null;
   status: SignalStatus;
   superseded_by: string | null;
   supersedence_reason: string | null;
