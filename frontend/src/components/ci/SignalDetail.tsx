@@ -4,7 +4,20 @@ import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
 import EvidenceStack from './EvidenceStack';
+import MaterialityDrawer from './MaterialityDrawer';
 import { useEvidenceDocuments } from '../../hooks/useEvidenceDocuments';
+
+function sumContributions(
+  factors: Signal['materiality_factors'] | undefined | null,
+): number | null {
+  if (!factors) return null;
+  const total =
+    (factors.source_tier?.contribution ?? 0) +
+    (factors.entity_criticality?.contribution ?? 0) +
+    (factors.claim_type?.contribution ?? 0) +
+    (factors.recency?.contribution ?? 0);
+  return Math.round(total * 10) / 10;
+}
 
 interface Props {
   signal: Signal;
@@ -30,6 +43,8 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
+  const [materialityOpen, setMaterialityOpen] = useState(false);
+  const materialityScore = sumContributions(signal.materiality_factors);
 
   const simulate = async () => {
     if (!authed || !onOpenWarRoom) return;
@@ -90,6 +105,29 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
           >
             {signal.status}
           </span>
+          {materialityScore != null && (
+            <button
+              type="button"
+              data-materiality-trigger
+              onClick={() => setMaterialityOpen(true)}
+              className="text-[10px] uppercase font-medium"
+              style={{
+                color: 'var(--color-ink)',
+                letterSpacing: '0.06em',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                background: 'transparent',
+                border: '1px solid var(--color-line)',
+                cursor: 'pointer',
+              }}
+              title="Show materiality breakdown"
+            >
+              Materiality {materialityScore.toFixed(0)}
+              <span style={{ marginLeft: '4px', color: 'var(--color-ink-4)' }}>
+                ›
+              </span>
+            </button>
+          )}
           {onOpenWarRoom && (
             <button
               type="button"
@@ -226,6 +264,12 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
           )}
         </div>
       )}
+      <MaterialityDrawer
+        open={materialityOpen}
+        factors={signal.materiality_factors ?? null}
+        score={materialityScore}
+        onClose={() => setMaterialityOpen(false)}
+      />
     </div>
   );
 }
