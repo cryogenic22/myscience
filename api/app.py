@@ -194,6 +194,14 @@ except Exception as _e:
     logger.error("Failed to import bridge router (Loop #17): %s", _e)
     _BRIDGE_ROUTER_OK = False
 
+# Loop #19 — Batch evidence resolver
+try:
+    from api.routes import evidence_batch as evidence_batch_route
+    _EVIDENCE_BATCH_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import evidence_batch router (Loop #19): %s", _e)
+    _EVIDENCE_BATCH_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -318,6 +326,8 @@ def create_app() -> FastAPI:
         all_routers.append(dossier_route.router)
     if _BRIDGE_ROUTER_OK:
         all_routers.append(bridge_route.router)
+    if _EVIDENCE_BATCH_ROUTER_OK:
+        all_routers.append(evidence_batch_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.

@@ -4,6 +4,7 @@ import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
 import EvidenceStack from './EvidenceStack';
+import { useEvidenceDocuments } from '../../hooks/useEvidenceDocuments';
 
 interface Props {
   signal: Signal;
@@ -153,9 +154,7 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
       )}
 
       {/* Evidence */}
-      <Field label={`Evidence (${signal.evidence_document_ids.length})`}>
-        <EvidenceStack signal={signal} />
-      </Field>
+      <EvidenceField signal={signal} />
 
       {/* Audit */}
       {(reviewed || shipped || signal.superseded_by) && (
@@ -228,6 +227,19 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
         </div>
       )}
     </div>
+  );
+}
+
+function EvidenceField({ signal }: { signal: Signal }) {
+  const { documents, loading } = useEvidenceDocuments(signal.evidence_document_ids);
+  const count = signal.evidence_document_ids.length;
+  const label = loading
+    ? `Evidence (${count}, loading…)`
+    : `Evidence (${count})`;
+  return (
+    <Field label={label}>
+      <EvidenceStack signal={signal} documents={documents} />
+    </Field>
   );
 }
 

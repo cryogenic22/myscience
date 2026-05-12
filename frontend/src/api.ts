@@ -1086,6 +1086,20 @@ export const bridgeApi = {
     }),
 };
 
+export const evidenceApi = {
+  byIds: (
+    ids: string[],
+  ): Promise<import('./types/evidence').EvidenceBatchResponse> =>
+    fetch(`${BASE}/evidence/by-ids`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ids }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
 export interface WatchlistEntry {
   id: string;
   user_id: string;
