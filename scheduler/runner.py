@@ -187,6 +187,28 @@ class DataPipelineScheduler:
             logger.exception("Post-task data_steward failed")
             results["data_steward"] = f"ERROR: {e}"
 
+        # 8. Signal promotion (market_events → candidate signals)
+        try:
+            t0 = time.time()
+            from services.signal_promoter import promote_events
+
+            promo_db = Database(app_config.db.dsn)
+            promo_db.connect()
+            try:
+                promo = promote_events(promo_db, limit=2000)
+                results["signal_promotion"] = (
+                    f"OK: {promo.promoted} promoted, "
+                    f"{promo.skipped_existing} existing, "
+                    f"{promo.skipped_no_entity} no-entity "
+                    f"({time.time()-t0:.1f}s)"
+                )
+                logger.info("Post-task: signal_promotion — %s", results["signal_promotion"])
+            finally:
+                promo_db.close()
+        except Exception as e:
+            logger.exception("Post-task signal_promotion failed")
+            results["signal_promotion"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
 
     def run_one(self, source_name: str) -> str:
