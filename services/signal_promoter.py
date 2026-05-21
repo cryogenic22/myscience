@@ -135,8 +135,12 @@ def _humanize(event_type: str) -> str:
     return (event_type or "market update").replace("_", " ").strip().capitalize()
 
 
-def _resolve_entity(event: dict) -> tuple[str, str, str | None] | None:
-    """(type, id, name) or None if no entity can be resolved (quality gate)."""
+def _resolve_entity(event: dict) -> tuple[str, str, str | None]:
+    """(type, id, name). Falls back to a 'market' bucket when no entity is
+    resolvable — many news-derived events aren't entity-resolved yet, but
+    their headlines still carry real intelligence. 'market' is an honest
+    "unresolved", not a fabricated entity; the headline carries the content.
+    """
     etype = event.get("primary_entity_type")
     eid = event.get("primary_entity_id")
     if eid:
@@ -144,16 +148,15 @@ def _resolve_entity(event: dict) -> tuple[str, str, str | None] | None:
     drug_id = event.get("drug_id")
     if drug_id:
         return ("drug", str(drug_id), event.get("primary_entity_name"))
-    return None
+    return ("market", "market", event.get("primary_entity_name"))
 
 
 def build_signal_row(event: dict) -> dict | None:
-    """Map one market_events row → a signals insert row. Returns None when the
-    event fails the quality gate (no resolvable primary entity)."""
-    entity = _resolve_entity(event)
-    if entity is None:
+    """Map one market_events row → a signals insert row. Returns None only when
+    the event has no id; entityless events get a 'market' bucket."""
+    if not event.get("id"):
         return None
-    entity_type, entity_id, entity_name = entity
+    entity_type, entity_id, entity_name = _resolve_entity(event)
 
     event_type = event.get("event_type") or "general"
     description = event.get("description")

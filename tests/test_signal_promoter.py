@@ -150,9 +150,11 @@ class TestBuildSignalRow:
         row = build_signal_row(ev)
         assert ev["id"] in row["evidence_document_ids"]
 
-    def test_quality_gate_skips_event_with_no_entity(self):
+    def test_entityless_event_falls_back_to_market_bucket(self):
         row = build_signal_row(_event(primary_entity_id=None, primary_entity_type=None, drug_id=None))
-        assert row is None
+        assert row is not None
+        assert row["primary_entity_type"] == "market"
+        assert row["primary_entity_id"] == "market"
 
     def test_falls_back_to_drug_id_when_primary_entity_missing(self):
         row = build_signal_row(_event(primary_entity_id=None, primary_entity_type=None, drug_id="drug-9"))
@@ -219,13 +221,13 @@ class TestPromoteEvents:
         assert res.promoted == 0
         assert res.skipped_existing == 2
 
-    def test_skips_events_without_entity(self):
+    def test_entityless_events_still_promote_via_market_bucket(self):
         good = _event(event_type="approval")
-        bad = _event(primary_entity_id=None, primary_entity_type=None, drug_id=None)
-        db = _make_db([good, bad])
+        entityless = _event(primary_entity_id=None, primary_entity_type=None, drug_id=None)
+        db = _make_db([good, entityless])
         res = promote_events(db)
-        assert res.promoted == 1
-        assert res.skipped_no_entity == 1
+        assert res.promoted == 2
+        assert res.skipped_no_entity == 0
 
     def test_writes_to_db(self):
         events = [_event(event_type="approval")]
