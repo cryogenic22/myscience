@@ -131,11 +131,10 @@ Read these before writing ANY code:
 - `specs/SPEC_001_autonomous_research_engine.md` — CTX pipeline + research agent + memory
 - `specs/SPEC_002_frontend_ux_revamp.md` — Chat+Canvas split panel UX redesign
 
-## Codebase Map
-@.claude/codebase-map.md
+## Reference docs (READ ON DEMAND — not auto-loaded, to save context budget)
+- **Before adding any function/class/util**, read `.claude/rules/anti-slop.md` (DO-NOT-DUPLICATE index) and `Grep` for the symbol.
+- **Codebase structure**: `.claude/codebase-map.md` (module map). Refresh with `python harness/generate.py --refresh`.
+- **Testing conventions**: `.claude/rules/test-requirements.md`.
+- **Commit format**: `.claude/rules/commit-conventions.md`.
 
-## Anti-Slop Rules
-@.claude/rules/anti-slop.md
-
-## Test Requirements
-@.claude/rules/test-requirements.md
+These were previously `@`-injected into every turn (~14k tokens of fixed overhead). They are now read only when relevant.

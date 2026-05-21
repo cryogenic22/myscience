@@ -167,43 +167,57 @@ def generate_anti_slop(root: Path, utilities: list[dict[str, str]]) -> str:
         "",
     ]
 
+    # This file is read on demand (not @-injected into every turn), so it is
+    # deliberately a compact INDEX, not a verbatim catalog of all exports.
+    # The agent greps for specific symbols; this just points at where to look
+    # and flags genuine duplicates worth consolidating.
+    lines.append("> Read on demand. This is an index — `Grep` for any specific symbol.")
+    lines.append("")
+
     if duplicates:
-        lines.append(f"## Known Duplicates ({len(duplicates)} — consolidate these)")
+        # Skip framework/dunder noise that isn't a real "don't duplicate" signal.
+        _DUP_NOISE = {"__init__", "__post_init__", "execute", "fetch", "run",
+                      "main", "name", "health_check", "source_type", "to_dict",
+                      "from_dict"}
+        real_dups = {k: v for k, v in duplicates.items() if k not in _DUP_NOISE}
+        lines.append(f"## Known Duplicates ({len(real_dups)} — consolidate these)")
         lines.append("")
-        for name, files in sorted(duplicates.items()):
-            lines.append(f"- **`{name}`** — defined in: {', '.join(f'`{f}`' for f in files)}")
+        for name, files in sorted(real_dups.items()):
+            shown = files[:5]
+            suffix = f" *(+{len(files) - 5} more)*" if len(files) > 5 else ""
+            lines.append(f"- **`{name}`** — `{'`, `'.join(shown)}`{suffix}")
         lines.append("")
 
-    # List high-priority utility directories first
+    # High-priority utility dirs: summarize as counts + the reusable building
+    # blocks (classes/types) only. Functions are findable via Grep; listing
+    # all of them is what bloated this file to ~37KB.
     high_dirs = sorted(d for d in by_dir if any(ud in d for ud in UTILITY_DIRS))
     other_dirs = sorted(d for d in by_dir if d not in high_dirs)
 
     if high_dirs:
-        lines.append("## Shared Utilities (check these FIRST)")
+        lines.append("## Shared Utilities (check these FIRST — `Grep` for functions)")
         lines.append("")
         for dir_path in high_dirs:
             items = by_dir[dir_path]
-            lines.append(f"### `{dir_path}/`")
-            lines.append("| Name | Type | File:Line |")
-            lines.append("|------|------|-----------|")
-            for u in sorted(items, key=lambda x: x["name"]):
-                lines.append(f"| `{u['name']}` | {u['type']} | `{u['file']}:{u['line']}` |")
+            classes = sorted(
+                (u for u in items if u["type"] in ("class", "type")),
+                key=lambda x: x["name"],
+            )
+            lines.append(f"### `{dir_path}/` ({len(items)} exports, {len(classes)} classes/types)")
+            for u in classes[:12]:
+                lines.append(f"- `{u['name']}` ({u['type']}) — `{u['file']}:{u['line']}`")
+            if len(classes) > 12:
+                lines.append(f"- *...and {len(classes) - 12} more classes — `Grep` to find*")
             lines.append("")
 
     if other_dirs:
-        lines.append("## Other Exports (top directories only)")
+        lines.append("## Other Directories")
         lines.append("")
-        lines.append("*Use `Grep` to search for specific functions — this list shows key directories only.*")
+        lines.append("*`Grep` for specific symbols — counts only.*")
         lines.append("")
-        for dir_path in other_dirs[:15]:  # Top 15 only
-            items = by_dir[dir_path]
-            lines.append(f"### `{dir_path}/` ({len(items)} exports)")
-            # Only show first 10 per directory
-            for u in sorted(items, key=lambda x: x["name"])[:10]:
-                lines.append(f"- `{u['name']}` ({u['type']}) — `{u['file']}:{u['line']}`")
-            if len(items) > 10:
-                lines.append(f"- *...and {len(items) - 10} more — search with Grep*")
-            lines.append("")
+        for dir_path in other_dirs[:20]:
+            lines.append(f"- `{dir_path}/` — {len(by_dir[dir_path])} exports")
+        lines.append("")
 
     return "\n".join(lines)
 
