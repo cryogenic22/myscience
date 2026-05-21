@@ -5,6 +5,9 @@
 # Claude Code worktrees
 .claude/worktrees/
 
+# Local MCP server config — machine-specific paths (see docs/CTXPACK_MCP_SETUP.md)
+.mcp.json
+
 # Python
 __pycache__/
 *.pyc
