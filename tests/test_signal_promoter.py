@@ -45,19 +45,20 @@ def _event(**over):
 
 class TestClassifyKbq:
     def test_event_type_mapping(self):
+        # canonical KBQ vocabulary the frontend filter expects (m_and_a, pricing_access)
         assert classify_kbq("approval", None) == ["regulatory"]
         assert classify_kbq("regulatory_setback", None) == ["regulatory"]
         assert classify_kbq("trial_readout", None) == ["clinical"]
         assert classify_kbq("safety_signal", None) == ["clinical"]
-        assert set(classify_kbq("ma_deal", None)) == {"ma", "strategic"}
-        assert set(classify_kbq("supply_disruption", None)) == {"access", "product"}
+        assert set(classify_kbq("ma_deal", None)) == {"m_and_a", "strategic"}
+        assert set(classify_kbq("supply_disruption", None)) == {"pricing_access", "product"}
 
     def test_general_uses_description_keywords(self):
         assert "regulatory" in classify_kbq("general", "FDA approval granted for label expansion")
         assert "clinical" in classify_kbq("general", "Phase 3 trial readout met primary endpoint")
-        assert "access" in classify_kbq("general", "New WAC price and formulary payer coverage")
+        assert "pricing_access" in classify_kbq("general", "New WAC price and formulary payer coverage")
         assert "financial" in classify_kbq("general", "Q1 revenue and guidance raised")
-        assert "ma" in classify_kbq("general", "announces acquisition of biotech")
+        assert "m_and_a" in classify_kbq("general", "announces acquisition of biotech")
 
     def test_always_returns_at_least_one_tag(self):
         assert classify_kbq("general", None) == ["strategic"]
@@ -159,6 +160,27 @@ class TestBuildSignalRow:
         assert row["primary_entity_id"] == "drug-9"
         assert row["primary_entity_type"] == "drug"
 
+    def test_high_impact_auto_ships_with_audit_fields(self):
+        # approval + high trust → high impact → shipped, with paired audit fields
+        row = build_signal_row(_event(event_type="approval", description="FDA approves X", trust_score=0.95))
+        assert row["impact_tier"] == "high"
+        assert row["status"] == "shipped"
+        assert row["reviewed_by"] is not None
+        assert row["reviewed_at"] is not None
+        assert row["shipped_at"] is not None
+
+    def test_medium_low_stays_candidate(self):
+        row = build_signal_row(_event(event_type="general", trust_score=0.5))
+        assert row["impact_tier"] in ("medium", "low")
+        assert row["status"] == "candidate"
+        assert row["reviewed_by"] is None
+        assert row["shipped_at"] is None
+
+    def test_recall_noise_is_low_and_not_shipped(self):
+        row = build_signal_row(_event(event_type="RECALL_CLASS_I", description="Class II recall", trust_score=0.6))
+        assert row["status"] == "candidate"
+        assert row["impact_tier"] in ("low", "medium")
+
 
 # ── promote_events (mock DB) ──────────────────────────────────────
 
@@ -211,3 +233,13 @@ class TestPromoteEvents:
         promote_events(db)
         # producer must have issued at least one insert
         assert db.execute.called or db.executemany.called
+
+    def test_event_types_filter_passed_to_query(self):
+        events = [_event(event_type="approval")]
+        db = _make_db(events)
+        promote_events(db, event_types=["approval", "trial_readout"])
+        # the market_events query must carry the event_type filter param
+        calls = [c for c in db.fetch_all.call_args_list if "market_events" in (c.args[0] or "").lower()]
+        assert calls, "expected a market_events query"
+        params = calls[0].args[1] if len(calls[0].args) > 1 else []
+        assert any(isinstance(p, list) and "approval" in p for p in params)

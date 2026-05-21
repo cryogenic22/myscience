@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from services.impact_router import classify_impact_direction
 
@@ -21,32 +22,48 @@ logger = logging.getLogger(__name__)
 
 RULE_VERSION_ID = "signal_promoter_v1"
 
-# ── KBQ classification ────────────────────────────────────────────
+# Synthetic reviewer for auto-shipped (high-impact) signals. Satisfies the
+# signals_review_state_paired / shipped_state_paired constraints. Represents
+# "promoted by the Sentinel agent" rather than a human reviewer.
+SYSTEM_REVIEWER_ID = "00000000-0000-0000-0000-0000000000a1"
 
-# Direct event_type → kbq tag(s). Mirrors impact_router event vocabulary.
+# Event types that warrant a real signal. RECALL_CLASS_I (96% of the corpus)
+# is recall noise — deprioritized, never auto-shipped (see significance map).
+HIGH_SIGNIFICANCE_EVENT_TYPES = (
+    "approval", "trial_readout", "ma_deal", "regulatory_setback",
+    "safety_signal", "pricing", "patent_ip", "supply_disruption",
+)
+
+# ── KBQ classification ────────────────────────────────────────────
+# Tags use the canonical vocabulary the frontend KBQ filter expects
+# (KBQFilter.tsx): financial, governance, strategic, clinical, product,
+# regulatory, m_and_a, pricing_access, ai_digital, esg_supply.
+
 _EVENT_TYPE_KBQ: dict[str, list[str]] = {
     "approval": ["regulatory"],
     "regulatory_setback": ["regulatory"],
     "trial_readout": ["clinical"],
     "safety_signal": ["clinical"],
-    "ma_deal": ["ma", "strategic"],
-    "supply_disruption": ["access", "product"],
+    "ma_deal": ["m_and_a", "strategic"],
+    "supply_disruption": ["pricing_access", "product"],
+    "pricing": ["pricing_access"],
+    "patent_ip": ["regulatory", "strategic"],
 }
 
-# Keyword → kbq tag for `general` events (checked in order; all matches kept).
+# Keyword → kbq tag for `general`/uncategorized events (all matches kept).
 _KBQ_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
-    ("regulatory", ("fda", "approval", "approved", "label", "ema", "chmp", "regulatory")),
+    ("regulatory", ("fda", "approval", "approved", "label", "ema", "chmp", "recall", "regulatory")),
     ("clinical", ("trial", "phase", "endpoint", "readout", "efficacy", "study", "data")),
-    ("access", ("price", "pricing", "wac", "formulary", "payer", "access", "coverage", "rebate")),
+    ("pricing_access", ("price", "pricing", "wac", "formulary", "payer", "access", "coverage", "rebate")),
     ("financial", ("revenue", "guidance", "earnings", "sales", "quarter", "eps", "profit")),
-    ("ma", ("acquisition", "acquire", "merger", "deal", "buyout", "licensing")),
+    ("m_and_a", ("acquisition", "acquire", "merger", "deal", "buyout", "licensing")),
 ]
 
 
 def classify_kbq(event_type: str, description: str | None) -> list[str]:
     """Return >=1 KBQ tag for an event. event_type first, then keyword scan
-    of the description for `general` events. Defaults to ['strategic']."""
-    direct = _EVENT_TYPE_KBQ.get(event_type)
+    of the description for uncategorized events. Defaults to ['strategic']."""
+    direct = _EVENT_TYPE_KBQ.get((event_type or "").lower())
     if direct:
         return list(direct)
 
@@ -84,9 +101,12 @@ _EVENT_TYPE_SIGNIFICANCE: dict[str, float] = {
     "safety_signal": 0.85,
     "trial_readout": 0.8,
     "regulatory_setback": 0.8,
-    "ma_deal": 0.65,
-    "supply_disruption": 0.6,
+    "ma_deal": 0.7,
+    "pricing": 0.7,
+    "patent_ip": 0.6,
+    "supply_disruption": 0.55,
     "general": 0.4,
+    "recall_class_i": 0.3,  # recall noise — stays low, never auto-ships
 }
 _DEFAULT_SIGNIFICANCE = 0.4
 
@@ -102,7 +122,7 @@ def _tier_from_score(score: float) -> str:
 def impact_for(event_type: str, trust_score: float) -> tuple[float, str]:
     """Blend event-type significance with trust into a 0–1 impact score and
     its tier. Deterministic; weighted 70% significance / 30% trust."""
-    base = _EVENT_TYPE_SIGNIFICANCE.get(event_type, _DEFAULT_SIGNIFICANCE)
+    base = _EVENT_TYPE_SIGNIFICANCE.get((event_type or "").lower(), _DEFAULT_SIGNIFICANCE)
     ts = max(0.0, min(1.0, trust_score))
     score = round(0.7 * base + 0.3 * ts, 4)
     score = max(0.0, min(1.0, score))
@@ -144,6 +164,18 @@ def build_signal_row(event: dict) -> dict | None:
     summary = description.strip()[:500] if description else None
     impact_score, impact_tier = impact_for(event_type, trust_score)
 
+    # High-impact signals auto-ship so they appear on the curated surfaces
+    # (Signals DB, Sentinel, Bridge) immediately; medium/low stay candidate
+    # for the Reviewer queue. Shipping requires the paired audit fields
+    # (signals_review_state_paired + shipped_state_paired constraints).
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if impact_tier == "high":
+        status = "shipped"
+        reviewed_by, reviewed_at, shipped_at = SYSTEM_REVIEWER_ID, now_iso, now_iso
+    else:
+        status = "candidate"
+        reviewed_by = reviewed_at = shipped_at = None
+
     return {
         "event_id": str(event["id"]),
         "kbq_tags": classify_kbq(event_type, description),
@@ -160,7 +192,10 @@ def build_signal_row(event: dict) -> dict | None:
         "primary_entity_name": entity_name,
         "related_entity_ids": [],
         "evidence_document_ids": [str(event["id"])],
-        "status": "candidate",
+        "status": status,
+        "reviewed_by": reviewed_by,
+        "reviewed_at": reviewed_at,
+        "shipped_at": shipped_at,
     }
 
 
@@ -180,23 +215,32 @@ _INSERT_SQL = """
         confidence_tier, trust_score, impact_tier, impact_score,
         rule_version_id, primary_entity_type, primary_entity_id,
         primary_entity_name, related_entity_ids, evidence_document_ids,
-        status
+        status, reviewed_by, reviewed_at, shipped_at
     ) VALUES (
         %(event_id)s, %(kbq_tags)s, %(headline)s, %(summary)s, %(direction)s,
         %(confidence_tier)s, %(trust_score)s, %(impact_tier)s, %(impact_score)s,
         %(rule_version_id)s, %(primary_entity_type)s, %(primary_entity_id)s,
         %(primary_entity_name)s, %(related_entity_ids)s::text[],
-        %(evidence_document_ids)s::uuid[], %(status)s
+        %(evidence_document_ids)s::uuid[], %(status)s,
+        %(reviewed_by)s, %(reviewed_at)s, %(shipped_at)s
     )
     ON CONFLICT DO NOTHING
 """
 
 
-def promote_events(db, *, limit: int = 1000, since_days: int | None = None) -> PromoteResult:
-    """Promote market_events not yet present in signals into candidate signals.
+def promote_events(
+    db,
+    *,
+    limit: int = 1000,
+    since_days: int | None = None,
+    event_types: list[str] | None = None,
+) -> PromoteResult:
+    """Promote market_events not yet present in signals into signals.
 
     Idempotent: events whose id already appears as signals.event_id are
     skipped and counted. Dedup is done in Python so the counts are accurate.
+    `event_types` restricts to specific types (e.g. high-significance ones),
+    avoiding the RECALL_CLASS_I noise that dominates the corpus.
     """
     res = PromoteResult()
 
@@ -213,6 +257,9 @@ def promote_events(db, *, limit: int = 1000, since_days: int | None = None) -> P
     if since_days is not None:
         where.append("me.event_date >= (CURRENT_DATE - %s::int)")
         params.append(since_days)
+    if event_types:
+        where.append("me.event_type = ANY(%s)")
+        params.append(list(event_types))
     where_sql = " AND ".join(where)
 
     sql = f"""
