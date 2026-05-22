@@ -87,25 +87,26 @@ export default function CIPage() {
   }, [params]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden flex-col md:flex-row" style={{ background: 'var(--color-bg)' }}>
-      
-      {/* Sidebar Navigation (Desktop) */}
-      <aside className="hidden md:flex w-64 flex-col shrink-0 border-r" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
-        
+    <div data-theme="dark" className="flex h-screen w-full overflow-hidden flex-col md:flex-row" style={{ background: '#0a0b0e' }}>
+
+      {/* Sidebar Navigation (Desktop) — Helix war-room */}
+      <aside className="hidden md:flex w-64 flex-col shrink-0 border-r" style={{ borderColor: '#23262d', background: '#12141a' }}>
+
         {/* Header Branding */}
-        <div className="flex items-center gap-3 h-16 px-6 border-b shrink-0" style={{ borderColor: 'var(--color-line)' }}>
+        <div className="flex items-center gap-3 h-16 px-6 border-b shrink-0" style={{ borderColor: '#23262d' }}>
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-[var(--color-ink-3)] hover:text-[var(--color-ink)] transition-colors"
+            style={{ color: '#8a8f99' }}
+            className="transition-colors hover:opacity-80"
           >
             <ArrowLeft size={16} />
           </button>
           <div className="flex flex-col flex-1">
-            <span className="font-display mz-text-md font-medium tracking-tight" style={{ color: 'var(--color-ink)' }}>
+            <span className="mz-text-md font-medium tracking-tight" style={{ color: '#e8eaed', fontFamily: "'Instrument Serif', 'Fraunces', Georgia, serif", fontSize: 19 }}>
               {PRODUCT_NAME}
             </span>
-            <span className="mz-text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--color-ink-4)' }}>
+            <span className="mz-text-xs uppercase tracking-widest" style={{ color: '#5a5f69', fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
               Cockpit
             </span>
           </div>
@@ -123,13 +124,12 @@ export default function CIPage() {
                 onClick={() => setTab(t.key)}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all"
                 style={{
-                  background: isActive ? 'var(--color-surface-3)' : 'transparent',
-                  color: isActive ? 'var(--color-ink)' : 'var(--color-ink-3)',
+                  background: isActive ? '#1f232b' : 'transparent',
+                  color: isActive ? '#e8eaed' : '#8a8f99',
                   fontWeight: isActive ? 500 : 400,
-                  boxShadow: isActive ? 'var(--shadow-sm)' : 'none'
                 }}
               >
-                <t.icon size={16} style={{ color: isActive ? 'var(--color-accent)' : 'inherit' }} />
+                <t.icon size={16} style={{ color: isActive ? '#5eead4' : 'inherit' }} />
                 {t.label}
               </button>
             );
@@ -137,17 +137,17 @@ export default function CIPage() {
         </nav>
 
         {/* Global Telemetry & Footer */}
-        <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: 'var(--color-line-2)' }}>
+        <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: '#23262d' }}>
           {/* Loop #21 — live agent activity feed (polls /agents/activity).
               Falls back to the static identity strip if the API errors. */}
           <CIPageAgentSection />
           
           <div className="flex items-center justify-between">
-            <a href="/connectors" className="mz-text-xs font-mono hover:underline transition-colors" style={{ color: 'var(--color-ink-4)' }}>
+            <a href="/connectors" className="mz-text-xs font-mono hover:underline transition-colors" style={{ color: '#5a5f69' }}>
               Connectors →
             </a>
             {role && (
-              <span className="mz-text-xs uppercase font-mono px-2 py-0.5 rounded" style={{ background: 'var(--color-surface-2)', color: 'var(--color-ink-3)' }}>
+              <span className="mz-text-xs uppercase font-mono px-2 py-0.5 rounded" style={{ background: '#1f232b', color: '#8a8f99' }}>
                 {role}
               </span>
             )}
@@ -155,8 +155,8 @@ export default function CIPage() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 relative flex flex-col min-w-0 overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
+      {/* Main Content Area — Helix canvas */}
+      <main className="flex-1 relative flex flex-col min-w-0 overflow-y-auto" style={{ background: '#0a0b0e' }}>
         <div className="w-full max-w-6xl mx-auto py-6 px-4 md:px-10 flex flex-col flex-1">
           {tab === 'inbox' && (
             <InboxTab

@@ -139,7 +139,10 @@
 /* ══════════════════════════════════════════════════════
    DARK MODE
    ══════════════════════════════════════════════════════ */
-html.dark {
+/* `[data-theme="dark"]` lets a subtree (e.g. the /ci cockpit) force the dark
+   token set locally — Helix's "one locked war-room dark" — without flipping
+   the whole app. Same overrides as the global html.dark mode. */
+html.dark, [data-theme="dark"] {
   --color-bg:           #0d1117;
   --color-bg-2:         #010409;
   --color-surface:      #161b22;
