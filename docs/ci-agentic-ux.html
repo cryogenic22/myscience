@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MarketZero · CI — Agentic UX Design</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap" />
+<style>
+  :root{
+    --bg:#0a0b0e; --ink:#e8eaed; --ink2:#c2c6cf; --dim:#8a8f99; --faint:#5a5f69;
+    --panel:#12141a; --panel2:#181b22; --panel3:#1f232b; --line:#23262d; --line2:#2c3038;
+    --accent:#5eead4; --accent2:#a78bfa; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --serif:'Instrument Serif',Georgia,serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink2);font-family:var(--sans);font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{display:grid;grid-template-columns:260px 1fr;max-width:1240px;margin:0 auto}
+  nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 16px 40px 26px;border-right:1px solid var(--line);background:var(--panel)}
+  nav.toc .brand{font-family:var(--serif);font-size:22px;color:var(--ink);letter-spacing:-.01em}
+  nav.toc .brand small{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:5px}
+  nav.toc ol{list-style:none;padding:0;margin:22px 0 0}
+  nav.toc a{display:block;padding:5px 10px;border-radius:7px;color:var(--dim);text-decoration:none;font-size:13px}
+  nav.toc a:hover{background:var(--panel3);color:var(--ink)}
+  nav.toc a.sub{padding-left:22px;font-size:12px;color:var(--faint)}
+  main{padding:46px 54px 120px;min-height:100vh}
+  .head{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:8px}
+  .head h1{font-family:var(--serif);font-size:42px;line-height:1.05;letter-spacing:-.02em;color:var(--ink);margin:0 0 10px}
+  .head .meta{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .head .meta b{color:var(--ink2);font-weight:600}
+  h2{font-family:var(--serif);font-size:27px;letter-spacing:-.015em;color:var(--ink);margin:54px 0 6px}
+  h2 .n{font-family:var(--mono);font-size:15px;color:var(--faint);margin-right:10px}
+  h3{font-size:17px;color:var(--ink);margin:30px 0 6px}
+  h4{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:22px 0 6px}
+  p{margin:10px 0}
+  strong{color:var(--ink)}
+  .lede{font-size:17px;color:var(--ink2)}
+  code{font-family:var(--mono);font-size:12px;background:var(--panel3);padding:1px 5px;border-radius:4px;color:var(--accent)}
+  pre{background:var(--panel);border-left:2px solid var(--accent2);border-radius:0 8px 8px 0;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.55;color:var(--ink2)}
+  ul,ol{padding-left:22px}li{margin:5px 0}
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+  tbody tr:hover{background:var(--panel)}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px}
+  .c-have{background:rgba(52,211,153,.14);color:var(--ok)} .c-new{background:rgba(248,113,113,.14);color:var(--bad)}
+  .c-ext{background:rgba(251,191,36,.14);color:var(--warn)} .c-input{background:rgba(167,139,250,.16);color:var(--accent2)}
+  .flow{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:20px 0;font-family:var(--mono);font-size:12px}
+  .flow .stage{background:var(--panel2);border-left:2px solid var(--accent);border-radius:0 7px 7px 0;padding:8px 13px;color:var(--ink)}
+  .flow .ar{color:var(--faint)}
+  .card{background:var(--panel);border-left:2px solid var(--line2);border-radius:0 10px 10px 0;padding:6px 22px 20px;margin:22px 0}
+  .card.hot{border-left-color:var(--accent)}
+  .co{border-radius:0 9px 9px 0;padding:13px 17px;margin:16px 0;background:var(--panel2);border-left:2px solid var(--accent2)}
+  .co .t{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin-bottom:4px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .two .col{background:var(--panel);border-radius:10px;padding:16px 18px}
+  .two h4{margin-top:0}
+  .old{border-top:2px solid var(--bad)} .agentic{border-top:2px solid var(--ok)}
+  .foot{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--faint)}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr}nav.toc{position:static;height:auto}main{padding:26px 20px 80px}.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="brand">CI · Agentic UX<small>Design — PB-1302</small></div>
+  <ol>
+    <li><a href="#tldr">TL;DR</a></li>
+    <li><a href="#why">1 · Why today feels old-school</a></li>
+    <li><a href="#model">2 · The agentic model</a></li>
+    <li><a href="#flow">3 · The flow, end to end</a></li>
+    <li><a href="#agents">4 · The three agents</a></li>
+    <li><a href="#wargame">5 · War-game — mode toggle</a></li>
+    <li><a href="#surfaces">6 · Surfaces &amp; contracts</a></li>
+    <li><a href="#reuse">7 · Reuse vs build</a></li>
+    <li><a href="#inputs">8 · Inputs needed</a></li>
+  </ol>
+</nav>
+<main>
+  <div class="head">
+    <h1>Competitive Intelligence — Agentic UX</h1>
+    <div class="meta">
+      <span><b>Backlog</b> PB-1302</span>
+      <span><b>Date</b> 2026-05-22</span>
+      <span><b>For</b> Kapil · Amit · Riya</span>
+      <span><b>Status</b> draft for review</span>
+    </div>
+  </div>
+
+  <section id="tldr">
+    <p class="lede">Today's <code>/ci</code> is a BI dashboard: a feed of signals + manual buttons where <strong>the human is the engine</strong>. The agentic future inverts it — <strong>agents sense, frame, simulate and recommend; the human steers and judges.</strong> The unit of work stops being a <em>signal to read</em> and becomes a <em>decision the system has already framed and war-gamed</em>. This doc specifies that workflow, the three agents' surfaces, and the war-game <strong>mode toggle</strong> (autonomous · hybrid workshop · game-theory substrate).</p>
+    <div class="co"><div class="t">The shift in one line</div>
+      <p style="margin:0">From <em>"read 569 signals → decide what matters → manually frame"</em> to <em>"the system surfaced 3 material Moments with framed options and simulated outcomes → I interrogate, adjust assumptions, and commit — with full trace."</em></p>
+    </div>
+  </section>
+
+  <section id="why">
+    <h2><span class="n">1</span>Why today feels old-school</h2>
+    <div class="two">
+      <div class="col old"><h4 style="color:var(--bad)">Old-school (today)</h4>
+        <ul>
+          <li>Land on a <strong>feed</strong> of 569 signals</li>
+          <li>Human reads, decides relevance</li>
+          <li>"Frame" / "Simulate" are blank manual buttons</li>
+          <li>Agents are <strong>static labels</strong> in the sidebar</li>
+          <li>War-game = a form you fill from scratch</li>
+          <li>No memory, no learning, no proactivity</li>
+        </ul>
+      </div>
+      <div class="col agentic"><h4 style="color:var(--ok)">Agentic (target)</h4>
+        <ul>
+          <li>Land on 3–5 <strong>Moments</strong> the agents framed</li>
+          <li>Agents pre-rank by materiality &amp; EV-at-stake</li>
+          <li>Options + war-game <strong>already drafted</strong></li>
+          <li>Agents are <strong>colleagues</strong> with live activity + trace</li>
+          <li>War-game = a <strong>dialogue</strong> you steer</li>
+          <li>Curator closes the loop; calibration improves</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2><span class="n">2</span>The agentic model</h2>
+    <p>Three principles, each a concrete UX rule:</p>
+    <ol>
+      <li><strong>Decisions, not data.</strong> The home surface is <em>Moments</em> (framed decisions), not a signal feed. The feed becomes the evidence substrate underneath.</li>
+      <li><strong>Agents propose, humans dispose.</strong> Every Moment arrives with agent-drafted options + a pre-run war-game + a recommendation. The human's job is judgment, assumption-adjustment, and commitment — never blank-page work.</li>
+      <li><strong>Conversational, with trace.</strong> The user steers in natural language ("re-run assuming Novo cuts WAC 50%"); every agent action is inspectable end-to-end (which signals → which belief shift → which option → why).</li>
+    </ol>
+  </section>
+
+  <section id="flow">
+    <h2><span class="n">3</span>The flow, end to end</h2>
+    <div class="flow">
+      <span class="stage">SENSE · Moment</span><span class="ar">→</span>
+      <span class="stage">FRAME · agent brief</span><span class="ar">→</span>
+      <span class="stage">WAR-GAME · steer</span><span class="ar">→</span>
+      <span class="stage">COMMIT · ledger</span><span class="ar">→</span>
+      <span class="stage">LEARN · recalibrate</span><span class="ar">↺</span>
+    </div>
+    <table>
+      <thead><tr><th>Stage</th><th>Agent</th><th>What the user sees</th><th>What the user does</th></tr></thead>
+      <tbody>
+        <tr><td><b>Sense</b></td><td>Sentinel</td><td>A Moment: clustered signals + materiality + EV-at-stake + belief shift</td><td>Scan 3–5 Moments; open one</td></tr>
+        <tr><td><b>Frame</b></td><td>Strategist</td><td>A drafted Decision Brief: the question + 3 options + stakeholders + cited evidence</td><td>Edit the question / options; accept or send back</td></tr>
+        <tr><td><b>War-game</b></td><td>Strategist + adversaries</td><td>Pre-run simulation: adversary reactions, Monte-Carlo EV ranges per option</td><td>Steer: change assumptions, add rounds, take an adversary seat</td></tr>
+        <tr><td><b>Commit</b></td><td>—</td><td>Recommendation + rationale; an immutable, signed ledger entry</td><td>Commit the call with own reasoning</td></tr>
+        <tr><td><b>Learn</b></td><td>Curator</td><td>At review date: predicted vs actual; calibration trend</td><td>Nothing — the loop runs; review periodically</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="agents">
+    <h2><span class="n">4</span>The three agents &amp; their surfaces</h2>
+    <div class="card hot"><h3>Sentinel — Sense</h3>
+      <p>Clusters raw signals into <strong>Moments</strong>; scores materiality; detects belief shifts. Surface: the <strong>Bridge</strong> Moments column (exists at <code>/bridge</code>). Live activity in the cockpit rail (exists — <code>/agents/activity</code>).</p>
+      <p><b>Agentic upgrade:</b> proactive — pushes "a Moment crossed your materiality threshold" rather than waiting to be read.</p>
+    </div>
+    <div class="card hot"><h3>Strategist — Frame + Simulate</h3>
+      <p>Turns a Moment into a framed Decision Brief and pre-runs the war-game. Surface: the <strong>Decision Workspace</strong> (exists, 5-panel) made conversational. Drafts options with cited evidence; proposes adversary panel.</p>
+      <p><b>Agentic upgrade:</b> the workspace gains a chat rail — the user interrogates and re-simulates in natural language.</p>
+    </div>
+    <div class="card hot"><h3>Curator — Learn + Recalibrate</h3>
+      <p>At each decision's review date, compares predicted vs actual; recalibrates materiality weights. Surface: <strong>Insights</strong> (exists) made live.</p>
+      <p><b>Agentic upgrade:</b> close the loop — outcome attribution feeds back into Sentinel's scoring.</p>
+    </div>
+  </section>
+
+  <section id="wargame">
+    <h2><span class="n">5</span>War-game — the mode toggle</h2>
+    <p>The war-game engine exposes <strong>one toggle, three modes</strong> (product-owner requirement). Game theory is the computational substrate <em>underneath</em>, not a separate mode the user thinks about.</p>
+    <table>
+      <thead><tr><th>Mode</th><th>Who plays the adversaries</th><th>Human role</th><th>Output</th></tr></thead>
+      <tbody>
+        <tr><td><b>① Autonomous</b></td><td>AI agents (competitor/payer/FDA/KOL), grounded in the knowledge graph</td><td>Reviews the agents' self-analysis + recommendation; takes the decision where flagged</td><td>Recommendation + <strong>full reasoning trace</strong> (every move, every assumption)</td></tr>
+        <tr><td><b>② Hybrid workshop</b></td><td>Mixed — a human may take an adversary seat (e.g. "play Lilly"); AI plays the rest</td><td>Active participant in a live red-team room</td><td>Transcript + group decision; richer for facilitated sessions</td></tr>
+        <tr><td><b>③ Game-theory</b></td><td>Formal payoff matrix; Monte-Carlo / Bayesian (services/game_theory.py)</td><td>Sets payoffs / priors; reads equilibria + EV distributions</td><td>Quantified equilibrium + EV ranges — the math layer feeding ① and ②</td></tr>
+      </tbody>
+    </table>
+    <div class="co"><div class="t">Design intent (from product owner)</div>
+      <p style="margin:0">"A toggle where the engine allows for 1/2/3. Ideally the agents do self-analysis and report back, with humans taking decisions where needed and a full trace — or a workshop-oriented human/AI team, with game theory as a subset within mode 2 using those mechanisms."</p>
+    </div>
+    <p><b>Adversaries are grounded.</b> Each adversary agent is seeded with the entity's real profile from the knowledge graph (trials, pricing, history, prior moves) + an objective function. That's the data moat doing the work — not a generic LLM persona.</p>
+  </section>
+
+  <section id="surfaces">
+    <h2><span class="n">6</span>Surfaces &amp; contracts</h2>
+    <h4>Primary (hero) — make these excellent</h4>
+    <ul>
+      <li><strong>Bridge / Moments</strong> (<code>/bridge</code>) — the home. Moment cards → open into the decision flow.</li>
+      <li><strong>Decision Workspace</strong> — agent-drafted brief + <strong>conversational war-game</strong> (the new chat rail) + mode toggle.</li>
+      <li><strong>War Room</strong> — the live multi-agent simulation surface (modes ①/②/③).</li>
+    </ul>
+    <h4>Evidence layer (quiet) — consistent, not hero</h4>
+    <ul>
+      <li>Signals DB, Sensing Feed, Watchlist, Reviewer — the substrate. Already Helix-reskinned; keep quiet.</li>
+    </ul>
+    <h4>Key new contract — the conversational war-game</h4>
+<pre>POST /wargame/{session_id}/steer
+  { "instruction": "re-run assuming Novo cuts WAC 50% in Q1 2027",
+    "mode": "autonomous" | "hybrid" | "game_theory" }
+→ { "rounds": [...], "ev_by_option": {...}, "belief_delta": {...},
+    "trace": [ {agent, input, reasoning, output}, ... ] }   // full trace</pre>
+  </section>
+
+  <section id="reuse">
+    <h2><span class="n">7</span>Reuse vs build</h2>
+    <table>
+      <thead><tr><th>Capability</th><th>Status</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>Moments generation</td><td><span class="chip c-have">have</span></td><td><code>/bridge/moments</code> + BridgePage</td></tr>
+        <tr><td>3 named agents + activity</td><td><span class="chip c-have">have</span></td><td><code>/agents/activity</code>, AgentActivityFeed</td></tr>
+        <tr><td>Decision Brief lifecycle</td><td><span class="chip c-have">have</span></td><td><code>decision_brief.py</code>, Decision Workspace</td></tr>
+        <tr><td>Game-theory engine (Monte-Carlo/Bayesian)</td><td><span class="chip c-have">have</span></td><td><code>services/game_theory.py</code></td></tr>
+        <tr><td>Adversary kinds + grounding</td><td><span class="chip c-have">have</span></td><td><code>services/war_game_adversary.py</code> (SPEC-028)</td></tr>
+        <tr><td>Signal → brief framing (auto)</td><td><span class="chip c-ext">extend</span></td><td>manual today (useFrameSignal) → agent-triggered (critical-path ④)</td></tr>
+        <tr><td>Conversational war-game steering</td><td><span class="chip c-new">build</span></td><td>new <code>/wargame/steer</code> + chat rail</td></tr>
+        <tr><td>Mode toggle (①/②/③)</td><td><span class="chip c-new">build</span></td><td>new — orchestrator over the existing engine</td></tr>
+        <tr><td>Full reasoning trace</td><td><span class="chip c-ext">extend</span></td><td>agent event stream exists; surface it as trace</td></tr>
+        <tr><td>Learn loop (outcome attribution)</td><td><span class="chip c-ext">extend</span></td><td><code>learning_service.py</code> exists; wire it (critical-path ⑤)</td></tr>
+      </tbody>
+    </table>
+    <p>Most of the engine exists. The genuinely new work is the <strong>conversational layer</strong> + the <strong>mode-toggle orchestrator</strong> + surfacing the <strong>trace</strong>. That's PB-1303.</p>
+  </section>
+
+  <section id="inputs">
+    <h2><span class="n">8</span>Inputs needed <span class="chip c-input">decisions</span></h2>
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Owner</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Adversary objective functions per type (what does "Lilly-agent" optimize?)</td><td>Riya + strategist</td></tr>
+        <tr><td>2</td><td>When does mode ① escalate to a human ("decisions where needed")? threshold rules</td><td>Kapil + strategist</td></tr>
+        <tr><td>3</td><td>Default war-game mode for a new Moment (autonomous vs hybrid)</td><td>Kapil</td></tr>
+        <tr><td>4</td><td>What belief variables the Twin tracks (P(X) priors) for the GLP-1 field</td><td>Riya</td></tr>
+        <tr><td>5</td><td>Trace depth shown by default (every move vs summary + expand)</td><td>design</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="foot">Draft v0.1 · PB-1302 · rendered in the Helix language · update as decisions land. Builds on docs/ci-strategy-roadmap.html (critical path ④ + ⑤).</div>
+</main>
+</div>
+</body>
+</html>
