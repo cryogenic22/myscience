@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MarketZero · CI — Strategy, Roadmap & Build Spec</title>
+<style>
+  :root {
+    --ink: #16181d; --ink-2: #3a3f4a; --ink-3: #5f6672; --ink-4: #8b919c;
+    --line: #e6e8ec; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+    --accent: #1f5fa6; --accent-soft: #e8f0f9;
+    --green: #0a5a3f; --green-soft: #e6f3ee;
+    --amber: #7a5310; --amber-soft: #f6efe0;
+    --red: #9a2820; --red-soft: #f6e7e5;
+    --violet: #5b3aa6; --violet-soft: #efe9f8;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--surface-2); color: var(--ink);
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { display: grid; grid-template-columns: 264px 1fr; max-width: 1280px; margin: 0 auto; }
+  /* ---- TOC ---- */
+  nav.toc {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 28px 18px 40px 28px; border-right: 1px solid var(--line); background: var(--surface);
+  }
+  nav.toc .brand { font-family: var(--serif); font-size: 19px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+  nav.toc .brand small { display:block; font-family: var(--sans); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); margin-top: 4px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 22px 0 0; counter-reset: s; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a { display: block; padding: 5px 10px; border-radius: 7px; color: var(--ink-3); text-decoration: none; font-size: 13.5px; }
+  nav.toc a:hover { background: var(--surface-2); color: var(--ink); }
+  nav.toc a.sub { padding-left: 22px; font-size: 12.5px; color: var(--ink-4); }
+  /* ---- Content ---- */
+  main { padding: 48px 56px 120px; background: var(--surface); min-height: 100vh; }
+  .doc-head { border-bottom: 2px solid var(--ink); padding-bottom: 22px; margin-bottom: 14px; }
+  .doc-head h1 { font-family: var(--serif); font-size: 38px; line-height: 1.1; letter-spacing: -.02em; margin: 0 0 10px; }
+  .doc-head .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--ink-3); }
+  .doc-head .meta b { color: var(--ink-2); font-weight: 600; }
+  h2 { font-family: var(--serif); font-size: 26px; letter-spacing: -.015em; margin: 56px 0 6px; padding-top: 10px; }
+  h2 .num { color: var(--ink-4); font-size: 18px; font-weight: 600; margin-right: 10px; font-family: var(--sans); }
+  h3 { font-size: 18px; margin: 32px 0 6px; letter-spacing: -.01em; }
+  h4 { font-size: 14px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); margin: 22px 0 6px; }
+  p { margin: 10px 0; color: var(--ink-2); }
+  .lede { font-size: 17px; color: var(--ink-2); }
+  strong { color: var(--ink); }
+  a.ref { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+  pre { background: #1c2027; color: #e6e9ef; border-radius: 10px; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; margin: 14px 0; }
+  pre .c { color: #7f8896; } pre .k { color: #c191ff; } pre .s { color: #9ae6a4; } pre .f { color: #6fb2ff; }
+  ul, ol { color: var(--ink-2); padding-left: 22px; } li { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); border-bottom: 2px solid var(--line); }
+  tbody tr:hover { background: var(--surface-2); }
+  /* ---- badges ---- */
+  .badge { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .b-done { background: var(--green-soft); color: var(--green); }
+  .b-partial { background: var(--amber-soft); color: var(--amber); }
+  .b-missing { background: var(--red-soft); color: var(--red); }
+  .b-input { background: var(--violet-soft); color: var(--violet); }
+  .b-now { background: var(--accent-soft); color: var(--accent); }
+  /* ---- callouts ---- */
+  .callout { border-radius: 10px; padding: 14px 18px; margin: 18px 0; border: 1px solid var(--line); }
+  .callout .ttl { font-weight: 700; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+  .callout p { margin: 4px 0; }
+  .co-input { background: var(--violet-soft); border-color: #d9cdf0; } .co-input .ttl { color: var(--violet); }
+  .co-key { background: var(--accent-soft); border-color: #cfe0f2; } .co-key .ttl { color: var(--accent); }
+  .co-warn { background: var(--amber-soft); border-color: #ecdcb8; } .co-warn .ttl { color: var(--amber); }
+  /* ---- feature card ---- */
+  .feature { border: 1px solid var(--line); border-radius: 14px; padding: 4px 24px 22px; margin: 26px 0; background: var(--surface); }
+  .feature > h3 { display: flex; align-items: baseline; gap: 12px; }
+  .feature .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 16px; font-size: 13.5px; margin: 10px 0; }
+  .kv dt { color: var(--ink-3); font-weight: 600; }
+  .kv dd { margin: 0; color: var(--ink-2); }
+  .flywheel { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin: 22px 0; font-family: var(--mono); font-size: 12.5px; }
+  .flywheel span.stage { background: var(--surface-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-weight: 600; color: var(--ink); }
+  .flywheel span.arrow { color: var(--ink-4); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .foot { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-4); }
+  @media print { nav.toc { display: none; } .wrap { grid-template-columns: 1fr; } main { padding: 0; } }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); } main { padding: 28px 22px 80px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="brand">MarketZero · CI<small>Strategy · Roadmap · Spec</small></div>
+  <ol>
+    <li><a href="#summary">Executive summary</a></li>
+    <li><a href="#legend">How to read this</a></li>
+    <li><a href="#aspiration">1 · The aspiration</a></li>
+    <li><a href="#value">2 · Core value &amp; users</a></li>
+    <li><a href="#state">3 · Where we are today</a></li>
+    <li><a href="#gap">4 · Why the flywheel doesn't turn</a></li>
+    <li><a href="#arch">5 · Architecture north-star</a></li>
+    <li><a href="#critical">6 · The critical path</a></li>
+    <li class="sub"><a href="#cp1">① Entity resolution</a></li>
+    <li class="sub"><a href="#cp2">② KBQ living views / dossier</a></li>
+    <li class="sub"><a href="#cp3">③ Evidence chain</a></li>
+    <li class="sub"><a href="#cp4">④ Signal → decision framing</a></li>
+    <li class="sub"><a href="#cp5">⑤ Close the learn loop</a></li>
+    <li class="sub"><a href="#cp0">⓪ Foundation: dedup + facts</a></li>
+    <li><a href="#roadmap">7 · Roadmap &amp; loop sequence</a></li>
+    <li><a href="#metrics">8 · Success metrics</a></li>
+    <li><a href="#inputs">9 · Inputs we need from you</a></li>
+    <li><a href="#appendix">Appendix</a></li>
+  </ol>
+</nav>
+
+<main>
+  <div class="doc-head">
+    <h1>Competitive Intelligence — Strategy, Roadmap &amp; Build Spec</h1>
+    <div class="meta">
+      <span><b>Version</b> 0.1 (draft for review)</span>
+      <span><b>Date</b> 2026-05-22</span>
+      <span><b>Owner</b> Kapil</span>
+      <span><b>Audience</b> Kapil · Amit · Riya · DS team (Piyush, Karthik, Pooja)</span>
+      <span><b>Status</b> <span class="badge b-input">Needs review + inputs</span></span>
+    </div>
+  </div>
+
+  <!-- ============ SUMMARY ============ -->
+  <section id="summary">
+    <p class="lede">We have built the <strong>skeleton</strong> of the Decision Flywheel and just got the SENSE layer producing real, KBQ-tagged signals in production (469 shipped + 156 in review). Every CI surface renders with zero errors. <strong>But the flywheel does not yet turn:</strong> signals don't link to competitors, the 8 KBQs are tags rather than living views, evidence chains are cosmetic, and nothing auto-frames a signal into a decision or learns from outcomes.</p>
+    <p>This document is the honest current-state assessment, the architecture north-star, and a <strong>ruthlessly prioritized critical path</strong> of the features we <em>absolutely need</em> to deliver the core value — each written as a build-ready mini-spec with reuse pointers, code snippets, acceptance criteria, and the specific inputs we need from you. It is meant to <em>guide development directly</em>, loop by loop.</p>
+    <div class="callout co-key">
+      <div class="ttl">The one-line strategy</div>
+      <p>Turn a feed of tagged headlines into <strong>per-competitor intelligence a strategist actually uses</strong>, then into <strong>framed decisions with evidence</strong>, then into a <strong>loop that learns</strong>. Sequenced: <strong>① Entity resolution → ② KBQ living views (dossier) → ③ Evidence chain → ④ Signal-to-decision framing → ⑤ Learn loop.</strong></p>
+    </div>
+  </section>
+
+  <!-- ============ LEGEND ============ -->
+  <section id="legend">
+    <h2><span class="num">§</span>How to read this</h2>
+    <p>Status badges throughout:</p>
+    <p>
+      <span class="badge b-done">Built</span> works in prod &nbsp;
+      <span class="badge b-partial">Partial</span> exists but stubbed / not wired &nbsp;
+      <span class="badge b-missing">Missing</span> not built &nbsp;
+      <span class="badge b-now">Next</span> recommended next loop &nbsp;
+      <span class="badge b-input">Input</span> needs a decision from you
+    </p>
+    <p>Code snippets are <em>illustrative targets</em>, not final implementations — they show the shape of the contract so we agree before building. File references like <code>services/signal_promoter.py</code> point at real code to reuse (anti-slop discipline).</p>
+  </section>
+
+  <!-- ============ ASPIRATION ============ -->
+  <section id="aspiration">
+    <h2><span class="num">1</span>The aspiration — the Decision Flywheel</h2>
+    <p>Per <code>specs/CI_Agent_Reimagined_Spec.md</code>, the platform is a <strong>closed loop</strong> that compresses signal-to-decision latency from <strong>4–12 weeks to under 24 hours</strong> for high-materiality signals, and improves its own calibration over time. The eight KBQs are preserved but <em>subordinated</em>: they become the living evidence backbone, not the deliverable.</p>
+    <div class="flywheel">
+      <span class="stage">SENSE</span><span class="arrow">→</span>
+      <span class="stage">FRAME</span><span class="arrow">→</span>
+      <span class="stage">SIMULATE / WAR-GAME</span><span class="arrow">→</span>
+      <span class="stage">DECIDE</span><span class="arrow">→</span>
+      <span class="stage">LEARN</span><span class="arrow">↺</span>
+    </div>
+    <p>Three user modes: <strong>Always-On Sensing</strong> (passive monitoring + proactive alerts), <strong>Decision Mode</strong> (framing → simulation → recommendation for one question), <strong>War-Room Mode</strong> (real-time collaborative response). The dossier workflow (<code>specs/comp_intel_2.md</code>) is the day-to-day artifact: a KBQ-answered, parity-comparable competitor profile that an analyst reviews/enriches/approves and that feeds war-gaming. The defensible moat (<code>specs/data_strategy.md</code>) is the semantic layer where every claim carries provenance — <em>click any number, walk to the source.</em></p>
+  </section>
+
+  <!-- ============ VALUE ============ -->
+  <section id="value">
+    <h2><span class="num">2</span>Core value &amp; who it's for</h2>
+    <table>
+      <thead><tr><th>Persona</th><th>Job to be done</th><th>Value we must deliver</th></tr></thead>
+      <tbody>
+        <tr><td><b>Strategist</b> (e.g. Novo US CI lead)</td><td>Decide pricing / launch / portfolio moves before the competitor forces the issue</td><td>A framed decision from a material signal in &lt;24h, with evidence and quantified options</td></tr>
+        <tr><td><b>CI Analyst</b> (Riya)</td><td>Maintain comparable competitor dossiers; answer KBQs; prep war-games</td><td>Auto-assembled per-competitor KBQ dossier she reviews/enriches/approves — not built from scratch each time</td></tr>
+        <tr><td><b>Leadership</b></td><td>Trust the call and the rationale</td><td>Provenance + calibration: every recommendation traceable, accuracy improving over time</td></tr>
+      </tbody>
+    </table>
+    <div class="callout co-key">
+      <div class="ttl">The value test</div>
+      <p>We are delivering value when a strategist can (a) open a competitor and see the 8 KBQs answered with live evidence, and (b) receive a framed decision from a material signal. Everything in the critical path serves one of those two outcomes.</p>
+    </div>
+  </section>
+
+  <!-- ============ STATE ============ -->
+  <section id="state">
+    <h2><span class="num">3</span>Where we are today — honest scorecard</h2>
+    <p>Verified live on <code>marketzero.up.railway.app/ci</code> (Playwright click-through, 0 console errors, 0 failed requests) and by backend trace.</p>
+    <table>
+      <thead><tr><th>Flywheel stage</th><th>Status</th><th>Reality</th></tr></thead>
+      <tbody>
+        <tr><td>SENSE — signals</td><td><span class="badge b-partial">Partial</span></td><td>Producer ships 469 high-impact + 156 candidate signals, KBQ-tagged. But 1:1 event→signal (no dedup → 4× identical CHMP headlines), heuristic scoring, materiality still shows 1% on the legacy feed.</td></tr>
+        <tr><td>SENSE — 8 KBQs as living views</td><td><span class="badge b-missing">Missing</span></td><td><code>kbq_tags</code> is a label, not a maintained "KBQ-1 Indications for Wegovy" view. No per-competitor rollup.</td></tr>
+        <tr><td>SENSE — entity resolution</td><td><span class="badge b-missing">Missing</span></td><td>News signals bucketed as <code>market</code> — <b>Watchlist shows "0 signals match"</b> despite 625 new signals. The current bottleneck.</td></tr>
+        <tr><td>Evidence chain</td><td><span class="badge b-partial">Partial</span></td><td>Evidence cards UI built (Loop #19), but signals cite <code>[event_id]</code>, not real <code>evidence_records</code>. Trust spine cosmetic.</td></tr>
+        <tr><td>FRAME — decision briefs</td><td><span class="badge b-partial">Partial</span></td><td>Brief lifecycle + Decision Workspace exist; current briefs are smoke tests. SENSE→FRAME is manual.</td></tr>
+        <tr><td>SIMULATE / WAR-GAME</td><td><span class="badge b-partial">Partial</span></td><td>10 war rooms, game-theory + payoff-matrix services exist; not driven by briefs/KBQs systematically.</td></tr>
+        <tr><td>DECIDE — ledger</td><td><span class="badge b-partial">Partial</span></td><td>Decision brief / signing / evidence-snapshot services exist; not closing into committed, immutable decisions at scale.</td></tr>
+        <tr><td>LEARN — outcomes</td><td><span class="badge b-missing">Missing</span></td><td>Insights/calibration UI + <code>learning_service</code> exist; no predicted-vs-actual attribution running. Loop open.</td></tr>
+        <tr><td>Foundation — facts/graph/events</td><td><span class="badge b-missing">Missing</span></td><td>Postgres + pgvector + recursive-CTE graph. No facts ledger, no event log, no knowledge graph (per <code>data_strategy.md</code>).</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Diagnosis: breadth without depth.</strong> Every surface exists; the connective tissue that creates value (entity rollup, living KBQs, real evidence, auto-framing, learning) is missing or stubbed.</p>
+  </section>
+
+  <!-- ============ GAP ============ -->
+  <section id="gap">
+    <h2><span class="num">4</span>Why the flywheel doesn't turn</h2>
+    <ol>
+      <li><b>No entity spine.</b> Signals aren't linked to canonical entities, so nothing rolls up per-competitor. KBQ views, dossiers, watchlist relevance all depend on this and all fail without it.</li>
+      <li><b>KBQs are tags, not views.</b> The deliverable both specs describe — KBQ-answered competitor profiles — does not exist as a queryable artifact.</li>
+      <li><b>Evidence is cosmetic.</b> The "click → source PDF" trust spine, which is the entire defensibility argument, isn't wired.</li>
+      <li><b>SENSE→FRAME is manual.</b> The defining move of a <em>flywheel</em> (material signal auto-frames a decision) doesn't fire, so it's a feed, not a decision system.</li>
+      <li><b>LEARN is open.</b> No outcome attribution → no compounding → it's a dashboard, not an intelligence system that improves.</li>
+    </ol>
+  </section>
+
+  <!-- ============ ARCH ============ -->
+  <section id="arch">
+    <h2><span class="num">5</span>Architecture north-star &amp; the pragmatic path</h2>
+    <p>The north-star is the three-layer model from <code>data_strategy.md</code>: <strong>Data Plane → Semantic Layer → Intelligence Layer</strong>, with an inviolable rule that the intelligence layer never reads raw data — only the semantic layer. The semantic layer's heart is a typed, time-stamped, evidence-linked <code>facts</code> table (point / interval / <em>anticipatory</em> validity) plus a knowledge graph and an append-only event log.</p>
+    <div class="callout co-key">
+      <div class="ttl">Decision: Postgres-first, retrofit the facts ledger</div>
+      <p>We do <strong>not</strong> need Neo4j / Qdrant / Redpanda to deliver the critical path. We build the <code>facts</code> table and a <code>semantic_events</code> log <em>in Postgres</em>, keep pgvector and recursive-CTE graph, and graduate to dedicated infra only if scale demands. This was agreed (Postgres-only, pragmatic). It lets us ship ①–④ on the current stack and layer the full semantic model underneath without rework.</p>
+    </div>
+    <p>What we reuse rather than rebuild (verified in the codebase):</p>
+    <ul>
+      <li><code>integration/entity_resolver.py</code> — 6-strategy resolution cascade (exact → alias → fuzzy → embedding → LLM → auto-create). <span class="badge b-done">Built</span></li>
+      <li><code>integration/pipeline_hooks.py</code> — 8 lifecycle hooks incl. <code>POST_STORE</code>, <code>ON_NEW_ENTITY</code> — the insertion point for fact emission. <span class="badge b-done">Built</span></li>
+      <li><code>services/signal_promoter.py</code> — the producer we just shipped; extend it. <span class="badge b-done">Built</span></li>
+      <li><code>services/dossier.py</code> + <code>api/routes/dossier.py</code> — composer to point at KBQ views. <span class="badge b-partial">Partial</span></li>
+      <li><code>services/framing_triggers.py</code> — trigger logic for SENSE→FRAME. <span class="badge b-partial">Partial</span></li>
+      <li><code>services/materiality.py</code>, <code>services/game_theory.py</code>, <code>services/learning_service.py</code> — scoring, war-game, learning primitives. <span class="badge b-partial">Partial</span></li>
+    </ul>
+  </section>
+
+  <!-- ============ CRITICAL PATH ============ -->
+  <section id="critical">
+    <h2><span class="num">6</span>The critical path</h2>
+    <p>Five features, dependency-ordered. Each is one or two Ralph loops (SPEC → TDD → BUILD → RED-TEAM → DEPLOY). Effort is rough engineering estimate at our cadence.</p>
+    <table>
+      <thead><tr><th>#</th><th>Feature</th><th>Unlocks</th><th>Depends on</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr><td>①</td><td>Entity resolution on signals</td><td>Watchlists, KBQ rollup, dossiers</td><td>—</td><td>S</td></tr>
+        <tr><td>②</td><td>KBQ living views / dossier</td><td>The strategist/analyst deliverable</td><td>①</td><td>M–L</td></tr>
+        <tr><td>③</td><td>Evidence chain integrity</td><td>Trust spine, defensibility</td><td>①</td><td>M</td></tr>
+        <tr><td>④</td><td>Signal → decision framing</td><td>The flywheel actually turns</td><td>①②</td><td>M</td></tr>
+        <tr><td>⑤</td><td>Close the learn loop</td><td>Compounding accuracy</td><td>④</td><td>M</td></tr>
+        <tr><td>⓪</td><td>Foundation: dedup + facts ledger</td><td>Quality + semantic moat</td><td>parallel</td><td>L</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ① -->
+    <div class="feature" id="cp1">
+      <h3>① Entity resolution on signals <span class="badge b-now">Next</span></h3>
+      <div class="pill-row"><span class="badge b-missing">Missing today</span><span class="badge b-done">Reuses existing resolver</span></div>
+      <p><b>Problem.</b> The producer buckets entityless news as <code>market</code>, so 625 meaningful signals (approvals, deals, readouts) don't attach to Wegovy / Lilly / Novo. Watchlist shows "0 signals match." Nothing can roll up per-competitor — which blocks ②, ④, and the whole dossier workflow.</p>
+      <div class="kv">
+        <dt>Reuse</dt><dd><code>integration/entity_resolver.py</code> (6-strategy cascade) + <code>domain/pharma/mention_normalizer.py</code></dd>
+        <dt>Where</dt><dd>Call resolver inside <code>signal_promoter.build_signal_row</code> when <code>primary_entity_id</code> is null; resolve from the headline/description.</dd>
+        <dt>Data</dt><dd>Populate <code>primary_entity_type/id/name</code> + <code>related_entity_ids</code> on each signal; backfill the 625 already promoted.</dd>
+      </div>
+      <h4>Target shape</h4>
+<pre><span class="c"># services/signal_promoter.py — resolve before bucketing</span>
+<span class="k">from</span> integration.entity_resolver <span class="k">import</span> EntityResolver
+
+<span class="k">def</span> <span class="f">_resolve_entity</span>(event, resolver: EntityResolver):
+    <span class="k">if</span> event.get(<span class="s">"primary_entity_id"</span>):
+        <span class="k">return</span> (event[<span class="s">"primary_entity_type"</span>] <span class="k">or</span> <span class="s">"drug"</span>,
+                event[<span class="s">"primary_entity_id"</span>], event.get(<span class="s">"primary_entity_name"</span>))
+    <span class="c"># NEW: mine the headline for a company/product mention</span>
+    hit = resolver.resolve_mention(event.get(<span class="s">"description"</span>) <span class="k">or</span> <span class="s">""</span>,
+                                   types=(<span class="s">"company"</span>, <span class="s">"drug"</span>))
+    <span class="k">if</span> hit <span class="k">and</span> hit.confidence &gt;= <span class="s">0.6</span>:
+        <span class="k">return</span> (hit.entity_type, hit.entity_id, hit.canonical_name)
+    <span class="k">return</span> (<span class="s">"market"</span>, <span class="s">"market"</span>, <span class="k">None</span>)  <span class="c"># honest fallback retained</span></pre>
+      <h4>Acceptance criteria</h4>
+      <ul>
+        <li>≥70% of high-significance signals resolve to a non-<code>market</code> entity.</li>
+        <li>Watchlist on a tracked entity (e.g. Eli Lilly) returns &gt;0 matching signals live.</li>
+        <li>Resolution is logged with strategy + confidence (audit trail); low-confidence routed to HITL queue.</li>
+        <li>Backfill re-resolves the existing 625 signals; deterministic re-run is idempotent.</li>
+      </ul>
+      <div class="callout co-input"><div class="ttl">Input needed</div><p><b>Priority entity set.</b> Confirm the first competitor/product universe to optimize resolution + alias dictionaries for. Recommended start: the GLP-1 field (Novo: Wegovy/Ozempic/Rybelsus; Lilly: Zepbound/Mounjaro/orforglipron; Amgen MariTide; Pfizer danuglipron). Y/N or edit.</p></div>
+    </div>
+
+    <!-- ② -->
+    <div class="feature" id="cp2">
+      <h3>② KBQ living views &amp; the dossier</h3>
+      <div class="pill-row"><span class="badge b-missing">Missing today</span><span class="badge b-partial">Composer exists</span></div>
+      <p><b>Problem.</b> The deliverable both specs describe — the 8 KBQs answered per competitor, with parity — doesn't exist as a queryable artifact. <code>kbq_tags</code> only labels signals. We need, per entity, a maintained view: KBQ-1 Indications, KBQ-2 Competitors, KBQ-3 Clinical, … each backed by entity-linked signals (and later facts), each refreshed on signal arrival.</p>
+      <div class="kv">
+        <dt>Reuse</dt><dd><code>services/dossier.py::compose_dossier</code> (re-point at KBQ views) + the signals/graph/metrics services</dd>
+        <dt>Build</dt><dd>A <code>kbq_views</code> service: 8 deterministic query functions keyed by entity; a <code>GET /entities/{id}/kbq</code> contract; dossier composes them with parity (same 8 slots for every competitor).</dd>
+        <dt>UI</dt><dd>The existing Dossier page renders the 8 KBQ sections; analyst review/enrich/approve per <code>comp_intel_2.md</code>.</dd>
+      </div>
+      <h4>Target contract</h4>
+<pre><span class="c"># services/kbq_views.py</span>
+<span class="k">def</span> <span class="f">kbq_view</span>(db, entity_id: str, kbq: <span class="k">int</span>) -&gt; KbqView:
+    <span class="s">"""One of 8 living views for an entity, built from entity-linked
+    signals (+ facts in ⓪). Every row carries evidence_ids."""</span>
+    ...
+
+<span class="c"># GET /entities/{entity_id}/kbq  →</span>
+{
+  <span class="s">"entity"</span>: {<span class="s">"id"</span>: <span class="s">"co:eli_lilly"</span>, <span class="s">"name"</span>: <span class="s">"Eli Lilly"</span>},
+  <span class="s">"kbqs"</span>: [
+    {<span class="s">"kbq"</span>: <span class="s">1</span>, <span class="s">"title"</span>: <span class="s">"Indications"</span>, <span class="s">"status"</span>: <span class="s">"fresh"</span>,
+     <span class="s">"items"</span>: [{<span class="s">"claim"</span>: <span class="s">"…"</span>, <span class="s">"evidence_ids"</span>: [<span class="s">"…"</span>], <span class="s">"signal_ids"</span>: [<span class="s">"…"</span>]}]},
+    <span class="c">// …KBQ 2–8, identical shape for every competitor (parity)</span>
+  ],
+  <span class="s">"completeness"</span>: <span class="s">0.72</span>   <span class="c">// drives the analyst "needs enrichment" prompt</span>
+}</pre>
+      <h4>Acceptance criteria</h4>
+      <ul>
+        <li>For a seeded competitor, all 8 KBQ slots return (filled or explicitly "insufficient evidence" — never silently empty).</li>
+        <li>Parity: two competitors return the same 8-slot structure for apples-to-apples comparison.</li>
+        <li>Every KBQ item links to ≥1 evidence/signal id (ties to ③).</li>
+        <li>A <code>completeness</code> score surfaces gaps for analyst enrichment.</li>
+      </ul>
+      <div class="callout co-input"><div class="ttl">Input needed</div><p><b>KBQ definitions sign-off.</b> The 8 KBQs need precise, agreed definitions + the "comprehensiveness gate" per KBQ (what makes KBQ-1 "complete" for a product?). Riya is the right owner — a 1-page definition per KBQ would let us encode the queries exactly. <code>data_strategy.md §5</code> has draft query shapes to start from.</p></div>
+    </div>
+
+    <!-- ③ -->
+    <div class="feature" id="cp3">
+      <h3>③ Evidence chain integrity</h3>
+      <div class="pill-row"><span class="badge b-partial">UI built, data not wired</span></div>
+      <p><b>Problem.</b> Signals cite <code>[event_id]</code>, not real <code>evidence_records</code>. The "click any claim → source passage → original document" promise — the platform's entire defensibility — is hollow. We built the cards (Loop #19); we must wire the data.</p>
+      <div class="kv">
+        <dt>Reuse</dt><dd><code>schema/migrations/053_evidence_ledger.sql</code> (<code>evidence_records</code>, append-only) + <code>POST /evidence/by-ids</code> (Loop #19)</dd>
+        <dt>Build</dt><dd>On ingestion, write an <code>evidence_records</code> row per source document (source_id, url, retrieved_at, extracted_text, content hash); link signals' <code>evidence_document_ids</code> to those real ids; same for KBQ items.</dd>
+      </div>
+      <h4>Acceptance criteria</h4>
+      <ul>
+        <li><code>POST /evidence/by-ids</code> resolves a signal's evidence to real source name + tier + date + snippet + URL (not "metadata pending").</li>
+        <li>Every shipped signal and every KBQ item has ≥1 resolvable evidence record.</li>
+        <li>Append-only invariant preserved; superseded evidence retained.</li>
+      </ul>
+      <div class="callout co-input"><div class="ttl">Input needed</div><p><b>Source tiering.</b> Confirm the tier-1 "ground truth" sources (we assume ClinicalTrials.gov, PubMed, FDA, EMA, SEC). This drives confidence tiering and which sources we archive snapshots for.</p></div>
+    </div>
+
+    <!-- ④ -->
+    <div class="feature" id="cp4">
+      <h3>④ Signal → Decision Brief framing</h3>
+      <div class="pill-row"><span class="badge b-partial">Triggers + workspace exist</span></div>
+      <p><b>Problem.</b> The defining move of a flywheel — a cluster of material signals auto-produces a framed Decision Brief with options — doesn't fire. Briefs are manual. This is what makes it a decision system, not a feed.</p>
+      <div class="kv">
+        <dt>Reuse</dt><dd><code>services/framing_triggers.py</code> (threshold logic) + <code>services/decision_brief.py</code> + the Decision Workspace UI + <code>services/llm.py</code> for option synthesis</dd>
+        <dt>Build</dt><dd>When materiality × confluence crosses a threshold for an entity, synthesize a Decision Brief (question + 2–4 options + stakeholders + horizon), pointing at the KBQ views (②) and evidence (③). Human strategist reviews before simulation (the spec's mandatory gate).</dd>
+      </div>
+      <h4>Acceptance criteria</h4>
+      <ul>
+        <li>A high-materiality signal cluster on a tracked entity generates a draft Decision Brief with ≥2 options and a cited rationale.</li>
+        <li>Brief links back to the triggering signals + KBQ views (traceability).</li>
+        <li>Briefs land in the existing review queue; a strategist can edit/approve/reject before it advances.</li>
+      </ul>
+      <div class="callout co-input"><div class="ttl">Input needed</div><p><b>Trigger thresholds + decision archetypes.</b> What materiality score (and over what window) should auto-frame a brief? And the 3–5 recurring decision archetypes (pricing response, launch timing, portfolio reprioritization…) so option synthesis is grounded, not generic.</p></div>
+    </div>
+
+    <!-- ⑤ -->
+    <div class="feature" id="cp5">
+      <h3>⑤ Close the learn loop</h3>
+      <div class="pill-row"><span class="badge b-missing">Loop open</span><span class="badge b-partial">UI + service exist</span></div>
+      <p><b>Problem.</b> Insights/calibration UI and <code>learning_service</code> exist, but no predicted-vs-actual attribution runs. Without it, materiality and recommendations never improve — it's a dashboard, not an intelligence system.</p>
+      <div class="kv">
+        <dt>Reuse</dt><dd><code>services/learning_service.py</code> (EWMA calibration) + <code>services/outcome_detector.py</code> + the Insights UI</dd>
+        <dt>Build</dt><dd>At each Decision's <code>review_at</code>, fetch actual market state (from new signals/facts), compare to <code>predicted_outcome</code>, write an attribution record, and feed it back into materiality-weight tuning.</dd>
+      </div>
+      <h4>Acceptance criteria</h4>
+      <ul>
+        <li>Attribution runs on committed decisions at <code>review_at</code>; produces a directionally-correct / calibration record.</li>
+        <li>Insights shows real calibration-over-time (not placeholder).</li>
+        <li>Materiality weights adjust from outcomes (closed loop demonstrable on a seeded decision).</li>
+      </ul>
+      <div class="callout co-input"><div class="ttl">Input needed</div><p><b>Review horizons.</b> Default <code>review_at</code> per decision type (e.g. pricing 90d, launch 180d). And what counts as "outcome correct" for non-numeric decisions.</p></div>
+    </div>
+
+    <!-- ⓪ -->
+    <div class="feature" id="cp0">
+      <h3>⓪ Foundation — dedup/clustering + facts ledger <span class="badge b-partial">Parallel track</span></h3>
+      <p><b>Problem.</b> The producer is 1:1 (4× identical CHMP headlines), and there's no facts ledger, so anticipatory facts (e.g. Novo's $675 WAC effective Jan 2027 — the headline war-gaming input) can't be represented. This is the semantic moat from <code>data_strategy.md</code>.</p>
+      <div class="kv">
+        <dt>Build (incremental)</dt><dd>(a) dedup/cluster in the producer via <code>event_hash</code> + entity + window; (b) a Postgres <code>facts</code> table (point/interval/anticipatory, valid_from/to, asserted_at, superseded_by, source_doc_id, confidence) + <code>semantic_events</code> append-only log; (c) re-point KBQ views to read facts.</dd>
+      </div>
+      <p>Sequenced <em>after</em> ①–④ prove the value on signals, then retrofitted underneath — so we don't block the visible wins on infrastructure.</p>
+      <div class="callout co-warn"><div class="ttl">Sequencing note</div><p>Resist building ⓪ first. It's the most "architecturally satisfying" but delivers no visible value until ①–④ exist to consume it. Build the spine that users feel; deepen the foundation under it.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ ROADMAP ============ -->
+  <section id="roadmap">
+    <h2><span class="num">7</span>Roadmap &amp; loop sequence</h2>
+    <p>Mapped to our Ralph-loop cadence. Each loop ships to prod with tests.</p>
+    <table>
+      <thead><tr><th>Loop</th><th>Delivers</th><th>Value moment</th><th>Gate / input</th></tr></thead>
+      <tbody>
+        <tr><td>Next</td><td>① Entity resolution + backfill</td><td>Watchlist &amp; per-entity signals work</td><td>Priority entity set</td></tr>
+        <tr><td>+1 / +2</td><td>② KBQ views service + dossier wiring</td><td>Strategist opens a competitor, sees 8 KBQs answered</td><td>KBQ definitions (Riya)</td></tr>
+        <tr><td>+2</td><td>③ Evidence ledger wiring</td><td>Click a claim → real source</td><td>Source tiering</td></tr>
+        <tr><td>+3</td><td>④ Signal→Brief framing</td><td>A signal becomes a framed decision &lt;24h</td><td>Thresholds + archetypes</td></tr>
+        <tr><td>+4</td><td>⑤ Learn loop attribution</td><td>Calibration improves; loop closes</td><td>Review horizons</td></tr>
+        <tr><td>parallel</td><td>⓪ Dedup + facts ledger</td><td>Cleaner signals; anticipatory facts for war-game</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p><b>Explicitly deferred</b> (the spec agrees): war-game adversary depth (Phase 3), licensed-source integrations (Citeline/Evaluate/MMIT — Phase 4), source-discovery agent (Phase 4). Compelling demos, but motion without value right now.</p>
+  </section>
+
+  <!-- ============ METRICS ============ -->
+  <section id="metrics">
+    <h2><span class="num">8</span>Success metrics — instrument from the next loop</h2>
+    <table>
+      <thead><tr><th>Category</th><th>Metric</th><th>Why now</th></tr></thead>
+      <tbody>
+        <tr><td>Sensing</td><td>% signals entity-resolved (non-<code>market</code>)</td><td>Direct readout of ① — the current bottleneck</td></tr>
+        <tr><td>Sensing</td><td>Materiality precision on a curated eval set</td><td>Are we surfacing what matters vs noise (recall flood)</td></tr>
+        <tr><td>Evidence</td><td>% claims with a resolvable source</td><td>Trust spine health (③)</td></tr>
+        <tr><td>Decision</td><td>Signal→brief median latency</td><td>The headline value prop (&lt;24h)</td></tr>
+        <tr><td>Decision</td><td>Briefs framed &amp; committed / period</td><td>Is the flywheel actually turning (④)</td></tr>
+        <tr><td>Learning</td><td>Prediction accuracy &amp; calibration at <code>review_at</code></td><td>Does it compound (⑤)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ INPUTS ============ -->
+  <section id="inputs">
+    <h2><span class="num">9</span>Inputs we need from you <span class="badge b-input">Decisions</span></h2>
+    <p>These unblock the build. None require code — just decisions. Ordered by when we hit them:</p>
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Owner</th><th>Default if unspecified</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Priority entity universe for resolution + aliases</td><td>Kapil / Riya</td><td>GLP-1 field (Novo, Lilly, Amgen, Pfizer)</td></tr>
+        <tr><td>2</td><td>Precise definitions + completeness gates for the 8 KBQs</td><td>Riya</td><td>Draft from <code>data_strategy.md §5</code></td></tr>
+        <tr><td>3</td><td>Tier-1 "ground truth" sources for evidence/confidence</td><td>Amit / Riya</td><td>CT.gov, PubMed, FDA, EMA, SEC</td></tr>
+        <tr><td>4</td><td>Auto-framing thresholds + decision archetypes</td><td>Strategist + Kapil</td><td>Materiality ≥ 70 over 7d; 4 archetypes</td></tr>
+        <tr><td>5</td><td>Decision review horizons + "correct" definition</td><td>Strategist</td><td>Pricing 90d, launch 180d</td></tr>
+        <tr><td>6</td><td>Tenancy: single-team MVP or multi-tenant from day one</td><td>Kapil</td><td>Single-team (Novo US) MVP</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ APPENDIX ============ -->
+  <section id="appendix">
+    <h2><span class="num">§</span>Appendix</h2>
+    <h4>Source documents</h4>
+    <ul>
+      <li><code>specs/CI_Agent_Reimagined_Spec.md</code> — the Decision Flywheel vision + phased plan</li>
+      <li><code>specs/data_strategy.md</code> — semantic layer, entity model, KBQ queries, materiality, twin</li>
+      <li><code>specs/comp_intel_2.md</code> — dossier workflow, KBQ-in-dossier-vs-wargaming, analyst review</li>
+      <li><code>specs/raw_helix.md</code> + <code>specs/helix_proto.tsx</code> — Helix UI surfaces</li>
+      <li><code>specs/SPEC_LOOP_signal_producer.md</code> — the producer just shipped</li>
+    </ul>
+    <h4>Glossary</h4>
+    <ul>
+      <li><b>Signal</b> — a dedup'd, KBQ-tagged, dual-tier-scored intelligence unit (the <code>signals</code> table).</li>
+      <li><b>KBQ view</b> — a continuously-maintained answer to one of the 8 Key Business Questions for one entity.</li>
+      <li><b>Decision Brief</b> — a framed question + options + stakeholders; the SENSE→FRAME handoff.</li>
+      <li><b>Materiality</b> — 0–100 score for "would this change a KBQ view, recommendation, or simulation?"</li>
+      <li><b>Anticipatory fact</b> — a future-dated fact (e.g. a price change effective next year) — key war-game input.</li>
+    </ul>
+    <div class="foot">
+      Draft v0.1 · generated to guide development and stakeholder review · update as decisions land.
+      Status badges and code snippets reflect the codebase as of 2026-05-22.
+    </div>
+  </section>
+</main>
+</div>
+</body>
+</html>
