@@ -218,6 +218,14 @@ except Exception as _e:
     logger.error("Failed to import kbq router (Loop 2): %s", _e)
     _KBQ_ROUTER_OK = False
 
+# PB-1307 — facts ledger
+try:
+    from api.routes import facts as facts_route
+    _FACTS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import facts router (PB-1307): %s", _e)
+    _FACTS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -348,6 +356,8 @@ def create_app() -> FastAPI:
         all_routers.append(agents_activity_route.router)
     if _KBQ_ROUTER_OK:
         all_routers.append(kbq_route.router)
+    if _FACTS_ROUTER_OK:
+        all_routers.append(facts_route.router)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
