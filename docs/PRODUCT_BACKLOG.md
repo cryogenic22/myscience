@@ -870,6 +870,50 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-05-10
 - **Notes**: Registry page (admin) with per-prompt calibration history + cost + latency trends.
 
+### E13 — Agentic CI cockpit (the future direction)
+
+> **Why:** the `/ci` tabs are a BI-dashboard paradigm — a feed of signals + manual
+> buttons where the human is the engine. The agentic future (already half-built in
+> `/bridge` + the 3 agents + `game_theory`) inverts this: agents sense → frame →
+> simulate → recommend; the human steers and judges. Run order (per product owner):
+> **PB-1301 → PB-1302 → PB-1303.**
+
+#### [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass)
+- **Type**: feature
+- **Status**: in-progress
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: n/a
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: Sensing Feed + Signals DB + KBQ Dossier already on Helix (left-rail cards, OKLCH category hues, Instrument Serif + JetBrains Mono, no boxes — `src/lib/helix.ts`). Reskin the rest for a consistent cockpit: Watchlist, War Rooms, Decisions, Insights, Reviewer, sidebar/shell. Reskin to *consistent & quiet* (evidence layer), not hero-level — the agentic flow is the hero (PB-1303).
+
+#### [PB-1302] Agentic-UX design doc (HTML) — Moments → war-game → commit
+- **Type**: docs
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: PB-1301
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: Self-contained HTML (like `docs/ci-strategy-roadmap.html`). Specifies the agentic workflow: open to **Moments** (agent-sensed + framed), agent-drafted options + pre-run war-games, **conversational steering** ("re-run assuming Novo cuts WAC 50%"), commit + learn. Define the 3 agent roles' surfaces, the conversational model, and the war-game **mode toggle** (PB-1303). Mark reused (`game_theory.py`, `war_game_adversary.py`, `/bridge`, agents) vs new. Inputs needed flagged for Amit/Riya.
+
+#### [PB-1303] Agentic war-game flow with mode toggle
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: PB-1302
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: Wire Moment → agent-drafted Decision Brief → **conversational multi-agent war-game** → commit → learn; make `/bridge` the primary surface, demote tabs to evidence layer. **War-game is a mode toggle** (product-owner requirement): (1) **Autonomous** — adversary agents self-analyse and report back with a full reasoning trace; humans take decisions where needed. (2) **Hybrid workshop** — human/AI team, a human can take an adversary seat (red-team). (3) **Game-theory** — `services/game_theory.py` Monte Carlo/Bayesian as the computational substrate *underneath* mode 2. Adversaries (competitor/payer/FDA/KOL) grounded in the knowledge graph. Builds on critical-path ④ (signal→framing) + ⑤ (learn loop) from `ci-strategy-roadmap.html`.
+
 ## Out of scope (deferred per `design-strategy.md` §7)
 
 The strategy doc explicitly defers these — they're aspirational, important, and *not* the right thing to build in the next 24 weeks. Listed so we don't re-litigate.
