@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { signalsApi, type Signal } from '../../api';
+import { useFrameSignal } from '../../hooks/useFrameSignal';
 import {
   HELIX as H, catColor, catSoft, CAT_LABEL, IMPACT_TONE, IMPACT_WORD, fmtAge,
 } from '../../lib/helix';
@@ -17,7 +18,7 @@ function primaryTag(s: Signal): string | undefined {
   return (s.kbq_tags && s.kbq_tags[0]) || undefined;
 }
 
-function SignalRow({ s, onFrame }: { s: Signal; onFrame: (s: Signal) => void }) {
+function SignalRow({ s, onFrame, framing }: { s: Signal; onFrame: (s: Signal) => void; framing?: boolean }) {
   const tag = primaryTag(s);
   const color = catColor(tag);
   const tier = s.impact_tier ?? 'low';
@@ -79,14 +80,15 @@ function SignalRow({ s, onFrame }: { s: Signal; onFrame: (s: Signal) => void }) 
         <button
           type="button"
           onClick={() => onFrame(s)}
+          disabled={framing}
           style={{
             fontFamily: H.mono, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
             textTransform: 'uppercase', padding: '7px 12px', borderRadius: 6,
             background: 'transparent', border: `1px solid ${H.line2}`, color: H.accent,
-            cursor: 'pointer', whiteSpace: 'nowrap',
+            cursor: framing ? 'wait' : 'pointer', opacity: framing ? 0.6 : 1, whiteSpace: 'nowrap',
           }}
         >
-          Frame →
+          {framing ? 'Framing…' : 'Frame →'}
         </button>
       </div>
     </div>
@@ -97,6 +99,7 @@ export function SensingFeed({ onFrame }: { onFrame?: (s: Signal) => void } = {})
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { frame, framingId } = useFrameSignal();
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +110,9 @@ export function SensingFeed({ onFrame }: { onFrame?: (s: Signal) => void } = {})
     return () => { cancelled = true; };
   }, []);
 
-  const handleFrame = onFrame ?? (() => {});
+  // Default: frame the signal into a decision brief and navigate. A caller
+  // may override via the onFrame prop.
+  const handleFrame = onFrame ?? frame;
 
   return (
     <div data-helix-sensing style={{ background: H.bg, minHeight: '100%', padding: '28px 32px 80px' }}>
@@ -127,7 +132,9 @@ export function SensingFeed({ onFrame }: { onFrame?: (s: Signal) => void } = {})
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {signals.map((s) => <SignalRow key={s.id} s={s} onFrame={handleFrame} />)}
+        {signals.map((s) => (
+          <SignalRow key={s.id} s={s} onFrame={handleFrame} framing={framingId === s.id} />
+        ))}
       </div>
     </div>
   );

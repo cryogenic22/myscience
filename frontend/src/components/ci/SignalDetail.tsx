@@ -6,6 +6,7 @@ import ImpactBadge from './ImpactBadge';
 import EvidenceStack from './EvidenceStack';
 import MaterialityDrawer from './MaterialityDrawer';
 import { useEvidenceDocuments } from '../../hooks/useEvidenceDocuments';
+import { useFrameSignal } from '../../hooks/useFrameSignal';
 
 function sumContributions(
   factors: Signal['materiality_factors'] | undefined | null,
@@ -45,6 +46,8 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
   const [simulating, setSimulating] = useState(false);
   const [materialityOpen, setMaterialityOpen] = useState(false);
   const materialityScore = sumContributions(signal.materiality_factors);
+  const { frame, framingId } = useFrameSignal();
+  const isFraming = framingId === signal.id;
 
   const simulate = async () => {
     if (!authed || !onOpenWarRoom) return;
@@ -128,12 +131,27 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
               </span>
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => frame(signal)}
+            disabled={!authed || isFraming}
+            className="text-[11px] font-medium ml-auto inline-flex items-center gap-1.5"
+            style={{
+              padding: '5px 12px', borderRadius: '6px',
+              background: authed ? 'var(--color-accent)' : 'var(--color-surface-2)',
+              color: authed ? 'white' : 'var(--color-ink-4)',
+              cursor: authed && !isFraming ? 'pointer' : 'not-allowed', border: 'none',
+            }}
+            title={authed ? 'Frame this signal as a decision — creates a Decision Brief and opens the workspace.' : 'Log in to frame'}
+          >
+            {isFraming ? 'Framing…' : 'Frame as Decision'}
+          </button>
           {onOpenWarRoom && (
             <button
               type="button"
               onClick={simulate}
               disabled={!authed || simulating}
-              className="text-[11px] font-medium ml-auto inline-flex items-center gap-1.5"
+              className="text-[11px] font-medium inline-flex items-center gap-1.5"
               style={{
                 padding: '5px 12px',
                 borderRadius: '6px',
