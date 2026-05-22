@@ -1,59 +1,69 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { SensingFeed } from '../../src/components/ci/SensingFeed';
-import { api } from '../../src/api';
-import React from 'react';
+import { signalsApi } from '../../src/api';
 
 vi.mock('../../src/api', () => ({
-  api: {
-    intelligenceFeed: vi.fn(),
-    intelligenceFeedSummary: vi.fn(),
-  }
+  signalsApi: { list: vi.fn() },
 }));
 
-describe('SensingFeed', () => {
+function sig(over = {}) {
+  return {
+    id: 's1', event_id: 'e1', kbq_tags: ['clinical'],
+    headline: 'Phase 3 readout is positive',
+    summary: null, direction: 'positive', confidence_tier: 'confirmed',
+    trust_score: 0.9, impact_tier: 'high', impact_score: 0.9,
+    rule_version_id: 'v1', primary_entity_type: 'company',
+    primary_entity_id: 'co-lilly', primary_entity_name: 'Eli Lilly',
+    related_entity_ids: [], evidence_document_ids: ['e1'], status: 'shipped',
+    superseded_by: null, supersedence_reason: null,
+    created_at: '2026-05-20T00:00:00Z', reviewed_by: null,
+    reviewed_at: null, shipped_at: '2026-05-20T01:00:00Z',
+    ...over,
+  };
+}
+
+describe('SensingFeed (Helix reskin)', () => {
   it('renders loading state initially', () => {
-    vi.mocked(api.intelligenceFeed).mockImplementation(() => new Promise(() => {}));
-    vi.mocked(api.intelligenceFeedSummary).mockImplementation(() => new Promise(() => {}));
-    
+    vi.mocked(signalsApi.list).mockImplementation(() => new Promise(() => {}));
     render(<SensingFeed />);
-    expect(screen.getByText('Sensing the market...')).toBeDefined();
+    expect(screen.getByText(/sensing the market/i)).toBeDefined();
   });
 
-  it('renders feed items when data is loaded', async () => {
-    vi.mocked(api.intelligenceFeedSummary).mockResolvedValue({
-      total_unread: 5,
-      critical_count: 1,
-      high_count: 2,
-      since_hours: 24,
+  it('renders entity-resolved signals (not SIGNAL: MARKET)', async () => {
+    vi.mocked(signalsApi.list).mockResolvedValue({
+      signals: [sig()], count: 1, limit: 40, offset: 0,
     });
-    vi.mocked(api.intelligenceFeed).mockResolvedValue({
-      items: [
-        {
-          event_id: 'ev1',
-          event_type: 'trial_readout',
-          event_date: '2026-05-09',
-          description: 'Phase 3 readout is positive.',
-          source_url: null,
-          source_tier: 'Tier 1',
-          trust_score: 95,
-          primary_entity_name: 'Drug X',
-          primary_entity_type: 'drug',
-          severity: 'high',
-          impact_count: 1,
-          max_impact_magnitude: 85,
-          status: 'unread',
-          created_at: '2026-05-09T00:00:00Z',
-        }
-      ],
-      total: 1
-    });
-
     render(<SensingFeed />);
-
     await waitFor(() => {
-      expect(screen.getByText('Phase 3 readout is positive.')).toBeDefined();
-      expect(screen.getByText('SIGNAL: Drug X')).toBeDefined();
+      expect(screen.getByText('Phase 3 readout is positive')).toBeDefined();
+      // real entity name appears, not "MARKET"
+      expect(screen.getByText('Eli Lilly')).toBeDefined();
     });
+  });
+
+  it('encodes impact as a tier word, not a 1% ring', async () => {
+    vi.mocked(signalsApi.list).mockResolvedValue({
+      signals: [sig({ impact_tier: 'high' })], count: 1, limit: 40, offset: 0,
+    });
+    render(<SensingFeed />);
+    await waitFor(() => expect(screen.getByText('ACT')).toBeDefined()); // high → ACT
+  });
+
+  it('renders the category label from the kbq tag', async () => {
+    vi.mocked(signalsApi.list).mockResolvedValue({
+      signals: [sig({ kbq_tags: ['pricing_access'] })], count: 1, limit: 40, offset: 0,
+    });
+    render(<SensingFeed />);
+    await waitFor(() => expect(screen.getByText('Pricing & Access')).toBeDefined());
+  });
+
+  it('falls back to "Market" only when entity is the market bucket', async () => {
+    vi.mocked(signalsApi.list).mockResolvedValue({
+      signals: [sig({ primary_entity_id: 'market', primary_entity_name: null })],
+      count: 1, limit: 40, offset: 0,
+    });
+    render(<SensingFeed />);
+    await waitFor(() => expect(screen.getByText('Market')).toBeDefined());
   });
 });
