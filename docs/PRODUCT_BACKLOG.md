@@ -914,6 +914,75 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-05-22
 - **Notes**: Wire Moment → agent-drafted Decision Brief → **conversational multi-agent war-game** → commit → learn; make `/bridge` the primary surface, demote tabs to evidence layer. **War-game is a mode toggle** (product-owner requirement): (1) **Autonomous** — adversary agents self-analyse and report back with a full reasoning trace; humans take decisions where needed. (2) **Hybrid workshop** — human/AI team, a human can take an adversary seat (red-team). (3) **Game-theory** — `services/game_theory.py` Monte Carlo/Bayesian as the computational substrate *underneath* mode 2. Adversaries (competitor/payer/FDA/KOL) grounded in the knowledge graph. Builds on critical-path ④ (signal→framing) + ⑤ (learn loop) from `ci-strategy-roadmap.html`.
 
+### E13b — Shape additions from the critical-analysis review
+
+> **Source:** `docs/ci-critical-analysis.html` (2026-05-22) — an independent red-team
+> that adopts our plan as the spine and adds shape at four seams + two sequencing
+> nudges. **Tensions resolved (defaults adopted):** (1) agents default to **L2
+> "suggest"**, not L3 "recommend", until calibration earns promotion; (2) war-game
+> **always escalates to a human on commit** in v1; (3) hierarchy is **Moment = the
+> morning trigger · KBQ view = a section of every Dossier · Signal = the substrate**,
+> connected by the dossier.
+
+#### [PB-1304] Dossier-as-spine composition contract
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: PB-1307
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: The dossier is the *persistent object every surface writes into*, not just surface #3. Section-level update contract (`POST /dossier/{id}/section/{id}/update` with `source: signal|wargame|decision|learn`, `by_agent`, `trace_id`); dossier renders as a composition of typed sections (extracted / kbq / synthesized / computed) each with coverage + last_refresh + evidence_ids. Adds one story to E3 (§7.2). Without it surfaces drift apart.
+
+#### [PB-1305] Trace + steer schema
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: n/a
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: Structured trace events (id, parent_id, ts, agent, event_kind ∈ {belief_update, option_considered, option_eliminated, simulation_run, evidence_consulted, recommendation_rendered, moment_clustered, section_updated, attribution_landed}, inputs, reasoning{model,prompt_id}, output, surface_ref, user_visible). `POST /wargame/{id}/steer { instruction, mode, seats? } → {rounds, ev_by_option, belief_delta, recommendation, trace[]}`. **Land the trace data structure early (E2)** even if UI surfaces it later — cheap to capture, expensive to retrofit (§8.4/8.5).
+
+#### [PB-1306] Twin ↔ Game-Theory pipeline
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: PB-1307
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: The Twin's belief posteriors *are* the Bayesian priors the game-theory layer needs — one pipeline, not two things. `Twin priors → adversary objective functions → payoff matrix → equilibrium → recommendation → Twin posterior update`. `services/twin.py` (belief states w/ drivers + provenance) feeds `services/game_theory.py::solve_game(twin_priors, adversary_objectives, scenario_topology, payoff_estimates)`. Adversary objective fns need analyst input (decision G). §9.3/9.4.
+
+#### [PB-1307] Facts ledger ⓪ — pulled forward (parallel with E3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: roadmap
+- **Source ref**: n/a
+- **Blocked by**: n/a
+- **Created**: 2026-05-22
+- **Last touched**: 2026-05-22
+- **Notes**: Temporal, append-only `facts` table: kind ∈ {point, interval, anticipatory}, predicate, subject_entity, object_value JSONB, valid_from/to, asserted_at, source_doc_id→evidence_records, confidence, superseded_by, tenant_id, created_by. **Anticipatory facts** (e.g. "Novo WAC = $675 effective 2027-01-01", valid_from in future) are what let the war-game query state *as-of a target date*. Reviewer's nudge: **pull forward to run parallel with the dossier (weeks 5–10)** — dossier + war-game both depend on it. §9.1.
+
+> **Sequencing nudges adopted:** (a) PB-1307 facts ledger pulled forward (parallel E3); (b) PB-1303 conversational war-game folds **into E5 war-game cockpit** (the cockpit without steering is half a war-game) — not separate E13 work; (c) multi-tenancy (E11) stays week 23 unless an external-customer commitment lands in 6 months.
+
+> **Decisions still needed** (consolidated, beyond the 11 already in the strategy + agentic-UX docs):
+> **A** default authority level (→ L2 suggest, Kapil+strategist) ·
+> **B** trace default depth (→ summary + expand, design) ·
+> **C** default war-game mode for a cold Moment (→ autonomous w/ trace, escalate on commit, Kapil) ·
+> **D** facts-ledger sequencing (→ pull forward, backend+Kapil) ·
+> **E** multi-tenancy timing (→ keep week 23 if no external commit, Kapil) ·
+> **F** dossier-as-composition sign-off (→ adopt §7.2, backend+frontend) ·
+> **G** adversary objective functions per top-5 competitor (→ draft from data_strategy, 2-line override each, Riya+strategist).
+
 ## Out of scope (deferred per `design-strategy.md` §7)
 
 The strategy doc explicitly defers these — they're aspirational, important, and *not* the right thing to build in the next 24 weeks. Listed so we don't re-litigate.

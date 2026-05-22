@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MarketZero · CI — Critical Analysis & Consolidated Spec</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+<style>
+  :root{
+    /* Aligned to ci-agentic-ux.html palette (dark editorial-terminal) */
+    --bg:#0a0b0e; --ink:#e8eaed; --ink2:#c2c6cf; --dim:#8a8f99; --faint:#5a5f69;
+    --panel:#12141a; --panel2:#181b22; --panel3:#1f232b;
+    --line:#23262d; --line2:#2c3038;
+
+    /* Accents — same family as the agentic UX doc */
+    --accent:#5eead4;    /* sentinel teal — calm, structural */
+    --accent2:#a78bfa;   /* strategist violet — synthesis, generation */
+    --accent3:#fcd34d;   /* curator amber — review, calibration */
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --info:#60a5fa;
+
+    --serif:'Instrument Serif',Georgia,serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink2);
+    font-family:var(--sans); font-size:15px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:rgba(94,234,212,.22); color:var(--ink); }
+
+  /* ─── shell ─── */
+  .wrap{ display:grid; grid-template-columns:280px 1fr; max-width:1280px; margin:0 auto; }
+
+  nav.toc{
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    padding:30px 16px 40px 28px; border-right:1px solid var(--line);
+    background:linear-gradient(180deg, var(--panel) 0%, #0e1015 100%);
+  }
+  nav.toc .brand{ font-family:var(--serif); font-size:24px; color:var(--ink); letter-spacing:-.01em; line-height:1.1; }
+  nav.toc .brand small{
+    display:block; font-family:var(--mono); font-size:10px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--faint); margin-top:6px;
+  }
+  nav.toc .stamp{
+    margin-top:14px; padding:8px 10px; background:var(--panel3);
+    border-left:2px solid var(--accent); border-radius:0 6px 6px 0;
+    font-family:var(--mono); font-size:10.5px; color:var(--ink2); line-height:1.5;
+  }
+  nav.toc ol{ list-style:none; padding:0; margin:22px 0 0 }
+  nav.toc li{ margin:1px 0 }
+  nav.toc a{ display:block; padding:5px 10px; border-radius:7px; color:var(--dim); text-decoration:none; font-size:13px; transition:all .12s }
+  nav.toc a:hover{ background:var(--panel3); color:var(--ink) }
+  nav.toc a.sub{ padding-left:24px; font-size:12px; color:var(--faint) }
+  nav.toc a.head{ margin-top:14px; font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); padding-left:6px; }
+
+  /* ─── main ─── */
+  main{ padding:46px 56px 120px; min-height:100vh }
+  .head{ border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:8px; }
+  .head h1{ font-family:var(--serif); font-size:46px; line-height:1.04; letter-spacing:-.02em; color:var(--ink); margin:0 0 12px; }
+  .head h1 em{ font-style:italic; color:var(--accent) }
+  .head .meta{ display:flex; flex-wrap:wrap; gap:6px 20px; font-family:var(--mono); font-size:11px; color:var(--dim); }
+  .head .meta b{ color:var(--ink2); font-weight:600 }
+
+  h2{ font-family:var(--serif); font-size:30px; letter-spacing:-.015em; color:var(--ink); margin:56px 0 8px; }
+  h2 .n{ font-family:var(--mono); font-size:14px; color:var(--faint); margin-right:12px; vertical-align:6px; }
+  h3{ font-size:18px; color:var(--ink); margin:34px 0 8px; letter-spacing:-.005em; }
+  h3.with-rule{ display:flex; align-items:baseline; gap:14px; }
+  h3.with-rule::after{ content:''; flex:1; height:1px; background:var(--line); }
+  h4{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:24px 0 8px; }
+  p{ margin:11px 0 }
+  strong{ color:var(--ink) }
+  em{ font-style:italic }
+  .lede{ font-size:17.5px; color:var(--ink2); line-height:1.6; }
+
+  code{ font-family:var(--mono); font-size:12px; background:var(--panel3); padding:1px 6px; border-radius:4px; color:var(--accent); }
+  pre{ background:var(--panel); border-left:2px solid var(--accent2); border-radius:0 8px 8px 0; padding:14px 18px; overflow-x:auto; font-family:var(--mono); font-size:12px; line-height:1.6; color:var(--ink2); margin:14px 0; }
+  pre .c{ color:#7f8896 } pre .k{ color:#c191ff } pre .s{ color:#9ae6a4 } pre .f{ color:#6fb2ff } pre .t{ color:var(--accent) }
+
+  ul,ol{ padding-left:22px } li{ margin:6px 0 }
+
+  table{ border-collapse:collapse; width:100%; margin:18px 0; font-size:13px; }
+  th,td{ text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th{ font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); border-bottom:1px solid var(--line2); }
+  tbody tr:hover{ background:var(--panel) }
+
+  /* ─── chips / badges ─── */
+  .chip{ display:inline-block; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .c-align{ background:rgba(52,211,153,.14); color:var(--ok) }
+  .c-tens{  background:rgba(251,191,36,.14); color:var(--warn) }
+  .c-conc{  background:rgba(248,113,113,.14); color:var(--bad) }
+  .c-add{   background:rgba(94,234,212,.16); color:var(--accent) }
+  .c-build{ background:rgba(167,139,250,.16); color:var(--accent2) }
+  .c-have{  background:rgba(96,165,250,.16); color:var(--info) }
+  .c-new{   background:rgba(248,113,113,.14); color:var(--bad) }
+  .c-ext{   background:rgba(251,191,36,.14); color:var(--warn) }
+  .c-input{ background:rgba(167,139,250,.16); color:var(--accent2) }
+
+  /* ─── callouts ─── */
+  .co{ border-radius:0 9px 9px 0; padding:14px 18px; margin:18px 0; background:var(--panel2); border-left:2px solid var(--accent); }
+  .co .t{ font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  .co.warn{ border-left-color:var(--warn) } .co.warn .t{ color:var(--warn) }
+  .co.bad{  border-left-color:var(--bad)  } .co.bad  .t{ color:var(--bad)  }
+  .co.add{  border-left-color:var(--accent2) } .co.add .t{ color:var(--accent2) }
+  .co p{ margin:4px 0 }
+
+  /* ─── alignment table ─── */
+  .align-row{
+    display:grid; grid-template-columns:140px 1fr 1fr 90px; gap:0;
+    border-top:1px solid var(--line);
+  }
+  .align-row.header{ border-top:none; border-bottom:1px solid var(--line2); }
+  .align-row > div{ padding:12px 14px; }
+  .align-row.header > div{ font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); }
+  .align-row .topic{ font-weight:600; color:var(--ink); border-right:1px solid var(--line); }
+  .align-row .team{ font-size:13px; color:var(--ink2); border-right:1px solid var(--line); }
+  .align-row .mine{ font-size:13px; color:var(--ink2); border-right:1px solid var(--line); }
+  .align-row .verdict{ display:flex; align-items:flex-start; padding-top:14px !important; }
+
+  /* ─── flow diagram ─── */
+  .flow{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:24px 0; font-family:var(--mono); font-size:12px; }
+  .flow .stage{ background:var(--panel2); border-left:2px solid var(--accent); border-radius:0 8px 8px 0; padding:9px 14px; color:var(--ink); }
+  .flow .stage.frame{ border-left-color:var(--accent2) }
+  .flow .stage.learn{ border-left-color:var(--accent3) }
+  .flow .ar{ color:var(--faint); font-size:14px; }
+
+  /* ─── feature spec card ─── */
+  .spec{ background:var(--panel); border-left:2px solid var(--line2); border-radius:0 10px 10px 0; padding:6px 24px 22px; margin:26px 0; }
+  .spec.hot{ border-left-color:var(--accent) }
+  .spec.frame{ border-left-color:var(--accent2) }
+  .spec.learn{ border-left-color:var(--accent3) }
+  .spec > h3{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  .spec .pills{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
+
+  .kv{ display:grid; grid-template-columns:130px 1fr; gap:6px 18px; font-size:13.5px; margin:14px 0; }
+  .kv dt{ font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--dim); padding-top:2px; }
+  .kv dd{ margin:0; color:var(--ink2); }
+
+  /* ─── two-col ─── */
+  .two{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:18px 0; }
+  .two .col{ background:var(--panel); border-radius:0 10px 10px 0; border-left:2px solid var(--line2); padding:14px 18px; }
+  .two .col.have{ border-left-color:var(--ok) }
+  .two .col.gap{  border-left-color:var(--bad) }
+  .two h4{ margin-top:0 }
+
+  /* ─── architecture diagram ─── */
+  .arch{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:22px 24px; margin:22px 0; font-family:var(--mono); font-size:12px; }
+  .arch .layer{ display:grid; grid-template-columns:140px 1fr; gap:14px; padding:10px 0; border-bottom:1px dashed var(--line); align-items:center; }
+  .arch .layer:last-child{ border-bottom:none }
+  .arch .layer .l-name{ color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .arch .layer .l-name .nm{ display:block; color:var(--ink); font-size:13.5px; font-family:var(--serif); letter-spacing:-.01em; margin-top:3px; text-transform:none; }
+  .arch .layer .l-contents{ display:flex; flex-wrap:wrap; gap:6px; }
+  .arch .layer .l-contents .piece{ padding:5px 10px; background:var(--panel3); border-radius:5px; font-size:11px; color:var(--ink2); }
+  .arch .layer .l-contents .piece.new{ background:rgba(94,234,212,.10); color:var(--accent); }
+  .arch .layer .l-contents .piece.have{ background:var(--panel3); color:var(--ink2); }
+  .arch .layer .l-contents .piece.gap{ background:rgba(248,113,113,.10); color:var(--bad); }
+
+  /* ─── data contract ─── */
+  .contract{ background:#0e1015; border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin:14px 0; }
+  .contract .title{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin-bottom:8px; }
+
+  hr{ border:none; border-top:1px solid var(--line); margin:42px 0; }
+  .foot{ margin-top:64px; padding-top:20px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--faint); line-height:1.7; }
+
+  @media print{ nav.toc{ display:none } .wrap{ grid-template-columns:1fr } main{ padding:0 } }
+  @media (max-width:920px){
+    .wrap{ grid-template-columns:1fr } nav.toc{ position:static; height:auto; border-right:none; border-bottom:1px solid var(--line) }
+    main{ padding:28px 20px 80px }
+    .two{ grid-template-columns:1fr }
+    .align-row{ grid-template-columns:1fr }
+    .align-row > div{ border-right:none !important; border-bottom:1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="brand">Critical Analysis<small>+ Consolidated Spec · v0.1</small></div>
+  <div class="stamp">
+    Reading: PRODUCT_BACKLOG.md (E1–E13)<br/>
+    ci-strategy-roadmap.html (CP ①–⑤, ⓪)<br/>
+    ci-agentic-ux.html (PB-1302)
+  </div>
+  <ol>
+    <li><a href="#tldr">TL;DR — verdict</a></li>
+
+    <li><a class="head">Part I · Critical Analysis</a></li>
+    <li><a href="#read">1 · What the team is doing</a></li>
+    <li><a href="#align">2 · Alignment matrix</a></li>
+    <li><a href="#concede">3 · Where I concede</a></li>
+    <li><a href="#add">4 · Where I'd add to their plan</a></li>
+    <li><a href="#tension">5 · Real tensions</a></li>
+
+    <li><a class="head">Part II · Consolidated Spec</a></li>
+    <li><a href="#arch">6 · Architecture in one picture</a></li>
+    <li><a href="#exp">7 · Experience spec</a></li>
+    <li class="sub"><a href="#exp-bridge">7.1 Bridge — the home</a></li>
+    <li class="sub"><a href="#exp-dossier">7.2 Dossier — the spine</a></li>
+    <li class="sub"><a href="#exp-decision">7.3 Decision flow</a></li>
+    <li class="sub"><a href="#exp-wargame">7.4 War-game (3-mode)</a></li>
+    <li class="sub"><a href="#exp-reviewer">7.5 Reviewer</a></li>
+    <li><a href="#agentic">8 · Agentic engine spec</a></li>
+    <li class="sub"><a href="#ag-roster">8.1 Agent roster</a></li>
+    <li class="sub"><a href="#ag-loop">8.2 Operational loop</a></li>
+    <li class="sub"><a href="#ag-authority">8.3 Authority spectrum</a></li>
+    <li class="sub"><a href="#ag-trace">8.4 Trace + provenance</a></li>
+    <li class="sub"><a href="#ag-conv">8.5 Conversational steering</a></li>
+    <li><a href="#backend">9 · Backend intelligence spec</a></li>
+    <li class="sub"><a href="#be-semantic">9.1 Semantic layer</a></li>
+    <li class="sub"><a href="#be-kbq">9.2 KBQ views</a></li>
+    <li class="sub"><a href="#be-twin">9.3 Digital twin + Bayes</a></li>
+    <li class="sub"><a href="#be-game">9.4 Game theory substrate</a></li>
+    <li class="sub"><a href="#be-learn">9.5 Learn loop attribution</a></li>
+    <li class="sub"><a href="#be-prompt">9.6 Prompt registry</a></li>
+    <li class="sub"><a href="#be-tenant">9.7 Tenancy enforcement</a></li>
+    <li><a href="#seq">10 · Sequencing — my call vs theirs</a></li>
+    <li><a href="#decisions">11 · Decisions needed</a></li>
+  </ol>
+</nav>
+
+<main>
+  <div class="head">
+    <h1>What the team is building, what I'd build,<br/>and where they <em>differ</em>.</h1>
+    <div class="meta">
+      <span><b>Version</b> 0.1 — review draft</span>
+      <span><b>Date</b> 2026-05-22</span>
+      <span><b>Audience</b> Kapil · Amit · Riya · DS team</span>
+      <span><b>Scope</b> Experience, agentic engine, backend intelligence</span>
+      <span><b>Status</b> <span class="chip c-input">awaits review + decisions</span></span>
+    </div>
+  </div>
+
+  <section id="tldr">
+    <p class="lede">The team's plan is <strong>directionally right and unusually disciplined</strong>. The 24-week / 12-epic backlog, the five-step critical path (entity resolution → KBQ views → evidence → framing → learn loop), the agentic UX inversion (Moments-not-feed, agents-propose-humans-dispose, conversational war-game), and the explicit deferral list are all the right moves. <strong>I largely agree with the substance.</strong></p>
+    <p>The differences are at the seams: <strong>(a)</strong> the home surface — they have Bridge with Moments; I'd argued for a separate Control Tower and now <em>concede their structure is cleaner</em>; <strong>(b)</strong> dossier sequencing — they treat dossier as week 5–7 of the experience track; I'd argue it's <em>the spine object</em> that subsequent surfaces write into, and the data contract should land earlier; <strong>(c)</strong> the war-game mode toggle is right but its <em>data contract</em> (trace schema, steer endpoint) needs more shape than PB-1303 gives it; <strong>(d)</strong> their backend ⓪ (facts ledger) is correctly sequenced — I had silently assumed it was already there; <strong>(e)</strong> I'd missed multi-tenancy (E11) entirely as a SaaS hard-stop; <strong>(f)</strong> they have prompt-registry + active feedback (E12), which I didn't spec at all.</p>
+    <div class="co"><div class="t">Verdict</div>
+      <p>Adopt the team's plan as the spine. This spec contributes <em>shape</em> in four places they're slightly under-specified — the dossier-as-spine contract, the trace+steer schema, the Twin↔Game-Theory pipeline, and the explicit five-surface experience map. Sequencing matches theirs.</p>
+    </div>
+  </section>
+
+  <hr/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- PART I · CRITICAL ANALYSIS                         -->
+  <!-- ═══════════════════════════════════════════════════ -->
+
+  <section id="read">
+    <h2><span class="n">1</span>What the team is actually doing</h2>
+    <p>Three documents, read together, form a coherent stance:</p>
+
+    <h3 class="with-rule">PRODUCT_BACKLOG.md — the work</h3>
+    <p>12 epics over 24 weeks. <strong>Eng-only "trust foundation" first</strong> (E1, weeks 1–2: evidence cards, entity picker, materiality drawer, multi-select KBQ chips) — closes four critical heuristic findings before any new product surface ships. Then a build-up: live agent presence (E2) → dossier as spine (E3) → brief composer (E4) → war-game cockpit (E5) → chat upgrade (E6) → graph as interlocutor (E7) → data catalog (E8) → Phase-1 connectors (E9) → source registry (E10) → multi-tenancy enforcement (E11, CRITICAL SaaS-blocker) → prompt registry + active feedback (E12). Plus E13 — the agentic future: reskin remaining /ci tabs (PB-1301, in flight) → agentic UX design doc (PB-1302, the second HTML I'm reviewing) → agentic war-game flow with mode toggle (PB-1303).</p>
+    <p>The discipline is the impressive part: the <em>strategic frame</em> at the top of the backlog says <strong>"stop adding specs; finish the experience of the specs we have."</strong> An explicit deferral list at the bottom (§Out of scope) prevents re-litigation of impressive-but-not-now items — Bayesian/Stackelberg/POMDP war-game depth, decision signing with cryptographic provenance, source-discovery agent, paid connectors ~$670k/yr, real-time war-room mode. That's all the right deferred-but-named work.</p>
+
+    <h3 class="with-rule">ci-strategy-roadmap.html — the why &amp; how</h3>
+    <p>A five-step critical path with an honest scorecard. <strong>Reality check:</strong> 469 high-impact + 156 candidate signals shipped in production, every CI surface renders zero-error — <em>but the flywheel doesn't yet turn</em>. Signals don't link to competitors (entity resolution missing — <em>"Watchlist shows 0 signals match"</em> despite 625 signals — the bottleneck). KBQs are tags, not living views. Evidence chain is cosmetic. Framing is manual.</p>
+    <p>The critical path: ① entity resolution → ② KBQ living views → ③ evidence chain → ④ signal→brief framing → ⑤ learn loop. Plus a deferred-then-retrofitted ⓪ (dedup + facts ledger) running in parallel. Sequencing decision is honest and right: <em>build the spine users feel, deepen the foundation under it.</em></p>
+
+    <h3 class="with-rule">ci-agentic-ux.html — the inversion</h3>
+    <p>Today's <code>/ci</code> is a BI dashboard: <em>"read 569 signals → decide what matters → manually frame"</em>. The agentic future inverts it: <em>"the system surfaced 3 material Moments with framed options and simulated outcomes → I interrogate, adjust assumptions, and commit."</em></p>
+    <p>Three named agents — <strong>Sentinel</strong> (sense, teal), <strong>Strategist</strong> (frame+simulate, violet), <strong>Curator</strong> (learn+recalibrate, amber). Three home-screen units of work: <em>Moments, not signals.</em> Three war-game modes via one toggle: ① autonomous (AI plays adversaries, full trace, escalates to human where flagged); ② hybrid workshop (human takes an adversary seat, AI fills the rest); ③ game theory (Monte Carlo / Bayesian as the computational substrate underneath modes 1 &amp; 2). A new contract — <code>POST /wargame/{session_id}/steer</code> — for conversational steering in natural language.</p>
+
+    <div class="co add"><div class="t">My read in one sentence</div>
+      <p>The team has converged on the same shape I'd have specced — Moments-as-primary, three-agent SENSE/FRAME/LEARN, mode-toggle war-game, dossier-as-spine — but is several months ahead on backend reality and several months behind on visible experience polish. <em>The right move is to ship their plan, with a few specific shape adjustments.</em></p>
+    </div>
+  </section>
+
+  <section id="align">
+    <h2><span class="n">2</span>Alignment matrix — topic by topic</h2>
+
+    <div class="align-row header">
+      <div>Topic</div><div>Team's stance</div><div>My stance (from prototype)</div><div>Verdict</div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Home surface</div>
+      <div class="team">Bridge = Moments + Twin + Pulse. Single home.</div>
+      <div class="mine">Argued for separate Control Tower (integrated) + Bridge (live sensing). Five surfaces.</div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Unit of work</div>
+      <div class="team">Moments (clustered signals + materiality + EV-at-stake + belief shift).</div>
+      <div class="mine">Same. Moments + plays + EV at stake.</div>
+      <div class="verdict"><span class="chip c-align">aligned</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Operational loop</div>
+      <div class="team">SENSE → FRAME → SIMULATE/WAR-GAME → DECIDE → LEARN.</div>
+      <div class="mine">Same five stages.</div>
+      <div class="verdict"><span class="chip c-align">aligned</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Agent roster</div>
+      <div class="team">Three named: Sentinel · Strategist · Curator.</div>
+      <div class="mine">Six: Sentinel · Synthesizer · Twin · Strategist (×3 personas) · Executor · Coach.</div>
+      <div class="verdict"><span class="chip c-tens">tension</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">War-game modes</div>
+      <div class="team">Toggle: autonomous · hybrid workshop · game theory (substrate).</div>
+      <div class="mine">Toggle: autonomous · hybrid · mathematical (game theory). Identical structure.</div>
+      <div class="verdict"><span class="chip c-align">aligned</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Conversational war-game</div>
+      <div class="team">POST /wargame/{id}/steer + chat rail + full reasoning trace.</div>
+      <div class="mine">Static one-shot Run War Game button (no steering). <em>Their design is better.</em></div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Dossier as spine</div>
+      <div class="team">E3, weeks 5–7. 5 stories. Spine surface.</div>
+      <div class="mine">Made it surface 3 of 5. Same role; deeper sectioning + synthesized "strategic read" sections.</div>
+      <div class="verdict"><span class="chip c-align">aligned</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">KBQ structure</div>
+      <div class="team">8 KBQs as <em>living views</em> per entity, parity across competitors. Service kbq_views.py.</div>
+      <div class="mine">KBQs live <em>inside</em> the dossier as sections. Less explicit about the parity contract.</div>
+      <div class="verdict"><span class="chip c-add">add to mine</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Evidence provenance</div>
+      <div class="team">Real evidence_records with source/tier/date/snippet/URL. Append-only ledger.</div>
+      <div class="mine">Same model — sourced facts with provenance. My prototype renders, theirs persists.</div>
+      <div class="verdict"><span class="chip c-align">aligned</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Facts ledger (anticipatory facts)</div>
+      <div class="team">⓪ foundation track: facts table with point/interval/anticipatory + valid_from/to + asserted_at + superseded_by. Deferred-then-retrofitted.</div>
+      <div class="mine">Silently assumed. Did not spec the temporal model.</div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Digital twin / belief state</div>
+      <div class="team">Mentioned but loosely — adversary twin posteriors (PB-502).</div>
+      <div class="mine">Prior→posterior bars across 7 priors with directional drivers. <em>More UI shape, less data contract.</em></div>
+      <div class="verdict"><span class="chip c-add">add shape</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Authority spectrum</div>
+      <div class="team">PB-504: L1 watch / L2 suggest / L3 recommend / L4 act-with-notice / L5 auto-audit. Earned via calibration ≥0.70 over 14 scenarios.</div>
+      <div class="mine">No treatment of agent autonomy levels.</div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Multi-tenancy</div>
+      <div class="team">E11 CRITICAL. tenant_id on core tables, WHERE-filter middleware, isolation tests in CI.</div>
+      <div class="mine"><em>Missed entirely.</em></div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Prompt registry + active feedback</div>
+      <div class="team">E12. SYSTEM_PROMPTS migrated to registry, outcome-to-prompt-weight backprop, A/B testing, flagged-prompt rollback.</div>
+      <div class="mine"><em>Missed entirely.</em></div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+
+    <div class="align-row">
+      <div class="topic">Sequencing — experience vs backend</div>
+      <div class="team">Backend critical path first (entity → KBQ → evidence → framing → learn), experience polish on top.</div>
+      <div class="mine">Experience-first prototype assumed backend already solid.</div>
+      <div class="verdict"><span class="chip c-conc">concede</span></div>
+    </div>
+  </section>
+
+  <section id="concede">
+    <h2><span class="n">3</span>Where I concede to their plan</h2>
+    <ol>
+      <li><strong>Drop Control Tower as a separate surface.</strong> Bridge with three zones (Pulse · Twin · Moments) already does the integrated-landing job. Keeping a separate Control Tower duplicates and confuses. The agentic-UX doc's stance — <em>"home is Moments"</em> — is the cleaner read.</li>
+      <li><strong>Adopt the three-agent roster (Sentinel · Strategist · Curator)</strong> as the user-facing model, even though six agents may exist in the engine. Users should see three roles with clear verbs; the rest can be internal sub-agents under those banners (e.g. my Synthesizer is inside Sentinel's pipeline; my Twin is inside Strategist's pipeline; my Coach <em>is</em> Curator). Concept-count discipline matters more than completeness.</li>
+      <li><strong>Adopt conversational war-game steering</strong> as the primary interaction. My one-shot "Run War Game" was a prototype shortcut; in production the agentic value is the dialogue. <code>POST /wargame/{id}/steer</code> with mode parameter + trace return is the right contract.</li>
+      <li><strong>Adopt the ⓪ facts ledger</strong> with temporal model (point/interval/anticipatory + valid_from/to + asserted_at + superseded_by). Without this the war-game can't anchor on "Novo's $675 WAC effective Jan 2027" — an anticipatory fact, not a signal.</li>
+      <li><strong>Adopt multi-tenancy E11</strong> as a hard SaaS-blocker. tenant_id on core entity tables + WHERE-filter middleware + automated isolation tests in CI. Non-negotiable before any external customer.</li>
+      <li><strong>Adopt prompt registry + active feedback E12.</strong> Hardcoded system prompts in <code>services/llm.py</code> are a calibration dead-end. The registry + outcome attribution is what makes the agents actually improve, not just operate.</li>
+      <li><strong>Adopt authority spectrum (PB-504).</strong> L1–L5 with earned promotion via calibration is genuinely good design — it lets agents start cautious (watch / suggest) and earn autonomy. Better than a fixed autonomy parameter.</li>
+      <li><strong>Adopt their sequencing.</strong> Backend critical path before experience polish. My experience-first prototype was useful as a target image; theirs is the correct order to <em>build</em>.</li>
+    </ol>
+  </section>
+
+  <section id="add">
+    <h2><span class="n">4</span>Where I'd add shape to their plan</h2>
+    <p>Four places the team's docs are slightly under-specified. None requires changing sequencing; all add definition to work already on the backlog.</p>
+
+    <h3 class="with-rule">A. Dossier-as-spine data contract</h3>
+    <p>E3 has 5 stories (PB-301..305) but doesn't articulate <em>the architectural commitment</em>: <strong>dossiers are the persistent objects every other surface writes into.</strong> A signal arrives → Sentinel updates relevant dossier sections (with provenance). A war-game completes → Strategist writes a "strategic read" section. A decision commits → links to the dossier with the trace. A learn-loop attribution lands → Curator updates the calibration section. Without this commitment, surfaces drift apart; with it, the dossier <em>is</em> the source of truth.</p>
+    <p>I add the explicit section-level update contract (§9.1) and the dossier-render-as-composition pattern (§7.2). Not new work — new <em>shape</em> on existing work.</p>
+
+    <h3 class="with-rule">B. Trace + steer schema</h3>
+    <p>PB-1303 names the war-game mode toggle and references a <code>steer</code> endpoint, but doesn't define the trace schema. For the trace to be <em>useful</em> (versus a tour-of-internals dump), it needs structured event types: <em>belief-update</em>, <em>option-considered</em>, <em>option-eliminated</em>, <em>simulation-run</em>, <em>recommendation-rendered</em>, each with stable IDs, parent links, inputs, and rendered text. I spec this in §8.4.</p>
+
+    <h3 class="with-rule">C. Twin ↔ Game-Theory pipeline</h3>
+    <p>The two strategy docs mention Twin and Game Theory but as separate things. They aren't — the Twin's belief posteriors are <em>exactly</em> the priors a Bayesian game-theory layer needs. P(Novo cuts WAC by Q1 2027) is a Twin belief; it's also a row in a payoff-matrix priors table. Speccing this as <strong>one pipeline</strong> (Twin priors → adversary objective functions → payoff matrix → equilibrium output → recommendation → Twin posterior update) closes a real gap. §9.3 + §9.4.</p>
+
+    <h3 class="with-rule">D. Five-surface experience map</h3>
+    <p>The team's surfaces are listed (Bridge · Decision Workspace · War Room · Signals DB · Watchlist · Reviewer · Insights · Catalog · …) but the <em>map</em> — which is hero, which is evidence layer, how a user moves through them — is implicit. I make it explicit in §7. Three hero surfaces (Bridge · Dossier · War Room), one decision-workflow surface (Decision Workspace), one review surface (Reviewer). Everything else demotes to evidence layer. Same conclusion as the agentic-UX doc, just laid out.</p>
+  </section>
+
+  <section id="tension">
+    <h2><span class="n">5</span>Real tensions worth a conversation</h2>
+
+    <h3 class="with-rule">Tension 1 · How aggressive is "agents propose, humans dispose"?</h3>
+    <p>The agentic-UX doc says agents pre-frame, pre-simulate, pre-recommend; the human's job is "judgment, assumption-adjustment, commitment." That's the strongest version of the inversion. PB-504's authority spectrum suggests something more graduated — L1 watch / L2 suggest / L3 recommend / L4 act-with-notice / L5 auto-audit, earned via calibration. The two need to be reconciled: <em>before</em> calibration data exists, what level do agents default to?</p>
+    <p>My recommendation: <strong>start at L2 (suggest)</strong>, not L3 (recommend), for any new agent type on any new scenario type. A fresh deployment has no calibration record, so "the system already framed and war-gamed your decision" reads as overreach. L2 lets the agent pre-draft the brief and pre-run the war-game, but presents both as "here's a suggestion, please direct the next step" rather than "here's the recommendation, please commit." Promotion to L3 unlocks recommendation language; L3→L4 only with explicit user opt-in per scenario class.</p>
+
+    <h3 class="with-rule">Tension 2 · Where does the human enter the war-game?</h3>
+    <p>Mode ① "autonomous" runs adversary agents and reports back; "humans take decisions where flagged." The escalation rule is currently undefined (inputs needed #2). Three reasonable defaults:</p>
+    <ul>
+      <li><strong>Always escalate on commit.</strong> Agents play the game; humans always commit. Safe; slow; correct when stakes are real.</li>
+      <li><strong>Escalate on disagreement.</strong> If Strategist and the Twin disagree on the recommendation, route to human. Or if the equilibrium has high σ.</li>
+      <li><strong>Escalate on materiality threshold.</strong> Above $X EV-at-stake → human; below → auto-committed for review. The L4 model.</li>
+    </ul>
+    <p>I'd default to <strong>(a) — always escalate on commit</strong> for v1. Strong default; users can opt into (b) or (c) per scenario class once calibration data accumulates. The product-owner-stated requirement (<em>"humans taking decisions where needed"</em>) is consistent with this.</p>
+
+    <h3 class="with-rule">Tension 3 · KBQ-as-deliverable vs Moment-as-deliverable</h3>
+    <p>The strategy-roadmap doc keeps KBQs as the "living evidence backbone" but subordinated. The agentic-UX doc puts Moments first. These are <em>compatible</em> — but the team's product copy and surface labels currently mix the two ("KBQ Dossier" is mentioned alongside "Bridge / Moments"). I'd resolve it cleanly:</p>
+    <ul>
+      <li><strong>Moments = the workflow trigger</strong> (this is what users open in the morning, scan, and act on).</li>
+      <li><strong>KBQ views = a section of every Dossier</strong> (this is the parity-comparable competitor view a strategist reads when going deep on one entity).</li>
+      <li><strong>Signals = the substrate</strong> (this is what feeds both — visible in Signals DB but not on the home surface).</li>
+    </ul>
+    <p>The two are connected by the dossier: opening a Moment → links to the relevant entity's Dossier → the KBQ section there is already fresh because Sentinel kept it that way. <em>No new work</em>, just the explicit hierarchy.</p>
+
+    <h3 class="with-rule">Tension 4 · Conversational war-game vs structured payoff matrix</h3>
+    <p>The agentic-UX doc has a chat rail; the war-game cockpit (E5) has a payoff matrix view. These are <em>both right</em> for different moments: conversation is for steering (<em>"re-run with this assumption"</em>); the matrix is for reading equilibria. The surface needs to hold both, not pick one. I spec this as a single War Room view with a chat dock at the bottom and the matrix as the canvas (§7.4).</p>
+  </section>
+
+  <hr/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- PART II · CONSOLIDATED SPEC                        -->
+  <!-- ═══════════════════════════════════════════════════ -->
+
+  <section id="arch">
+    <h2><span class="n">6</span>Architecture — one picture</h2>
+    <p>Six horizontal layers. Reading top→bottom: <em>what the user does</em> → <em>what agents do for them</em> → <em>what the engine computes</em> → <em>what the data layer holds</em>. Pieces marked <span class="chip c-have">have</span> exist; <span class="chip c-ext">extend</span> exist but need wiring; <span class="chip c-new">build</span> are new.</p>
+
+    <div class="arch">
+      <div class="layer">
+        <div class="l-name">Layer 1<span class="nm">Experience</span></div>
+        <div class="l-contents">
+          <span class="piece have">Bridge · home (Moments)</span>
+          <span class="piece have">Dossier · spine</span>
+          <span class="piece have">Decision Workspace</span>
+          <span class="piece have">War Room · 3 modes</span>
+          <span class="piece have">Reviewer · ledger + replay + coach</span>
+          <span class="piece have">Signals DB</span>
+          <span class="piece have">Catalog</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="l-name">Layer 2<span class="nm">Agent surfaces</span></div>
+        <div class="l-contents">
+          <span class="piece have">3 named agents · live activity</span>
+          <span class="piece new">Authority spectrum L1–L5 · earned promotion</span>
+          <span class="piece new">Conversational steering · chat rail</span>
+          <span class="piece new">Trace viewer · expandable steps</span>
+          <span class="piece new">Nudge intents · address an agent</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="l-name">Layer 3<span class="nm">Agentic engine</span></div>
+        <div class="l-contents">
+          <span class="piece have">Sentinel · sense + Moment cluster</span>
+          <span class="piece have">Strategist · frame + simulate</span>
+          <span class="piece have">Curator · learn + recalibrate</span>
+          <span class="piece have">Adversary kinds (4)</span>
+          <span class="piece new">Mode-toggle orchestrator (⓵⓶⓷)</span>
+          <span class="piece new">Active-feedback loop</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="l-name">Layer 4<span class="nm">Reasoning substrate</span></div>
+        <div class="l-contents">
+          <span class="piece have">game_theory.py · Monte-Carlo / Bayesian</span>
+          <span class="piece have">framing_triggers.py · materiality threshold</span>
+          <span class="piece have">decision_brief.py · lifecycle</span>
+          <span class="piece have">conversation_memory.py</span>
+          <span class="piece have">llm gateway · prompt versioning</span>
+          <span class="piece new">Twin ↔ Game-Theory pipeline · §9.3+9.4</span>
+          <span class="piece ext">Prompt registry · runtime-loaded</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="l-name">Layer 5<span class="nm">Semantic layer</span></div>
+        <div class="l-contents">
+          <span class="piece ext">Entity resolution · ① critical path</span>
+          <span class="piece new">KBQ views · 8 per entity · ②</span>
+          <span class="piece ext">Evidence ledger · wired · ③</span>
+          <span class="piece new">Facts ledger · temporal · ⓪</span>
+          <span class="piece have">Knowledge graph · 162k entities · 15 connectors</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="l-name">Layer 6<span class="nm">Data layer</span></div>
+        <div class="l-contents">
+          <span class="piece have">signals · 469 + 156</span>
+          <span class="piece have">evidence_records · append-only</span>
+          <span class="piece have">decisions + briefs</span>
+          <span class="piece new">facts (point/interval/anticipatory)</span>
+          <span class="piece new">semantic_events · append-only log</span>
+          <span class="piece new">tenant_id everywhere · E11</span>
+          <span class="piece have">prompt_registry · table exists</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="co"><div class="t">Reading the picture</div>
+      <p>The team has already built most of layers 3, 4, 5, 6 (the engine, the substrate, the semantic layer, the data layer). What's missing or under-wired sits on the boundaries between layers — entity resolution (5→6), KBQ views (5 atop 6), trace + steer (2→3), facts ledger (6 underneath 5), tenant filtering (6 cross-cutting). Layer 1 is where the visible work happens in weeks 1–14; layer 2 weeks 11–14; layers 4–5–6 weeks 16–24.</p>
+    </div>
+  </section>
+
+  <section id="exp">
+    <h2><span class="n">7</span>Experience spec</h2>
+    <p>Five hero surfaces. Everything else is evidence layer (quiet, consistent — not the focus of design polish).</p>
+
+    <h3 id="exp-bridge" class="with-rule">7.1 Bridge — the home</h3>
+    <p>Replaces /ci as the default landing. Three vertical zones:</p>
+    <ul>
+      <li><strong>Pulse</strong> (left) — last-24h signal stream, filterable by category + entity. Click → Decision Workspace draft.</li>
+      <li><strong>Twin</strong> (middle) — 5–10 belief states tracked by the Strategist, each shown as a prior→posterior bar with the driving signal annotated. Click → opens belief detail in the right panel.</li>
+      <li><strong>Moments</strong> (right) — 3–8 active Moments ranked by materiality × time-decay, each with EV-at-stake, expiry, and a 1-click open to the Decision Workspace.</li>
+    </ul>
+    <p>One hero strip above: the single most-urgent Moment with a primary action. Mode toggle: <code>live</code> (continuous) / <code>digest_today</code> / <code>digest_week</code>.</p>
+
+    <div class="contract">
+      <div class="title">Contract — Bridge composition</div>
+<pre>GET /bridge?mode=live|digest_today|digest_week
+→ {
+  pulse: { signals: [...], filters: {...} },
+  twin:  { priors:  [{ id, label, prior, posterior, dir, driver_signal_id }] },
+  moments: [{ id, tier, ev_at_stake_musd, expires_hours, title, summary,
+              delta_belief, signal_chain, category, plays }]
+}
+</pre></div>
+
+    <h3 id="exp-dossier" class="with-rule">7.2 Dossier — the spine</h3>
+    <p>One Dossier per tracked entity (company or product). The architectural commitment: <strong>every other surface writes into the Dossier.</strong> Signals refresh sections; war-games append "strategic read" sections; decisions link out from sections; learn-loop attributions update the calibration section.</p>
+
+    <p>A Dossier renders as a sequence of <em>sections</em>. Section kinds:</p>
+    <ul>
+      <li><strong>extracted</strong> — facts pulled directly from sources, with evidence pills. (e.g. "Identity", "Pricing &amp; Access", "Trial Activity")</li>
+      <li><strong>kbq</strong> — one of the 8 KBQ-views, identical structure across all entities for parity (§9.2).</li>
+      <li><strong>synthesized</strong> — Strategist-authored narrative with cited claims. (e.g. "Strategic Read", "SWOT")</li>
+      <li><strong>computed</strong> — derived metrics: coverage, freshness, gap-flags.</li>
+    </ul>
+    <p>Per section: <em>coverage</em> (0–1), <em>last_refresh</em>, <em>fact_count</em>, <em>kind</em>, <em>facts[]</em>, <em>evidence_ids[]</em>. Click any claim → evidence card.</p>
+
+    <div class="contract">
+      <div class="title">Contract — Dossier as composition</div>
+<pre>GET /dossier/{entity_id}
+→ {
+  entity: { id, kind, name, …profile },
+  coverage: 0..1, fact_count, source_count, last_refresh,
+  sections: [
+    { id, title, kind, coverage, last_refresh,
+      facts: [{ text, evidence_ids, signal_ids, materiality }],
+      gap_flags: [{ reason, connector_needed }] }
+  ],
+  linked_decisions: [ decision_id ],   <span class="c">// what was decided about this entity</span>
+  linked_moments:   [ moment_id ],     <span class="c">// active Moments touching this entity</span>
+  war_room_scenarios: [ ... ]
+}
+
+POST /dossier/{entity_id}/section/{section_id}/update
+  { source: 'signal' | 'wargame' | 'decision' | 'learn',
+    delta: { add_facts: [...], retract_fact_ids: [...] },
+    by_agent: 'sentinel' | 'strategist' | 'curator',
+    trace_id: '...' }
+→ 204
+</pre></div>
+
+    <h3 id="exp-decision" class="with-rule">7.3 Decision flow — Workspace as document</h3>
+    <p>From the existing 5-panel DecisionWorkspace, evolve to a writing-first composer (TipTap, per PB-401). Sidebar holds: <em>stakeholders</em>, <em>materiality drawer</em>, <em>state</em>. The body is a document with inline AI suggestions (Strategist running every 6s background) and an <strong>options grid</strong> as an in-document primitive (TipTap node) — not a separate form.</p>
+    <p>The flow: <code>Moment → "Frame as Decision" → Workspace with pre-drafted question + 2–4 options + cited evidence → strategist edits → "Send to War Room" → war-game runs → recommendation lands back in the Workspace → commit → Reviewer</code>.</p>
+
+    <h3 id="exp-wargame" class="with-rule">7.4 War Room — 3 modes, one canvas</h3>
+    <p>Single canvas, mode toggle at top. Canvas centre: the 2×2 payoff matrix (or n×m when scenarios warrant). Right panel: adversary digital twins with posteriors. Bottom dock: <strong>chat rail</strong> for conversational steering. Live activity strip showing which agent is doing what.</p>
+
+    <p>Modes:</p>
+    <ul>
+      <li><strong>Autonomous</strong> · adversary agents (competitor / payer / FDA / KOL) play their seats, grounded in the knowledge graph. User watches the trace; receives a recommendation; commits where flagged.</li>
+      <li><strong>Hybrid workshop</strong> · user takes one or more adversary seats; AI fills the rest. Designed for facilitated red-team sessions.</li>
+      <li><strong>Game theory</strong> · the math layer surfaces. User sets payoffs / priors / objective functions explicitly; reads Nash + Stackelberg + EV distributions. Substrate for modes ① and ②.</li>
+    </ul>
+
+    <p>Chat dock examples (all valid):</p>
+    <ul>
+      <li><em>"Re-run assuming Novo cuts WAC 50% in Q1 2027."</em></li>
+      <li><em>"What if FDA approves CagriSema 60 days late?"</em></li>
+      <li><em>"Show me the option Lilly's most likely to pick if we choose option B."</em></li>
+      <li><em>"Why did the Strategist eliminate the aggressive play?"</em> (→ trace explanation)</li>
+    </ul>
+
+    <h3 id="exp-reviewer" class="with-rule">7.5 Reviewer — ledger · replay · coach</h3>
+    <p>Three sub-tabs.</p>
+    <ul>
+      <li><strong>Decision Ledger</strong> — committed decisions list with linked Moment, evidence, chosen play vs alternatives, calibrated outcome (when review_at lands).</li>
+      <li><strong>Replay</strong> — time-scrub for any decision. Shows the world state at T-0 (when committed): the Moment that triggered, the Twin posteriors at that moment, the war-game trace, the evidence weighed. Compares to T-now: what actually happened.</li>
+      <li><strong>Coach</strong> — Curator's observations. Pattern detection (anchoring on prior decisions, risk-tolerance drift, calibration wins/losses).</li>
+    </ul>
+  </section>
+
+  <section id="agentic">
+    <h2><span class="n">8</span>Agentic engine spec</h2>
+
+    <h3 id="ag-roster" class="with-rule">8.1 Agent roster — three user-facing, sub-agents internal</h3>
+    <p>Three user-facing roles. Internally, each spans multiple specialised sub-agents.</p>
+
+    <div class="kv">
+      <dt>Sentinel</dt>
+      <dd>SENSE. User-facing colour: teal. Verbs: <em>watches, clusters, surfaces</em>. Internal sub-agents: Sentinel/Trials, Sentinel/Regulatory, Sentinel/Payer, Sentinel/KOL, Sentinel/Financial, plus a <em>Synthesizer</em> that does cross-stream signal fusion into Moments.</dd>
+
+      <dt>Strategist</dt>
+      <dd>FRAME + SIMULATE. User-facing colour: violet. Verbs: <em>frames, simulates, recommends</em>. Internal sub-agents: Strategist/Aggressive, Strategist/Balanced, Strategist/Contrarian (the three personas), plus a <em>Twin</em> (Bayesian belief state engine) and <em>Adversaries</em> (4 grounded competitor/payer/FDA/KOL agents per SPEC-028).</dd>
+
+      <dt>Curator</dt>
+      <dd>LEARN + RECALIBRATE. User-facing colour: amber. Verbs: <em>reviews, learns, recalibrates</em>. Internal sub-agents: Curator/Outcomes (predicted-vs-actual attribution), Curator/Weights (materiality-weight tuning), Curator/Prompts (active feedback to prompt registry).</dd>
+    </div>
+
+    <p>The user-facing three are the public language; the engine surfaces (Agents tab, AgentActivityFeed) show the internal sub-agents under those banners with full transparency. <em>Three identities for cognitive economy; many agents for operational coverage.</em></p>
+
+    <h3 id="ag-loop" class="with-rule">8.2 The operational loop in detail</h3>
+
+    <div class="flow">
+      <span class="stage">SENSE</span><span class="ar">→</span>
+      <span class="stage frame">FRAME</span><span class="ar">→</span>
+      <span class="stage frame">SIMULATE</span><span class="ar">→</span>
+      <span class="stage">DECIDE</span><span class="ar">→</span>
+      <span class="stage learn">LEARN</span><span class="ar">↺</span>
+    </div>
+
+    <table>
+      <thead><tr><th>Stage</th><th>Owner</th><th>Trigger</th><th>Output</th><th>Surfaces</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>SENSE</b></td>
+          <td>Sentinel</td>
+          <td>Connector ingest → entity-resolved signal → cluster with prior signals</td>
+          <td>Moment (if materiality × confluence ≥ threshold); signal stream regardless</td>
+          <td>Bridge · Signals DB · Sensing Feed</td>
+        </tr>
+        <tr>
+          <td><b>FRAME</b></td>
+          <td>Strategist</td>
+          <td>Moment crosses framing threshold OR user clicks "Frame as Decision"</td>
+          <td>Decision Brief draft (question + 3 options + cited evidence + stakeholders + horizon)</td>
+          <td>Decision Workspace</td>
+        </tr>
+        <tr>
+          <td><b>SIMULATE</b></td>
+          <td>Strategist + adversaries</td>
+          <td>"Send to War Room" or auto-on-frame (configurable)</td>
+          <td>Equilibrium + EV-by-option + adversary-posterior-deltas + trace</td>
+          <td>War Room</td>
+        </tr>
+        <tr>
+          <td><b>DECIDE</b></td>
+          <td>Human</td>
+          <td>User clicks Commit (always required at L≤3 authority)</td>
+          <td>Immutable ledger entry: chosen option + rationale + linked evidence + trace_id</td>
+          <td>Decision Workspace · Reviewer</td>
+        </tr>
+        <tr>
+          <td><b>LEARN</b></td>
+          <td>Curator</td>
+          <td>Decision's review_at fires → outcome detector runs</td>
+          <td>Attribution record + recalibrated materiality weights + Twin posterior update + (optional) prompt-weight adjustment</td>
+          <td>Reviewer · Insights</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 id="ag-authority" class="with-rule">8.3 Authority spectrum — L1 to L5</h3>
+    <p>Adopting PB-504 with one refinement: <strong>default to L2 for any new agent + scenario class pair.</strong> Promotion requires calibration data.</p>
+
+    <table>
+      <thead><tr><th>Level</th><th>Verb</th><th>Behaviour</th><th>Promotion gate</th></tr></thead>
+      <tbody>
+        <tr><td><b>L1</b></td><td>Watch</td><td>Agent observes but produces no output to the user</td><td>—</td></tr>
+        <tr><td><b>L2</b></td><td>Suggest</td><td>Agent produces draft Moment / Brief / War-game setup; presents as "here's a suggestion"</td><td>≥7 user-accepted suggestions on this scenario class</td></tr>
+        <tr><td><b>L3</b></td><td>Recommend</td><td>Agent produces a full recommendation with cited rationale; user commits or rejects</td><td>≥0.70 calibration over 14 scenarios</td></tr>
+        <tr><td><b>L4</b></td><td>Act with notice</td><td>Agent commits low-stakes decisions autonomously; high-EV still requires human</td><td>Explicit user opt-in per scenario class + L3 calibration sustained 30 days</td></tr>
+        <tr><td><b>L5</b></td><td>Auto-audit</td><td>Agent acts autonomously; Curator audits and surfaces deviations weekly</td><td>L4 sustained 60 days with no critical deviations + explicit governance sign-off</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="ag-trace" class="with-rule">8.4 Trace schema — what makes the agent inspectable</h3>
+    <p>Every agent action emits a trace event. Every trace event has stable id, parent_id (for tree), timestamp, agent, event_kind, inputs (which signals / facts / KBQ items / prior beliefs were consulted), reasoning (model name, prompt_id, system_input_summary), output (what was produced), surface_ref (where the user can see it).</p>
+
+    <div class="contract">
+      <div class="title">Contract — trace event</div>
+<pre>{
+  trace_id:      "tr_2026-05-22T14:03:01.477Z_a7b3",
+  parent_id:     "tr_…",            <span class="c">// for hierarchical traces (a sim has many steps)</span>
+  ts:            "2026-05-22T14:03:01.477Z",
+  agent:         "strategist" | "sentinel" | "curator" | "adversary:lilly",
+  event_kind:    "belief_update" | "option_considered" | "option_eliminated"
+               | "simulation_run" | "evidence_consulted" | "recommendation_rendered"
+               | "moment_clustered" | "section_updated" | "attribution_landed",
+  inputs:        { signal_ids: [...], evidence_ids: [...], kbq_item_ids: [...],
+                   prior_beliefs: { tp1: 0.32, tp4: 0.40, … } },
+  reasoning:     { model: "claude-opus-4-7", prompt_id: "pmt_strategist_frame_v12",
+                   temperature: 0.4, latency_ms: 1840, tokens_in: 4210, tokens_out: 980 },
+  output:        { kind: "decision_brief_draft" | "moment" | "play" | "section_update" | …,
+                   payload: { … } },
+  surface_ref:   "decision_workspace://brief/b_2026_517",
+  user_visible:  true | false       <span class="c">// some internal steps are dev-only</span>
+}
+</pre></div>
+
+    <p>Default UI: trace shown as a collapsed timeline; expand any node to see inputs / reasoning / output. Per design input #5, this needs a decision on default trace depth (summary vs every step).</p>
+
+    <h3 id="ag-conv" class="with-rule">8.5 Conversational steering</h3>
+
+    <div class="contract">
+      <div class="title">Contract — steer the war-game</div>
+<pre>POST /wargame/{session_id}/steer
+  { instruction: "re-run assuming Novo cuts WAC 50% in Q1 2027",
+    mode:        "autonomous" | "hybrid" | "game_theory",
+    seats?:      { "lilly": "human", "novo": "agent", … }   <span class="c">// hybrid only</span> }
+→ {
+  rounds:        [...],
+  ev_by_option:  { option_id: { mean, std, p_success } },
+  belief_delta:  { tp1: -0.08, tp4: +0.03, … },
+  recommendation:{ chosen_option_id, confidence, rationale },
+  trace:         [ /* trace_events, hierarchical */ ]
+}
+</pre></div>
+
+    <p>Steering is <em>iterative</em>: each call produces a new revision of the war-game state; the chat rail shows the history. Earlier states are recoverable. A revision can be promoted to canonical for the Decision Workspace.</p>
+  </section>
+
+  <section id="backend">
+    <h2><span class="n">9</span>Backend intelligence spec</h2>
+
+    <h3 id="be-semantic" class="with-rule">9.1 Semantic layer — facts ledger (the moat)</h3>
+    <p>Adopting the ⓪ track from the strategy roadmap. Facts are first-class, temporal, append-only:</p>
+
+    <div class="contract">
+      <div class="title">facts table (Postgres)</div>
+<pre>CREATE TABLE facts (
+  id              UUID PRIMARY KEY,
+  tenant_id       UUID NOT NULL REFERENCES tenants(id),
+  kind            TEXT NOT NULL CHECK (kind IN ('point','interval','anticipatory')),
+  predicate       TEXT NOT NULL,        <span class="c">-- 'wac_usd_monthly', 'fda_approval_date', …</span>
+  subject_entity  UUID NOT NULL REFERENCES entities(id),
+  object_value    JSONB NOT NULL,       <span class="c">-- typed payload per predicate</span>
+  valid_from      TIMESTAMPTZ,
+  valid_to        TIMESTAMPTZ,
+  asserted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  source_doc_id   UUID REFERENCES evidence_records(id),
+  confidence      REAL NOT NULL DEFAULT 1.0,
+  superseded_by   UUID REFERENCES facts(id),
+  created_by      TEXT NOT NULL          <span class="c">-- agent or human</span>
+);
+CREATE INDEX ON facts (tenant_id, subject_entity, predicate, valid_from);
+</pre></div>
+
+    <p><strong>Anticipatory facts</strong> are the game-changer for war-gaming: "Novo Wegovy WAC will be $675 effective 2027-01-01" is stored as a fact with valid_from in the future. The war-game queries facts as-of a target date, getting the correctly-timed state. Without this, every "what if X" is hand-rolled.</p>
+
+    <h3 id="be-kbq" class="with-rule">9.2 KBQ views — 8 per entity, parity-enforced</h3>
+    <p>From the strategy roadmap's ② step. A KBQ view is a deterministic function of (entity, facts, signals, evidence) → structured answer.</p>
+
+    <div class="contract">
+      <div class="title">KBQ view contract</div>
+<pre><span class="c"># services/kbq_views.py</span>
+<span class="k">def</span> <span class="f">kbq_view</span>(db, entity_id: str, kbq: int, as_of: datetime = None) -&gt; KbqView:
+    <span class="s">"""One of 8 living views, built from facts + entity-linked signals.
+    Every row carries evidence_ids. Returns the same 8 slots for every
+    entity (parity). 'Insufficient evidence' is an explicit value, not silently empty."""</span>
+    ...
+
+<span class="c"># GET /entities/{entity_id}/kbq → KbqView[]</span>
+{
+  entity: { id: "co:eli_lilly", name: "Eli Lilly" },
+  kbqs: [
+    { kbq: 1, title: "Indications",          status: "fresh"|"stale"|"insufficient",
+      items: [{ claim: "...", evidence_ids: [...], signal_ids: [...], fact_ids: [...] }] },
+    <span class="c">// kbqs 2-8 same shape</span>
+  ],
+  completeness: 0.72   <span class="c">// drives "needs enrichment" prompt for the analyst</span>
+}
+</pre></div>
+
+    <p>The 8 KBQs themselves need precise definitions + completeness gates (one-pager per KBQ — see input #2). Default starting set: Indications · Competitors · Clinical · Scientific · Strategic · Regulatory · Pricing · Access · Reputational · Patent (data_strategy.md draft).</p>
+
+    <h3 id="be-twin" class="with-rule">9.3 Digital twin — Bayesian belief states</h3>
+    <p>The Twin tracks 5–20 belief variables for the user's competitive landscape. Each belief has a prior (set by analyst or seeded from data), a posterior (current state), and a list of evidence records / signals / facts that drove updates.</p>
+
+    <div class="contract">
+      <div class="title">Twin contract</div>
+<pre><span class="c"># services/twin.py</span>
+<span class="k">class</span> <span class="f">TwinPrior</span>:
+    id: str                      <span class="c"># 'tp_foundayo_1B_q4_2026'</span>
+    label: str                   <span class="c"># 'P(Foundayo Q4 2026 rev ≥ $1B)'</span>
+    domain: Literal["binary","continuous","ordinal"]
+    prior: float                 <span class="c"># initial probability or mean</span>
+    posterior: float             <span class="c"># current, updated by evidence</span>
+    posterior_distribution: dict <span class="c"># mean/std for continuous, p for binary</span>
+    drivers: List[Update]        <span class="c"># [(signal_id|fact_id, delta, rationale, ts)]</span>
+    related_entities: List[str]
+    related_predicates: List[str]<span class="c"># which facts/signals shift this prior</span>
+
+<span class="k">def</span> <span class="f">update_twin</span>(db, new_signal_id: str) -&gt; List[TwinPriorUpdate]:
+    <span class="s">"""On signal arrival, find priors whose related_predicates match,
+    compute Bayesian update, write delta + new posterior + driver record."""</span>
+    ...
+</pre></div>
+
+    <p>The Twin is what makes the agentic engine "remember" — beliefs persist; updates are recorded with provenance; the user sees deltas, not raw priors.</p>
+
+    <h3 id="be-game" class="with-rule">9.4 Game theory — substrate, not surface</h3>
+    <p>The game-theory engine takes Twin posteriors + adversary objective functions + scenario topology as <em>input</em> and returns equilibria + EV-by-option as <em>output</em>. It is the math layer underneath modes ① and ② (per the agentic-UX doc) and a directly-explorable surface in mode ③.</p>
+
+    <div class="contract">
+      <div class="title">Game-theory contract — the connective tissue</div>
+<pre><span class="c"># services/game_theory.py — extending existing engine</span>
+<span class="k">def</span> <span class="f">solve_game</span>(
+    twin_priors:        List[TwinPrior],
+    adversary_objectives: Dict[str, ObjectiveFn],   <span class="c"># 'lilly': max(share - 0.3*reputation_loss)</span>
+    scenario_topology:  ScenarioTopology,           <span class="c"># 2x2 or n×m, sequential or simultaneous</span>
+    payoff_estimates:   PayoffMatrix,               <span class="c"># derived from twin + facts</span>
+) -&gt; GameSolution:
+    <span class="s">"""Returns Nash, Stackelberg (if sequential), EV distributions per option,
+    counterfactual: 'what if prior X = Y instead'."""</span>
+    ...
+</pre></div>
+
+    <p>Adversary objective functions are the bit that needs analyst input (input #1). Default per adversary kind (competitor/payer/FDA/KOL) can be drafted from the data strategy doc, but each tracked competitor needs at least a 2-line objective function override.</p>
+
+    <h3 id="be-learn" class="with-rule">9.5 Learn loop — closing the flywheel</h3>
+    <p>From the strategy roadmap's ⑤ step. At each Decision's <code>review_at</code> (default: pricing 90d, launch 180d, configurable), the outcome detector runs:</p>
+    <ol>
+      <li>Fetch the actual market state from facts + new signals since commit.</li>
+      <li>Compare to the Decision's <code>predicted_outcome</code> (the EV-by-option recommendation that landed).</li>
+      <li>Compute attribution: directionally correct? magnitude correct? Which prior was off?</li>
+      <li>Write an attribution record (immutable).</li>
+      <li>Feed back into <em>two</em> places: (a) Twin prior recalibration (the prior that drove the off-call gets re-weighted), (b) prompt-weight backpropagation (the prompts that generated the recommendation get their reliability score updated).</li>
+    </ol>
+
+    <h3 id="be-prompt" class="with-rule">9.6 Prompt registry — versioned + recalibrated</h3>
+    <p>From E12. Move SYSTEM_PROMPTS dict out of <code>services/llm.py:179-250</code> into the prompt_registry table. Every LLM call references prompt_id; <code>llm_call_log</code> already has the field wired.</p>
+    <p>The active-feedback loop (PB-C02) is the genuinely interesting part: prompt_id → outcomes → reliability score per prompt → weighted preference in future calls. A prompt that consistently produces miscalibrated recommendations gets demoted; an alternative gets promoted. Weekly calibration job per prompt + audit log of weight changes.</p>
+
+    <h3 id="be-tenant" class="with-rule">9.7 Tenancy — non-negotiable</h3>
+    <p>From E11. <code>tenant_id</code> on every core entity table (drugs, companies, trials, mechanisms, signals, evidence_records, facts, decisions, …). NOT NULL after backfill. Query middleware injects tenant_id into every WHERE clause; bypassing the middleware fails the SaaS isolation tests in CI. Cross-tenant data leak is a stop-ship bug.</p>
+
+    <div class="co bad"><div class="t">SaaS hard-stop</div>
+      <p>No external customer until E11 lands. The current state — <em>"scope_key exists but core tables have no tenant_id and services/search.py does not WHERE-filter by scope"</em> — means a misconfigured query returns one customer's data inside another's session. This is the one item that gates real deployment.</p>
+    </div>
+  </section>
+
+  <section id="seq">
+    <h2><span class="n">10</span>Sequencing — my call vs the team's</h2>
+
+    <p>The team's 24-week sequencing is sound. My spec doesn't change the order; it adds shape to specific items already on the backlog. Where I'd weight effort slightly differently:</p>
+
+    <table>
+      <thead><tr><th>Weeks</th><th>Team's epic</th><th>My emphasis adjustment</th></tr></thead>
+      <tbody>
+        <tr><td>1–2</td><td>E1 Trust foundation</td><td>No change. Ship as planned.</td></tr>
+        <tr><td>3–4</td><td>E2 Agent presence</td><td>Land the trace data structure now (§8.4), even if UI surfaces it later. Cheap to capture early, expensive to retrofit.</td></tr>
+        <tr><td>5–7</td><td>E3 Entity dossier</td><td><strong>Add a story PB-30X: "Dossier as composition target" — the section-level update contract from §7.2.</strong> Without it, dossiers will drift apart as later epics write to them.</td></tr>
+        <tr><td>8–10</td><td>E4 Brief composer</td><td>No change.</td></tr>
+        <tr><td>11–12</td><td>E5 War-game cockpit</td><td><strong>Land PB-1303 (conversational steering + mode toggle) in E5</strong>, not as separate E13 work. The cockpit without conversational steering is half a war-game.</td></tr>
+        <tr><td>13–14</td><td>E6 Chat surface</td><td>No change.</td></tr>
+        <tr><td>15</td><td>E7 Graph as interlocutor</td><td>No change.</td></tr>
+        <tr><td>16–17</td><td>E8 Catalog</td><td>No change.</td></tr>
+        <tr><td>18–21</td><td>E9 Connectors</td><td>No change. Engineering-only wins.</td></tr>
+        <tr><td>parallel</td><td>⓪ Facts ledger</td><td><strong>Pull forward to weeks 5–10</strong>, in parallel with E3 (dossier). The dossier can render facts directly; deferring the facts ledger means dossier renders only signals, which limits war-game anchoring (no anticipatory facts).</td></tr>
+        <tr><td>22</td><td>E10 Source registry</td><td>No change.</td></tr>
+        <tr><td>23</td><td>E11 Multi-tenancy</td><td><strong>Consider pulling to weeks 1–4 if any external customer commitment exists in the next 6 months.</strong> Otherwise weeks 23 is fine.</td></tr>
+        <tr><td>24</td><td>E12 Prompt registry</td><td>No change.</td></tr>
+      </tbody>
+    </table>
+
+    <p>The two non-trivial deltas: facts ledger pulled forward (because dossier and war-game both need it), and PB-1303 conversational war-game folded into E5 (because the cockpit without conversational steering doesn't ship the inversion the agentic-UX doc promises).</p>
+  </section>
+
+  <section id="decisions">
+    <h2><span class="n">11</span>Decisions still needed</h2>
+    <p>The two existing docs already collected six (strategy roadmap) and five (agentic UX) input decisions. I'd add three more — all consequential, all under-discussed in the existing docs:</p>
+
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Owner</th><th>Default if unspecified</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>A</td>
+          <td>Default authority level for new agent + scenario class</td>
+          <td>Kapil + strategist</td>
+          <td>L2 (suggest), promoted via calibration</td>
+        </tr>
+        <tr>
+          <td>B</td>
+          <td>Trace default depth shown to user (every step vs summary + expand)</td>
+          <td>Design</td>
+          <td>Summary by default, full trace one click away</td>
+        </tr>
+        <tr>
+          <td>C</td>
+          <td>Default war-game mode for a Moment opened cold (autonomous vs hybrid)</td>
+          <td>Kapil</td>
+          <td>Autonomous · with full trace · escalates to human on commit</td>
+        </tr>
+        <tr>
+          <td>D</td>
+          <td>Facts ledger sequencing — pull forward (weeks 5–10) or hold (parallel-after-spine)</td>
+          <td>Backend + Kapil</td>
+          <td>Pull forward; dossier value compounds with facts available</td>
+        </tr>
+        <tr>
+          <td>E</td>
+          <td>Multi-tenancy timing — keep at week 23 or pull to weeks 1–4</td>
+          <td>Kapil</td>
+          <td>Keep week 23 if no external commitment in 6 months</td>
+        </tr>
+        <tr>
+          <td>F</td>
+          <td>Dossier-as-composition contract sign-off</td>
+          <td>Backend + frontend</td>
+          <td>Adopt §7.2 contract; one story added to E3</td>
+        </tr>
+        <tr>
+          <td>G</td>
+          <td>Adversary objective functions per tracked competitor (input #1 from agentic-UX doc, expanded)</td>
+          <td>Riya + strategist</td>
+          <td>Draft from data_strategy.md; 2-line override per top-5 competitors</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="foot">
+    Draft v0.1 · 2026-05-22 · written as a critical-analysis companion to PRODUCT_BACKLOG.md +
+    ci-strategy-roadmap.html + ci-agentic-ux.html. Honest read: the team's plan is the spine. This doc
+    contributes shape on the seams — dossier-as-composition contract, trace + steer schema, Twin↔Game-Theory
+    pipeline, five-surface map, and three sequencing nudges (facts ledger forward, PB-1303 into E5,
+    multi-tenancy gated on external-customer timing). <br/><br/>
+    Adopt their plan. Adopt these adjustments where they help.
+  </div>
+</main>
+</div>
+</body>
+</html>
