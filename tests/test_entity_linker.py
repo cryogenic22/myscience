@@ -11,11 +11,17 @@ COMPANIES = [
     {"id": "co-novo", "name": "Novo Nordisk"},
     {"id": "co-savara", "name": "Savara"},
     {"id": "co-amgen", "name": "Amgen"},
+    # noise that must be excluded from the gazetteer:
+    {"id": "co-harvard", "name": "The Harvard Drug Group"},
+    {"id": "co-timi", "name": "TIMI Study Group"},
+    {"id": "co-hosp", "name": "4th Military Clinical Hospital"},
+    {"id": "co-nih", "name": "National Institutes of Health Clinical Center"},
 ]
 DRUGS = [
     {"id": "dr-sema", "generic_name": "semaglutide", "brand_name": "Wegovy"},
     {"id": "dr-tirz", "generic_name": "tirzepatide", "brand_name": "Zepbound"},
     {"id": "dr-orf", "generic_name": "orforglipron", "brand_name": None},
+    {"id": "dr-bad", "generic_name": "weight loss", "brand_name": None},  # data error
 ]
 
 
@@ -90,4 +96,22 @@ class TestLink:
     def test_suffix_tokens_not_indexed(self):
         # "Company"/"and" must not resolve to Eli Lilly
         r = _linker().link("the company announced earnings")
+        assert r is None
+
+    def test_excludes_hospital_study_group_agency_companies(self):
+        lk = _linker()
+        # keyword-excluded orgs never resolve, even by full name
+        assert lk.link("results from the TIMI Study Group") is None
+        assert lk.link("4th Military Clinical Hospital enrolled patients") is None
+        assert lk.link("National Institutes of Health Clinical Center") is None
+
+    def test_generic_tokens_not_aliases(self):
+        # generic industry words must not match a polluted company name
+        lk = _linker()
+        assert lk.link("a new drug was approved today") is None      # 'drug' ≠ Harvard Drug Group
+        assert lk.link("the group reported strong data") is None     # 'group' ≠ any company
+
+    def test_excludes_non_drug_stoplist(self):
+        # "weight loss" is a data-error drug row — must not resolve as a drug
+        r = _linker().link("significant weight loss observed in the cohort")
         assert r is None

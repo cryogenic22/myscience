@@ -35,6 +35,38 @@ _MIN_TOKEN_LEN = 4          # don't index short/ambiguous tokens ("eli", "ro")
 _MIN_NAME_LEN = 3
 _MAX_NGRAM = 4              # scan up to 4-word phrases
 
+# The companies table is polluted with trial sponsors / hospitals / study
+# groups / agencies (from ClinicalTrials.gov ingestion). These are not the
+# strategic competitors a CI user cares about and wreck linker precision
+# ("The Harvard Drug Group", "TIMI Study Group"). Exclude by org-type keyword.
+_EXCLUDE_COMPANY_RE = re.compile(
+    r"\b(hospital|hospitals|university|universities|college|clinic|clinical\s+cent|"
+    r"institute|institutes|foundation|ministry|nhs|national\s+institut|study\s+group|"
+    r"medical\s+cent|health\s+(system|service|services|network|authority)|"
+    r"department\s+of|school\s+of|board|council|authority|affiliated|military|"
+    r"army|navy|government|trust|research\s+cent|cancer\s+cent|academy|"
+    r"administration|consortium|network|registry|society|association)\b",
+    re.IGNORECASE,
+)
+
+# Generic industry/English words that must NOT become company short-form
+# aliases (otherwise "a new drug" matches "The Harvard Drug Group").
+_ALIAS_STOPWORDS = {
+    "drug", "drugs", "group", "health", "care", "medical", "life", "global",
+    "data", "study", "clinical", "center", "centre", "research", "national",
+    "american", "european", "international", "therapy", "world", "united",
+    "general", "royal", "federal", "partners", "ventures", "capital",
+    "systems", "solutions", "technologies", "digital", "biotech", "medicine",
+    "first", "new", "gen", "bio", "labs", "holdings", "people", "company",
+}
+
+# Non-drug rows that exist in the drugs table as data errors / generic phrases.
+_DRUG_STOPLIST = {
+    "weight loss", "obesity", "placebo", "saline", "diabetes", "control",
+    "standard of care", "vehicle", "comparator", "best supportive care",
+    "weight management", "lifestyle", "diet", "exercise",
+}
+
 
 def _normalize(text: str) -> str:
     # Collapse to single spaces so index keys match the n-gram lookups in
@@ -94,14 +126,21 @@ class EntityLinker:
         except Exception:
             logger.exception("entity linker: companies query failed")
             rows = []
+        skipped = 0
         for r in rows:
             name = r.get("name") or ""
+            if _EXCLUDE_COMPANY_RE.search(name):
+                skipped += 1
+                continue  # trial site / hospital / agency — not a competitor
             self._add(name, "company", r["id"], name, True)
             # auto short-form aliases: distinctive tokens, suffixes stripped
             for tok in _tokens(name):
-                if tok in _SUFFIX_TOKENS or len(tok) < _MIN_TOKEN_LEN:
+                if (tok in _SUFFIX_TOKENS or tok in _ALIAS_STOPWORDS
+                        or len(tok) < _MIN_TOKEN_LEN):
                     continue
                 self._add(tok, "company", r["id"], name, False)
+        if skipped:
+            logger.info("entity linker: excluded %d non-competitor companies", skipped)
 
     def _load_drugs(self) -> None:
         try:
@@ -117,9 +156,9 @@ class EntityLinker:
             canonical = generic or brand
             if not canonical:
                 continue
-            if generic:
+            if generic and _normalize(generic) not in _DRUG_STOPLIST:
                 self._add(generic, "drug", r["id"], canonical, True)
-            if brand:
+            if brand and _normalize(brand) not in _DRUG_STOPLIST:
                 self._add(brand, "drug", r["id"], canonical, True)
 
     # ── link ───────────────────────────────────────────────────────
