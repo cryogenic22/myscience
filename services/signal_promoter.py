@@ -296,7 +296,7 @@ def promote_events(
     linker = None
     try:
         from services.entity_linker import EntityLinker
-        linker = EntityLinker(db).load()
+        linker = EntityLinker(db).load(priority_only=True)
     except Exception:
         logger.exception("signal promoter: entity linker unavailable; using market fallback")
 
@@ -328,7 +328,7 @@ def relink_market_signals(db, *, limit: int = 5000) -> dict:
     """
     from services.entity_linker import EntityLinker
 
-    linker = EntityLinker(db).load()
+    linker = EntityLinker(db).load(priority_only=True)
     try:
         rows = db.fetch_all(
             """SELECT id, headline, summary FROM signals

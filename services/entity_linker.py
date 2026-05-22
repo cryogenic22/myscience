@@ -39,14 +39,15 @@ _MAX_NGRAM = 4              # scan up to 4-word phrases
 # groups / agencies (from ClinicalTrials.gov ingestion). These are not the
 # strategic competitors a CI user cares about and wreck linker precision
 # ("The Harvard Drug Group", "TIMI Study Group"). Exclude by org-type keyword.
+# Note: "cent" is a prefix (matches center/centre/central) — do NOT anchor a
+# trailing \b after it, or "cancer center" would slip through.
 _EXCLUDE_COMPANY_RE = re.compile(
-    r"\b(hospital|hospitals|university|universities|college|clinic|clinical\s+cent|"
-    r"institute|institutes|foundation|ministry|nhs|national\s+institut|study\s+group|"
-    r"medical\s+cent|medical\s+supply|health\s+(system|service|services|network|authority)|"
-    r"department\s+of|school\s+of|board|council|authority|affiliated|military|"
-    r"army|navy|government|trust|research\s+cent|cancer\s+cent|cancer\s+inst|"
-    r"oncology\s+group|academy|administration|consortium|network|registry|"
-    r"society|association|center\s+of|centre\s+of)\b",
+    r"\bhospital|\buniversit|\bcollege|\bclinic\b|clinical\s+cent|"
+    r"\binstitut|\bfoundation|\bministry|\bnhs\b|national\s+institut|study\s+group|"
+    r"medical\s+cent|medical\s+supply|health\s+(?:system|service|network|authorit)|"
+    r"department\s+of|school\s+of|\bmilitary|\barmy\b|\bnavy\b|\bgovernment|"
+    r"research\s+cent|cancer\s+cent|cancer\s+institut|oncology\s+group|"
+    r"\bacademy|\bconsortium|\bregistry|center\s+of|centre\s+of",
     re.IGNORECASE,
 )
 
@@ -93,6 +94,30 @@ def _tokens(text: str) -> list[str]:
     return [t for t in _normalize(text).split() if t]
 
 
+# ── Priority allowlist (strategy-doc input #1: the GLP-1 field) ──────
+# In priority_only mode the gazetteer is built ONLY from these entities
+# (resolved against the DB), giving high precision on a polluted companies
+# table. Edit this list to expand the competitor universe.
+_PRIORITY_COMPANIES = [
+    "Eli Lilly", "Novo Nordisk", "Pfizer", "Amgen", "Merck", "AstraZeneca",
+    "Roche", "Sanofi", "Boehringer Ingelheim", "Viking Therapeutics",
+    "Structure Therapeutics", "Novartis", "AbbVie", "Bristol Myers Squibb",
+    "Johnson & Johnson", "Zealand Pharma", "Altimmune", "Gilead",
+]
+# alias → which priority company it denotes
+_PRIORITY_COMPANY_ALIASES = {
+    "lilly": "Eli Lilly", "novo": "Novo Nordisk", "bms": "Bristol Myers Squibb",
+    "jnj": "Johnson & Johnson", "j&j": "Johnson & Johnson", "bi": "Boehringer Ingelheim",
+    "az": "AstraZeneca", "gsk": "GSK", "abbvie": "AbbVie",
+}
+_PRIORITY_DRUGS = [
+    "semaglutide", "tirzepatide", "orforglipron", "retatrutide", "survodutide",
+    "danuglipron", "cagrilintide", "cagrisema", "ecnoglutide", "pemvidutide",
+    "mazdutide", "maritide", "Wegovy", "Ozempic", "Rybelsus", "Zepbound",
+    "Mounjaro", "Saxenda", "Victoza", "Trulicity",
+]
+
+
 @dataclass
 class LinkResult:
     entity_type: str
@@ -114,15 +139,75 @@ class EntityLinker:
         # normalized phrase -> (entity_type, entity_id, canonical_name, is_full)
         self._index: dict[str, tuple[str, str, str, bool]] = {}
         self._loaded = False
+        self._priority_only = False
 
     # ── build ──────────────────────────────────────────────────────
-    def load(self) -> "EntityLinker":
+    def load(self, priority_only: bool = False) -> "EntityLinker":
         self._index = {}
-        self._load_companies()
-        self._load_drugs()
+        self._priority_only = priority_only
+        if priority_only:
+            self._load_priority()
+        else:
+            self._load_companies()
+            self._load_drugs()
         self._loaded = True
-        logger.info("entity linker: indexed %d phrases", len(self._index))
+        logger.info("entity linker: indexed %d phrases (priority_only=%s)",
+                    len(self._index), priority_only)
         return self
+
+    def _find_company(self, name: str) -> dict | None:
+        """Best DB company row for a priority name: exact, else shortest ILIKE
+        (avoids headline-fragment rows that merely contain the name)."""
+        try:
+            rows = self.db.fetch_all(
+                "SELECT id, name FROM companies WHERE name ILIKE %s ORDER BY length(name) LIMIT 5",
+                [f"%{name}%"],
+            )
+        except Exception:
+            return None
+        nl = name.lower()
+        exact = [r for r in rows if (r.get("name") or "").lower() == nl]
+        pick = exact[0] if exact else (rows[0] if rows else None)
+        if pick and not _looks_like_sentence(pick.get("name") or ""):
+            return pick
+        return None
+
+    def _find_drug(self, name: str) -> dict | None:
+        try:
+            rows = self.db.fetch_all(
+                """SELECT id, generic_name, brand_name FROM drugs
+                    WHERE generic_name ILIKE %s OR brand_name ILIKE %s
+                    ORDER BY length(coalesce(generic_name, brand_name)) LIMIT 3""",
+                [name, name],
+            )
+        except Exception:
+            rows = []
+        return rows[0] if rows else None
+
+    def _load_priority(self) -> None:
+        # Companies + their canonical name as the display name.
+        canon: dict[str, dict] = {}
+        for pname in _PRIORITY_COMPANIES:
+            row = self._find_company(pname)
+            if not row:
+                continue
+            canon[pname] = row
+            self._add(pname, "company", row["id"], pname, True)
+            for tok in _tokens(pname):
+                if tok in _SUFFIX_TOKENS or tok in _ALIAS_STOPWORDS or len(tok) < _MIN_TOKEN_LEN:
+                    continue
+                self._add(tok, "company", row["id"], pname, False)
+        for alias, target in _PRIORITY_COMPANY_ALIASES.items():
+            row = canon.get(target) or self._find_company(target)
+            if row:
+                self._add(alias, "company", row["id"], target, False)
+        # Drugs (generic + brand → generic canonical).
+        for dname in _PRIORITY_DRUGS:
+            row = self._find_drug(dname)
+            if not row:
+                continue
+            canonical = row.get("generic_name") or row.get("brand_name") or dname
+            self._add(dname, "drug", row["id"], canonical, True)
 
     def _add(self, phrase: str, etype: str, eid: str, cname: str, is_full: bool) -> None:
         norm = _normalize(phrase)

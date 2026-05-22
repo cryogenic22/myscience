@@ -46,6 +46,44 @@ class TestHelpers:
         assert _tokens("Lilly pens $202M deal!") == ["lilly", "pens", "202m", "deal"]
 
 
+class TestPriorityOnly:
+    def _priority_linker(self):
+        # DB returns a priority company for ILIKE 'Eli Lilly', a drug for
+        # 'semaglutide', and noise for anything else.
+        db = MagicMock()
+
+        def fetch_all(sql, params=None):
+            s = (sql or "").lower()
+            p = (params or [""])[0]
+            if "from companies" in s and "ilike" in s:
+                if "lilly" in str(p).lower():
+                    return [{"id": "co-lilly", "name": "Eli Lilly and Company"}]
+                if "novo" in str(p).lower():
+                    return [{"id": "co-novo", "name": "Novo Nordisk A/S"}]
+                return []
+            if "from drugs" in s and "ilike" in s:
+                if "semaglutide" in str(p).lower():
+                    return [{"id": "dr-sema", "generic_name": "semaglutide", "brand_name": "Ozempic"}]
+                return []
+            return []
+
+        db.fetch_all = MagicMock(side_effect=fetch_all)
+        return EntityLinker(db).load(priority_only=True)
+
+    def test_resolves_priority_company(self):
+        r = self._priority_linker().link("Lilly pens $202M deal")
+        assert r is not None and r.entity_id == "co-lilly"
+
+    def test_resolves_priority_drug(self):
+        r = self._priority_linker().link("semaglutide cardiovascular outcomes")
+        assert r is not None and r.entity_id == "dr-sema"
+
+    def test_rejects_non_priority_noise(self):
+        # trial-sponsor company not in priority list → no match
+        r = self._priority_linker().link("Response Pharmaceuticals enrolled patients")
+        assert r is None
+
+
 class TestLink:
     def test_full_company_name(self):
         r = _linker().link("Novo Nordisk reports Q1 results")
