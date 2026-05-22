@@ -9,6 +9,7 @@ import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
 import CIPage from './pages/CIPage';
 import DossierPage from './pages/DossierPage';
+import KbqDossierPage from './pages/KbqDossierPage';
 import BriefComposerPage from './pages/BriefComposerPage';
 import BridgePage from './pages/BridgePage';
 import DecisionDetailPage from './components/ci/decisions/DecisionDetailPage';
@@ -93,6 +94,7 @@ function AppRoutes() {
         <Route path="/newui" element={<NewWorkspace key="newui" />} />
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
         <Route path="/ci" element={<CIPage key="ci" />} />
+        <Route path="/ci/dossier/:entityType/:entityId" element={<KbqDossierPage key="kbq-dossier" />} />
         <Route path="/dossier/:entityType/:slug" element={<DossierPage key="dossier" />} />
         <Route path="/briefs/new" element={<BriefComposerPage key="briefs-new" />} />
         <Route path="/bridge" element={<BridgePage key="bridge" />} />

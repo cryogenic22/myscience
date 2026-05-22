@@ -871,4 +871,8 @@ def create_app() -> FastAPI:
         async def serve_ci_legacy_decision(decision_id: str):
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 
+        @app.get("/ci/dossier/{entity_type}/{entity_id}")
+        async def serve_ci_dossier(entity_type: str, entity_id: str):
+            return FileResponse(str(FRONTEND_DIR / "index.html"))
+
     return app

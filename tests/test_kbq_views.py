@@ -23,6 +23,7 @@ def _sig(sid, tags, headline, impact="high", conf="confirmed"):
         "evidence_document_ids": [sid],
         "created_at": "2026-05-20T00:00:00Z",
         "status": "shipped",
+        "primary_entity_name": "Eli Lilly",
     }
 
 
@@ -102,6 +103,10 @@ class TestBuildEntityKbqs:
         out = build_entity_kbqs(_make_db([]), "company", "co-lilly")
         assert out["entity"]["id"] == "co-lilly"
         assert out["entity"]["type"] == "company"
+
+    def test_entity_name_derived_from_signals(self):
+        out = build_entity_kbqs(_make_db([_sig("s1", ["clinical"], "x")]), "company", "co-lilly")
+        assert out["entity"]["name"] == "Eli Lilly"
 
     def test_items_capped_per_kbq(self):
         # 30 clinical signals → KBQ-3 caps the list (don't dump everything)

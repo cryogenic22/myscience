@@ -772,3 +772,67 @@ html.dark .glass { background: rgba(23,23,26,0.8); }
 .workspace-canvas * {
   font-family: var(--font-body);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — "ds" primitives (Linear-inspired)
+   ──────────────────────────────────────────────────────────────────
+   Why: 265+ inline `border: 1px solid` calls wrap every card/row/section,
+   and nested borders read as "boxed/squished text". The fix, per the
+   long-stated token intent (line ~54): separate with ELEVATION + WHITESPACE
+   + a single hairline divider — not an outline around everything.
+
+   Reference systems: Linear (surface tiers, hairline dividers, restraint),
+   Vercel/Geist (monochrome + one accent), Stripe (generous rhythm).
+   Use these classes instead of inline borders.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* A card separates by background elevation + a soft shadow — NO outline.
+   Sits on a lower tier; nest content without re-bordering. */
+.ds-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-panel, 16px);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5, 24px);
+}
+.ds-card--flush { padding: 0; overflow: hidden; }
+
+/* A subtle inset panel — for nested groupings. Background step, no border. */
+.ds-panel {
+  background: var(--color-surface-2);
+  border-radius: var(--radius-card, 12px);
+  padding: var(--space-4, 16px);
+}
+
+/* The ONLY sanctioned line: a hairline divider between rows/sections.
+   A single horizontal rule — never a full box. */
+.ds-divider { height: 1px; background: var(--color-divider, var(--color-line)); border: 0; margin: 0; }
+
+/* A list row: separated from siblings by a bottom hairline, last row none.
+   Replaces the "every row in its own bordered box" anti-pattern. */
+.ds-row {
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border-bottom: 1px solid var(--color-line);
+}
+.ds-row:last-child { border-bottom: 0; }
+.ds-row--hover { transition: background 120ms var(--motion-out, ease); }
+.ds-row--hover:hover { background: var(--color-surface-2); }
+
+/* Section label — small caps, generous tracking (the editorial register). */
+.ds-eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--color-ink-3);
+}
+
+/* A quiet status chip — tinted background, NO border. */
+.ds-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border-radius: var(--radius-pill, 999px);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  background: var(--color-surface-3); color: var(--color-ink-2);
+}
+
+/* Stronger light-theme elevation so cards read WITHOUT borders.
+   (Default white-on-#F8F8F6 was too close; deepen the page base.) */
+:root { --ds-page-bg: #F4F4F2; }
+[data-theme="dark"] { --ds-page-bg: #0d1117; }
+

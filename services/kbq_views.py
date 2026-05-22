@@ -58,7 +58,8 @@ def _item_from_signal(sig: dict) -> dict:
 def _fetch_entity_signals(db, entity_type: str, entity_id: str) -> list[dict]:
     sql = """
         SELECT id, kbq_tags, headline, impact_tier, impact_score,
-               confidence_tier, evidence_document_ids, created_at, status
+               confidence_tier, evidence_document_ids, created_at, status,
+               primary_entity_name
           FROM signals
          WHERE primary_entity_type = %s
            AND primary_entity_id = %s
@@ -103,8 +104,9 @@ def build_entity_kbqs(db, entity_type: str, entity_id: str) -> dict:
         })
 
     filled = sum(1 for v in views if v["items"])
+    name = next((s.get("primary_entity_name") for s in signals if s.get("primary_entity_name")), None)
     return {
-        "entity": {"type": entity_type, "id": entity_id},
+        "entity": {"type": entity_type, "id": entity_id, "name": name},
         "kbqs": views,
         "completeness": round(filled / len(KBQ_CATALOG), 4),
     }

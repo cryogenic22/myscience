@@ -158,6 +158,15 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
         <div className="text-[12px] mt-2" style={{ color: 'var(--color-ink-4)' }}>
           {signal.primary_entity_name} · {created}
         </div>
+        {signal.primary_entity_id && signal.primary_entity_id !== 'market' && signal.primary_entity_type && (
+          <a
+            href={`/ci/dossier/${signal.primary_entity_type}/${signal.primary_entity_id}`}
+            className="text-[12px] mt-1 inline-block"
+            style={{ color: 'var(--color-accent)', textDecoration: 'none' }}
+          >
+            View {signal.primary_entity_name || 'entity'} dossier →
+          </a>
+        )}
       </div>
 
       {/* Summary */}

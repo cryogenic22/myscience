@@ -1088,6 +1088,35 @@ export const bridgeApi = {
     }),
 };
 
+export interface KbqItem {
+  claim: string;
+  signal_id: string;
+  evidence_ids: string[];
+  impact_tier: 'high' | 'medium' | 'low' | null;
+  confidence_tier: string | null;
+  date: string | null;
+}
+export interface KbqView {
+  kbq: number;
+  title: string;
+  status: 'fresh' | 'insufficient';
+  items: KbqItem[];
+}
+export interface EntityKbqs {
+  entity: { type: string; id: string; name?: string | null };
+  kbqs: KbqView[];
+  completeness: number;
+}
+
+export const kbqApi = {
+  forEntity: (entityType: string, entityId: string): Promise<EntityKbqs> =>
+    fetch(`${BASE}/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}/kbq`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+        return r.json();
+      }),
+};
+
 export const agentsApi = {
   activity: (): Promise<import('./types/agents').AgentActivityResponse> =>
     fetch(`${BASE}/agents/activity`).then(async (r) => {
