@@ -1,0 +1,162 @@
+"""Loop ① — link free-text signal headlines to canonical entities.
+
+The signal producer buckets entityless news as 'market'. The high-value
+events (approvals, deals, readouts) name the company/drug in the headline
+("Lilly pens $202M deal…", "Savara Presented Phase 2 data…") but carry no
+structured entity link. This module mines the headline for a known entity.
+
+Approach — a gazetteer built from the DB (companies + drugs), with
+auto-generated short-form aliases (so "Lilly" matches "Eli Lilly and
+Company"). Headlines are scanned by n-gram lookup; the longest, most
+specific match wins. High precision for known entities — which is exactly
+the priority GLP-1 field (Novo, Lilly, Wegovy, Ozempic, Zepbound…). Misses
+fall back to the honest 'market' bucket.
+
+Deterministic, no LLM. Reuses DB entity tables rather than re-deriving.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+# Corporate suffixes / connective tokens stripped when generating aliases.
+_SUFFIX_TOKENS = {
+    "inc", "incorporated", "corp", "corporation", "co", "company", "ltd",
+    "limited", "llc", "plc", "ag", "sa", "nv", "as", "a/s", "se", "gmbh",
+    "holdings", "group", "and", "the", "pharmaceuticals", "pharmaceutical",
+    "pharma", "therapeutics", "biosciences", "bioscience", "biopharma",
+    "sciences", "laboratories", "labs",
+}
+_MIN_TOKEN_LEN = 4          # don't index short/ambiguous tokens ("eli", "ro")
+_MIN_NAME_LEN = 3
+_MAX_NGRAM = 4              # scan up to 4-word phrases
+
+
+def _normalize(text: str) -> str:
+    # Collapse to single spaces so index keys match the n-gram lookups in
+    # link() (which join tokens with single spaces).
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower())).strip()
+
+
+def _tokens(text: str) -> list[str]:
+    return [t for t in _normalize(text).split() if t]
+
+
+@dataclass
+class LinkResult:
+    entity_type: str
+    entity_id: str
+    canonical_name: str
+    confidence: float
+    matched_text: str
+
+
+class EntityLinker:
+    """Gazetteer linker. Call load() once, then link(headline) per signal."""
+
+    # confidence by how the name was matched
+    _CONF_FULL = 0.9        # full canonical name appeared
+    _CONF_ALIAS = 0.72      # a distinctive short-form token appeared
+
+    def __init__(self, db):
+        self.db = db
+        # normalized phrase -> (entity_type, entity_id, canonical_name, is_full)
+        self._index: dict[str, tuple[str, str, str, bool]] = {}
+        self._loaded = False
+
+    # ── build ──────────────────────────────────────────────────────
+    def load(self) -> "EntityLinker":
+        self._index = {}
+        self._load_companies()
+        self._load_drugs()
+        self._loaded = True
+        logger.info("entity linker: indexed %d phrases", len(self._index))
+        return self
+
+    def _add(self, phrase: str, etype: str, eid: str, cname: str, is_full: bool) -> None:
+        norm = _normalize(phrase)
+        if len(norm) < _MIN_NAME_LEN:
+            return
+        # Full-name entries win over alias entries for the same phrase.
+        existing = self._index.get(norm)
+        if existing is None or (is_full and not existing[3]):
+            self._index[norm] = (etype, str(eid), cname, is_full)
+
+    def _load_companies(self) -> None:
+        try:
+            rows = self.db.fetch_all(
+                "SELECT id, name FROM companies WHERE name IS NOT NULL", []
+            )
+        except Exception:
+            logger.exception("entity linker: companies query failed")
+            rows = []
+        for r in rows:
+            name = r.get("name") or ""
+            self._add(name, "company", r["id"], name, True)
+            # auto short-form aliases: distinctive tokens, suffixes stripped
+            for tok in _tokens(name):
+                if tok in _SUFFIX_TOKENS or len(tok) < _MIN_TOKEN_LEN:
+                    continue
+                self._add(tok, "company", r["id"], name, False)
+
+    def _load_drugs(self) -> None:
+        try:
+            rows = self.db.fetch_all(
+                "SELECT id, generic_name, brand_name FROM drugs", []
+            )
+        except Exception:
+            logger.exception("entity linker: drugs query failed")
+            rows = []
+        for r in rows:
+            generic = r.get("generic_name") or ""
+            brand = r.get("brand_name") or ""
+            canonical = generic or brand
+            if not canonical:
+                continue
+            if generic:
+                self._add(generic, "drug", r["id"], canonical, True)
+            if brand:
+                self._add(brand, "drug", r["id"], canonical, True)
+
+    # ── link ───────────────────────────────────────────────────────
+    def link(self, text: str) -> LinkResult | None:
+        """Return the best canonical entity mentioned in `text`, or None.
+
+        Longest matching phrase wins (most specific). Drugs are preferred
+        over companies at equal length (a named drug is more specific than
+        the company that makes it). Full-name matches beat alias matches.
+        """
+        if not self._loaded:
+            self.load()
+        toks = _tokens(text)
+        if not toks:
+            return None
+
+        best: tuple[int, int, int, str] | None = None  # (ngram_len, is_full, type_rank, phrase)
+        for i in range(len(toks)):
+            for n in range(min(_MAX_NGRAM, len(toks) - i), 0, -1):
+                phrase = " ".join(toks[i:i + n])
+                hit = self._index.get(phrase)
+                if not hit:
+                    continue
+                etype, _eid, _cn, is_full = hit
+                type_rank = 1 if etype == "drug" else 0
+                key = (n, 1 if is_full else 0, type_rank, phrase)
+                if best is None or key > best:
+                    best = key
+
+        if best is None:
+            return None
+        phrase = best[3]
+        etype, eid, cname, is_full = self._index[phrase]
+        return LinkResult(
+            entity_type=etype,
+            entity_id=eid,
+            canonical_name=cname,
+            confidence=self._CONF_FULL if is_full else self._CONF_ALIAS,
+            matched_text=phrase,
+        )

@@ -135,11 +135,14 @@ def _humanize(event_type: str) -> str:
     return (event_type or "market update").replace("_", " ").strip().capitalize()
 
 
-def _resolve_entity(event: dict) -> tuple[str, str, str | None]:
-    """(type, id, name). Falls back to a 'market' bucket when no entity is
-    resolvable — many news-derived events aren't entity-resolved yet, but
-    their headlines still carry real intelligence. 'market' is an honest
-    "unresolved", not a fabricated entity; the headline carries the content.
+_LINK_MIN_CONFIDENCE = 0.6
+
+
+def _resolve_entity(event: dict, linker=None) -> tuple[str, str, str | None]:
+    """(type, id, name). Prefers structured fields, then a gazetteer link
+    mined from the headline (Loop ①), then an honest 'market' fallback.
+    'market' is "unresolved", not a fabricated entity; the headline carries
+    the content regardless.
     """
     etype = event.get("primary_entity_type")
     eid = event.get("primary_entity_id")
@@ -148,15 +151,22 @@ def _resolve_entity(event: dict) -> tuple[str, str, str | None]:
     drug_id = event.get("drug_id")
     if drug_id:
         return ("drug", str(drug_id), event.get("primary_entity_name"))
+    # Loop ① — mine the headline/description for a known entity.
+    if linker is not None:
+        text = " ".join(filter(None, [event.get("description"), event.get("event_type")]))
+        hit = linker.link(text)
+        if hit is not None and hit.confidence >= _LINK_MIN_CONFIDENCE:
+            return (hit.entity_type, hit.entity_id, hit.canonical_name)
     return ("market", "market", event.get("primary_entity_name"))
 
 
-def build_signal_row(event: dict) -> dict | None:
+def build_signal_row(event: dict, linker=None) -> dict | None:
     """Map one market_events row → a signals insert row. Returns None only when
-    the event has no id; entityless events get a 'market' bucket."""
+    the event has no id; entityless events are linked via the gazetteer
+    (Loop ①) or fall back to a 'market' bucket."""
     if not event.get("id"):
         return None
-    entity_type, entity_id, entity_name = _resolve_entity(event)
+    entity_type, entity_id, entity_name = _resolve_entity(event, linker)
 
     event_type = event.get("event_type") or "general"
     description = event.get("description")
@@ -282,12 +292,20 @@ def promote_events(
         logger.exception("signal promoter: market_events query failed")
         events = []
 
+    # Loop ① — build the gazetteer once for this batch.
+    linker = None
+    try:
+        from services.entity_linker import EntityLinker
+        linker = EntityLinker(db).load()
+    except Exception:
+        logger.exception("signal promoter: entity linker unavailable; using market fallback")
+
     res.scanned = len(events)
     for event in events:
         if str(event["id"]) in existing:
             res.skipped_existing += 1
             continue
-        row = build_signal_row(event)
+        row = build_signal_row(event, linker)
         if row is None:
             res.skipped_no_entity += 1
             continue
@@ -302,3 +320,45 @@ def promote_events(
         res.scanned, res.promoted, res.skipped_existing, res.skipped_no_entity,
     )
     return res
+
+
+def relink_market_signals(db, *, limit: int = 5000) -> dict:
+    """Backfill: re-resolve existing signals stuck in the 'market' bucket by
+    mining their headline. Idempotent; only updates rows that newly resolve.
+    """
+    from services.entity_linker import EntityLinker
+
+    linker = EntityLinker(db).load()
+    try:
+        rows = db.fetch_all(
+            """SELECT id, headline, summary FROM signals
+                WHERE primary_entity_id = 'market'
+                LIMIT %s""",
+            [limit],
+        )
+    except Exception:
+        logger.exception("relink: market-signals query failed")
+        rows = []
+
+    scanned = relinked = 0
+    for r in rows:
+        scanned += 1
+        text = " ".join(filter(None, [r.get("headline"), r.get("summary")]))
+        hit = linker.link(text)
+        if hit is None or hit.confidence < _LINK_MIN_CONFIDENCE:
+            continue
+        try:
+            db.execute(
+                """UPDATE signals
+                      SET primary_entity_type = %s,
+                          primary_entity_id   = %s,
+                          primary_entity_name = %s
+                    WHERE id = %s""",
+                [hit.entity_type, hit.entity_id, hit.canonical_name, r["id"]],
+            )
+            relinked += 1
+        except Exception:
+            logger.exception("relink: update failed for signal %s", r.get("id"))
+
+    logger.info("relink: scanned=%d relinked=%d", scanned, relinked)
+    return {"scanned": scanned, "relinked": relinked}

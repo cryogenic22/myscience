@@ -17,7 +17,19 @@ from services.signal_promoter import (
     impact_for,
     build_signal_row,
     promote_events,
+    relink_market_signals,
 )
+from services.entity_linker import LinkResult
+
+
+class _StubLinker:
+    """Returns a fixed LinkResult for any text containing `needle`."""
+    def __init__(self, needle, result):
+        self.needle = needle
+        self.result = result
+
+    def link(self, text):
+        return self.result if text and self.needle in text.lower() else None
 
 VALID_CONFIDENCE = {"confirmed", "reported", "inferred", "disputed"}
 VALID_IMPACT_TIER = {"high", "medium", "low"}
@@ -156,6 +168,30 @@ class TestBuildSignalRow:
         assert row["primary_entity_type"] == "market"
         assert row["primary_entity_id"] == "market"
 
+    def test_linker_resolves_entityless_event(self):
+        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.72, "lilly"))
+        ev = _event(
+            primary_entity_id=None, primary_entity_type=None, drug_id=None,
+            description="Lilly pens $202M deal for biotech",
+        )
+        row = build_signal_row(ev, linker)
+        assert row["primary_entity_type"] == "company"
+        assert row["primary_entity_id"] == "co-lilly"
+        assert row["primary_entity_name"] == "Eli Lilly"
+
+    def test_low_confidence_link_falls_back_to_market(self):
+        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.4, "lilly"))
+        ev = _event(primary_entity_id=None, primary_entity_type=None, drug_id=None,
+                    description="Lilly maybe did something")
+        row = build_signal_row(ev, linker)
+        assert row["primary_entity_id"] == "market"
+
+    def test_structured_entity_beats_linker(self):
+        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.9, "lilly"))
+        ev = _event(description="Lilly news", primary_entity_id="co-novo", primary_entity_type="company")
+        row = build_signal_row(ev, linker)
+        assert row["primary_entity_id"] == "co-novo"  # structured field wins
+
     def test_falls_back_to_drug_id_when_primary_entity_missing(self):
         row = build_signal_row(_event(primary_entity_id=None, primary_entity_type=None, drug_id="drug-9"))
         assert row is not None
@@ -235,6 +271,34 @@ class TestPromoteEvents:
         promote_events(db)
         # producer must have issued at least one insert
         assert db.execute.called or db.executemany.called
+
+    def test_relink_updates_market_signals(self):
+        # Two market signals; one mentions Lilly, one doesn't.
+        market_rows = [
+            {"id": "s1", "headline": "Lilly pens $202M deal", "summary": None},
+            {"id": "s2", "headline": "Unknown biotech raised a round", "summary": None},
+        ]
+        companies = [{"id": "co-lilly", "name": "Eli Lilly and Company"}]
+
+        def fetch_all(sql, params=None):
+            s = (sql or "").lower()
+            if "from signals" in s and "primary_entity_id = 'market'" in s:
+                return market_rows
+            if "from companies" in s:
+                return companies
+            if "from drugs" in s:
+                return []
+            return []
+
+        db = MagicMock()
+        db.fetch_all = MagicMock(side_effect=fetch_all)
+        db.execute = MagicMock()
+        res = relink_market_signals(db)
+        assert res["scanned"] == 2
+        assert res["relinked"] == 1  # only the Lilly one resolves
+        # the UPDATE carried the resolved company id
+        update_calls = [c for c in db.execute.call_args_list if "update signals" in (c.args[0] or "").lower()]
+        assert update_calls and "co-lilly" in update_calls[0].args[1]
 
     def test_event_types_filter_passed_to_query(self):
         events = [_event(event_type="approval")]

@@ -18,6 +18,7 @@ from config import config
 from db import Database
 from services.signal_promoter import (
     promote_events,
+    relink_market_signals,
     build_signal_row,
     HIGH_SIGNIFICANCE_EVENT_TYPES,
 )
@@ -93,8 +94,20 @@ def main() -> None:
                     help="comma-separated event types to target")
     ap.add_argument("--high-significance", action="store_true",
                     help="target high-significance event types (approval, trial_readout, ma_deal, ...)")
+    ap.add_argument("--relink", action="store_true",
+                    help="re-resolve existing 'market'-bucket signals via the entity linker")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+
+    if args.relink:
+        db = Database(config.db.dsn)
+        db.connect()
+        try:
+            print(relink_market_signals(db, limit=args.limit))
+        finally:
+            db.close()
+        return
+
     event_types = None
     if args.high_significance:
         event_types = list(HIGH_SIGNIFICANCE_EVENT_TYPES)
