@@ -42,12 +42,27 @@ _MAX_NGRAM = 4              # scan up to 4-word phrases
 _EXCLUDE_COMPANY_RE = re.compile(
     r"\b(hospital|hospitals|university|universities|college|clinic|clinical\s+cent|"
     r"institute|institutes|foundation|ministry|nhs|national\s+institut|study\s+group|"
-    r"medical\s+cent|health\s+(system|service|services|network|authority)|"
+    r"medical\s+cent|medical\s+supply|health\s+(system|service|services|network|authority)|"
     r"department\s+of|school\s+of|board|council|authority|affiliated|military|"
-    r"army|navy|government|trust|research\s+cent|cancer\s+cent|academy|"
-    r"administration|consortium|network|registry|society|association)\b",
+    r"army|navy|government|trust|research\s+cent|cancer\s+cent|cancer\s+inst|"
+    r"oncology\s+group|academy|administration|consortium|network|registry|"
+    r"society|association|center\s+of|centre\s+of)\b",
     re.IGNORECASE,
 )
+
+# A real company name is short and noun-like. Headline fragments leaked into
+# the companies table ("Pfizer's Upjohn has merged with…") — drop anything
+# that reads like a sentence: too many words, or containing verbs/possessives.
+_MAX_COMPANY_WORDS = 6
+_SENTENCE_MARKERS = (" has ", " have ", " with ", " for ", " to ", " and the ",
+                     " merged ", " acquires ", " announces ", "'s ", " its ")
+
+
+def _looks_like_sentence(name: str) -> bool:
+    n = (name or "").lower()
+    if len(name.split()) > _MAX_COMPANY_WORDS:
+        return True
+    return any(m in f" {n} " for m in _SENTENCE_MARKERS)
 
 # Generic industry/English words that must NOT become company short-form
 # aliases (otherwise "a new drug" matches "The Harvard Drug Group").
@@ -129,9 +144,9 @@ class EntityLinker:
         skipped = 0
         for r in rows:
             name = r.get("name") or ""
-            if _EXCLUDE_COMPANY_RE.search(name):
+            if _EXCLUDE_COMPANY_RE.search(name) or _looks_like_sentence(name):
                 skipped += 1
-                continue  # trial site / hospital / agency — not a competitor
+                continue  # trial site / agency / headline fragment — not a competitor
             self._add(name, "company", r["id"], name, True)
             # auto short-form aliases: distinctive tokens, suffixes stripped
             for tok in _tokens(name):

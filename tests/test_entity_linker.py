@@ -111,6 +111,14 @@ class TestLink:
         assert lk.link("a new drug was approved today") is None      # 'drug' ≠ Harvard Drug Group
         assert lk.link("the group reported strong data") is None     # 'group' ≠ any company
 
+    def test_headline_fragment_company_names_excluded(self):
+        # companies table is polluted with headline fragments — must be dropped
+        db = MagicMock()
+        frag = [{"id": "co-junk", "name": "Pfizer's Upjohn has merged with Mylan to form Viatris"}]
+        db.fetch_all = MagicMock(side_effect=lambda sql, p=None: frag if "companies" in sql.lower() else [])
+        lk = EntityLinker(db).load()
+        assert lk.link("Pfizer's Upjohn has merged with Mylan to form Viatris") is None
+
     def test_excludes_non_drug_stoplist(self):
         # "weight loss" is a data-error drug row — must not resolve as a drug
         r = _linker().link("significant weight loss observed in the cohort")
