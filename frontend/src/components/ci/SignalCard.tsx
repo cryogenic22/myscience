@@ -1,6 +1,7 @@
 import type { Signal } from '../../api';
-import ConfidenceBadge from './ConfidenceBadge';
-import ImpactBadge from './ImpactBadge';
+import {
+  HELIX as H, catColor, catSoft, CAT_LABEL, IMPACT_TONE, IMPACT_WORD, fmtAge,
+} from '../../lib/helix';
 
 interface Props {
   signal: Signal;
@@ -8,66 +9,60 @@ interface Props {
   onSelect: () => void;
 }
 
+/**
+ * Signal list row — Helix language (polish loop). Category-coloured left rail
+ * (no box), category chip + impact-tier word, mono metadata. Consistent with
+ * the Sensing Feed. Selection lifts the background; no 1px outline.
+ */
 export default function SignalCard({ signal, selected, onSelect }: Props) {
-  const dateStr = signal.created_at
-    ? new Date(signal.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    : '';
-  const isSupersedence = !!signal.superseded_by;
+  const tag = signal.kbq_tags?.[0];
+  const color = catColor(tag);
+  const tier = signal.impact_tier ?? 'low';
+  const entity = signal.primary_entity_name && signal.primary_entity_id !== 'market'
+    ? signal.primary_entity_name
+    : 'Market';
+  const railColor = selected ? H.accent : tier === 'high' ? color : H.line;
 
   return (
     <button
       type="button"
       onClick={onSelect}
+      data-signal-card
+      data-selected={selected}
       className="w-full text-left transition-colors"
       style={{
         padding: '12px 14px',
-        background: selected ? 'var(--color-surface)' : 'transparent',
-        borderLeft: `2px solid ${selected ? 'var(--color-accent)' : 'transparent'}`,
-        borderBottom: '1px solid var(--color-line)',
+        background: selected ? H.panel2 : 'transparent',
+        borderLeft: `2px solid ${railColor}`,
+        borderBottom: `1px solid ${H.line}`,
       }}
     >
-      {isSupersedence && (
-        <div
-          className="text-[10px] uppercase mb-1"
-          style={{ color: '#A16207', letterSpacing: '0.06em', fontWeight: 500 }}
-        >
+      {signal.superseded_by && (
+        <div style={{ fontFamily: H.mono, fontSize: 9, color: H.warn, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
           ⤴ Updates earlier signal
         </div>
       )}
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <div
-            className="text-[13px] font-medium leading-snug"
-            style={{ color: 'var(--color-ink)' }}
-          >
-            {signal.headline}
-          </div>
-          {signal.primary_entity_name && (
-            <div
-              className="text-[11px] mt-1 truncate"
-              style={{ color: 'var(--color-ink-4)' }}
-            >
-              {signal.primary_entity_name}
-              {signal.kbq_tags.length > 0 && (
-                <>
-                  <span> · </span>
-                  <span style={{ color: 'var(--color-ink-3)' }}>
-                    {signal.kbq_tags.slice(0, 2).join(', ')}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-2">
-          <ConfidenceBadge tier={signal.confidence_tier} />
-          <ImpactBadge tier={signal.impact_tier} />
-        </div>
-        <span className="text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
-          {dateStr}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{
+          fontFamily: H.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.07em',
+          textTransform: 'uppercase', padding: '1px 6px', borderRadius: 4,
+          background: catSoft(tag, 0.16), color,
+        }}>
+          {CAT_LABEL[tag ?? ''] ?? 'Signal'}
         </span>
+        <span style={{ fontFamily: H.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.07em', color: IMPACT_TONE[tier], textTransform: 'uppercase' }}>
+          {IMPACT_WORD[tier]}
+        </span>
+        <span style={{ marginLeft: 'auto', fontFamily: H.mono, fontSize: 9, color: H.faint }}>
+          {fmtAge(signal.created_at)}
+        </span>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, color: H.ink }}>
+        {signal.headline}
+      </div>
+      <div style={{ fontFamily: H.mono, fontSize: 9.5, marginTop: 5, color: H.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {entity}
+        {signal.confidence_tier && <span> · {signal.confidence_tier}</span>}
       </div>
     </button>
   );

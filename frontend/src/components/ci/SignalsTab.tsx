@@ -129,14 +129,14 @@ export default function SignalsTab({
   );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0a0b0e' }}>
       {/* Filter bar */}
       <div
         className="shrink-0 flex items-center gap-3 flex-wrap"
         style={{
           padding: '10px 16px',
-          borderBottom: '1px solid var(--color-line)',
-          background: 'var(--color-surface)',
+          borderBottom: '1px solid #23262d',
+          background: '#0a0b0e',
         }}
       >
         <select
@@ -146,9 +146,10 @@ export default function SignalsTab({
           style={{
             padding: '4px 8px',
             borderRadius: '6px',
-            border: '1px solid var(--color-line)',
-            background: 'var(--color-surface)',
-            color: 'var(--color-ink)',
+            border: '1px solid #2c3038',
+            background: '#12141a',
+            color: '#e8eaed',
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
           }}
         >
           {IMPACT_OPTIONS.map((o) => (
@@ -156,8 +157,8 @@ export default function SignalsTab({
           ))}
         </select>
         <KBQFilter selected={kbq} onSelect={setKbq} />
-        <span className="ml-auto text-[11px]" style={{ color: 'var(--color-ink-4)' }}>
-          {loading ? 'Loading…' : `${filtered.length} signal${filtered.length === 1 ? '' : 's'}`}
+        <span className="ml-auto" style={{ color: '#8a8f99', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
+          {loading ? 'LOADING…' : `${filtered.length} SIGNAL${filtered.length === 1 ? '' : 'S'}`}
         </span>
       </div>
 
@@ -187,7 +188,7 @@ export default function SignalsTab({
         ) : (
           <div
             className="flex-1 flex items-center justify-center text-[13px]"
-            style={{ color: 'var(--color-ink-4)' }}
+            style={{ color: '#5a5f69', background: '#0a0b0e' }}
           >
             {filtered.length === 0 ? '' : 'Select a signal'}
           </div>
