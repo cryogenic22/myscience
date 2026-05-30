@@ -18,11 +18,37 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from services.facts_ledger import assert_fact
+from services.facts_ledger import assert_fact, DEFAULT_FACT_CLASS, FACT_CLASSES
 
 logger = logging.getLogger(__name__)
 
 CREATED_BY = "data_automaton"
+
+# Z1 — predicate → fact_class taxonomy. Reference class (peer-reviewed
+# scientific truth) does not arise from market_events; it comes from the
+# scientific-literature pipeline. Inferred class is produced by the
+# Intelligence Agent's synthesis, not by ingestion. Ingest emits only
+# corporate (the default) and signal.
+_PREDICATE_TO_CLASS: dict[str, str] = {
+    "regulatory_approval":  "corporate",
+    "regulatory_setback":   "corporate",
+    "trial_result":         "corporate",
+    "ma_deal":              "corporate",
+    "patent_event":         "corporate",
+    "safety_signal":        "signal",
+    "pricing_intent":       "signal",
+    "supply_disruption":    "signal",
+    "market_event":         "corporate",  # fallback predicate from event_to_fact
+}
+
+
+def classify_predicate(predicate: Optional[str]) -> str:
+    """Map a fact predicate to its fact_class. Unknown predicates default
+    to corporate (the safe mid-ceiling class). Z1 / SPEC_Z1."""
+    if not predicate:
+        return DEFAULT_FACT_CLASS
+    cls = _PREDICATE_TO_CLASS.get(predicate.lower(), DEFAULT_FACT_CLASS)
+    return cls if cls in FACT_CLASSES else DEFAULT_FACT_CLASS
 
 # market_event.event_type → fact predicate (the canonical claim name).
 _EVENT_PREDICATE: dict[str, str] = {
@@ -48,6 +74,7 @@ class FactDraft:
     object_value: dict
     valid_from: Optional[datetime]
     confidence: float
+    fact_class: str = DEFAULT_FACT_CLASS
 
 
 @dataclass
@@ -114,6 +141,7 @@ def event_to_fact(event: dict) -> Optional[FactDraft]:
         object_value=object_value,
         valid_from=valid_from,
         confidence=_clamp_confidence(event.get("trust_score")),
+        fact_class=classify_predicate(predicate),
     )
 
 
@@ -160,6 +188,7 @@ def _assert_with_status(db, event: dict) -> tuple[str, Optional[str]]:
         valid_from=draft.valid_from,
         confidence=draft.confidence,
         created_by=CREATED_BY,
+        fact_class=draft.fact_class,
     )
     return ("asserted", fid)
 
