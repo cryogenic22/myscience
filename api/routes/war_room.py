@@ -23,6 +23,11 @@ from services.move_suggester import (
     SUGGESTER_RULE_VERSION,
     suggest_moves as _engine_suggest_moves,
 )
+from services.scenario_state import (
+    InvalidScenarioMode,
+    ScenarioNotFound,
+    transition_mode as _transition_scenario_mode,
+)
 from services.war_game_engine import (
     MOVE_TYPES,
     generate_reactions as _engine_generate,
@@ -78,6 +83,15 @@ class CommentPatchBody(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
 
 
+class PatchModeBody(BaseModel):
+    """W1 — switch the war room's scenario mode.
+
+    The string is validated against `services.scenario_state.ScenarioMode`
+    inside the service layer; a typo here returns 400 from the route.
+    """
+    mode: str = Field(min_length=1, max_length=32)
+
+
 # ────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────
@@ -102,6 +116,10 @@ def _room_to_dict(row: dict) -> dict:
         "source_signal_id": str(row["source_signal_id"]) if row.get("source_signal_id") else None,
         "game_phase": row.get("game_phase"),
         "status": row.get("status"),
+        # W1 — scenario mode toggle. Default 'guided' so pre-W1 rows that
+        # haven't backfilled the column still emit a sensible value.
+        "mode": row.get("mode") or "guided",
+        "mode_changed_at": _iso(row.get("mode_changed_at")),
         "archived_at": _iso(row.get("archived_at")),
         "created_at": _iso(row.get("created_at")),
         "updated_at": _iso(row.get("updated_at")),
@@ -123,8 +141,8 @@ def _comment_to_dict(row: dict) -> dict:
 
 _ROOM_COLS = """id, title, owner_user_id, scenario_question,
                 primary_entity_type, primary_entity_id, primary_entity_name,
-                source_signal_id, game_phase, status, archived_at,
-                created_at, updated_at"""
+                source_signal_id, game_phase, status, mode, mode_changed_at,
+                archived_at, created_at, updated_at"""
 
 
 def _round_to_dict(row: dict) -> dict:
@@ -962,3 +980,45 @@ def payoff_matrix(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return out
+
+
+# ════════════════════════════════════════════════════════════════════
+# W1 · PATCH /war-rooms/{id}/mode — scenario mode toggle
+# ════════════════════════════════════════════════════════════════════
+
+@router.patch("/{room_id}/mode")
+def patch_room_mode(
+    room_id: str,
+    body: PatchModeBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Switch the war room's scenario mode (W1).
+
+    Owner-only. Returns the scenario state dict (war_room_id, mode,
+    round_count, mode_changed_at). Same-mode transitions are no-ops
+    that return the current state without a DB write.
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    # Ownership check piggy-backs on the existing room fetch so we get
+    # a 404 for missing rooms and 403 for non-owners — same surface as
+    # patch_room. Without this, transition_mode would raise
+    # ScenarioNotFound (correct) but skip the owner guard.
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+    if str(room.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the room owner can change mode")
+
+    try:
+        state = _transition_scenario_mode(db, room_id, body.mode)
+    except InvalidScenarioMode as e:
+        raise HTTPException(400, str(e)) from e
+    except ScenarioNotFound as e:
+        # Race: the room was deleted between our owner-check and the
+        # transition. Surface as 404; the audit trail will show the close.
+        raise HTTPException(404, str(e)) from e
+
+    return state.to_dict()
