@@ -181,6 +181,86 @@ html.dark, [data-theme="dark"] {
 }
 
 /* ══════════════════════════════════════════════════════
+   ZS THEME (F1 · v7 design canon)
+   ══════════════════════════════════════════════════════
+   Light foundation with orange/teal accent semantics matching the v7
+   prototype line and the ZS Pharma Wargaming Framework engagement
+   visual register. Orange = singular call-to-action accent. Teal =
+   supporting affordance. Deep teal = war-room only (mode-shift made
+   visible — components opt in via `[data-warroom]` selectors).
+
+   Coexists with `light` (legacy blue accent) and `dark` (war-room dark)
+   during the migration. Activate via <html class="zs"> or
+   [data-theme="zs"]. */
+html.zs, [data-theme="zs"] {
+  /* Foundation — white surfaces, near-black ink */
+  --color-bg:           #fafafa;
+  --color-bg-2:         #f5f5f5;
+  --color-surface:      #ffffff;
+  --color-surface-2:    #fafafa;
+  --color-surface-3:    #ededed;
+
+  /* Text — 9-step neutral ramp */
+  --color-ink:          #0a0a0a;
+  --color-ink-2:        #262626;
+  --color-ink-3:        #525252;
+  --color-ink-4:        #a3a3a3;
+
+  /* Accent — singular ZS orange #F26C0D for primary CTAs */
+  --color-accent:       #F26C0D;
+  --color-accent-dark:  #c2570a;
+  --color-accent-soft:  rgba(242, 108, 13, 0.08);
+
+  /* Supporting affordance — ZS teal #1E8A99 for selected/secondary */
+  --color-teal:         #1E8A99;
+  --color-teal-dark:    #156d7a;
+  --color-teal-soft:    rgba(30, 138, 153, 0.08);
+
+  /* War-room only — opt in via [data-warroom] on the surface root */
+  --color-warroom:      #0F5D6A;
+
+  /* Lines + dividers */
+  --color-line:         #e5e5e5;
+  --color-line-2:       #ededed;
+  --color-divider:      #d4d4d4;
+  --color-divider-2:    #ededed;
+
+  /* Status — saturated for high-contrast against white */
+  --color-green:        #15803d;
+  --color-green-soft:   #ecfdf5;
+  --color-amber:        #b45309;
+  --color-amber-soft:   #fffbeb;
+  --color-red:          #b91c1c;
+  --color-red-soft:     #fef2f2;
+
+  /* Brand aliases follow accent */
+  --color-brand:        var(--color-accent);
+  --color-brand-dark:   var(--color-accent-dark);
+
+  /* Typography pairs Source Serif 4 with Inter + JetBrains Mono.
+     Existing surfaces fall back to display (Fraunces) until they opt in. */
+  --font-display: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+
+  /* Shadow stack — gentler in light theme */
+  --shadow-xs:  0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.06);
+  --shadow-md:  0 8px 24px rgba(0,0,0,0.08);
+  --shadow-lg:  0 20px 60px rgba(0,0,0,0.10);
+  --shadow-glow: 0 0 0 1px var(--color-accent-soft), 0 8px 32px rgba(242,108,13,0.18);
+}
+
+/* War-room mode-shift: any subtree marked [data-warroom="active"] under the
+   ZS theme picks up the deeper teal as its accent, signalling "you're in
+   the simulation now" without changing the rest of the app. */
+html.zs [data-warroom="active"], [data-theme="zs"] [data-warroom="active"] {
+  --color-accent:       var(--color-warroom);
+  --color-accent-dark:  #094650;
+  --color-accent-soft:  rgba(15, 93, 106, 0.10);
+}
+
+/* ══════════════════════════════════════════════════════
    BASE
    ══════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
