@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CI as a Platform Application — Status, Reuse Gap & Plan</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Fraunces",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:56px 28px 120px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:40px;letter-spacing:-.02em;margin:0 0 6px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:26px;letter-spacing:-.01em;
+    margin:58px 0 16px;padding-top:22px;border-top:1px solid var(--line);}
+  h3{font-size:17px;margin:26px 0 10px;color:var(--ink);}
+  p{color:var(--ink2);margin:0 0 14px;}
+  .sub{color:var(--ink3);font-size:15px;margin:0 0 26px;}
+  .mono{font-family:var(--mono);}
+  code{font-family:var(--mono);font-size:.85em;background:var(--surface2);
+    padding:2px 6px;border-radius:5px;color:var(--teal);}
+  a{color:var(--accent);text-decoration:none;}
+  .chip{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+    text-transform:uppercase;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap;}
+  .c-red{background:rgba(248,113,113,.14);color:var(--red);}
+  .c-amber{background:rgba(251,191,36,.14);color:var(--amber);}
+  .c-green{background:rgba(52,211,153,.14);color:var(--green);}
+  .c-blue{background:rgba(91,140,255,.16);color:var(--accent);}
+  .c-violet{background:rgba(167,139,250,.16);color:var(--violet);}
+  .verdict{background:var(--surface);border-radius:16px;padding:28px 30px;margin:30px 0 8px;
+    border-left:3px solid var(--accent);}
+  .verdict .big{font-family:var(--serif);font-size:23px;color:var(--ink);margin:8px 0 10px;line-height:1.35;}
+  .card{background:var(--surface);border-radius:14px;padding:22px 24px;margin:14px 0;}
+  table{width:100%;border-collapse:collapse;margin:10px 0 6px;font-size:14px;}
+  th,td{text-align:left;padding:10px 11px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600;}
+  td{color:var(--ink2);}
+  td.now{color:var(--ink3);}
+  td.use{color:var(--ink);}
+  ul{margin:6px 0 16px;padding-left:22px;color:var(--ink2);}
+  li{margin:6px 0;}
+  .scorerow{display:grid;grid-template-columns:210px 1fr 52px;gap:14px;align-items:center;
+    padding:11px 0;border-bottom:1px solid var(--line);}
+  .scorerow .name{font-size:14px;color:var(--ink);}
+  .scorerow .pct{font-family:var(--mono);font-size:13px;color:var(--ink2);text-align:right;}
+  .scorerow .note{grid-column:1 / -1;color:var(--ink3);font-size:12.5px;margin-top:-2px;}
+  .meter{height:8px;border-radius:999px;background:var(--surface3);overflow:hidden;}
+  .meter > i{display:block;height:100%;border-radius:999px;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink3);margin:10px 0 0;}
+  .stack{display:flex;flex-direction:column;gap:2px;margin:18px 0 8px;font-family:var(--mono);font-size:13px;}
+  .layer{padding:14px 18px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:14px;}
+  .layer .lbl{color:var(--ink);font-weight:600;}
+  .layer .desc{color:var(--ink3);font-size:12px;text-align:right;}
+  .l-app{background:rgba(91,140,255,.12);}
+  .l-know{background:rgba(94,234,212,.10);}
+  .l-sense{background:rgba(52,211,153,.10);}
+  .l-store{background:var(--surface2);}
+  .arrow{text-align:center;color:var(--ink4);font-size:13px;padding:1px 0;}
+  .foot{margin-top:60px;color:var(--ink4);font-size:13px;font-family:var(--mono);
+    border-top:1px solid var(--line);padding-top:18px;}
+  .num{font-family:var(--mono);color:var(--ink4);font-size:12px;margin-right:8px;}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--ink4);}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:720px){.twocol{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="num mono">MARKET ZERO · INTERNAL · 01 JUN 2026 · REV 2 (supersedes rev 1)</div>
+  <h1>CI as a Platform Application</h1>
+  <p class="sub">You pushed on two things: (1) “is it <em>really</em> a knowledge base?” and (2) “are we
+  building CI <em>on</em> the sensing + knowledge layer we already have, so one substrate can drive many
+  applications?” This rev answers both with a full substrate inventory (3 codebase sweeps), a concrete
+  reuse-gap table, an honest scorecard, and a remediation plan reframed around <strong>composition over
+  the existing platform</strong> rather than building a CI silo.</p>
+
+  <div class="verdict">
+    <span class="chip c-blue">Headline</span>
+    <div class="big">You’re right on both counts. The platform substrate is real and deep — but my dossier
+    work used almost none of it. It reuses <strong>2 of ~9</strong> available knowledge primitives
+    (facts ledger + engagement FSM) and ignores the entity resolver, hybrid search, graph, metrics, the
+    evidence ledger, and the existing dossier composer. That single choice is what makes it both a
+    <em>content regression</em> and “not really a knowledge base yet.”</div>
+    <p style="margin:0;color:var(--ink3);font-size:14.5px;">The fix is not “build more CI” — it’s
+    <strong>re-wire the dossier to compose the substrate that already exists</strong>. That also proves
+    the architecture you want: sensing + knowledge as shared services, CI as one thin application on top
+    (war-gaming, catalog, chat are others).</p>
+  </div>
+
+  <!-- ───────────────── THE SUBSTRATE ───────────────── -->
+  <h2>1 · The substrate already exists (and is mature)</h2>
+  <p class="sub">Three parallel codebase sweeps (sensing, knowledge, reuse) confirm a layered platform.
+  An application like CI <em>should</em> sit on top and compose these — not re-read raw tables.</p>
+
+  <div class="stack">
+    <div class="layer l-app"><span class="lbl">APPLICATIONS</span>
+      <span class="desc">CI / war-gaming · Catalog · Chat/GraphRAG · &lt;your next app&gt;</span></div>
+    <div class="arrow">▲ composes ▲</div>
+    <div class="layer l-know"><span class="lbl">KNOWLEDGE LAYER</span>
+      <span class="desc">HybridSearch · GraphTraversal · GraphAnalytics · PharmaMetrics ·<br>
+      compose_dossier · evidence_ledger · CTX packaging · domain pack</span></div>
+    <div class="arrow">▲ reads / resolves ▲</div>
+    <div class="layer l-sense"><span class="lbl">SENSING LAYER</span>
+      <span class="desc">15 connectors · ETL pipeline · 6-strategy entity_resolver ·<br>
+      hook system · event_collector → facts ledger · signals</span></div>
+    <div class="arrow">▲ writes ▲</div>
+    <div class="layer l-store"><span class="lbl">STORE</span>
+      <span class="desc">Postgres + pgvector · entity tables · entity_links graph · facts · evidence</span></div>
+  </div>
+
+  <div class="twocol">
+    <div class="card">
+      <h3 style="margin-top:0">Sensing primitives <span class="tag">(reuse, don’t rebuild)</span></h3>
+      <ul style="margin-bottom:0">
+        <li><code>connectors/*</code> — 15 sources → typed <code>RawRecord</code> w/ provenance</li>
+        <li><code>integration/pipeline.py</code> — normalize→resolve→embed→store→cross-link</li>
+        <li><code>integration/entity_resolver.py</code> — <strong>6-strategy resolution cascade</strong> (exact→alias→fuzzy→embedding→LLM→auto-create)</li>
+        <li><code>pipeline_hooks.py</code> — PRE/POST_STORE, ON_NEW_ENTITY, quality gates, HITL</li>
+        <li><code>event_collector.py</code> → <code>facts_ledger</code> (writes facts on every event)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Knowledge primitives <span class="tag">(compose, don’t re-read)</span></h3>
+      <ul style="margin-bottom:0">
+        <li><code>search.py</code> HybridSearch — pgvector + metadata</li>
+        <li><code>graph.py</code> GraphTraversal — neighborhood, path_between</li>
+        <li><code>graph_analytics.py</code> — influence, competitive_clusters</li>
+        <li><code>metrics.py</code> PharmaMetrics — competitive_landscape, portfolio (materialized views)</li>
+        <li><code>dossier.py</code> compose_dossier — entity + moves + evidence + related</li>
+        <li><code>evidence_ledger.py</code> — claims ↔ evidence, content-hashed snapshots</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ───────────────── REUSE GAP ───────────────── -->
+  <h2>2 · The reuse gap — what my dossier KB actually does</h2>
+  <p class="sub">Confirmed by reading the imports of <code>services/dossier_kb.py</code>: it imports only
+  <code>get_engagement</code> and <code>facts_as_of</code>. Everything else in the knowledge layer is on
+  the shelf, unused.</p>
+
+  <table>
+    <thead><tr>
+      <th style="width:20%">CI capability</th>
+      <th style="width:32%">What it does now</th>
+      <th style="width:33%">Existing component it should compose</th>
+      <th style="width:15%">Status</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td class="use">Asset → entity</td>
+        <td class="now"><code>parse_asset_ref("drug:wegovy")</code> → passes the raw slug <code>"wegovy"</code> straight to the facts query.</td>
+        <td><code>integration/entity_resolver.py</code> (6-strategy) or a drugs-table canonical lookup → real entity id.</td>
+        <td><span class="chip c-red">Ignored</span></td>
+      </tr>
+      <tr>
+        <td class="use">Dossier content</td>
+        <td class="now">Reads <strong>facts ledger only</strong> via <code>facts_as_of()</code>.</td>
+        <td><code>compose_dossier()</code> already reads signals + evidence_records + entity_links + related entities. Plus HybridSearch / GraphTraversal for breadth.</td>
+        <td><span class="chip c-red">Ignored</span></td>
+      </tr>
+      <tr>
+        <td class="use">Competitive domain</td>
+        <td class="now">Only facts about the focal asset; competitors never queried.</td>
+        <td><code>graph_analytics.competitive_clusters()</code> + <code>metrics.competitive_landscape()</code> + the BCB’s competitive_set.</td>
+        <td><span class="chip c-red">Ignored</span></td>
+      </tr>
+      <tr>
+        <td class="use">Clinical / pipeline domain</td>
+        <td class="now">Only whatever facts happen to exist.</td>
+        <td><code>metrics.drug_pipeline_strength()</code>, <code>trial_success_rate()</code>, <code>evidence_density()</code> (materialized views — trustworthy, no LLM math).</td>
+        <td><span class="chip c-red">Ignored</span></td>
+      </tr>
+      <tr>
+        <td class="use">Evidence grounding</td>
+        <td class="now"><code>sourceLabel = created_by · confidence</code>; no link to a source record.</td>
+        <td><code>evidence_ledger</code> (claims ↔ evidence_records, content-hashed) for verifiable drill-through.</td>
+        <td><span class="chip c-red">Ignored</span></td>
+      </tr>
+      <tr>
+        <td class="use">Persistence + versioning</td>
+        <td class="use">New <code>dossier_snapshots</code> table; append-only supersession.</td>
+        <td>No prior equivalent — genuinely new, no duplication.</td>
+        <td><span class="chip c-green">New / good</span></td>
+      </tr>
+      <tr>
+        <td class="use">8-domain routing + UI</td>
+        <td class="use">Predicate→domain map; renders the F7 page.</td>
+        <td>No prior equivalent — correct new capability.</td>
+        <td><span class="chip c-green">New / good</span></td>
+      </tr>
+      <tr>
+        <td class="use">Engagement FSM / BCB</td>
+        <td class="use">Stage transitions, brief CRUD.</td>
+        <td><code>engagement.py</code>, <code>business_context_brief.py</code>.</td>
+        <td><span class="chip c-green">Reused</span></td>
+      </tr>
+      <tr>
+        <td class="use">Sensing feed (UI)</td>
+        <td class="use"><code>SensingFeed</code> → <code>/signals</code>.</td>
+        <td>Signals ledger via API.</td>
+        <td><span class="chip c-green">Reused</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="color:var(--ink3);font-size:13.5px;margin-top:8px;">Reuse score across CI capabilities ≈ <strong>65%</strong>
+  (FSM, BCB, signals, scenarios-via-metrics). The 35% gap is concentrated exactly in the dossier — the keystone —
+  where it matters most.</p>
+
+  <!-- ───────────────── DUPLICATION RISK ───────────────── -->
+  <h2>3 · Duplication already creeping in</h2>
+  <div class="card">
+    <p style="margin:0 0 10px"><span class="chip c-amber">Smell</span> &nbsp;Two competitor-dossier
+    builders now exist that don’t know about each other:</p>
+    <ul style="margin-bottom:6px">
+      <li><code>services/dossier.py · compose_dossier()</code> — the platform entity dossier (signals + evidence + graph).</li>
+      <li><code>services/war_game_adversary.py · build_competitor_dossier()</code> — a parallel, narrower competitor read for war-gaming.</li>
+      <li>…and now <code>services/dossier_kb.py</code> — a third assembly path that reads facts only.</li>
+    </ul>
+    <p style="margin:0;color:var(--ink3);font-size:13.5px;">Three code paths assembling “a picture of an entity,”
+    each from a different subset of the same tables. That’s the silo risk you flagged. The remediation collapses
+    them toward one composed source.</p>
+  </div>
+
+  <!-- ───────────────── SCORECARD ───────────────── -->
+  <h2>4 · Honest scorecard against the vision</h2>
+  <p class="sub">Chain: <span class="mono">sense → resolve → knowledge → dossier → synthesis → scenarios → war-game → decision</span>.
+  Completeness = “working with real data flowing end-to-end,” not “a component exists.”</p>
+
+  <div class="scorerow"><div class="name">Sensing (connectors→events/signals)</div>
+    <div class="meter"><i style="width:70%;background:var(--green)"></i></div><div class="pct">~70%</div>
+    <div class="note">15 connectors, ETL, hooks, event_collector→facts all real and running. The mature part.</div></div>
+  <div class="scorerow"><div class="name">Entity resolution</div>
+    <div class="meter"><i style="width:65%;background:var(--green)"></i></div><div class="pct">~65%</div>
+    <div class="note">6-strategy resolver is built and used <em>in ingest</em> — but the CI app bypasses it (the asset-ref bug).</div></div>
+  <div class="scorerow"><div class="name">Knowledge layer (search/graph/metrics)</div>
+    <div class="meter"><i style="width:70%;background:var(--green)"></i></div><div class="pct">~70%</div>
+    <div class="note">HybridSearch, GraphTraversal, PharmaMetrics, compose_dossier all exist + serve other surfaces. Underused by CI.</div></div>
+  <div class="scorerow"><div class="name">Facts ledger</div>
+    <div class="meter"><i style="width:45%;background:var(--amber)"></i></div><div class="pct">~45%</div>
+    <div class="note">Schema + temporal model + a writer (event_collector + backfill). Prod population unverified.</div></div>
+  <div class="scorerow"><div class="name">Dossier (the keystone)</div>
+    <div class="meter"><i style="width:35%;background:var(--amber)"></i></div><div class="pct">~35%</div>
+    <div class="note">Persistence/versioning/API/UI done — but single-source + unresolved asset ref = empty in practice. Below the legacy composer until re-wired.</div></div>
+  <div class="scorerow"><div class="name">Synthesis (insights)</div>
+    <div class="meter"><i style="width:20%;background:var(--red)"></i></div><div class="pct">~20%</div>
+    <div class="note"><code>insights</code> table + synthesis-test gate exist; unwired to dossier/engagement.</div></div>
+  <div class="scorerow"><div class="name">Scenarios / war-game</div>
+    <div class="meter"><i style="width:45%;background:var(--amber)"></i></div><div class="pct">~45%</div>
+    <div class="note">Engines real (scenario, Bayesian/Stackelberg/POMDP), but fed hand-authored config, not the dossier.</div></div>
+  <div class="scorerow"><div class="name">Decision loop</div>
+    <div class="meter"><i style="width:50%;background:var(--amber)"></i></div><div class="pct">~50%</div>
+    <div class="note">Briefs, evidence snapshots, signing, outcome scheduler exist; not closed back to dossier/learning.</div></div>
+
+  <div class="legend">
+    <span><span class="chip c-green">≥65%</span> real data, working</span>
+    <span><span class="chip c-amber">25–64%</span> substrate, partial</span>
+    <span><span class="chip c-red">&lt;25%</span> stub / unwired</span>
+  </div>
+  <p style="margin-top:18px;color:var(--ink3);font-size:14px;">Reframed takeaway: the <em>substrate</em> links score well
+  (sensing/resolution/knowledge ~65–70%). The weak links are the <em>application seams</em> that should compose them —
+  dossier, synthesis, and the dossier→war-game handoff. The platform is more built than my rev-1 implied; it’s the
+  <strong>wiring between layers</strong> that’s thin.</p>
+
+  <!-- ───────────────── REMEDIATION ───────────────── -->
+  <h2>5 · Remediation — compose the substrate</h2>
+  <p class="sub">Re-scoped from rev 1: instead of “fix the facts query,” the goal is “make the dossier a
+  <strong>composition</strong> of the knowledge layer.” Ordered so each step is observably true and reuses existing code.</p>
+
+  <table>
+    <thead><tr><th style="width:7%">Loop</th><th style="width:32%">Fix (reuse-first)</th><th>Unblocks · acceptance</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">R1</td>
+        <td class="use"><strong>Resolve the asset</strong> via the existing resolver. Replace <code>parse_asset_ref</code>’s
+          slug pass-through with an entity lookup (reuse <code>entity_resolver</code> / drugs-table canonical id).</td>
+        <td>Facts queries hit real entity ids. Acceptance: seeded-DB integration test returns ≥1 non-gap domain.</td></tr>
+      <tr><td class="mono">R2</td>
+        <td class="use"><strong>Compose, don’t single-source.</strong> Have <code>assemble_dossier</code> pull from
+          <code>compose_dossier</code> (signals+evidence+related) <em>and</em> facts, normalized into DomainView.</td>
+        <td>No regression vs. legacy dossier; domains populate from all sources. Acceptance: parity test vs. <code>compose_dossier</code>.</td></tr>
+      <tr><td class="mono">R3</td>
+        <td class="use"><strong>Metrics into domains.</strong> Feed <code>PharmaMetrics</code> (pipeline strength,
+          competitive_landscape, evidence_density) into clinical/competitive/pipeline domains.</td>
+        <td>Quant-backed domains, no hallucinated math. Acceptance: a known drug shows its real pipeline score.</td></tr>
+      <tr><td class="mono">R4</td>
+        <td class="use"><strong>Competitive breadth via graph.</strong> Use <code>graph_analytics.competitive_clusters</code>
+          + the BCB competitive_set to populate the competitive domain with real rivals.</td>
+        <td>Competitive domain reflects the landscape. Acceptance: a competitor appears with a cited edge.</td></tr>
+      <tr><td class="mono">R5</td>
+        <td class="use"><strong>Evidence drill-through.</strong> Link facts/claims → <code>evidence_records</code>;
+          make <code>onOpenFact</code> open the source snippet. Reuse <code>evidence_ledger</code>.</td>
+        <td>Every claim is verifiable. Acceptance: clicking a fact shows its source record.</td></tr>
+      <tr><td class="mono">R6</td>
+        <td class="use"><strong>Collapse duplication.</strong> Point <code>war_game_adversary.build_competitor_dossier</code>
+          at the same composed source; deprecate the parallel reads.</td>
+        <td>One entity-picture path. Acceptance: war-game competitor view == dossier competitive domain.</td></tr>
+      <tr><td class="mono">R7</td>
+        <td class="use"><strong>Close to the war-game.</strong> Auto-populate the BCB from the dossier; feed a
+          dossier snapshot (facts AS-OF scenario date) into the scenario/war-game engines.</td>
+        <td>The keystone feeds the simulation. Acceptance: a war-game run cites dossier-sourced grounding.</td></tr>
+      <tr><td class="mono">R8</td>
+        <td class="use"><strong>Verify the well + integration tests.</strong> Run <code>backfill_facts.py</code>,
+          assert facts row count, add real-Postgres integration tests for assembly (the gate rev-1 lacked).</td>
+        <td>“Real” is provable, not asserted from fake-DB unit tests. Acceptance: count &gt; 0; integration suite green.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="card" style="border-left:3px solid var(--accent);margin-top:26px;">
+    <h3 style="margin-top:0">Recommended next move</h3>
+    <p style="margin:0;color:var(--ink2);">Do <strong>R1 + R2 together</strong> as one loop, gated by an
+    integration test on a seeded Postgres (R8’s gate, pulled forward). That single loop converts the dossier from
+    “narrow facts reader that returns empty” into “a composition of the platform’s knowledge layer” — which is both
+    the honest definition of a knowledge base <em>and</em> the proof that CI is an application on shared substrate,
+    not a silo. R3–R7 then deepen it. I have written no code for this yet — it awaits your go.</p>
+  </div>
+
+  <!-- ───────────────── VISION ───────────────── -->
+  <h2>6 · The architecture this points to</h2>
+  <p>Your instinct generalizes: the sensing + knowledge layers are <strong>domain services</strong>, and CI is
+  the first <strong>application</strong> composed over them. The same substrate drives the Catalog (browse/curate),
+  Chat/GraphRAG (ask), and could drive future apps (a medical-affairs cockpit, a BD&amp;L screener, a payer-strategy
+  desk) — each a thin app that <em>composes</em> resolution + search + graph + metrics + evidence, never re-reading
+  raw tables. The dossier remediation above is the first real test of that contract. If the dossier can be rebuilt
+  as pure composition, the pattern is proven for every app after it.</p>
+
+  <div class="foot">
+    Claude Code · rev 2, supersedes rev 1 (<span class="mono">dossier-kb-status.html</span> @ 31 May) · based on 3 codebase
+    sweeps (sensing / knowledge / reuse-gap). Verified: <span class="mono">dossier_kb.py</span> imports only
+    <span class="mono">get_engagement, facts_as_of</span>; <span class="mono">event_collector.py:245</span> writes facts;
+    <span class="mono">entity_resolver.py</span>, <span class="mono">search.py</span>, <span class="mono">graph.py</span>,
+    <span class="mono">metrics.py</span>, <span class="mono">dossier.py</span>, <span class="mono">evidence_ledger.py</span>
+    exist and are used by other surfaces. Unverified: prod facts-table row count.
+  </div>
+
+</div>
+</body>
+</html>

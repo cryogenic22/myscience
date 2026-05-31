@@ -21,20 +21,21 @@
 > **Status taxonomy:** `proposed | triaged | blocked | in-progress | shipped | archived | wontfix`.
 > See [SPEC-042 §4.2](../specs/SPEC_042_centralized_product_backlog.md).
 
-## Dashboard (regenerated 2026-05-11)
+## Dashboard (regenerated 2026-06-01)
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 2     |
-| triaged       | 55    |
+| in-progress   | 3     |
+| triaged       | 69    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 5     |
 
-## Currently in flight (2)
+## Currently in flight (3)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
+- [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass) — frontend-claude / n/a
 
 ## 24-week sequencing — design-review plan
 
@@ -53,7 +54,7 @@
 | 23   | E11 · Multi-tenancy enforcement | **CRITICAL** SaaS-blocker fix | 3 | PB-B01 |
 | 24   | E12 · Prompt registry + active feedback | Closes the learning loop | 3 | PB-C01 |
 
-**Epic IDs:** PB-1XX = E1, PB-2XX = E2, …, PB-CXX = E12.
+**Epic IDs:** PB-1XX = E1, PB-2XX = E2, …, PB-CXX = E12. PB-13XX = E13, PB-EXX = E14.
 
 ## Recently shipped (last 90 days)
 
@@ -982,6 +983,118 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 > **E** multi-tenancy timing (→ keep week 23 if no external commit, Kapil) ·
 > **F** dossier-as-composition sign-off (→ adopt §7.2, backend+frontend) ·
 > **G** adversary objective functions per top-5 competitor (→ draft from data_strategy, 2-line override each, Riya+strategist).
+
+### E14 — Dossier as composition of the knowledge layer (KB remediation)
+
+> **Why:** the dossier is the keystone — good dossiers are what make synthesis,
+> scenarios, and war-gaming worth anything. KB1-KB3 (PRs #120/#121) shipped the
+> persistence + versioning + UI for the dossier-as-spine vision (PB-1304), but
+> `services/dossier_kb.py` assembles from the facts ledger (PB-1307) ONLY,
+> ignoring the mature knowledge layer the platform already has (entity_resolver,
+> compose_dossier, HybridSearch, GraphTraversal, PharmaMetrics, evidence_ledger).
+> Result: a content regression vs. the legacy dossier and an asset-ref bug that
+> returns empty dossiers in prod. This epic re-wires the dossier to COMPOSE the
+> existing substrate — delivering the PB-1304 contract for real and proving the
+> architecture (sensing + knowledge as shared services; CI as one application on
+> top). Source analysis: `docs/dossier-kb-status.html` (rev 2); delivery plan:
+> `docs/dossier-kb-loop-plan.html`. Each item = one loop:
+> SPEC -> DESIGN(reuse-first) -> BUILD(TDD) -> RED-TEAM -> FIX -> LOG -> next.
+
+#### [PB-E01] Resolve engagement asset to canonical entity id
+- **Type**: bug
+- **Status**: triaged
+- **Priority**: urgent
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: `assemble_dossier` passes the raw slug ('wegovy') to `facts_as_of`, but facts are keyed by canonical entity id (event_collector writes subject_entity_id=entity_id). Reuse `integration/entity_resolver` / drugs-table lookup to resolve `engagement.asset` before querying. The single true blocker — dossiers return empty even when the ledger is full. Acceptance: seeded-Postgres integration test returns >=1 non-gap domain.
+
+#### [PB-E02] Compose dossier from compose_dossier + facts (no single-source)
+- **Type**: refactor
+- **Status**: triaged
+- **Priority**: urgent
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: `assemble_dossier` should pull from the existing `services/dossier.py:compose_dossier` (signals + evidence_records + entity_links + related entities) AND the facts ledger, normalized into DomainView. Delivers the PB-1304 composition contract; closes the content regression vs. the legacy dossier. Acceptance: parity test — composed dossier covers >= the domains the legacy composer would.
+
+#### [PB-E03] Feed PharmaMetrics into clinical / competitive / pipeline domains
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Reuse `services/metrics.py:PharmaMetrics` (drug_pipeline_strength, trial_success_rate, evidence_density, competitive_landscape) so quant-backed domains carry real, materialized-view numbers — no hallucinated math. Acceptance: a known drug shows its actual pipeline score in the clinical/pipeline domain.
+
+#### [PB-E04] Competitive breadth via graph analytics + BCB competitive_set
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E03
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Populate the competitive domain with real rivals using `services/graph_analytics.py:competitive_clusters` + `GraphTraversal.neighborhood` + the BCB's competitive_set (not just the focal asset). Acceptance: a competitor appears in the competitive domain with a cited graph edge.
+
+#### [PB-E05] Evidence drill-through — claims to source records
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Link dossier facts/claims to `evidence_records` (reuse `services/evidence_ledger.py`); make the frontend `onOpenFact` open the source snippet. Delivers the anti-hallucination promise: every claim verifiable. Acceptance: clicking a fact in the dossier shows its source record.
+
+#### [PB-E06] Collapse competitor-dossier duplication onto one composed source
+- **Type**: refactor
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E04
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Three entity-picture builders now exist (compose_dossier, war_game_adversary.build_competitor_dossier, dossier_kb). Point `build_competitor_dossier` at the same composed source and deprecate the parallel reads. Acceptance: war-game competitor view == dossier competitive domain for the same entity.
+
+#### [PB-E07] Close dossier to war-game (auto-BCB + facts AS-OF)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: PB-E06
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Auto-populate the BCB from the dossier; feed a dossier snapshot (facts AS-OF the scenario date — temporal capability already in facts_as_of) into the scenario / war-game engines. Closes the keystone -> simulation handoff. Acceptance: a war-game run cites dossier-sourced grounding.
+
+#### [PB-E08] Verify facts-ledger population + real-Postgres integration tests
+- **Type**: infra
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: brainstorm
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Run `scripts/backfill_facts.py`, assert facts row count > 0, and add real-Postgres integration tests for dossier assembly (the gate the KB1-KB3 fake-DB unit tests structurally could not provide). Prevents "real" being asserted from fake-DB tests again. Acceptance: SELECT count(*) FROM facts > 0; integration suite green in CI.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
