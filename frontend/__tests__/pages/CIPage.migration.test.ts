@@ -76,13 +76,16 @@ describe('CIPage migration — D1 contract', () => {
     expect(CODE).not.toMatch(/CIPageAgentSection/);
   });
 
-  it('preserves all 8 tab behaviours (no functional regression)', () => {
-    // Quick smoke — every tab key from the pre-D1 ALL_TABS list still
-    // appears in the file. If the refactor accidentally dropped one,
-    // this fires before any user reports a missing tab.
+  it('preserves all 8 original tab behaviours plus new engagements tab', () => {
+    // Loop B added a 9th tab ('engagements') — assert all 9 present.
     for (const key of ['inbox', 'digest', 'signals', 'watchlist',
-                       'rooms', 'decisions', 'insights', 'reviewer']) {
+                       'engagements', 'rooms', 'decisions', 'insights',
+                       'reviewer']) {
       expect(CODE).toContain(`'${key}'`);
     }
+  });
+
+  it('Loop B — imports EngagementsTab container', () => {
+    expect(CODE).toMatch(/from\s+['"]\.\.\/components\/ci\/EngagementsTab['"]/);
   });
 });
