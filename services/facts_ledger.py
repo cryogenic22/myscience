@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 VALID_KINDS = ("point", "interval", "anticipatory")
 
+# Z1 — the four-class taxonomy from the v7 design canon. Each class carries a
+# differential agentic ceiling enforced at the publish boundary (Phase C).
+FACT_CLASSES = ("reference", "corporate", "signal", "inferred")
+DEFAULT_FACT_CLASS = "corporate"
+
 
 class InvalidFact(ValueError):
     """Raised when a fact violates the ledger's invariants."""
@@ -58,9 +63,12 @@ def _valid_at(fact: dict, as_of: datetime) -> bool:
     return True
 
 
-def _validate(kind: str, confidence: float, valid_from, valid_to) -> None:
+def _validate(kind: str, confidence: float, valid_from, valid_to,
+              fact_class: str = DEFAULT_FACT_CLASS) -> None:
     if kind not in VALID_KINDS:
         raise InvalidFact(f"kind must be one of {VALID_KINDS}, got {kind!r}")
+    if fact_class not in FACT_CLASSES:
+        raise InvalidFact(f"fact_class must be one of {FACT_CLASSES}, got {fact_class!r}")
     if not (0.0 <= confidence <= 1.0):
         raise InvalidFact(f"confidence must be in [0,1], got {confidence}")
     if kind == "interval" and valid_to is None:
@@ -73,12 +81,12 @@ _INSERT_SQL = """
     INSERT INTO facts (
         kind, predicate, subject_entity_type, subject_entity_id, object_value,
         valid_from, valid_to, asserted_at, source_doc_id, confidence,
-        created_by, tenant_scope
+        created_by, tenant_scope, fact_class
     ) VALUES (
         %(kind)s, %(predicate)s, %(subject_entity_type)s, %(subject_entity_id)s,
         %(object_value)s::jsonb, %(valid_from)s, %(valid_to)s,
         COALESCE(%(asserted_at)s, NOW()), %(source_doc_id)s, %(confidence)s,
-        %(created_by)s, %(tenant_scope)s
+        %(created_by)s, %(tenant_scope)s, %(fact_class)s
     )
     RETURNING id
 """
@@ -99,12 +107,13 @@ def assert_fact(
     confidence: float = 1.0,
     created_by: str = "system",
     tenant_scope: Optional[str] = None,
+    fact_class: str = DEFAULT_FACT_CLASS,
 ) -> str:
     """Insert a fact; returns its id. Validates the ledger invariants."""
     import json
     import uuid
 
-    _validate(kind, confidence, valid_from, valid_to)
+    _validate(kind, confidence, valid_from, valid_to, fact_class=fact_class)
     row = {
         "kind": kind,
         "predicate": predicate,
@@ -118,6 +127,7 @@ def assert_fact(
         "confidence": confidence,
         "created_by": created_by,
         "tenant_scope": tenant_scope,
+        "fact_class": fact_class,
     }
     try:
         res = db.fetch_one(_INSERT_SQL, row) if hasattr(db, "fetch_one") else None
