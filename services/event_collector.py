@@ -237,6 +237,35 @@ class EventCollector:
             ],
         )
 
+        # A1 (spine convergence): assert the corresponding fact into the
+        # ledger. Best-effort — ingest must never break if the ledger write
+        # fails. Idempotency keys on the event's row id (shared with backfill).
+        if entity:
+            try:
+                from services.fact_ingest import assert_event_fact
+
+                row = self.db.fetch_one(
+                    "SELECT id, created_at FROM market_events WHERE event_hash = %s",
+                    [event_hash],
+                )
+                if row and row.get("id"):
+                    assert_event_fact(self.db, {
+                        "id": row["id"],
+                        "event_type": candidate.event_type,
+                        "description": candidate.description,
+                        "source_url": candidate.source_url,
+                        "source_feed": candidate.source_feed,
+                        "event_date": candidate.event_date,
+                        "created_at": row.get("created_at"),
+                        "entity_type": entity.get("type"),
+                        "entity_id": entity.get("id"),
+                        "trust_score": trust_score,
+                    })
+            except Exception:
+                logger.debug(
+                    "fact assertion skipped for event %s", event_hash, exc_info=True
+                )
+
     def _bump_corroboration(self, event_id: str) -> None:
         """Increment corroboration_count for an existing event."""
         self.db.execute(
