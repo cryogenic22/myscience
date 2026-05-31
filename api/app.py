@@ -767,7 +767,39 @@ def create_app() -> FastAPI:
         except Exception:
             pass
 
-    # Register the lifespan callbacks
+    # Auto-apply pending SQL migrations on startup.
+    #
+    # Migrations are idempotent (every file uses IF NOT EXISTS / ON CONFLICT
+    # and is recorded in schema_migrations), so re-running is a no-op. This
+    # closes the recurring footgun where a new migration shipped in a deploy
+    # but the table never existed in prod until someone manually POSTed
+    # /debug/migrate — the cause of "relation ... does not exist" 500s.
+    #
+    # Disable with MZ_AUTO_MIGRATE=false (e.g. if migrations are gated to a
+    # separate release step). Best-effort: failures are logged, never fatal,
+    # so a bad migration can't take down the healthcheck.
+    def _run_pending_migrations():
+        if os.environ.get("MZ_AUTO_MIGRATE", "true").lower() == "false":
+            logger.info("Auto-migrate disabled (MZ_AUTO_MIGRATE=false)")
+            return
+        try:
+            from config import config as _cfg
+            from db import Database as _MigrateDB
+            from migrate import run_migrations as _run_migrations
+
+            mdb = _MigrateDB(_cfg.db.dsn)
+            mdb.connect()
+            try:
+                count = _run_migrations(mdb)
+                logger.info("Auto-migrate: %d migration(s) applied", count)
+            finally:
+                mdb.close()
+        except Exception:
+            logger.exception("Auto-migrate failed (continuing startup)")
+
+    # Register the lifespan callbacks. Migrations run FIRST so dependent
+    # services find their tables present.
+    app.state._startup_fns.insert(0, _run_pending_migrations)
     app.state._startup_fns.append(start_background_agents)
     app.state._shutdown_fns.append(_shutdown)
 

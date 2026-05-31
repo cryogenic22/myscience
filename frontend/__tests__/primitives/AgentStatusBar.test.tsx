@@ -9,6 +9,22 @@ describe('AgentStatusBar', () => {
     expect(screen.getByText('3 Agents Active')).toBeDefined();
   });
 
+  it('has no pill outline — separation is tone-shift only (regression)', () => {
+    // The header status bar previously wrapped its text in a `rounded-lg
+    // border` capsule (the "cylindrical outline around text" the design
+    // review kept flagging). Separation must come from the surface-2
+    // tone-shift, never a border utility or inline borderColor.
+    const { container } = render(
+      <AgentStatusBar status="sensing" message="x" agentCount={1} />,
+    );
+    const root = container.firstChild as HTMLElement;
+    // No standalone `border` utility class (border-* radius helpers are fine).
+    expect(/(^|\s)border(\s|$)/.test(root.className)).toBe(false);
+    // No inline border styling.
+    expect(root.style.border).toBe('');
+    expect(root.style.borderColor).toBe('');
+  });
+
   it('renders correct semantic color based on status', () => {
     const { container, rerender } = render(<AgentStatusBar status="idle" message="Idle" />);
     // Idle is neutral
