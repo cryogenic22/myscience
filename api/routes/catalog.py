@@ -2654,11 +2654,50 @@ def catalog_stats(db: Database = Depends(get_db)):
         if crow:
             change_stats = dict(crow)
 
+    # BE-22 — per-tier rollup. Aggregates across the source registry
+    # (T1 / T2 / T3 / T4) so the catalog overview can render the rollup
+    # cards. Falls back to zeros when the sources table isn't present.
+    by_tier: dict[str, dict] = {
+        "T1": {"sources": 0, "records": 0, "avg_freshness_hours": None, "avg_fair_score": None},
+        "T2": {"sources": 0, "records": 0, "avg_freshness_hours": None, "avg_fair_score": None},
+        "T3": {"sources": 0, "records": 0, "avg_freshness_hours": None, "avg_fair_score": None},
+        "T4": {"sources": 0, "records": 0, "avg_freshness_hours": None, "avg_fair_score": None},
+    }
+    if _table_exists(db, "sources"):
+        try:
+            tier_rows = db.fetch_all(
+                """
+                SELECT tier,
+                       COUNT(*)::int AS sources,
+                       COALESCE(SUM(record_count), 0)::int AS records,
+                       AVG(EXTRACT(EPOCH FROM (NOW() - last_refreshed_at)) / 3600.0)
+                           AS avg_freshness_hours,
+                       AVG(fair_score) AS avg_fair_score
+                  FROM sources
+                 WHERE tier IN ('T1','T2','T3','T4')
+                 GROUP BY tier
+                """
+            ) or []
+            for r in tier_rows:
+                tier = str(r.get("tier") or "")
+                if tier in by_tier:
+                    by_tier[tier] = {
+                        "sources": int(r.get("sources") or 0),
+                        "records": int(r.get("records") or 0),
+                        "avg_freshness_hours":
+                            float(r["avg_freshness_hours"]) if r.get("avg_freshness_hours") is not None else None,
+                        "avg_fair_score":
+                            float(r["avg_fair_score"]) if r.get("avg_fair_score") is not None else None,
+                    }
+        except Exception:
+            logger.exception("catalog_stats: by_tier rollup failed; returning zeros")
+
     return {
         "entity_counts": stats,
         "quality": quality_stats,
         "hitl": hitl_stats,
         "changes": change_stats,
+        "by_tier": by_tier,
     }
 
 
