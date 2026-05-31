@@ -30,9 +30,6 @@ import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
-import AgentIdentityStrip from '../components/primitives/AgentIdentityStrip';
-import AgentActivityFeed from '../components/primitives/AgentActivityFeed';
-import { useAgentActivity } from '../hooks/useAgentActivity';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
@@ -161,41 +158,43 @@ export default function CIPage() {
     </div>
   );
 
+  // D1.5 — agent activity feed removed from the sidebar per user
+  // feedback. Sentinel/Strategist/Curator status lived here but
+  // dominated the navigation visually. They'll resurface elsewhere
+  // (e.g. an "Agents" tab or a status drawer) once we know where
+  // they earn their square footage.
   const navFooter = (
-    <>
-      <CIPageAgentSection />
-      <div
-        className="flex items-center justify-between w-full"
-        style={{ fontSize: 'var(--text-xs)' }}
+    <div
+      className="flex items-center justify-between w-full"
+      style={{ fontSize: 'var(--text-xs)' }}
+    >
+      <a
+        href="/connectors"
+        className="hover:underline transition-opacity"
+        style={{
+          color: 'var(--color-ink-4)',
+          fontFamily: 'var(--font-mono)',
+        }}
       >
-        <a
-          href="/connectors"
-          className="hover:underline transition-opacity"
+        Connectors →
+      </a>
+      {role && (
+        <span
           style={{
-            color: 'var(--color-ink-4)',
+            background: 'var(--color-surface-3)',
+            color: 'var(--color-ink-3)',
             fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+            textTransform: 'uppercase',
+            paddingInline: 'var(--space-2)',
+            paddingBlock: 2,
+            borderRadius: 'var(--radius-pill)',
           }}
         >
-          Connectors →
-        </a>
-        {role && (
-          <span
-            style={{
-              background: 'var(--color-surface-3)',
-              color: 'var(--color-ink-3)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              textTransform: 'uppercase',
-              paddingInline: 'var(--space-2)',
-              paddingBlock: 2,
-              borderRadius: 'var(--radius-pill)',
-            }}
-          >
-            {role}
-          </span>
-        )}
-      </div>
-    </>
+          {role}
+        </span>
+      )}
+    </div>
   );
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -280,10 +279,3 @@ export default function CIPage() {
   );
 }
 
-function CIPageAgentSection() {
-  const { activities, loading, error } = useAgentActivity();
-  if (error) {
-    return <AgentIdentityStrip />;
-  }
-  return <AgentActivityFeed activities={activities} loading={loading} />;
-}
