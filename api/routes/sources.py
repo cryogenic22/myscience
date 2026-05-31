@@ -181,6 +181,115 @@ def patch_source(
     return src.to_dict()
 
 
+@router.get("/{source_id}/fair")
+def source_fair(
+    source_id: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """BE-24 — 5-dimension FAIR breakdown for PB-804 source detail.
+
+    Per spec §8.3: coverage, latency, predictive_accuracy, stability,
+    license_health. Reads from the source registry directly so no extra
+    table is needed; missing dimensions surface as null + an explanation.
+    """
+    src = SourceRegistryService.get(db, source_id)
+    if not src:
+        raise HTTPException(404, f"source not found: {source_id}")
+    d = src.to_dict()
+
+    # Map registry fields to the 5 dimensions PB-804 renders. Each entry
+    # has value (0..1 or null), weight (default contribution to composite),
+    # explanation (one-line plain language).
+    coverage = d.get("coverage_score")
+    latency = d.get("latency_score")
+    predictive = d.get("predictive_accuracy")
+    stability = d.get("stability_score")
+    license_health = d.get("license_health_score")
+
+    fair = {
+        "coverage": {
+            "value": coverage, "weight": 0.25,
+            "explanation": "fraction of expected entities present",
+        },
+        "latency": {
+            "value": latency, "weight": 0.20,
+            "explanation": "how quickly new records reach us after publication",
+        },
+        "predictive_accuracy": {
+            "value": predictive, "weight": 0.20,
+            "explanation": "historical hit rate from source contributions to correct predictions",
+        },
+        "stability": {
+            "value": stability, "weight": 0.15,
+            "explanation": "schema/payload-shape volatility over time",
+        },
+        "license_health": {
+            "value": license_health, "weight": 0.20,
+            "explanation": "renewal recency + cost-tier health",
+        },
+    }
+    composite = d.get("fair_score") or d.get("quality_score")
+    return {
+        "source_id": source_id,
+        "composite": composite,
+        "by_dimension": fair,
+    }
+
+
+@router.get("/{source_id}/schema")
+def source_schema(
+    source_id: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """BE-24 — schema preview for PB-804: column types + 5 sample rows.
+
+    Reads from the source registry's `schema_json` (column → type map)
+    if present; samples are pulled from `source_samples` (5 most recent
+    by retrieved_at) when that table exists. Missing data surfaces as
+    empty arrays so the FE renders a "schema not yet captured"
+    empty state instead of 500.
+    """
+    src = SourceRegistryService.get(db, source_id)
+    if not src:
+        raise HTTPException(404, f"source not found: {source_id}")
+
+    columns: list[dict] = []
+    raw_schema = (src.to_dict() or {}).get("schema_json") or {}
+    if isinstance(raw_schema, dict):
+        for col, col_type in raw_schema.items():
+            columns.append({"name": str(col), "type": str(col_type)})
+
+    samples: list[dict] = []
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT sample_payload, retrieved_at
+              FROM source_samples
+             WHERE source_id = %s
+             ORDER BY retrieved_at DESC
+             LIMIT 5
+            """,
+            [source_id],
+        ) or []
+        for r in rows:
+            samples.append({
+                "payload":     r.get("sample_payload") or {},
+                "retrieved_at": r["retrieved_at"].isoformat()
+                                if r.get("retrieved_at") and hasattr(r["retrieved_at"], "isoformat")
+                                else None,
+            })
+    except Exception:
+        logger.debug("source_schema: source_samples unavailable")
+
+    return {
+        "source_id": source_id,
+        "columns":   columns,
+        "samples":   samples,
+    }
+
+
 @router.get("/{source_id}/history")
 def source_history(
     source_id: str,
