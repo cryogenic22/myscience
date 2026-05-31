@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dossier KB Remediation — 8-Loop Delivery Plan (E14)</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Fraunces",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:56px 28px 120px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:40px;letter-spacing:-.02em;margin:0 0 6px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:25px;margin:54px 0 14px;padding-top:22px;border-top:1px solid var(--line);}
+  p{color:var(--ink2);margin:0 0 14px;}
+  .sub{color:var(--ink3);font-size:15px;margin:0 0 24px;}
+  .mono{font-family:var(--mono);}
+  code{font-family:var(--mono);font-size:.84em;background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--teal);}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap;}
+  .c-red{background:rgba(248,113,113,.14);color:var(--red);}
+  .c-amber{background:rgba(251,191,36,.14);color:var(--amber);}
+  .c-green{background:rgba(52,211,153,.14);color:var(--green);}
+  .c-blue{background:rgba(91,140,255,.16);color:var(--accent);}
+  .c-violet{background:rgba(167,139,250,.16);color:var(--violet);}
+  .num{font-family:var(--mono);color:var(--ink4);font-size:12px;margin-right:8px;}
+  .engine{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 6px;}
+  .step{background:var(--surface2);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--ink2);}
+  .step.gate{background:rgba(248,113,113,.12);color:var(--red);font-weight:600;}
+  .step.log{background:rgba(52,211,153,.12);color:var(--green);}
+  .e-arrow{color:var(--ink4);font-size:13px;}
+  .loop{background:var(--surface);border-radius:14px;margin:16px 0;overflow:hidden;border-left:3px solid var(--accent);}
+  .loop.med{border-left-color:var(--amber);}
+  .loop.gate{border-left-color:var(--violet);}
+  .loop-head{display:flex;align-items:center;gap:12px;padding:18px 22px 12px;flex-wrap:wrap;}
+  .loop-id{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700;}
+  .loop-title{font-size:17px;color:var(--ink);font-weight:600;flex:1;min-width:200px;}
+  .loop-body{padding:0 22px 20px;}
+  .row{display:grid;grid-template-columns:118px 1fr;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:14px;}
+  .row .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);padding-top:2px;}
+  .row .v{color:var(--ink2);}
+  .row .v.deliver{color:var(--ink);}
+  .redteam{color:var(--red);}
+  .reuse{font-family:var(--mono);font-size:12.5px;color:var(--teal);}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 10px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);}
+  td{color:var(--ink2);}
+  .foot{margin-top:56px;color:var(--ink4);font-size:13px;font-family:var(--mono);border-top:1px solid var(--line);padding-top:18px;}
+  .callout{background:var(--surface);border-radius:14px;padding:22px 24px;margin:22px 0;border-left:3px solid var(--teal);}
+  .stat{display:inline-flex;flex-direction:column;gap:2px;margin-right:34px;}
+  .stat .big{font-family:var(--serif);font-size:30px;color:var(--ink);}
+  .stat .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="num mono">MARKET ZERO · INTERNAL · 01 JUN 2026</div>
+  <h1>Dossier KB Remediation — Delivery Plan</h1>
+  <p class="sub">Filed as backlog epic <strong>E14</strong> (<code>PB-E01</code>–<code>PB-E08</code>) in
+  <code>docs/PRODUCT_BACKLOG.md</code> (validator green, 77 items). This page is the execution contract:
+  what each loop delivers, the existing components it reuses, and the red-team gate it must pass before
+  I log it and move on. Source analysis: <code>docs/dossier-kb-status.html</code> (rev 2).</p>
+
+  <div style="margin:22px 0 10px;">
+    <span class="stat"><span class="big">8</span><span class="lbl">loops</span></span>
+    <span class="stat"><span class="big">8</span><span class="lbl">PRs</span></span>
+    <span class="stat"><span class="big">8</span><span class="lbl">red-team gates</span></span>
+    <span class="stat"><span class="big">6+</span><span class="lbl">primitives reused</span></span>
+  </div>
+
+  <!-- OPERATING CONTRACT -->
+  <h2>How every loop runs</h2>
+  <p>One discipline, repeated. A loop is not "done" until its red-team gate passes <em>and</em> the backlog item is logged.</p>
+  <div class="engine">
+    <span class="step">SPEC</span><span class="e-arrow">→</span>
+    <span class="step">DESIGN · reuse-first</span><span class="e-arrow">→</span>
+    <span class="step">BUILD · TDD</span><span class="e-arrow">→</span>
+    <span class="step gate">RED-TEAM</span><span class="e-arrow">→</span>
+    <span class="step">FIX</span><span class="e-arrow">→</span>
+    <span class="step gate">GATE PASS?</span><span class="e-arrow">→</span>
+    <span class="step log">LOG PB-Exx + PR</span><span class="e-arrow">→</span>
+    <span class="step">next</span>
+  </div>
+  <div class="callout">
+    <strong style="color:var(--ink)">What the red-team checks each loop</strong> (so it isn't theatre — these are the exact failure modes that produced my earlier overstatement):
+    <ul style="margin:10px 0 0;color:var(--ink2)">
+      <li><span class="redteam">Reuse vs. re-implement</span> — grep the new module's imports; duplicating an existing service is a fail.</li>
+      <li><span class="redteam">Real data, not fake-DB</span> — every data-path loop adds/extends a seeded-Postgres integration test.</li>
+      <li><span class="redteam">Did I overstate?</span> — re-read my own PR text against what the code proves; downgrade any unproven claim.</li>
+      <li><span class="redteam">No silent narrowing</span> — composed output must cover ≥ the prior step's.</li>
+    </ul>
+  </div>
+
+  <!-- SEQUENCE -->
+  <h2>Sequence &amp; dependencies</h2>
+  <p class="sub">Execution order: <strong>E08 → E01 → E02 → (E03 ∥ E05) → E04 → E06 → E07</strong>.
+  E08 first so the integration-test gate exists before any data-path change.</p>
+  <table>
+    <thead><tr><th style="width:9%">Loop</th><th style="width:30%">Delivers</th><th style="width:12%">Priority</th><th style="width:14%">Blocked by</th><th>Why this order</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">PB-E08</td><td>Verify ledger + integ-test harness</td><td><span class="chip c-amber">high</span></td><td>none</td><td>Builds the seeded-DB gate every later loop uses; proves the well is non-empty.</td></tr>
+      <tr><td class="mono">PB-E01</td><td>Resolve asset → entity id</td><td><span class="chip c-red">urgent</span></td><td>E08</td><td>The one true blocker. Without it, assembly returns empty.</td></tr>
+      <tr><td class="mono">PB-E02</td><td>Compose (compose_dossier + facts)</td><td><span class="chip c-red">urgent</span></td><td>E01</td><td>Kills the content regression. Needs real ids from E01.</td></tr>
+      <tr><td class="mono">PB-E03</td><td>Metrics into domains</td><td><span class="chip c-blue">high</span></td><td>E02</td><td>Quant depth on the composed base.</td></tr>
+      <tr><td class="mono">PB-E05</td><td>Evidence drill-through</td><td><span class="chip c-blue">high</span></td><td>E02</td><td>Verifiability; runs parallel to E03/E04.</td></tr>
+      <tr><td class="mono">PB-E04</td><td>Competitive breadth (graph)</td><td><span class="chip c-blue">high</span></td><td>E03</td><td>Competitive domain needs metrics + graph + BCB set.</td></tr>
+      <tr><td class="mono">PB-E06</td><td>Collapse competitor duplication</td><td><span class="chip c-amber">medium</span></td><td>E04</td><td>Retire parallel builders once one composed source is rich.</td></tr>
+      <tr><td class="mono">PB-E07</td><td>Close to war-game</td><td><span class="chip c-amber">medium</span></td><td>E06</td><td>The payoff — keystone feeds the simulation.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- THE LOOPS -->
+  <h2>The 8 loops in detail</h2>
+
+  <div class="loop gate">
+    <div class="loop-head"><span class="loop-id">PB-E08 · Loop 0</span>
+      <span class="loop-title">Verify facts ledger + real-Postgres integration tests</span>
+      <span class="meta"><span class="chip c-amber">high</span><span class="chip c-blue">infra</span><span class="chip c-violet">run first</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">A seeded-Postgres test fixture + integration tests for dossier assembly; a verified non-empty facts table.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">Disposable Postgres (pgvector) seeded with a known drug + market_events; run <code>backfill_facts.py</code>. This is the gate harness reused by E01–E07.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">scripts/backfill_facts.py · event_collector.py · facts_ledger.py</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">count(*) FROM facts &gt; 0 on a real DB; integration suite green — not fake-DB unit tests.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop">
+    <div class="loop-head"><span class="loop-id">PB-E01 · Loop 1</span>
+      <span class="loop-title">Resolve engagement asset → canonical entity id</span>
+      <span class="meta"><span class="chip c-red">urgent</span><span class="chip c-blue">bug</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">A resolver step turning <code>engagement.asset</code> ('drug:wegovy') into the canonical entity id before any query.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">Replace <code>parse_asset_ref</code>'s slug pass-through with a real lookup; graceful fallback + log when unresolved.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">integration/entity_resolver.py · search.py (find_similar) · drugs table</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">Seeded-DB test: a real engagement returns ≥1 non-gap domain; resolved id matches what event_collector wrote.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop">
+    <div class="loop-head"><span class="loop-id">PB-E02 · Loop 2</span>
+      <span class="loop-title">Compose dossier from compose_dossier + facts (no single-source)</span>
+      <span class="meta"><span class="chip c-red">urgent</span><span class="chip c-blue">refactor</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">Dossier assembled from the existing <code>compose_dossier</code> (signals + evidence + entity_links + related) <strong>and</strong> the facts ledger, into the 8-domain DomainView. Delivers the PB-1304 composition contract.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v"><code>assemble_dossier</code> becomes an orchestrator over both sources; keeps the good domain-routing/versioning, swaps the narrow input.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">services/dossier.py:compose_dossier · facts_ledger.py</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">Parity test — composed dossier covers ≥ the legacy composer's domains/sources. No regression vs. old /dossier.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop">
+    <div class="loop-head"><span class="loop-id">PB-E03 · Loop 3</span>
+      <span class="loop-title">Feed PharmaMetrics into clinical / competitive / pipeline domains</span>
+      <span class="meta"><span class="chip c-blue">high</span><span class="chip c-blue">feature</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">Quant-backed domains: real pipeline scores, trial success, evidence density, competitive landscape — from materialized views, not LLM math.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">After E01 resolves the entity, call <code>PharmaMetrics</code> for it and attach numbers as typed facts/visuals.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">services/metrics.py (pipeline_strength, trial_success_rate, evidence_density, competitive_landscape)</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">A known drug shows its actual pipeline score (cross-check /metrics). No fabricated numbers.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop">
+    <div class="loop-head"><span class="loop-id">PB-E04 · Loop 4</span>
+      <span class="loop-title">Competitive breadth via graph analytics + BCB competitive_set</span>
+      <span class="meta"><span class="chip c-blue">high</span><span class="chip c-blue">feature</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">Competitive domain populated with real rivals (not just the focal asset) from the graph + the brief's competitive set.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v"><code>competitive_clusters</code> + <code>neighborhood</code> around the focal entity, union the BCB set, fetch each rival via the composed path.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">graph_analytics.py:competitive_clusters · graph.py · business_context_brief.py</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">A real competitor appears with a cited graph edge (link_type + confidence), not a hand-typed name.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop">
+    <div class="loop-head"><span class="loop-id">PB-E05 · Loop 5</span>
+      <span class="loop-title">Evidence drill-through — claims to source records</span>
+      <span class="meta"><span class="chip c-blue">high</span><span class="chip c-blue">feature</span><span class="chip c-violet">∥ E03/E04</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">Every dossier fact links to its source evidence record; the frontend <code>onOpenFact</code> opens the snippet + provenance.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">Carry evidence_ids through assembly; reuse the ledger's GET; wire the UI handler that's currently a no-op.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">evidence_ledger.py · api/routes/evidence_ledger.py · EngagementDossierPage onOpenFact</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">Clicking a fact shows its real source record — the anti-hallucination promise made concrete.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop med">
+    <div class="loop-head"><span class="loop-id">PB-E06 · Loop 6</span>
+      <span class="loop-title">Collapse competitor-dossier duplication onto one composed source</span>
+      <span class="meta"><span class="chip c-amber">medium</span><span class="chip c-blue">refactor</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">One entity-picture path. <code>build_competitor_dossier</code> points at the composed source; parallel narrow reads deprecated.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">Extract the composed assembly into a shared callable; characterization-test before deleting the old path.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">war_game_adversary.py · the composed assembler from E02</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">War-game competitor view == dossier competitive domain; grep proves no third assembly path remains.</span></div></div>
+    </div>
+  </div>
+
+  <div class="loop med">
+    <div class="loop-head"><span class="loop-id">PB-E07 · Loop 7</span>
+      <span class="loop-title">Close dossier → war-game (auto-BCB + facts AS-OF)</span>
+      <span class="meta"><span class="chip c-amber">medium</span><span class="chip c-blue">feature</span><span class="chip c-violet">the payoff</span></span></div>
+    <div class="loop-body">
+      <div class="row"><div class="k">Deliver</div><div class="v deliver">BCB auto-populated from the dossier; scenario/war-game engines consume a dossier snapshot with facts AS-OF the scenario date.</div></div>
+      <div class="row"><div class="k">Approach</div><div class="v">Map the dossier's competitive domain + insights into the BCB; pass a snapshot id + as_of into the war-game run so adversaries are grounded in dossier evidence.</div></div>
+      <div class="row"><div class="k">Reuses</div><div class="v reuse">facts_as_of (temporal) · scenario_engine.py · war_game_adversary.py · business_context_brief.py</div></div>
+      <div class="row"><div class="k">Gate</div><div class="v"><span class="redteam">A war-game run cites dossier-sourced grounding evidence ids (traceable to evidence_records). Data, not hand-authored config.</span></div></div>
+    </div>
+  </div>
+
+  <!-- BEFORE/AFTER -->
+  <h2>What you'll have at the end</h2>
+  <table>
+    <thead><tr><th style="width:34%">Before (today)</th><th>After 8 loops</th></tr></thead>
+    <tbody>
+      <tr><td>Dossier reads facts ledger only; empty in prod (asset-ref bug)</td><td>Dossier composes resolver + compose_dossier + metrics + graph + evidence; populated from real data</td></tr>
+      <tr><td>Content regression vs. legacy /dossier</td><td>Parity-or-better, with quant depth + competitive breadth the legacy one lacked</td></tr>
+      <tr><td>Claims carry only "created_by · confidence"</td><td>Every claim drills through to its source record</td></tr>
+      <tr><td>3 diverging competitor-picture builders</td><td>1 composed source, reused by dossier + war-game</td></tr>
+      <tr><td>War-game on hand-authored config</td><td>War-game grounded in a dossier snapshot (facts AS-OF date)</td></tr>
+      <tr><td>"Real" asserted from fake-DB unit tests</td><td>Proven by real-Postgres integration tests, per loop</td></tr>
+    </tbody>
+  </table>
+
+  <!-- DEPENDENCY / PREREQ NOTE -->
+  <h2>One prerequisite I need from you</h2>
+  <div class="callout">
+    <p style="margin:0 0 8px;color:var(--ink)"><strong>The red-team gates require a real Postgres with pgvector.</strong></p>
+    <p style="margin:0;color:var(--ink2)">My earlier overstatement happened precisely because the tests ran against fake DBs. To make "real" provable, loops E08/E01/E02 need a seeded Postgres + pgvector. Options: (a) a local Docker Postgres I stand up in the test harness, (b) a Railway branch/staging DB I can point integration tests at, or (c) I build the harness + tests now and you run them where the DB lives. Tell me which, and I'll wire the gate accordingly. Until then I can still do the reuse-first refactors with fake-DB unit tests, but I will NOT claim a loop "done" without its real-DB gate.</p>
+  </div>
+
+  <div class="foot">
+    Claude Code · plan for epic E14 (PB-E01–E08), filed in docs/PRODUCT_BACKLOG.md (validator green, 77 items) ·
+    companion to docs/dossier-kb-status.html rev 2 · task list created with dependency chain E08→E01→E02→(E03∥E05)→E04→E06→E07 ·
+    cross-refs existing PB-1304 (dossier-as-spine) + PB-1307 (facts ledger).
+  </div>
+
+</div>
+</body>
+</html>
