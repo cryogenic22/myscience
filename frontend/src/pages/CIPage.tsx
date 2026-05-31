@@ -1,6 +1,25 @@
+/**
+ * CIPage — the CI cockpit (home).
+ *
+ * Refactored in Loop D1 to use the shell primitives + design tokens. The
+ * previous version hardcoded `data-theme="dark"` plus eight distinct hex
+ * codes, overriding the F1 theme toggle and creating the "boxed-in" feel
+ * the user flagged. This version:
+ *
+ *   - Uses CockpitShell / NavRail / NavRailItem / ContentRegion / CockpitMobileNav
+ *   - Honors the user's chosen theme (no `data-theme` override)
+ *   - Zero hardcoded hex codes; everything via `var(--color-*)`
+ *   - Separation via tone-shifted surfaces, not 1px borders
+ *
+ * Tab content (DigestTab, SignalsTab, etc.) is unchanged — those live
+ * inside ContentRegion and can be migrated in their own loops.
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Activity, LayoutGrid, Database, Target, ShieldAlert, LineChart, BrainCircuit, CheckSquare } from 'lucide-react';
+import {
+  ArrowLeft, Activity, LayoutGrid, Database, Target,
+  ShieldAlert, LineChart, BrainCircuit, CheckSquare,
+} from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import DigestTab from '../components/ci/DigestTab';
 import SignalsTab from '../components/ci/SignalsTab';
@@ -17,9 +36,23 @@ import { useAgentActivity } from '../hooks/useAgentActivity';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
-type TabKey = 'inbox' | 'digest' | 'signals' | 'watchlist' | 'rooms' | 'decisions' | 'insights' | 'reviewer';
+// Loop D1 — shell primitives
+import { CockpitShell } from '../components/layout/CockpitShell';
+import { NavRail } from '../components/layout/NavRail';
+import { NavRailItem } from '../components/layout/NavRailItem';
+import { ContentRegion } from '../components/layout/ContentRegion';
+import { CockpitMobileNav } from '../components/layout/CockpitMobileNav';
 
-const ALL_TABS: Array<{ key: TabKey; label: string; icon: any; enterprise?: boolean }> = [
+type TabKey =
+  | 'inbox' | 'digest' | 'signals' | 'watchlist'
+  | 'rooms' | 'decisions' | 'insights' | 'reviewer';
+
+const ALL_TABS: Array<{
+  key: TabKey;
+  label: string;
+  icon: any;
+  enterprise?: boolean;
+}> = [
   { key: 'inbox',     label: 'Sensing Feed', icon: Activity },
   { key: 'digest',    label: 'Daily Digest', icon: LayoutGrid },
   { key: 'signals',   label: 'Signals DB', icon: Database },
@@ -42,7 +75,8 @@ export default function CIPage() {
   const isEnterprise = role === 'enterprise';
   const tabs = ALL_TABS.filter((t) => !t.enterprise || isEnterprise);
 
-  const initialTab = (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
+  const initialTab =
+    (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
   const [tab, setTabState] = useState<TabKey>(initialTab);
   const activeRoom = params.get('room');
 
@@ -75,9 +109,6 @@ export default function CIPage() {
     setParams(next, { replace: false });
   };
 
-  // Loop #16 — real JWT against the seeded enterprise demo account
-  // (replaces the fake `'demo-token'` literal that was causing 401
-  // cycles on every protected fetch).
   useDemoAutoLogin();
 
   useEffect(() => {
@@ -86,153 +117,172 @@ export default function CIPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  return (
-    <div data-theme="dark" className="flex h-screen w-full overflow-hidden flex-col md:flex-row" style={{ background: '#0a0b0e' }}>
+  // ── Slots for the NavRail ─────────────────────────────────────────
 
-      {/* Sidebar Navigation (Desktop) — Helix war-room */}
-      <aside className="hidden md:flex w-64 flex-col shrink-0 border-r" style={{ borderColor: '#23262d', background: '#12141a' }}>
-
-        {/* Header Branding */}
-        <div className="flex items-center gap-3 h-16 px-6 border-b shrink-0" style={{ borderColor: '#23262d' }}>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            style={{ color: '#8a8f99' }}
-            className="transition-colors hover:opacity-80"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="flex flex-col flex-1">
-            <span className="mz-text-md font-medium tracking-tight" style={{ color: '#e8eaed', fontFamily: "'Instrument Serif', 'Fraunces', Georgia, serif", fontSize: 19 }}>
-              {PRODUCT_NAME}
-            </span>
-            <span className="mz-text-xs uppercase tracking-widest" style={{ color: '#5a5f69', fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
-              Cockpit
-            </span>
-          </div>
-          <ThemeToggle />
-        </div>
-
-        {/* Navigation Tabs */}
-        <nav className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-1">
-          {tabs.map((t) => {
-            const isActive = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all"
-                style={{
-                  background: isActive ? '#1f232b' : 'transparent',
-                  color: isActive ? '#e8eaed' : '#8a8f99',
-                  fontWeight: isActive ? 500 : 400,
-                }}
-              >
-                <t.icon size={16} style={{ color: isActive ? '#5eead4' : 'inherit' }} />
-                {t.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Global Telemetry & Footer */}
-        <div className="p-4 border-t flex flex-col gap-4 shrink-0" style={{ borderColor: '#23262d' }}>
-          {/* Loop #21 — live agent activity feed (polls /agents/activity).
-              Falls back to the static identity strip if the API errors. */}
-          <CIPageAgentSection />
-          
-          <div className="flex items-center justify-between">
-            <a href="/connectors" className="mz-text-xs font-mono hover:underline transition-colors" style={{ color: '#5a5f69' }}>
-              Connectors →
-            </a>
-            {role && (
-              <span className="mz-text-xs uppercase font-mono px-2 py-0.5 rounded" style={{ background: '#1f232b', color: '#8a8f99' }}>
-                {role}
-              </span>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area — Helix canvas */}
-      <main className="flex-1 relative flex flex-col min-w-0 overflow-y-auto" style={{ background: '#0a0b0e' }}>
-        <div className="w-full max-w-6xl mx-auto py-6 px-4 md:px-10 flex flex-col flex-1">
-          {tab === 'inbox' && (
-            <InboxTab
-              onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
-              onOpenWarRoom={openWarRoom}
-              onOpenSignals={() => setTab('signals')}
-              onOpenInsights={() => setTab('insights')}
-            />
-          )}
-          {tab === 'digest' && <DigestTab />}
-          {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
-          {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
-          {tab === 'rooms' && (
-            activeRoom
-              ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
-              : <WarRoomsList onOpen={openWarRoom} />
-          )}
-          {tab === 'decisions' && (() => {
-            // SPEC_030 Q1 sign-off — flag-gated escape hatch keeps the legacy
-            // SPEC-021 DecisionsTab visible at `/ci?tab=decisions` when
-            // mz_legacy_decisions === 'true'. Default routes to BriefsTab
-            // (SPEC-023 contract).
-            const useLegacy =
-              typeof window !== 'undefined' &&
-              window.localStorage.getItem('mz_legacy_decisions') === 'true';
-            if (useLegacy) {
-              return (
-                <DecisionsTab
-                  onOpenWarRoom={openWarRoom}
-                  onOpenDecision={(id) => navigate(`/ci/legacy-decisions/${id}`)}
-                />
-              );
-            }
-            return <BriefsTab onOpen={(briefId) => navigate(`/ci/decisions/${briefId}`)} />;
-          })()}
-          {tab === 'insights' && (
-            <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
-          )}
-          {tab === 'reviewer' && isEnterprise && (
-            <SignalsTab
-              reviewerMode
-              initialStatus="candidate"
-              onOpenWarRoom={openWarRoom}
-            />
-          )}
-        </div>
-      </main>
-
-      {/* Bottom Navigation (Mobile Only) */}
-      <nav className="flex md:hidden shrink-0 border-t items-center justify-around px-2 py-3" style={{ borderColor: 'var(--color-line)', background: 'var(--color-surface)' }}>
-        {tabs.slice(0, 4).map((t) => {
-          const isActive = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className="flex flex-col items-center gap-1"
-              style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-ink-3)' }}
-            >
-              <t.icon size={20} />
-              <span className="mz-text-xs font-medium">{t.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
+  const navHeader = (
+    <div
+      className="flex items-center w-full"
+      style={{ gap: 'var(--space-3)' }}
+    >
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        aria-label="Back to landing"
+        className="transition-opacity hover:opacity-70"
+        style={{ color: 'var(--color-ink-3)' }}
+      >
+        <ArrowLeft size={16} />
+      </button>
+      <div className="flex flex-col flex-1">
+        <span
+          style={{
+            color: 'var(--color-ink)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 19,
+            fontWeight: 500,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {PRODUCT_NAME}
+        </span>
+        <span
+          style={{
+            color: 'var(--color-ink-4)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.16em',
+          }}
+        >
+          Cockpit
+        </span>
+      </div>
+      <ThemeToggle />
     </div>
+  );
+
+  const navFooter = (
+    <>
+      <CIPageAgentSection />
+      <div
+        className="flex items-center justify-between w-full"
+        style={{ fontSize: 'var(--text-xs)' }}
+      >
+        <a
+          href="/connectors"
+          className="hover:underline transition-opacity"
+          style={{
+            color: 'var(--color-ink-4)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          Connectors →
+        </a>
+        {role && (
+          <span
+            style={{
+              background: 'var(--color-surface-3)',
+              color: 'var(--color-ink-3)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+              textTransform: 'uppercase',
+              paddingInline: 'var(--space-2)',
+              paddingBlock: 2,
+              borderRadius: 'var(--radius-pill)',
+            }}
+          >
+            {role}
+          </span>
+        )}
+      </div>
+    </>
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────
+
+  return (
+    <CockpitShell
+      nav={
+        <NavRail header={navHeader} footer={navFooter}>
+          {tabs.map((t) => (
+            <NavRailItem
+              key={t.key}
+              label={t.label}
+              icon={t.icon}
+              active={tab === t.key}
+              onClick={() => setTab(t.key)}
+            />
+          ))}
+        </NavRail>
+      }
+      mobileNav={
+        <CockpitMobileNav
+          items={tabs.slice(0, 4).map((t) => ({
+            key: t.key,
+            label: t.label,
+            icon: t.icon,
+          }))}
+          active={tab}
+          onChange={setTab}
+        />
+      }
+    >
+      <ContentRegion>
+        {tab === 'inbox' && (
+          <InboxTab
+            onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
+            onOpenWarRoom={openWarRoom}
+            onOpenSignals={() => setTab('signals')}
+            onOpenInsights={() => setTab('insights')}
+          />
+        )}
+        {tab === 'digest' && <DigestTab />}
+        {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'rooms' && (
+          activeRoom
+            ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />
+            : <WarRoomsList onOpen={openWarRoom} />
+        )}
+        {tab === 'decisions' && (() => {
+          // SPEC_030 Q1 sign-off — flag-gated escape hatch keeps the legacy
+          // SPEC-021 DecisionsTab visible at `/ci?tab=decisions` when
+          // mz_legacy_decisions === 'true'. Default routes to BriefsTab.
+          const useLegacy =
+            typeof window !== 'undefined' &&
+            window.localStorage.getItem('mz_legacy_decisions') === 'true';
+          if (useLegacy) {
+            return (
+              <DecisionsTab
+                onOpenWarRoom={openWarRoom}
+                onOpenDecision={(id) => navigate(`/ci/legacy-decisions/${id}`)}
+              />
+            );
+          }
+          return (
+            <BriefsTab
+              onOpen={(briefId) => navigate(`/ci/decisions/${briefId}`)}
+            />
+          );
+        })()}
+        {tab === 'insights' && (
+          <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
+        )}
+        {tab === 'reviewer' && isEnterprise && (
+          <SignalsTab
+            reviewerMode
+            initialStatus="candidate"
+            onOpenWarRoom={openWarRoom}
+          />
+        )}
+      </ContentRegion>
+    </CockpitShell>
   );
 }
 
 function CIPageAgentSection() {
   const { activities, loading, error } = useAgentActivity();
   if (error) {
-    // Hard-fail fallback: never break the sidebar — show the static
-    // identity strip instead.
     return <AgentIdentityStrip />;
   }
   return <AgentActivityFeed activities={activities} loading={loading} />;
