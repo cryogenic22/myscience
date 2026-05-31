@@ -2169,3 +2169,87 @@ export const engagementsApi = {
       return r.json();
     }),
 };
+
+// ── Dossier Knowledge Base (KB2) ──────────────────────────────────
+// The persisted, versioned 8-domain dossier. `domains` is the exact shape
+// EngagementDossierPage renders (see DomainView in that file).
+
+export interface DossierFactDTO {
+  id: string;
+  claim: string;
+  factClass: 'reference' | 'corporate' | 'signal' | 'inferred';
+  sourceLabel: string;
+}
+
+export interface DossierDomainDTO {
+  domain: string;
+  priority: 'critical' | 'high' | 'medium';
+  state: 'complete' | 'in_progress' | 'gap';
+  facts: DossierFactDTO[];
+}
+
+export interface DossierSnapshotDTO {
+  id: string | null;
+  engagement_id: string;
+  focal_asset: string;
+  version: number | null;
+  coverage_score: number;
+  fact_count: number;
+  domains: DossierDomainDTO[];
+  assembled_by: string;
+  assembled_at: string | null;
+}
+
+export interface DossierVersionDTO {
+  id: string | null;
+  version: number | null;
+  coverage_score: number;
+  fact_count: number;
+  assembled_by: string;
+  assembled_at: string | null;
+}
+
+export interface DossierGapsDTO {
+  gaps: { domain: string; priority: string }[];
+  coverage_score: number;
+}
+
+/** A 404 here means "no dossier assembled yet" — callers branch on it. */
+export class DossierNotAssembled extends Error {}
+
+export const dossierKbApi = {
+  get: (eid: string): Promise<DossierSnapshotDTO> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/dossier`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 404) throw new DossierNotAssembled('no dossier assembled yet');
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  assemble: (eid: string): Promise<DossierSnapshotDTO> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/dossier/assemble`, {
+      method: 'POST',
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  versions: (eid: string): Promise<{ versions: DossierVersionDTO[]; count: number }> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/dossier/versions`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  gaps: (eid: string): Promise<DossierGapsDTO> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/dossier/gaps`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 404) throw new DossierNotAssembled('no dossier assembled yet');
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};

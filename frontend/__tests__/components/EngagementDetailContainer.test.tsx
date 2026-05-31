@@ -5,11 +5,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import EngagementDetailContainer from '../../src/components/ci/EngagementDetailContainer';
 
-vi.mock('../../src/api', () => ({
-  engagementsApi: { get: vi.fn() },
-}));
+vi.mock('../../src/api', () => {
+  class DossierNotAssembled extends Error {}
+  return {
+    engagementsApi: { get: vi.fn() },
+    dossierKbApi: { get: vi.fn(), assemble: vi.fn() },
+    DossierNotAssembled,
+  };
+});
 
-import { engagementsApi } from '../../src/api';
+import { engagementsApi, dossierKbApi } from '../../src/api';
 
 function dto(over: Record<string, any> = {}) {
   return {
@@ -54,8 +59,8 @@ describe('EngagementDetailContainer', () => {
     expect(back).toHaveBeenCalledTimes(1);
   });
 
-  it('renders EngagementShell + stage placeholder when loaded', async () => {
-    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'dossier' }));
+  it('renders EngagementShell + stage placeholder for a not-yet-built stage', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'sources' }));
     render(
       <EngagementDetailContainer
         eid="eng-1"
@@ -67,7 +72,24 @@ describe('EngagementDetailContainer', () => {
       expect(screen.getByTestId('stage-placeholder')).toBeInTheDocument();
     });
     // The placeholder names the current stage.
-    expect(screen.getByText(/stage · dossier/i)).toBeInTheDocument();
+    expect(screen.getByText(/stage · sources/i)).toBeInTheDocument();
+  });
+
+  it('renders the DossierContainer (not a placeholder) at the dossier stage', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'dossier' }));
+    // pending fetch → DossierContainer shows its own loading state.
+    (dossierKbApi.get as any).mockReturnValue(new Promise(() => {}));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('dossier-loading')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 
   it('explicit stage prop overrides engagement.stage', async () => {
