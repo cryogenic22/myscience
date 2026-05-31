@@ -377,9 +377,42 @@ def replace_active_config(
 # Persist score to signals table
 # ────────────────────────────────────────────────────────────────────
 
+def _is_schema_error(exc: BaseException) -> bool:
+    """True for errors caused by missing tables/columns/types — bugs that
+    must surface, not be swallowed (BE-2 RC-2).
+
+    Detection prefers the SQLSTATE pgcode (authoritative). The string
+    fallback is intentionally narrow — it requires the message to name
+    a relation kind (column / table / relation / etc.) so unrelated
+    "X does not exist" runtime messages (e.g. "connection does not
+    exist") do not get mis-classified as schema bugs.
+    """
+    pgcode = getattr(exc, "pgcode", None) or getattr(exc, "sqlstate", None)
+    if pgcode in {"42703", "42P01", "42P10", "42704"}:
+        # 42703 undefined_column, 42P01 undefined_table,
+        # 42P10 invalid_column_reference, 42704 undefined_object
+        return True
+    msg = str(exc).lower()
+    schema_kinds = ("column", "table", "relation", "type", "function")
+    if "does not exist" in msg and any(k in msg for k in schema_kinds):
+        return True
+    explicit_signals = (
+        "undefined column", "undefined table",
+        "no such column", "no such table",
+        "invalid column reference",
+    )
+    return any(sig in msg for sig in explicit_signals)
+
+
 def persist_score_to_signal(db, *, signal_id: str, result: MaterialityResult) -> None:
-    """Update signals.materiality_score + materiality_factors. Best-effort
-    (failure is non-fatal — caller still gets the computed result)."""
+    """Update signals.materiality_score + materiality_factors.
+
+    Schema-class errors (missing column / table) RAISE — they're code or
+    migration bugs that the BE-2 diagnostic uncovered after they spent
+    weeks rendering as silent log noise. Transient runtime errors
+    (deadlock, connection blip) are swallowed so a single bad row does
+    not abort a batch backfill — caller still gets the computed result.
+    """
     try:
         db.execute(
             """
@@ -395,4 +428,109 @@ def persist_score_to_signal(db, *, signal_id: str, result: MaterialityResult) ->
             ),
         )
     except Exception as exc:
+        if _is_schema_error(exc):
+            logger.error(
+                "persist_score_to_signal SCHEMA error for signal %s — re-raising: %s",
+                signal_id,
+                exc,
+            )
+            raise
         logger.warning("persist_score_to_signal failed for signal %s: %s", signal_id, exc)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Ingestion-side helper (BE-2 RC-3)
+# ────────────────────────────────────────────────────────────────────
+
+_CLAIM_TYPE_KEYWORDS = (
+    ("clinical_readout",   ("phase 1", "phase 2", "phase 3", "phase i", "phase ii", "phase iii", "readout", "endpoint", "topline", "trial result")),
+    ("regulatory_action",  ("fda", "ema", "approval", "approved", "advisory committee", "crl", "breakthrough", "fast track", "orphan")),
+    ("safety_signal",      ("safety", "adverse", "serious adverse", "death", "warning", "recall", "discontinuation")),
+    ("pricing_change",     ("pricing", "wac", "list price", "rebate", "ira", "negotiation")),
+    ("formulary_change",   ("formulary", "tier", "prior authorization", "step therapy", "coverage")),
+    ("pipeline_update",    ("pipeline", "ind", "discontinued", "advanced", "milestone")),
+    ("earnings_commentary",("earnings", "guidance", "revenue", "q1", "q2", "q3", "q4")),
+)
+
+
+def _infer_claim_type(headline: str | None, kbq_tags: list | None = None) -> str:
+    h = (headline or "").lower()
+    for ct, keywords in _CLAIM_TYPE_KEYWORDS:
+        if any(kw in h for kw in keywords):
+            return ct
+    tags = {str(t).lower() for t in (kbq_tags or [])}
+    tag_map = {
+        "clinical": "clinical_readout",
+        "regulatory": "regulatory_action",
+        "pricing_access": "pricing_change",
+        "financial": "earnings_commentary",
+    }
+    for tag, ct in tag_map.items():
+        if tag in tags:
+            return ct
+    return "other"
+
+
+def _age_days_from_row(row: dict) -> float:
+    ts = row.get("created_at")
+    if ts is None:
+        return 0.0
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            return 0.0
+    if not hasattr(ts, "tzinfo"):
+        return 0.0
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    delta = datetime.now(timezone.utc) - ts
+    return max(0.0, delta.total_seconds() / 86400.0)
+
+
+def score_signal_row(
+    db,
+    signal_row: dict,
+    *,
+    config: Optional[WeightConfig] = None,
+    persist: bool = True,
+) -> MaterialityResult:
+    """Score a signals row using whatever inputs are available on it.
+
+    Inputs are read defensively from the row (so it works for both
+    fresh signals during ingestion and rows pulled by the backfill
+    script):
+
+    - ``source_tier``        — int 1..4; defaults to 3 if absent.
+    - ``entity_criticality`` — 'focal' / 'top_competitor' / 'watched' /
+      'other'; defaults to 'other'.
+    - ``claim_type``         — explicit claim type if present, else
+      inferred from ``headline`` + ``kbq_tags``.
+    - ``age_days``           — derived from ``created_at`` if not given.
+
+    When ``persist=True`` (default) the result is also written to
+    ``signals.materiality_score`` + ``signals.materiality_factors``.
+    """
+    cfg = config if config is not None else get_active_config(db)
+
+    source_tier = signal_row.get("source_tier")
+    crit = signal_row.get("entity_criticality")
+    ct = signal_row.get("claim_type") or _infer_claim_type(
+        signal_row.get("headline"), signal_row.get("kbq_tags")
+    )
+    age_days = signal_row.get("age_days")
+    if age_days is None:
+        age_days = _age_days_from_row(signal_row)
+
+    result = compute_materiality(
+        source_tier=source_tier,
+        entity_criticality=crit,
+        claim_type=ct,
+        age_days=age_days,
+        config=cfg,
+    )
+
+    if persist and signal_row.get("id"):
+        persist_score_to_signal(db, signal_id=str(signal_row["id"]), result=result)
+
+    return result
