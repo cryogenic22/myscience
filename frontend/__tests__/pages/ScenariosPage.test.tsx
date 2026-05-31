@@ -1,0 +1,206 @@
+/**
+ * F10 — ScenariosPage tests.
+ *
+ * Scenarios are event-triggered with team-moves and decision-options.
+ * Each scenario carries an inline blocked-by-gaps banner when relevant.
+ * The probability dial shows prior vs current (the learn-loop in operation).
+ */
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { ScenariosPage } from '../../src/pages/ScenariosPage';
+
+const SCOPE = { engagementName: 'CagriSema Pre-Launch', focalAsset: 'drug:cagrisema' };
+
+const SCENARIOS = [
+  {
+    id: 'scn-A',
+    name: 'Lilly Offensive',
+    trigger: {
+      event: 'Lilly launches orforglipron at $200 WAC with Tier 2 CVS coverage',
+      date: '2026-08-15',
+      evidence: [
+        { factId: 'f10', predicate: 'pricing_intent' },
+        { factId: 'f11', predicate: 'corporate_event' },
+      ],
+    },
+    probability: 0.55,
+    probabilityCurrent: 0.62,
+    teamMoves: [
+      { team: 'Lilly',  move: 'Aggressive WAC parity + premium specialist rebates',
+        rationale: 'Maximises early-market lock-in given orforglipron oral advantage' },
+      { team: 'Payer',  move: 'Step-edit to Foundayo before brand specialty access',
+        rationale: 'Cost-containment lever opens with multiple options' },
+      { team: 'HCP',    move: 'Hedge prescribing to oral options first',
+        rationale: 'Adherence + access conjugate' },
+    ],
+    decisionOptions: [
+      { id: 'do1', statement: 'Hold pricing 90 days',
+        rationale: 'Defend brand value; let mfg signals settle',
+        npv5yDkkBn: 8.2 },
+      { id: 'do2', statement: 'Match WAC immediately',
+        rationale: 'Capture volume; protect Tier 2 access',
+        npv5yDkkBn: 6.4 },
+      { id: 'do3', statement: 'Accelerate OBC framework',
+        rationale: 'Open new commercial primitive ahead of Lilly response',
+        npv5yDkkBn: 9.1, recommended: true },
+    ],
+    decisionOutput: 'Begin Option 3 work now, execute Option 2 at launch, hold pricing in first 90 days',
+  },
+  {
+    id: 'scn-B',
+    name: 'Payer Coalition',
+    trigger: {
+      event: 'CVS + Express Scripts joint formulary policy: Tier 3 + step-edit for all new GLP-1 brand entries',
+      date: '2026-10-01',
+      evidence: [{ factId: 'f20', predicate: 'payer_policy' }],
+    },
+    probability: 0.30,
+    teamMoves: [
+      { team: 'Payer', move: 'Coordinated Tier 3 + step-edit', rationale: 'cost control' },
+    ],
+    decisionOptions: [
+      { id: 'do4', statement: 'Aggressive value contracts', rationale: 'unlock access' },
+      { id: 'do5', statement: 'Direct-to-consumer cash channel', rationale: 'sidestep formulary' },
+    ],
+    blockedByGaps: ['gap-payer-tier'],
+  },
+];
+
+function setup(overrides: any = {}) {
+  const onSelectScenario = vi.fn();
+  const onPlayScenario = vi.fn();
+  const onOpenFact = vi.fn();
+  const onMarkComplete = vi.fn();
+  const utils = render(
+    <ScenariosPage
+      scope={SCOPE}
+      scenarios={SCENARIOS as any}
+      activeScenarioId={null}
+      onSelectScenario={onSelectScenario}
+      onPlayScenario={onPlayScenario}
+      onOpenFact={onOpenFact}
+      onMarkComplete={onMarkComplete}
+      {...overrides}
+    />,
+  );
+  return { ...utils, onSelectScenario, onPlayScenario, onOpenFact, onMarkComplete };
+}
+
+describe('ScenariosPage — header', () => {
+  it('shows total scenarios count and recommended-output count', () => {
+    setup();
+    // 2 scenarios; scn-A has decisionOutput → 1 recommended
+    expect(screen.getByText(/2 scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 recommended/i)).toBeInTheDocument();
+  });
+});
+
+describe('ScenariosPage — scenario cards', () => {
+  it('renders one card per scenario with name + trigger snippet', () => {
+    const { container } = setup();
+    expect(container.querySelectorAll('[data-scenario-id]').length).toBe(2);
+    expect(screen.getByText(/Lilly Offensive/)).toBeInTheDocument();
+    expect(screen.getByText(/Lilly launches orforglipron/)).toBeInTheDocument();
+  });
+
+  it('shows probability dial — prior + current when both present', () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-scenario-id="scn-A"]') as HTMLElement;
+    // 55% prior, 62% current
+    expect(within(card).getByText(/55%/)).toBeInTheDocument();
+    expect(within(card).getByText(/62%/)).toBeInTheDocument();
+  });
+
+  it('shows prior only when no current calibration', () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-scenario-id="scn-B"]') as HTMLElement;
+    expect(within(card).getByText(/30%/)).toBeInTheDocument();
+  });
+
+  it('clicking a card header fires onSelectScenario', () => {
+    const { container, onSelectScenario } = setup();
+    const header = container.querySelector('[data-scenario-id="scn-A"] [data-card-header]') as HTMLElement;
+    fireEvent.click(header);
+    expect(onSelectScenario).toHaveBeenCalledWith('scn-A');
+  });
+
+  it('blocked scenario renders blocked banner', () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-scenario-id="scn-B"]') as HTMLElement;
+    expect(within(card).getByText(/blocked/i)).toBeInTheDocument();
+  });
+});
+
+describe('ScenariosPage — expanded scenario', () => {
+  it('shows trigger evidence chips when active', () => {
+    const { container, onOpenFact } = setup({ activeScenarioId: 'scn-A' });
+    const expanded = container.querySelector('[data-scenario-id="scn-A"][data-expanded="true"]') as HTMLElement;
+    expect(expanded).not.toBeNull();
+    const chip = within(expanded).getByText(/f10/);
+    expect(chip).toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(onOpenFact).toHaveBeenCalledWith('f10');
+  });
+
+  it('shows team moves when expanded', () => {
+    const { container } = setup({ activeScenarioId: 'scn-A' });
+    const expanded = container.querySelector('[data-scenario-id="scn-A"][data-expanded="true"]') as HTMLElement;
+    expect(within(expanded).getByText(/Aggressive WAC parity/)).toBeInTheDocument();
+    expect(within(expanded).getByText(/Step-edit to Foundayo/)).toBeInTheDocument();
+  });
+
+  it('shows decision options with recommended badge', () => {
+    const { container } = setup({ activeScenarioId: 'scn-A' });
+    const expanded = container.querySelector('[data-scenario-id="scn-A"][data-expanded="true"]') as HTMLElement;
+    expect(within(expanded).getByText(/Hold pricing 90 days/)).toBeInTheDocument();
+    expect(within(expanded).getByText(/Match WAC immediately/)).toBeInTheDocument();
+    expect(within(expanded).getByText(/Accelerate OBC framework/)).toBeInTheDocument();
+    expect(within(expanded).getByText(/recommended/i)).toBeInTheDocument();
+  });
+
+  it('shows decision output narrative when expanded', () => {
+    setup({ activeScenarioId: 'scn-A' });
+    expect(screen.getByText(/Begin Option 3 work now/)).toBeInTheDocument();
+  });
+
+  it('"Play in War Room" fires onPlayScenario for unblocked scenarios', () => {
+    const { container, onPlayScenario } = setup({ activeScenarioId: 'scn-A' });
+    const btn = within(container.querySelector('[data-scenario-id="scn-A"]') as HTMLElement)
+      .getByRole('button', { name: /play in war room/i });
+    fireEvent.click(btn);
+    expect(onPlayScenario).toHaveBeenCalledWith('scn-A');
+  });
+
+  it('"Play in War Room" disabled for blocked scenarios', () => {
+    const { container } = setup({ activeScenarioId: 'scn-B' });
+    const btn = within(container.querySelector('[data-scenario-id="scn-B"]') as HTMLElement)
+      .getByRole('button', { name: /play in war room/i });
+    expect(btn).toBeDisabled();
+  });
+});
+
+describe('ScenariosPage — workshop gate', () => {
+  it('"Mark stage complete" disabled when any scenario is blocked', () => {
+    setup();
+    expect(screen.getByRole('button', { name: /mark stage complete/i })).toBeDisabled();
+  });
+
+  it('"Mark stage complete" enabled when no scenario is blocked', () => {
+    setup({ scenarios: [SCENARIOS[0]] });
+    expect(screen.getByRole('button', { name: /mark stage complete/i })).not.toBeDisabled();
+  });
+});
+
+describe('ScenariosPage — empty', () => {
+  it('shows placeholder when no scenarios', () => {
+    setup({ scenarios: [] });
+    expect(screen.getByText(/no scenarios/i)).toBeInTheDocument();
+  });
+});
+
+describe('ScenariosPage — accessibility', () => {
+  it('uses a main landmark', () => {
+    setup();
+    expect(screen.getByRole('main', { name: /scenarios/i })).toBeInTheDocument();
+  });
+});
