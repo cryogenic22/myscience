@@ -358,10 +358,17 @@ def chat(
     # Use ConversationMemory for context and coreference resolution
     conv_context = memory.get_context() or build_conversation_context(conversation_history)
 
-    # Resolve follow-up references using memory (falls back to ad-hoc if memory is empty)
-    resolved_question = memory.resolve_reference(question) if memory.get_context() else resolve_followup_question(question, conversation_history)
+    # Resolve follow-up references using memory (falls back to ad-hoc if memory is empty).
+    # BE-15 — capture the coreference map so the frontend can render a
+    # branch indicator under the user's message ("this drug → tirzepatide
+    # from turn 1"). Empty dict when no substitution happened.
+    coreference_resolution: dict = {}
+    if memory.get_context():
+        resolved_question, coreference_resolution = memory.resolve_reference_with_map(question)
+    else:
+        resolved_question = resolve_followup_question(question, conversation_history)
     if resolved_question != question:
-        logger.info("Follow-up resolved: %r → %r", question, resolved_question)
+        logger.info("Follow-up resolved: %r → %r (cors=%s)", question, resolved_question, coreference_resolution)
 
     # SPEC_015 WS-1: canonicalise brand names before intent detection
     # so "Show pipeline for Ozempic" routes the same as "...for semaglutide"
@@ -391,6 +398,8 @@ def chat(
                         question, payload.get("intent", "general"), payload.get("narrative", ""), params,
                     )
                     payload["metadata"] = {**payload.get("metadata", {}), "handler": "unified"}
+                    if coreference_resolution:
+                        payload["coreference_resolution"] = coreference_resolution
                     _log_chat_routing("unified", session_id, str(intent.value if hasattr(intent, "value") else intent))
                     memory.add_exchange(question, payload.get("narrative", ""))
                     save_conversation_memory(session_id, memory, db)
@@ -423,6 +432,8 @@ def chat(
                 payload["followup_suggestions"] = generate_followups(
                     question, payload.get("intent", "general"), payload.get("narrative", ""), {},
                 )
+                if coreference_resolution:
+                    payload["coreference_resolution"] = coreference_resolution
                 memory.add_exchange(question, payload.get("narrative", ""))
                 save_conversation_memory(session_id, memory, db)
                 return payload
@@ -578,6 +589,9 @@ def chat(
             )
         except Exception:
             pass  # telemetry must never break chat
+
+        if coreference_resolution:
+            payload["coreference_resolution"] = coreference_resolution
 
         return payload
 
