@@ -7,6 +7,14 @@ Endpoints:
   PUT    /connectors/{key}/config        enterprise  edit enabled/auto_approve/etc
   POST   /connectors/{key}/run           uploader if auto_approve_runs else enterprise
 
+BE-26 — the canonical path for the JSON API is now ``/api/v1/connectors``
+(added by `api/app.py`'s versioned-router mount). The bare ``/connectors``
+list + dossier endpoints stay live for back-compat but emit a
+``Deprecation`` + ``Sunset`` + ``Link`` triple per RFC 8594 so clients
+get a programmatic hint to migrate. The user-facing HTML route
+``/connectors`` is the frontend's job — it 301s to ``/catalog`` (the
+PB-809 cutover lives on the FE track).
+
 The Connectors UI consumes this to show a Claude-style sidebar + dossier view.
 """
 
@@ -15,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from api.deps import get_current_user, get_db, require_role
@@ -80,9 +88,31 @@ def _trigger_connector_run(source_key: str) -> dict:
 # GET /connectors — list
 # ────────────────────────────────────────────────────────────────────
 
+def _apply_deprecation_headers(request: Request, response: Response) -> None:
+    """BE-26 — RFC 8594 deprecation hints for the bare /connectors path.
+
+    Skipped when the request came in via /api/v1/connectors — that's
+    the canonical path going forward. Uses the live request URL so
+    the same handler running under both prefixes does the right thing.
+    """
+    path = (request.url.path or "")
+    if path.startswith("/api/v1/"):
+        return
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Wed, 31 Dec 2026 23:59:59 GMT"
+    response.headers["Link"] = '</api/v1/connectors>; rel="successor-version"'
+
+
 @router.get("")
-def list_endpoint(db: Database = Depends(get_db)):
-    """Sidebar listing of every registered connector."""
+def list_endpoint(
+    request: Request,
+    response: Response,
+    db: Database = Depends(get_db),
+):
+    """Sidebar listing of every registered connector. Canonical path is
+    ``/api/v1/connectors``; the bare ``/connectors`` form sets a
+    Deprecation + Sunset + Link triple (BE-26)."""
+    _apply_deprecation_headers(request, response)
     return {"connectors": list_connectors(db)}
 
 
@@ -91,8 +121,15 @@ def list_endpoint(db: Database = Depends(get_db)):
 # ────────────────────────────────────────────────────────────────────
 
 @router.get("/{source_key}")
-def dossier_endpoint(source_key: str, db: Database = Depends(get_db)):
-    """Full dossier for a single connector."""
+def dossier_endpoint(
+    source_key: str,
+    request: Request,
+    response: Response,
+    db: Database = Depends(get_db),
+):
+    """Full dossier for a single connector. Canonical path is
+    ``/api/v1/connectors/{key}`` (BE-26)."""
+    _apply_deprecation_headers(request, response)
     detail = get_connector_detail(db, source_key)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"unknown connector: {source_key}")
