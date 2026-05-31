@@ -65,6 +65,17 @@ describe('CIPage migration — D1 contract', () => {
     expect(CODE).toMatch(/var\(--font-mono\)/);
   });
 
+  it('D1.5 — agent activity feed is NOT imported into the sidebar', () => {
+    // User feedback (post-D1): Sentinel/Strategist/Curator dominated the
+    // navigation and added visual weight without earning it. They'll
+    // resurface in a dedicated agent surface later. For now: gone from
+    // the cockpit sidebar.
+    expect(CODE).not.toMatch(/AgentActivityFeed/);
+    expect(CODE).not.toMatch(/AgentIdentityStrip/);
+    expect(CODE).not.toMatch(/useAgentActivity/);
+    expect(CODE).not.toMatch(/CIPageAgentSection/);
+  });
+
   it('preserves all 8 tab behaviours (no functional regression)', () => {
     // Quick smoke — every tab key from the pre-D1 ALL_TABS list still
     // appears in the file. If the refactor accidentally dropped one,

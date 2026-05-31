@@ -31,10 +31,13 @@ export default function SignalCard({ signal, selected, onSelect }: Props) {
       data-selected={selected}
       className="w-full text-left transition-colors"
       style={{
-        padding: '12px 14px',
+        // D1.5 — soften the row: drop the 1px bottom outline (visual noise
+        // when stacked), keep only the semantic left rail; rely on
+        // background-on-select for selection feedback, not borders.
+        padding: '14px 18px',
         background: selected ? H.panel2 : 'transparent',
         borderLeft: `2px solid ${railColor}`,
-        borderBottom: `1px solid ${H.line}`,
+        borderRadius: '0 8px 8px 0',
       }}
     >
       {signal.superseded_by && (

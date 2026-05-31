@@ -115,13 +115,28 @@ export function SensingFeed({ onFrame }: { onFrame?: (s: Signal) => void } = {})
   const handleFrame = onFrame ?? frame;
 
   return (
-    <div data-helix-sensing style={{ background: H.bg, minHeight: '100%', padding: '28px 32px 80px' }}>
-      <header style={{ marginBottom: 22 }}>
-        <h2 style={{ margin: 0, fontFamily: H.serif, fontSize: 32, letterSpacing: '-0.02em', color: H.ink }}>
+    <div
+      data-helix-sensing
+      style={{
+        // D1.5 — H.bg now resolves via CSS variable, so it inherits the
+        // current theme (was hardcoded #0a0b0e which fought the theme).
+        background: H.bg,
+        minHeight: '100%',
+        padding: 'var(--space-6) var(--space-6) var(--space-8)',
+      }}
+    >
+      <header style={{ marginBottom: 'var(--space-5)' }}>
+        <h2 style={{
+          margin: 0, fontFamily: H.serif, fontSize: 32,
+          letterSpacing: '-0.02em', color: H.ink, fontWeight: 500,
+        }}>
           Sensing Feed
         </h2>
-        <p style={{ margin: '4px 0 0', fontFamily: H.mono, fontSize: 11, letterSpacing: '0.04em', color: H.dim }}>
-          ALWAYS-ON SIGNAL MONITORING · {signals.length} SIGNALS
+        <p style={{
+          margin: '6px 0 0', fontFamily: H.mono, fontSize: 11,
+          letterSpacing: '0.08em', color: H.dim, textTransform: 'uppercase',
+        }}>
+          Always-on signal monitoring · {signals.length} signals
         </p>
       </header>
 
@@ -131,7 +146,7 @@ export function SensingFeed({ onFrame }: { onFrame?: (s: Signal) => void } = {})
         <p style={{ color: H.dim, fontSize: 13 }}>No signals yet.</p>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
         {signals.map((s) => (
           <SignalRow key={s.id} s={s} onFrame={handleFrame} framing={framingId === s.id} />
         ))}
