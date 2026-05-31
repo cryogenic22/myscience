@@ -12,7 +12,7 @@
  * Currently rendered "content" per stage:
  *   - brief    → echoes the BCB JSON (raw, until BriefPage container lands)
  *   - sources  → "coming soon"
- *   - dossier  → "coming soon"
+ *   - dossier  → DossierContainer (live KB-backed 8-domain dossier) [KB3]
  *   - synthesis→ "coming soon"
  *   - gaps     → "coming soon"
  *   - scenarios→ "coming soon"
@@ -30,6 +30,7 @@ import {
   type LifecycleStage,
   type ShellActiveEngagement,
 } from '../layout/EngagementShell';
+import DossierContainer from './DossierContainer';
 
 interface Props {
   eid: string;
@@ -181,7 +182,14 @@ export default function EngagementDetailContainer({
       onStageSelect={(engagementId, s) => onStageChange(engagementId, s)}
       sidebar={null}
     >
-      <StagePlaceholder stage={currentStage} />
+      {currentStage === 'dossier' ? (
+        <DossierContainer
+          engagement={engagement}
+          onMarkComplete={() => onStageChange(engagement.id, 'synthesis')}
+        />
+      ) : (
+        <StagePlaceholder stage={currentStage} />
+      )}
     </EngagementShell>
   );
 }
