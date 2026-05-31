@@ -1,15 +1,14 @@
 /**
- * Loop B — EngagementsTab.
+ * Loop B + B2 — EngagementsTab.
  *
  * Container that fetches /engagements (Loop A backend) and renders the
- * F3 PortfolioBoard headless component. The first concrete demo of the
- * v7 IA inside /ci.
- *
- * Transforms the API DTO shape into PortfolioBoard's prop shape. Attention
- * + stats data come from a couple of simple derivations off the engagement
- * list (no separate endpoint yet — those land in their own loops).
+ * F3 PortfolioBoard headless component. Loop B2 added the create flow:
+ * a "+ New engagement" button surfaces a NewEngagementModal that posts
+ * to the API and on success refreshes the list (or navigates to the
+ * newly-created engagement).
  */
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { engagementsApi, type EngagementDTO } from '../../api';
 import {
   PortfolioBoard,
@@ -17,6 +16,7 @@ import {
   type AttentionData,
   type PortfolioStats,
 } from '../portfolio/PortfolioBoard';
+import NewEngagementModal from './NewEngagementModal';
 
 const STAGE_ORDER = [
   'brief', 'sources', 'dossier', 'synthesis',
@@ -81,6 +81,15 @@ export default function EngagementsTab({ onEngagementOpen }: Props) {
   const [items, setItems] = useState<EngagementDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    return engagementsApi.list({ limit: 50 })
+      .then((r) => setItems(r.engagements))
+      .catch((e) => setError(String(e?.message ?? e)))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -91,69 +100,137 @@ export default function EngagementsTab({ onEngagementOpen }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{
-        padding: 'var(--space-7)',
-        color: 'var(--color-ink-3)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 12,
-      }}>
-        Loading engagements…
-      </div>
-    );
-  }
+  const open = onEngagementOpen ?? (() => {});
 
-  if (error) {
-    return (
-      <div style={{
-        padding: 'var(--space-7)',
-        color: 'var(--color-red)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 12,
-      }}>
-        Engagement feed error: {error}
-      </div>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
+  // Shared header — appears across all states so the "create" CTA is
+  // discoverable even when the list is empty.
+  const Header = (
+    <div
+      data-testid="engagements-header"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 'var(--space-5) var(--space-6) 0',
+      }}
+    >
       <div
-        data-testid="engagements-empty"
         style={{
-          padding: 'var(--space-7)',
-          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10.5,
+          letterSpacing: '0.16em',
+          textTransform: 'uppercase',
           color: 'var(--color-ink-3)',
         }}
       >
-        <p style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 24,
-          marginBottom: 8,
-          color: 'var(--color-ink)',
-        }}>
-          No engagements yet
-        </p>
-        <p style={{ fontSize: 14 }}>
-          Create one to scope a structured CI workshop.
-        </p>
+        Engagements · {items.length}
       </div>
-    );
-  }
+      <button
+        type="button"
+        data-testid="engagements-new-button"
+        onClick={() => setModalOpen(true)}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          padding: '8px 14px',
+          borderRadius: 'var(--radius-pill)',
+          background: 'var(--color-ink)',
+          color: 'var(--color-bg)',
+          fontSize: 13,
+          fontWeight: 500,
+          border: 'none',
+          cursor: 'pointer',
+          transitionDuration: '180ms',
+        }}
+      >
+        <Plus size={14} /> New engagement
+      </button>
+    </div>
+  );
 
-  const portfolioItems = items.map(toPortfolioShape);
-  const open = onEngagementOpen ?? (() => {});
+  const Body = (() => {
+    if (loading) {
+      return (
+        <div style={{
+          padding: 'var(--space-7)',
+          color: 'var(--color-ink-3)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+        }}>
+          Loading engagements…
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div style={{
+          padding: 'var(--space-7)',
+          color: 'var(--color-red)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+        }}>
+          Engagement feed error: {error}
+        </div>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <div
+          data-testid="engagements-empty"
+          style={{
+            padding: 'var(--space-7)',
+            textAlign: 'center',
+            color: 'var(--color-ink-3)',
+          }}
+        >
+          <p style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 24,
+            marginBottom: 8,
+            color: 'var(--color-ink)',
+          }}>
+            No engagements yet
+          </p>
+          <p style={{ fontSize: 14 }}>
+            Click <strong>New engagement</strong> above to scope a structured CI workshop.
+          </p>
+        </div>
+      );
+    }
+
+    const portfolioItems = items.map(toPortfolioShape);
+    return (
+      <PortfolioBoard
+        attention={deriveAttention(portfolioItems)}
+        engagements={portfolioItems}
+        stats={deriveStats(items)}
+        onEngagementOpen={open}
+        onWorkshopOpen={open}
+        onGapsReview={() => {}}
+        onStaleEvidenceReview={() => {}}
+      />
+    );
+  })();
 
   return (
-    <PortfolioBoard
-      attention={deriveAttention(portfolioItems)}
-      engagements={portfolioItems}
-      stats={deriveStats(items)}
-      onEngagementOpen={open}
-      onWorkshopOpen={open}
-      onGapsReview={() => {}}
-      onStaleEvidenceReview={() => {}}
-    />
+    <>
+      {Header}
+      {Body}
+      <NewEngagementModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={(eng) => {
+          setModalOpen(false);
+          // Open the newly-created engagement immediately. Caller may
+          // route to the detail page; we also refresh the list in the
+          // background so the count + portfolio reflect reality.
+          load();
+          open(eng.id);
+        }}
+      />
+    </>
   );
 }
