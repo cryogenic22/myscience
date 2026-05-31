@@ -50,6 +50,12 @@ from services.priority_matrix import (
     get_priority_matrix,
     set_priority_matrix,
 )
+from services.dossier_kb import (
+    EngagementNotFound,
+    assemble_and_persist,
+    get_latest_snapshot,
+    list_snapshot_versions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -397,3 +403,69 @@ def fetch_matrix(
     if matrix is None:
         raise HTTPException(404, f"priority matrix not set for brief {bcb_id}")
     return _matrix_to_dict(matrix)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Dossier Knowledge Base (KB)
+#
+# The dossier stage, made durable. POST assembles a new VERSIONED snapshot
+# from the facts ledger / signals / evidence; GET serves the current head
+# (the 8-domain payload the EngagementDossierPage renders directly). Gaps
+# surface thin domains so the sense layer knows what to collect next.
+# ────────────────────────────────────────────────────────────────────
+
+
+@router.post("/engagements/{eid}/dossier/assemble", status_code=201)
+def assemble_dossier_endpoint(
+    eid: str,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    try:
+        snapshot = assemble_and_persist(db, eid, assembled_by=str(user["id"]))
+    except EngagementNotFound as e:
+        raise HTTPException(404, f"engagement not found: {eid}") from e
+    return snapshot.to_dict()
+
+
+@router.get("/engagements/{eid}/dossier")
+def get_dossier(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    snapshot = get_latest_snapshot(db, eid)
+    if snapshot is None:
+        raise HTTPException(404, f"no dossier assembled yet for engagement {eid}")
+    return snapshot.to_dict()
+
+
+@router.get("/engagements/{eid}/dossier/versions")
+def list_dossier_versions(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    versions = list_snapshot_versions(db, eid)
+    return {"versions": versions, "count": len(versions)}
+
+
+@router.get("/engagements/{eid}/dossier/gaps")
+def get_dossier_gaps(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    snapshot = get_latest_snapshot(db, eid)
+    if snapshot is None:
+        raise HTTPException(404, f"no dossier assembled yet for engagement {eid}")
+    return {
+        "gaps": snapshot.gaps(),
+        "coverage_score": round(snapshot.coverage_score, 3),
+    }
