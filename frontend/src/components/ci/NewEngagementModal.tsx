@@ -1,15 +1,19 @@
 /**
- * Loop B2 — NewEngagementModal.
+ * NewEngagementModal — scope a CI workshop.
  *
- * Minimal modal for creating an engagement via the Loop A API. Fields:
- *   - name (required, 1–300 chars)
- *   - asset (required — drug:slug or company:slug etc.)
- *   - situation (required — launch / defense / lcm)
- *   - sponsor (optional)
+ * Loop B2 created the minimal version. This revision (per design review):
+ *   - Sleeker, airier layout; no boxy <select> — situation is a segmented
+ *     control. Borderless, tone-shifted inputs (no "constrained" outlines).
+ *   - "Brief the agents" section: free-text strategic context + key
+ *     questions. These flow into `scope` (scope.context, scope.key_questions)
+ *     so the downstream agents (brief generation, dossier, synthesis) have
+ *     the human's framing to work from — not just an asset slug.
  *
- * Submit → POST /engagements → caller receives the new engagement id
- * for navigation. Validation lives at the door (same chokepoint as the
- * backend's Pydantic body model).
+ * Validation lives at the door (same chokepoint as the backend's Pydantic
+ * body model): name + asset required. Context is optional but encouraged.
+ *
+ * Submit → POST /engagements → caller receives the new engagement for
+ * navigation.
  */
 import { useState } from 'react';
 import { engagementsApi, type EngagementDTO } from '../../api';
@@ -20,25 +24,32 @@ interface Props {
   onCreated: (engagement: EngagementDTO) => void;
 }
 
-const SITUATIONS = [
-  { value: 'launch', label: 'Launch — bringing a new asset to market' },
-  { value: 'defense', label: 'Defense — protecting an existing position' },
-  { value: 'lcm', label: 'LCM — life-cycle management of a mature asset' },
-] as const;
+type Situation = 'launch' | 'defense' | 'lcm';
+
+const SITUATIONS: { value: Situation; label: string; blurb: string }[] = [
+  { value: 'launch', label: 'Launch', blurb: 'Bringing a new asset to market' },
+  { value: 'defense', label: 'Defense', blurb: 'Protecting an existing position' },
+  { value: 'lcm', label: 'LCM', blurb: 'Life-cycle management of a mature asset' },
+];
 
 export default function NewEngagementModal({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [asset, setAsset] = useState('');
-  const [situation, setSituation] = useState<'launch' | 'defense' | 'lcm'>('launch');
+  const [situation, setSituation] = useState<Situation>('launch');
+  const [context, setContext] = useState('');
+  const [questions, setQuestions] = useState('');
   const [sponsor, setSponsor] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
 
-  const valid =
-    name.trim().length > 0 &&
-    asset.trim().length > 0;
+  const valid = name.trim().length > 0 && asset.trim().length > 0;
+
+  const reset = () => {
+    setName(''); setAsset(''); setSituation('launch');
+    setContext(''); setQuestions(''); setSponsor('');
+  };
 
   const submit = async () => {
     setError(null);
@@ -48,15 +59,30 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
     }
     setSubmitting(true);
     try {
-      const created = await engagementsApi.create({
+      // Pack the human's framing into scope so agents inherit it. Only
+      // include keys the user actually filled — an empty scope stays {}.
+      const keyQuestions = questions
+        .split('\n')
+        .map((q) => q.trim())
+        .filter(Boolean);
+      const scope: Record<string, unknown> = {};
+      if (context.trim()) scope.context = context.trim();
+      if (keyQuestions.length) scope.key_questions = keyQuestions;
+
+      const body: {
+        name: string; asset: string; situation: Situation;
+        sponsor?: string; scope?: Record<string, unknown>;
+      } = {
         name: name.trim(),
         asset: asset.trim(),
         situation,
         sponsor: sponsor.trim() || undefined,
-      });
+      };
+      if (Object.keys(scope).length) body.scope = scope;
+
+      const created = await engagementsApi.create(body);
       onCreated(created);
-      // Reset for next open.
-      setName(''); setAsset(''); setSituation('launch'); setSponsor('');
+      reset();
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -71,7 +97,8 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
       aria-modal="true"
       style={{
         position: 'fixed', inset: 0, zIndex: 50,
-        background: 'rgba(0,0,0,0.32)',
+        background: 'rgba(0,0,0,0.40)',
+        backdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 'var(--space-4)',
       }}
@@ -83,15 +110,16 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
           color: 'var(--color-ink)',
           borderRadius: 'var(--radius-panel)',
           boxShadow: 'var(--shadow-lg)',
-          width: '100%', maxWidth: 520,
-          padding: 'var(--space-6)',
+          width: '100%', maxWidth: 580,
+          maxHeight: '88vh', overflowY: 'auto',
+          padding: 'var(--space-7, 40px)',
         }}
       >
         <h2
           style={{
             margin: 0,
             fontFamily: 'var(--font-display)',
-            fontSize: 24, fontWeight: 500,
+            fontSize: 28, fontWeight: 500, letterSpacing: '-0.01em',
             marginBottom: 'var(--space-2)',
           }}
         >
@@ -101,15 +129,15 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
           style={{
             margin: 0,
             color: 'var(--color-ink-3)',
-            fontSize: 14,
-            marginBottom: 'var(--space-5)',
+            fontSize: 14, lineHeight: 1.5,
+            marginBottom: 'var(--space-6)',
           }}
         >
-          Scope a structured CI workshop. You can add the brief, sources,
-          and scenarios after creation.
+          Scope a structured CI workshop. The framing you give here becomes
+          the brief the agents work from.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
           <Field label="Name">
             <input
               data-testid="ne-name"
@@ -117,9 +145,11 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Wegovy MASH defense"
               style={inputStyle}
+              autoFocus
             />
           </Field>
-          <Field label="Focal asset" hint="e.g. drug:wegovy or company:novo-nordisk">
+
+          <Field label="Focal asset" hint="drug:wegovy · company:novo-nordisk · mechanism:glp-1">
             <input
               data-testid="ne-asset"
               type="text" value={asset}
@@ -128,18 +158,98 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
               style={inputStyle}
             />
           </Field>
+
           <Field label="Situation">
-            <select
+            {/* Segmented control — sleeker than a <select>, no dropdown chrome. */}
+            <div
               data-testid="ne-situation"
-              value={situation}
-              onChange={(e) => setSituation(e.target.value as any)}
-              style={inputStyle}
+              role="radiogroup"
+              aria-label="Situation"
+              style={{
+                display: 'flex', gap: 4, padding: 4,
+                background: 'var(--color-surface-2)',
+                borderRadius: 'var(--radius-pill)',
+              }}
             >
-              {SITUATIONS.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
+              {SITUATIONS.map((s) => {
+                const active = s.value === situation;
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-testid={`ne-situation-${s.value}`}
+                    onClick={() => setSituation(s.value)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 10px',
+                      fontSize: 13, fontWeight: 500,
+                      fontFamily: 'inherit',
+                      border: 'none',
+                      borderRadius: 'var(--radius-pill)',
+                      cursor: 'pointer',
+                      transitionDuration: '160ms',
+                      background: active ? 'var(--color-ink)' : 'transparent',
+                      color: active ? 'var(--color-bg)' : 'var(--color-ink-3)',
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--color-ink-4)', marginTop: 6 }}>
+              {SITUATIONS.find((s) => s.value === situation)?.blurb}
+            </span>
           </Field>
+
+          {/* ── Brief the agents ── */}
+          <div
+            style={{
+              background: 'var(--color-surface-2)',
+              borderRadius: 'var(--radius-panel)',
+              padding: 'var(--space-5)',
+              display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
+            }}
+          >
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                color: 'var(--color-accent)', marginBottom: 4,
+              }}>
+                Brief the agents
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-ink-4)', lineHeight: 1.5 }}>
+                Optional, but this is what the agents read first. The more
+                context, the sharper the dossier and scenarios.
+              </div>
+            </div>
+
+            <Field label="Strategic context">
+              <textarea
+                data-testid="ne-context"
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="What's the situation? What decision does this inform, and what's at stake? Who are the key competitors and what are they likely to do?"
+                rows={4}
+                style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5, background: 'var(--color-surface)' }}
+              />
+            </Field>
+
+            <Field label="Key questions" hint="one per line — the questions the workshop must answer">
+              <textarea
+                data-testid="ne-questions"
+                value={questions}
+                onChange={(e) => setQuestions(e.target.value)}
+                placeholder={'Will the competitor file for the MASH indication first?\nWhat is our defensible pricing floor?'}
+                rows={3}
+                style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5, background: 'var(--color-surface)' }}
+              />
+            </Field>
+          </div>
+
           <Field label="Sponsor" hint="optional — the executive whose decision this informs">
             <input
               data-testid="ne-sponsor"
@@ -173,11 +283,7 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
         >
           <button
             type="button" onClick={onClose}
-            style={{
-              ...ctaBase,
-              background: 'var(--color-surface-2)',
-              color: 'var(--color-ink)',
-            }}
+            style={{ ...ctaBase, background: 'var(--color-surface-2)', color: 'var(--color-ink)' }}
           >
             Cancel
           </button>
@@ -227,7 +333,7 @@ function Field({
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '10px 14px',
+  padding: '11px 14px',
   fontSize: 15,
   fontFamily: 'inherit',
   background: 'var(--color-surface-2)',
@@ -238,7 +344,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const ctaBase: React.CSSProperties = {
-  padding: '10px 18px',
+  padding: '11px 20px',
   fontSize: 14, fontWeight: 500,
   borderRadius: 'var(--radius-pill)',
   border: 'none',

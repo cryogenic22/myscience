@@ -24,11 +24,10 @@ export function AgentStatusBar({ status, message, agentCount = 0, className = ''
   }
 
   return (
-    <div 
-      className={`flex items-center justify-between px-4 py-2 rounded-lg border text-xs font-mono uppercase tracking-widest ${className}`}
-      style={{ 
+    <div
+      className={`flex items-center justify-between gap-4 px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest ${className}`}
+      style={{
         backgroundColor: 'var(--color-surface-2)',
-        borderColor: 'var(--color-line-2)',
         color: 'var(--color-ink-2)'
       }}
       data-status={status}

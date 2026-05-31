@@ -63,6 +63,63 @@ describe('NewEngagementModal', () => {
     });
   });
 
+  it('renders the agent-context fields (context + key questions)', () => {
+    render(<NewEngagementModal open={true} onClose={() => {}} onCreated={() => {}} />);
+    expect(screen.getByTestId('ne-context')).toBeInTheDocument();
+    expect(screen.getByTestId('ne-questions')).toBeInTheDocument();
+  });
+
+  it('packs strategic context + key questions into scope for the agents', async () => {
+    const created = {
+      id: 'eng-ctx', name: 'Test', asset: 'drug:x', sponsor: null,
+      situation: 'defense', workshop_date: null, stage: 'brief',
+      status: 'draft', scope: {}, created_by: 'u', created_at: '',
+      updated_at: '', tenant_scope: null,
+    };
+    (engagementsApi.create as any).mockResolvedValue(created);
+    render(<NewEngagementModal open={true} onClose={() => {}} onCreated={() => {}} />);
+
+    fireEvent.change(screen.getByTestId('ne-name'), { target: { value: 'Test' } });
+    fireEvent.change(screen.getByTestId('ne-asset'), { target: { value: 'drug:x' } });
+    fireEvent.click(screen.getByTestId('ne-situation-defense'));
+    fireEvent.change(screen.getByTestId('ne-context'), {
+      target: { value: 'Competitor likely to file for MASH first.' },
+    });
+    fireEvent.change(screen.getByTestId('ne-questions'), {
+      target: { value: 'Who files first?\n  \nWhat is our pricing floor?' },
+    });
+    fireEvent.click(screen.getByTestId('ne-submit'));
+
+    await waitFor(() => expect(engagementsApi.create as any).toHaveBeenCalledTimes(1));
+    expect((engagementsApi.create as any)).toHaveBeenCalledWith({
+      name: 'Test', asset: 'drug:x', situation: 'defense', sponsor: undefined,
+      scope: {
+        context: 'Competitor likely to file for MASH first.',
+        // blank middle line is dropped; each question trimmed
+        key_questions: ['Who files first?', 'What is our pricing floor?'],
+      },
+    });
+  });
+
+  it('omits scope entirely when no agent context is given', async () => {
+    const created = {
+      id: 'eng-bare', name: 'Test', asset: 'drug:x', sponsor: null,
+      situation: 'launch', workshop_date: null, stage: 'brief',
+      status: 'draft', scope: {}, created_by: 'u', created_at: '',
+      updated_at: '', tenant_scope: null,
+    };
+    (engagementsApi.create as any).mockResolvedValue(created);
+    render(<NewEngagementModal open={true} onClose={() => {}} onCreated={() => {}} />);
+
+    fireEvent.change(screen.getByTestId('ne-name'), { target: { value: 'Test' } });
+    fireEvent.change(screen.getByTestId('ne-asset'), { target: { value: 'drug:x' } });
+    fireEvent.click(screen.getByTestId('ne-submit'));
+
+    await waitFor(() => expect(engagementsApi.create as any).toHaveBeenCalledTimes(1));
+    const arg = (engagementsApi.create as any).mock.calls[0][0];
+    expect(arg).not.toHaveProperty('scope');
+  });
+
   it('error path: API failure shows error message, does NOT fire onCreated', async () => {
     (engagementsApi.create as any).mockRejectedValue(new Error('400 bad situation'));
     const onCreated = vi.fn();
