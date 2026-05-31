@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user, get_db, get_llm, require_role
 from db import Database
+from services.guided_mode import GuidedModeBlocked, assert_guided
 from services.move_suggester import (
     SUGGESTER_RULE_VERSION,
     suggest_moves as _engine_suggest_moves,
@@ -526,6 +527,15 @@ def submit_round(
     if str(room.get("owner_user_id")) != str(user.get("id")):
         raise HTTPException(403, "only the room owner can submit moves")
 
+    # W2 — Guided-mode gate. Submitting a round is Guided-only; the
+    # autonomous loop (W3) and game-theoretic matrix (W4) have their own
+    # surfaces. We use the mode already loaded on the room row rather
+    # than a second DB roundtrip via load_scenario_state.
+    try:
+        assert_guided(room.get("mode", "guided"))
+    except GuidedModeBlocked as exc:
+        raise HTTPException(409, str(exc)) from exc
+
     # Determine round_number = max + 1
     try:
         mx_row = db.fetch_one(
@@ -694,6 +704,14 @@ def suggest_moves_endpoint(
         raise HTTPException(404, f"war room not found: {room_id}")
     if str(room.get("owner_user_id")) != str(user.get("id")):
         raise HTTPException(403, "only the room owner can request suggestions")
+
+    # W2 — move suggestions are Guided-only (they're recommendations for the
+    # human to play next, which is the Guided contract). Autonomous mode
+    # doesn't need them; game-theoretic mode shows a payoff matrix instead.
+    try:
+        assert_guided(room.get("mode", "guided"))
+    except GuidedModeBlocked as exc:
+        raise HTTPException(409, str(exc)) from exc
 
     suggestions = _suggest_moves(
         db, llm,
