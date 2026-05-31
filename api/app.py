@@ -300,6 +300,12 @@ def create_app() -> FastAPI:
         entities.router, chat.router, therapeutic_areas.router,
         catalog.router, enrichment.router, pricing.router, scenarios.router,
     ]
+    # Loop A — engagements CRUD (Z3 + Z4 + Z5 service modules over HTTP)
+    try:
+        from api.routes import engagements as engagements_route
+        all_routers.append(engagements_route.router)
+    except Exception as _e:
+        logger.error("Failed to import engagements router (Loop A): %s", _e)
     if _NEW_ROUTERS_OK:
         all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router, agent.router])
     if _UPLOAD_ROUTER_OK:
