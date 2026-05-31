@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Activity, LayoutGrid, Database, Target,
-  ShieldAlert, LineChart, BrainCircuit, CheckSquare,
+  ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase,
 } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import DigestTab from '../components/ci/DigestTab';
@@ -30,6 +30,7 @@ import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
+import EngagementsTab from '../components/ci/EngagementsTab';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
@@ -41,7 +42,7 @@ import { ContentRegion } from '../components/layout/ContentRegion';
 import { CockpitMobileNav } from '../components/layout/CockpitMobileNav';
 
 type TabKey =
-  | 'inbox' | 'digest' | 'signals' | 'watchlist'
+  | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'engagements'
   | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
 const ALL_TABS: Array<{
@@ -50,14 +51,18 @@ const ALL_TABS: Array<{
   icon: any;
   enterprise?: boolean;
 }> = [
-  { key: 'inbox',     label: 'Sensing Feed', icon: Activity },
-  { key: 'digest',    label: 'Daily Digest', icon: LayoutGrid },
-  { key: 'signals',   label: 'Signals DB', icon: Database },
-  { key: 'watchlist', label: 'Watchlist', icon: Target },
-  { key: 'rooms',     label: 'War Rooms', icon: ShieldAlert },
-  { key: 'decisions', label: 'Decisions', icon: CheckSquare },
-  { key: 'insights',  label: 'Insights', icon: LineChart },
-  { key: 'reviewer',  label: 'Reviewer', icon: BrainCircuit, enterprise: true },
+  { key: 'inbox',       label: 'Sensing Feed', icon: Activity },
+  { key: 'digest',      label: 'Daily Digest', icon: LayoutGrid },
+  { key: 'signals',     label: 'Signals DB', icon: Database },
+  { key: 'watchlist',   label: 'Watchlist', icon: Target },
+  // Loop B — v7 engagement spine surfaced inside /ci. Sits between the
+  // sensing surfaces and the war-room/decision surfaces so the IA
+  // mirrors the workflow: sense → scope (engagement) → war-game → commit.
+  { key: 'engagements', label: 'Engagements', icon: Briefcase },
+  { key: 'rooms',       label: 'War Rooms', icon: ShieldAlert },
+  { key: 'decisions',   label: 'Decisions', icon: CheckSquare },
+  { key: 'insights',    label: 'Insights', icon: LineChart },
+  { key: 'reviewer',    label: 'Reviewer', icon: BrainCircuit, enterprise: true },
 ];
 
 function getRole(): string | null {
@@ -238,6 +243,13 @@ export default function CIPage() {
         {tab === 'digest' && <DigestTab />}
         {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'engagements' && (
+          <EngagementsTab
+            onEngagementOpen={(id) =>
+              navigate(`/ci?tab=engagements&engagement=${encodeURIComponent(id)}`)
+            }
+          />
+        )}
         {tab === 'rooms' && (
           activeRoom
             ? <WarRoomView roomId={activeRoom} onClose={closeWarRoom} />

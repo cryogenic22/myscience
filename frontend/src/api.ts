@@ -2111,3 +2111,61 @@ export const feedbackApi = {
       return expectJson<{ ok: true }>(r);
     }),
 };
+
+// ── Loop A / B — Engagements (v7 IA spine) ──────────────────────────
+
+export interface EngagementDTO {
+  id: string;
+  name: string;
+  asset: string;
+  sponsor: string | null;
+  situation: 'launch' | 'defense' | 'lcm';
+  workshop_date: string | null;
+  stage: 'brief' | 'sources' | 'dossier' | 'synthesis' | 'gaps' | 'scenarios' | 'workshop';
+  status: 'draft' | 'active' | 'completed' | 'archived';
+  scope: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  tenant_scope: string | null;
+}
+
+export interface EngagementListResponse {
+  engagements: EngagementDTO[];
+  count: number;
+}
+
+export const engagementsApi = {
+  list: (params: { status?: string; situation?: string; limit?: number } = {}):
+    Promise<EngagementListResponse> => {
+    const qsStr = qs(params as Record<string, unknown>);
+    const url = `${BASE}/engagements${qsStr ? `?${qsStr}` : ''}`;
+    return fetch(url, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    });
+  },
+
+  get: (eid: string, includeBrief = false): Promise<EngagementDTO & { brief?: unknown }> => {
+    const q = includeBrief ? '?include_brief=true' : '';
+    return fetch(`${BASE}/engagements/${encodeURIComponent(eid)}${q}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    });
+  },
+
+  create: (body: {
+    name: string; asset: string; situation: string;
+    sponsor?: string; scope?: Record<string, unknown>;
+  }): Promise<EngagementDTO> =>
+    fetch(`${BASE}/engagements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
