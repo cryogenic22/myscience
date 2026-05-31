@@ -2701,6 +2701,103 @@ def catalog_stats(db: Database = Depends(get_db)):
     }
 
 
+# ── BE-23 · /catalog/24h-stats — PB-803 ingestion activity ──
+
+
+@router.get("/24h-stats")
+def catalog_24h_stats(db: Database = Depends(get_db)):
+    """Last-24-hour breadcrumbs for PB-803's activity stream + health gauge.
+
+    Returns: cycles_run, records_ingested, drift_events, est_cost_usd,
+    plus per-source breakdown ordered by records ingested DESC. Empty
+    arrays when telemetry tables are absent so the FE renders an
+    empty-state without 500s.
+    """
+    cycles_run = 0
+    records_ingested = 0
+    drift_events = 0
+    est_cost_usd = 0.0
+    by_source: list[dict] = []
+
+    # 24h connector run cycles + record counts.
+    if _table_exists(db, "connector_runs"):
+        try:
+            row = db.fetch_one(
+                """
+                SELECT COUNT(*)::int AS cycles,
+                       COALESCE(SUM(records_ingested), 0)::int AS records,
+                       COALESCE(SUM(cost_usd), 0)::float8 AS cost
+                  FROM connector_runs
+                 WHERE started_at > NOW() - INTERVAL '24 hours'
+                """
+            ) or {}
+            cycles_run = int(row.get("cycles") or 0)
+            records_ingested = int(row.get("records") or 0)
+            est_cost_usd = float(row.get("cost") or 0.0)
+        except Exception:
+            logger.exception("catalog_24h_stats: connector_runs aggregate failed")
+
+        try:
+            by_source_rows = db.fetch_all(
+                """
+                SELECT source_key,
+                       COUNT(*)::int AS cycles,
+                       COALESCE(SUM(records_ingested), 0)::int AS records,
+                       COALESCE(SUM(failures), 0)::int AS failures,
+                       MAX(started_at) AS last_run_at
+                  FROM connector_runs
+                 WHERE started_at > NOW() - INTERVAL '24 hours'
+                 GROUP BY source_key
+                 ORDER BY records DESC
+                 LIMIT 50
+                """
+            ) or []
+            by_source = [
+                {
+                    "source_key":  r.get("source_key"),
+                    "cycles":      int(r.get("cycles") or 0),
+                    "records":     int(r.get("records") or 0),
+                    "failures":    int(r.get("failures") or 0),
+                    "last_run_at": r["last_run_at"].isoformat()
+                                   if r.get("last_run_at") and hasattr(r["last_run_at"], "isoformat")
+                                   else None,
+                }
+                for r in by_source_rows
+            ]
+        except Exception:
+            logger.exception("catalog_24h_stats: per-source breakdown failed")
+
+    # Drift events from the data quality stream.
+    if _table_exists(db, "data_quality_results"):
+        try:
+            row = db.fetch_one(
+                """
+                SELECT COUNT(*)::int AS drifts
+                  FROM data_quality_results
+                 WHERE created_at > NOW() - INTERVAL '24 hours'
+                   AND NOT passed
+                """
+            ) or {}
+            drift_events = int(row.get("drifts") or 0)
+        except Exception:
+            logger.exception("catalog_24h_stats: drift count failed")
+
+    # 24h health gauge: 1 - (failures / cycles), clamped.
+    total_failures = sum(s["failures"] for s in by_source) if by_source else 0
+    health = 1.0
+    if cycles_run > 0:
+        health = max(0.0, min(1.0, 1.0 - (total_failures / cycles_run)))
+
+    return {
+        "cycles_run":         cycles_run,
+        "records_ingested":   records_ingested,
+        "drift_events":       drift_events,
+        "est_cost_usd":       round(est_cost_usd, 2),
+        "health":             round(health, 4),
+        "by_source":          by_source,
+    }
+
+
 # ── Entity Activity Feed ──
 
 
