@@ -31,7 +31,9 @@ import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import EngagementsTab from '../components/ci/EngagementsTab';
+import EngagementDetailContainer from '../components/ci/EngagementDetailContainer';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
+import type { LifecycleStage } from '../components/layout/EngagementShell';
 import { useDemoAutoLogin } from '../hooks/useDemoAutoLogin';
 
 // Loop D1 — shell primitives
@@ -81,6 +83,8 @@ export default function CIPage() {
     (params.get('tab') as TabKey) || (getRole() ? 'inbox' : 'digest');
   const [tab, setTabState] = useState<TabKey>(initialTab);
   const activeRoom = params.get('room');
+  const activeEngagement = params.get('engagement');
+  const activeStage = (params.get('stage') || undefined) as LifecycleStage | undefined;
 
   // Sync tab to URL
   const setTab = (t: TabKey) => {
@@ -244,11 +248,32 @@ export default function CIPage() {
         {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
         {tab === 'engagements' && (
-          <EngagementsTab
-            onEngagementOpen={(id) =>
-              navigate(`/ci?tab=engagements&engagement=${encodeURIComponent(id)}`)
-            }
-          />
+          activeEngagement
+            ? <EngagementDetailContainer
+                eid={activeEngagement}
+                stage={activeStage}
+                onBackToPortfolio={() => {
+                  const next = new URLSearchParams(params);
+                  next.delete('engagement');
+                  next.delete('stage');
+                  setParams(next, { replace: false });
+                }}
+                onStageChange={(id, s) => {
+                  const next = new URLSearchParams(params);
+                  next.set('tab', 'engagements');
+                  next.set('engagement', id);
+                  next.set('stage', s);
+                  setParams(next, { replace: false });
+                }}
+              />
+            : <EngagementsTab
+                onEngagementOpen={(id) => {
+                  const next = new URLSearchParams(params);
+                  next.set('tab', 'engagements');
+                  next.set('engagement', id);
+                  setParams(next, { replace: false });
+                }}
+              />
         )}
         {tab === 'rooms' && (
           activeRoom
