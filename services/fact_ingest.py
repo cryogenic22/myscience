@@ -114,6 +114,14 @@ def event_to_fact(event: dict) -> Optional[FactDraft]:
     """
     subj_type = event.get("entity_type")
     subj_id = event.get("entity_id")
+    # market_events overwhelmingly carry the subject as drug_id (96% on prod,
+    # 1 Jun 2026), while primary_entity_id is unpopulated. Fall back to drug_id
+    # (a drug subject) so the backfill actually produces facts rather than
+    # skipping every event for "no subject". The live EventCollector path may
+    # pass entity_id/_type directly; that still wins when present.
+    if not subj_id and event.get("drug_id"):
+        subj_id = event.get("drug_id")
+        subj_type = subj_type or "drug"
     if not subj_type or not subj_id:
         return None
 
@@ -199,9 +207,20 @@ def assert_event_fact(db, event: dict) -> Optional[str]:
     return _assert_with_status(db, event)[1]
 
 
+# NOTE: market_events stores the subject as primary_entity_id/_type and the
+# feed name as source_api — there are no entity_id/entity_type/source_feed
+# columns. We alias the real columns to the keys event_to_fact() expects so
+# the live path (EventCollector passes a synthetic dict with those keys) and
+# the backfill path (this query) share one mapping. Selecting the non-existent
+# names threw UndefinedColumn and asserted zero facts — the A1 bug.
 _FETCH_SQL = """
-    SELECT id, event_type, description, source_feed, source_url, trust_score,
-           entity_id, entity_type, event_date, created_at
+    SELECT id, event_type, description,
+           source_api  AS source_feed,
+           source_url, trust_score,
+           primary_entity_id   AS entity_id,
+           primary_entity_type AS entity_type,
+           drug_id,
+           event_date, created_at
       FROM market_events
      {where}
      ORDER BY created_at DESC
