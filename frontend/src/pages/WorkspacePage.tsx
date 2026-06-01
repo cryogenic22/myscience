@@ -18,6 +18,7 @@ type Tab = 'chat' | 'graph' | 'catalog' | 'feed';
 interface WorkspacePageProps {
   onBack: () => void;
   onSearch?: () => void;
+  onCI?: () => void;
   initialQuestion?: string | null;
   initialTab?: Tab;
 }
@@ -42,6 +43,7 @@ const EMPTY_CANVAS: CanvasState = {
 export default function WorkspacePage({
   onBack,
   onSearch,
+  onCI,
   initialQuestion,
   initialTab = 'chat',
 }: WorkspacePageProps) {
@@ -220,6 +222,7 @@ export default function WorkspacePage({
       <TopBar
         onBack={onBack}
         onSearch={onSearch}
+        onCI={onCI}
         activeTab={activeTab}
         onTabChange={tab => {
           if (tab === 'search') { onSearch?.(); return; }

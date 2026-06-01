@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
+import { Activity, ArrowLeft, Bell, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { PRODUCT_NAME } from '../../brand';
 import { FeedBadge } from '../intelligence/FeedBadge';
@@ -8,6 +8,8 @@ export type TopBarTab = 'chat' | 'graph' | 'catalog' | 'search' | 'feed';
 interface TopBarProps {
   onBack: () => void;
   onSearch?: () => void;
+  /** Jump to the CI cockpit (/ci) — the engagement war-gaming walkthrough. */
+  onCI?: () => void;
   activeTab: TopBarTab;
   onTabChange: (tab: TopBarTab) => void;
   breadcrumb?: string;
@@ -21,7 +23,7 @@ const TABS = [
   { key: 'catalog' as const, label: 'Entity Library', icon: Database },
 ];
 
-export default function TopBar({ onBack, onSearch, activeTab, onTabChange, breadcrumb }: TopBarProps) {
+export default function TopBar({ onBack, onSearch, onCI, activeTab, onTabChange, breadcrumb }: TopBarProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -90,6 +92,19 @@ export default function TopBar({ onBack, onSearch, activeTab, onTabChange, bread
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {onCI && (
+            <button
+              type="button"
+              onClick={onCI}
+              data-testid="topbar-ci"
+              className="btn btn-ghost btn-sm hidden sm:flex items-center gap-2"
+              style={{ borderRadius: '8px' }}
+              title="Open the CI cockpit — engagements & war-gaming"
+            >
+              <Activity size={13} />
+              <span style={{ color: 'var(--color-ink-3)' }}>CI Cockpit</span>
+            </button>
+          )}
           {onSearch && (
             <button
               type="button"
