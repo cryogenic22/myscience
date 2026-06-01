@@ -122,6 +122,41 @@ def test_build_domains_empty_is_all_gaps():
     assert count == 0
 
 
+# ── B3 (PB-E02): signals from compose_dossier feed the domains ─────
+
+
+def test_build_domains_merges_signals_into_domains():
+    # A pricing-tagged signal must land in pricing_and_access alongside facts.
+    signals = [
+        {"signal_id": "s1", "headline": "Novo cuts WAC 5%", "kbq_tag": "pricing_access", "ts": "2026-05-01T00:00:00Z"},
+        {"signal_id": "s2", "headline": "New P3 readout", "kbq_tag": "clinical", "ts": "2026-05-02T00:00:00Z"},
+    ]
+    domains, coverage, count = build_domains([], signals)
+    by = {d.domain: d for d in domains}
+    assert len(by["pricing_and_access"].facts) == 1
+    assert by["pricing_and_access"].facts[0].fact_class == "signal"
+    assert "Novo cuts WAC" in by["pricing_and_access"].facts[0].claim
+    # count includes signals → composed dossier is richer than facts-only
+    assert count == 2
+    assert coverage > 0
+
+
+def test_build_domains_signals_optional_back_compat():
+    # Calling without signals (legacy) still works → no regression.
+    d1, c1, n1 = build_domains([_fact("wac_usd_monthly", "corporate")])
+    d2, c2, n2 = build_domains([_fact("wac_usd_monthly", "corporate")], None)
+    assert (c1, n1) == (c2, n2)
+
+
+def test_signals_widen_coverage_vs_facts_only():
+    facts = [_fact("wac_usd_monthly", "corporate")]  # pricing only
+    signals = [{"signal_id": "s1", "headline": "trial win", "kbq_tag": "clinical", "ts": None}]
+    _, cov_facts_only, _ = build_domains(facts)
+    _, cov_composed, _ = build_domains(facts, signals)
+    # adding a clinical signal lights up a second domain
+    assert cov_composed > cov_facts_only
+
+
 def _fact(predicate, fact_class="signal", value="x", fid=None):
     return {
         "id": fid or f"f-{predicate}-{fact_class}",
