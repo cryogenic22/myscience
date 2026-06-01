@@ -31,6 +31,8 @@ import {
   type ShellActiveEngagement,
 } from '../layout/EngagementShell';
 import DossierContainer from './DossierContainer';
+import PersonaPicker from './PersonaPicker';
+import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
 interface Props {
   eid: string;
@@ -109,6 +111,7 @@ export default function EngagementDetailContainer({
   const [engagement, setEngagement] = useState<EngagementDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [persona] = usePersona();
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +175,10 @@ export default function EngagementDetailContainer({
   }
 
   const active = toActive(engagement);
-  const currentStage = (stage ?? engagement.stage) as LifecycleStage;
+  // PB-UX01: with no explicit stage in the URL, land on the persona's default
+  // stage (KC→dossier, SA→synthesis, DM→scenarios, EL→brief) rather than a
+  // hardcoded one. Explicit ?stage= always wins; navigation is never blocked.
+  const currentStage = (stage ?? personaDefaults(persona).defaultStage) as LifecycleStage;
 
   return (
     <EngagementShell
@@ -182,6 +188,9 @@ export default function EngagementDetailContainer({
       onStageSelect={(engagementId, s) => onStageChange(engagementId, s)}
       sidebar={null}
     >
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 0 0' }}>
+        <PersonaPicker />
+      </div>
       {currentStage === 'dossier' ? (
         <DossierContainer
           engagement={engagement}
