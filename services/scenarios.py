@@ -141,24 +141,151 @@ def _prior_from_fact(claim: str, fact_class: str, *, base: float = 0.3) -> float
     return round(min(max(p, 0.1), 0.7), 2)
 
 
-def _competitive_scenario(fact) -> Scenario:
+def _focal_pretty(focal_asset: Optional[str]) -> str:
+    """`drug:semaglutide` → `semaglutide`; falls back to a neutral label."""
+    if not focal_asset:
+        return "the focal asset"
+    return focal_asset.split(":")[-1].strip() or "the focal asset"
+
+
+# PB-H10/H11 — team moves + decision options.
+#
+# Deterministic, grounded scaffolding (NO LLM, always present). Moves are framed
+# from each actor's RATIONAL INTEREST given the scenario; options are mutually-
+# exclusive strategic paths for the client (the focal-asset owner), exactly one
+# marked recommended by a defensible heuristic. NPV is left None on purpose — we
+# have no value model yet, and fabricating bn-DKK figures would be dishonest
+# (quantitative NPV is its own loop, PB-H11b). The frontend renders options
+# cleanly without the NPV line.
+
+
+def _competitive_team_moves(rival: str, focal: str) -> list[TeamMove]:
+    return [
+        TeamMove(
+            team=rival,
+            move=f"Press the advantage — expand into {focal}'s shared indications "
+                 f"and bid aggressively for formulary position.",
+            rationale=f"{rival} holds a live competitive edge; rational self-interest "
+                      f"is to convert it into share before {focal} can respond.",
+        ),
+        TeamMove(
+            team=focal,
+            move=f"Defend share — reinforce differentiation (outcomes, dosing, access) "
+                 f"and lock in payer contracts ahead of {rival}'s push.",
+            rationale="Protecting installed base and formulary tier is cheaper than "
+                      "re-winning share once lost.",
+        ),
+        TeamMove(
+            team="Payers",
+            move=f"Exploit the rivalry — extract deeper rebates across the class while "
+                 f"{rival} and {focal} compete.",
+            rationale="A contested class is leverage; payers rationally play suppliers "
+                      "against one another.",
+        ),
+    ]
+
+
+def _competitive_options(rival: str, focal: str, prior: float) -> list[DecisionOption]:
+    recommend_defend = prior >= 0.4   # higher threat → defend; lower → margin focus
+    return [
+        DecisionOption(
+            id="defend-differentiate",
+            statement=f"Defend & differentiate {focal}",
+            rationale=f"Out-evidence {rival} on outcomes and secure preferred access — "
+                      f"protects premium positioning.",
+            recommended=recommend_defend,
+        ),
+        DecisionOption(
+            id="compete-access",
+            statement="Compete on price & access",
+            rationale=f"Match {rival}'s contracting to hold formulary share, accepting "
+                      f"margin compression.",
+            recommended=False,
+        ),
+        DecisionOption(
+            id="segment-defend",
+            statement="Segment & defend the core",
+            rationale=f"Concede price-sensitive segments to {rival}; concentrate spend on "
+                      f"the highest-value patients and channels.",
+            recommended=not recommend_defend,
+        ),
+    ]
+
+
+def _signal_team_moves(headline: str, focal: str) -> list[TeamMove]:
+    return [
+        TeamMove(
+            team="Market mover",
+            move="Capitalize on the development — move first to convert it into a "
+                 "commercial or regulatory advantage.",
+            rationale=f"The party behind “{headline}” is rationally motivated to "
+                      f"press the opening.",
+        ),
+        TeamMove(
+            team=focal,
+            move=f"Adapt the plan — stress-test the {focal} launch/defense assumptions "
+                 f"this development invalidates and pre-empt the downside.",
+            rationale="Early adaptation preserves optionality; waiting cedes initiative.",
+        ),
+        TeamMove(
+            team="Regulators & payers",
+            move="Reassess the class — the development may shift reimbursement or "
+                 "approval posture across comparable assets.",
+            rationale="Institutional actors recalibrate when the evidence or market "
+                      "structure changes.",
+        ),
+    ]
+
+
+def _signal_options(focal: str) -> list[DecisionOption]:
+    return [
+        DecisionOption(
+            id="preempt",
+            statement="Pre-empt the shift",
+            rationale=f"Invest ahead of the curve so {focal} shapes rather than reacts "
+                      f"to the development.",
+            recommended=True,
+        ),
+        DecisionOption(
+            id="monitor",
+            statement="Monitor & stage the response",
+            rationale="Hold spend until the signal resolves into a confirmed trend; act "
+                      "on pre-set triggers.",
+            recommended=False,
+        ),
+        DecisionOption(
+            id="hedge",
+            statement="Hedge across outcomes",
+            rationale=f"Split investment so {focal} is protected whether or not the "
+                      f"development materializes.",
+            recommended=False,
+        ),
+    ]
+
+
+def _competitive_scenario(fact, focal_asset: Optional[str] = None) -> Scenario:
     # competitive facts read like "drug:tirzepatide — competes_with (4 edges)"
     head = fact.claim.split(" — ")[0].split(" (")[0].strip()
     pretty = head.split(":")[-1].strip() if ":" in head else head
+    focal = _focal_pretty(focal_asset)
+    prior = _prior_from_fact(fact.claim, fact.fact_class)
     return Scenario(
         name=f"Competitive pressure: {pretty}",
         trigger_event=(
             f"{fact.claim} — escalation here would directly pressure the focal "
             f"asset's competitive position."
         ),
-        prior_prob=_prior_from_fact(fact.claim, fact.fact_class),
+        prior_prob=prior,
         evidence=[ScenarioEvidence(fact_id=fact.id, predicate="competitive_relation")],
+        team_moves=_competitive_team_moves(pretty, focal),
+        decision_options=_competitive_options(pretty, focal, prior),
     )
 
 
-def _signal_scenario(domain: str, fact) -> Scenario:
+def _signal_scenario(domain: str, fact, focal_asset: Optional[str] = None) -> Scenario:
     name = _LEADING_TAG_RE.sub("", fact.claim).strip()[:80]
     label = _DOMAIN_LABEL.get(domain, domain.replace("_", " "))
+    focal = _focal_pretty(focal_asset)
     return Scenario(
         name=f"Signal: {name}",
         trigger_event=(
@@ -167,6 +294,8 @@ def _signal_scenario(domain: str, fact) -> Scenario:
         ),
         prior_prob=_prior_from_fact(fact.claim, fact.fact_class),
         evidence=[ScenarioEvidence(fact_id=fact.id, predicate="signal")],
+        team_moves=_signal_team_moves(name, focal),
+        decision_options=_signal_options(focal),
     )
 
 
@@ -186,10 +315,12 @@ def derive_scenarios(snapshot: DossierSnapshot) -> list[Scenario]:
     blocked_by_gaps (reusing the D1 gaps surface)."""
     candidates: list[Scenario] = []
 
+    focal = getattr(snapshot, "focal_asset", None)
+
     comp = _domain(snapshot, "competitive")
     if comp is not None:
         for f in comp.facts[:_MAX_COMPETITIVE]:
-            candidates.append(_competitive_scenario(f))
+            candidates.append(_competitive_scenario(f, focal))
 
     for dv in snapshot.domains:
         # Signal-driven scenarios come from the substantive strategic domains.
@@ -200,7 +331,7 @@ def derive_scenarios(snapshot: DossierSnapshot) -> list[Scenario]:
             continue
         for f in dv.facts:
             if f.fact_class == "signal":
-                candidates.append(_signal_scenario(dv.domain, f))
+                candidates.append(_signal_scenario(dv.domain, f, focal))
 
     # Dedupe by name (keep the first / highest later via sort), cap, sort.
     seen: set[str] = set()
