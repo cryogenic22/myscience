@@ -60,6 +60,10 @@ from services.scenarios import (
     assemble_and_persist as assemble_scenarios_and_persist,
     list_scenarios,
 )
+from services.insights import (
+    assemble_and_persist_insights,
+    list_engagement_synthesis,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -511,3 +515,32 @@ def get_scenarios(
         raise HTTPException(404, f"engagement not found: {eid}")
     scenarios = list_scenarios(db, eid)
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
+
+
+# ── Synthesis (PB-UX06): typed insights derived from the dossier ──
+
+
+@router.post("/engagements/{eid}/synthesis/assemble", status_code=201)
+def assemble_synthesis_endpoint(
+    eid: str,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """Derive + persist synthesis insights for an engagement from its latest
+    dossier (assembling one if none exists). Each insight passes the synthesis
+    test (>=1 fact citation, valid strategic frame); failures are logged to
+    rejected_insights as the audit artifact. Returns the live synthesis set."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    return assemble_and_persist_insights(db, eid, created_by=str(user["id"]))
+
+
+@router.get("/engagements/{eid}/synthesis")
+def get_synthesis(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    return list_engagement_synthesis(db, eid)

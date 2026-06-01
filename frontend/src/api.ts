@@ -6,6 +6,9 @@ export const BASE = import.meta.env.DEV ? '/api' : '';
 // interface (the backend serialises to it exactly, per services/scenarios.py).
 // Type-only import → erased at build, no runtime/layering cost, no duplication.
 import type { Scenario } from './pages/ScenariosPage';
+// PB-UX06 — synthesis API contract IS the SynthesisPage types (backend
+// serialises to them exactly, per services/insights.py).
+import type { Insight, RejectedInsight } from './pages/SynthesisPage';
 
 export interface SourceCoverageItem {
   source: string;
@@ -2307,6 +2310,41 @@ export const scenariosApi = {
       `${BASE}/engagements/${encodeURIComponent(eid)}/scenarios/assemble?narrative=${narrative}`,
       { method: 'POST', headers: { ...authHeaders() } },
     ).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
+// ── Synthesis (PB-UX06) ─────────────────────────────────────────────
+// Typed insights derived from the dossier + the rejected-candidate audit
+// trail. GET returns empty lists (not 404) when synthesis hasn't run yet —
+// the container treats empty insights+rejected as the "not-yet-derived" state.
+
+export interface SynthesisResponse {
+  insights: Insight[];
+  rejectedInsights: RejectedInsight[];
+  passRate: number;
+  count: number;
+}
+
+export const synthesisApi = {
+  get: (eid: string): Promise<SynthesisResponse> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/synthesis`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /**
+   * Derive + persist synthesis insights from the latest dossier (assembling
+   * one if needed). Each candidate passes the synthesis-test gate; failures
+   * are logged to the rejected-candidate audit trail.
+   */
+  assemble: (eid: string): Promise<SynthesisResponse> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/synthesis/assemble`, {
+      method: 'POST', headers: { ...authHeaders() },
+    }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
     }),

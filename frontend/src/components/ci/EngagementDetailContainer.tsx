@@ -13,7 +13,7 @@
  *   - brief    → echoes the BCB JSON (raw, until BriefPage container lands)
  *   - sources  → "coming soon"
  *   - dossier  → DossierContainer (live KB-backed 8-domain dossier) [KB3]
- *   - synthesis→ "coming soon"
+ *   - synthesis→ SynthesisContainer (live typed insights + audit trail) [UX06]
  *   - gaps     → GapsContainer (live H04 actionable collection gaps) [UX05]
  *   - scenarios→ ScenariosContainer (live PB-H09 probabilistic futures) [UX04]
  *   - workshop → "coming soon"
@@ -33,6 +33,7 @@ import {
 import DossierContainer from './DossierContainer';
 import ScenariosContainer from './ScenariosContainer';
 import GapsContainer from './GapsContainer';
+import SynthesisContainer from './SynthesisContainer';
 import PersonaPicker from './PersonaPicker';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
@@ -197,6 +198,11 @@ export default function EngagementDetailContainer({
         <DossierContainer
           engagement={engagement}
           onMarkComplete={() => onStageChange(engagement.id, 'synthesis')}
+        />
+      ) : currentStage === 'synthesis' ? (
+        <SynthesisContainer
+          engagement={engagement}
+          onMarkComplete={() => onStageChange(engagement.id, 'gaps')}
         />
       ) : currentStage === 'gaps' ? (
         <GapsContainer
