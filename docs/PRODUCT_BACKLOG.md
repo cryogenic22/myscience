@@ -25,17 +25,18 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 4     |
-| triaged       | 85    |
+| in-progress   | 5     |
+| triaged       | 84    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 6     |
 
-## Currently in flight (4)
+## Currently in flight (5)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
 - [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass) — frontend-claude / n/a
+- [PB-E05] Evidence drill-through — claims to source records — shared / adhoc
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 
 ## 24-week sequencing — design-review plan
@@ -1051,7 +1052,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-E05] Evidence drill-through — claims to source records
 - **Type**: feature
-- **Status**: triaged
+- **Status**: in-progress
 - **Priority**: high
 - **Owner**: shared
 - **Source**: brainstorm
@@ -1059,7 +1060,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-E02
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Link dossier facts/claims to `evidence_records` (reuse `services/evidence_ledger.py`); make the frontend `onOpenFact` open the source snippet. Delivers the anti-hallucination promise: every claim verifiable. Acceptance: clicking a fact in the dossier shows its source record.
+- **Notes**: Delivers the anti-hallucination promise: every claim verifiable. **BACKEND SHIPPED (real-DB gated):** `DossierFact` now carries `source_url`, surfaced as `sourceUrl` in `to_dict()` (additive — omitted when absent), populated from the fact's `object_value.source_url` (market_event facts) + signal `source_url`; round-trips through the snapshot JSON. Gate: metformin dossier — 480/508 facts (94%) carry a `sourceUrl` (e.g. the openFDA enforcement URL). **REMAINING:** (a) frontend `onOpenFact` to open the source via `sourceUrl`; (b) for facts backed by `evidence_records` (not just a URL), join the richer evidence snippet via `services/evidence_ledger.py`. Acceptance (remaining): clicking a fact in the dossier opens its source.
 
 #### [PB-E06] Collapse competitor-dossier duplication onto one composed source
 - **Type**: refactor

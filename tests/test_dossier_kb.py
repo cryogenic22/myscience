@@ -289,6 +289,36 @@ def test_fact_class_coerced_to_valid():
     assert by["pricing_and_access"].facts[0].fact_class == "signal"
 
 
+def test_fact_carries_source_url_for_drillthrough():
+    # PB-E05: market_event facts surface their source_url for drill-through.
+    from services.dossier_kb import _fact_to_dossier_fact
+    fact = {"id": "f1", "predicate": "market_event", "fact_class": "signal",
+            "created_by": "data_automaton",
+            "object_value": {"description": "Recall X",
+                             "source_url": "https://api.fda.gov/x", "event_id": "e1"}}
+    df = _fact_to_dossier_fact(fact)
+    assert df.source_url == "https://api.fda.gov/x"
+    assert df.to_dict()["sourceUrl"] == "https://api.fda.gov/x"
+
+
+def test_fact_to_dict_omits_source_url_when_absent():
+    f = DossierFact(id="x", claim="c", fact_class="reference", source_label="s")
+    assert "sourceUrl" not in f.to_dict()      # additive: absent unless present
+
+
+def test_row_to_snapshot_round_trips_source_url():
+    from services.dossier_kb import _row_to_snapshot
+    row = {"id": "s1", "engagement_id": "e1", "focal_asset": "drug:x", "version": 1,
+           "coverage_score": 0.1, "fact_count": 1, "assembled_by": "system",
+           "assembled_at": None,
+           "domains": [{"domain": "clinical_profile", "priority": "high",
+                        "state": "in_progress", "readiness": 0.3,
+                        "facts": [{"id": "f1", "claim": "c", "factClass": "signal",
+                                   "sourceLabel": "s", "sourceUrl": "https://u"}]}]}
+    snap = _row_to_snapshot(row)
+    assert snap.domains[0].facts[0].source_url == "https://u"
+
+
 def test_render_value_prefers_description_for_event_facts():
     # market_event facts carry human text in `description`; without it they
     # rendered as raw JSON that leaked into scenario names (caught on real DB).

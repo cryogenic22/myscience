@@ -221,15 +221,19 @@ class DossierFact:
     claim: str
     fact_class: str          # one of VALID_FACT_CLASSES
     source_label: str
+    source_url: Optional[str] = None   # PB-E05: drill-through to the source
 
     def to_dict(self) -> dict:
         # camelCase to match the frontend Fact interface exactly.
-        return {
+        d = {
             "id": self.id,
             "claim": self.claim,
             "factClass": self.fact_class,
             "sourceLabel": self.source_label,
         }
+        if self.source_url:
+            d["sourceUrl"] = self.source_url
+        return d
 
 
 @dataclass
@@ -383,11 +387,16 @@ def _fact_to_dossier_fact(fact: dict) -> DossierFact:
     except (TypeError, ValueError):
         conf_str = ""
     source_label = f"{created_by}{conf_str}"
+    # PB-E05: surface the source URL (market_event facts carry it in
+    # object_value) so the dossier UI can drill through to the source record.
+    ov = fact.get("object_value")
+    source_url = ov.get("source_url") if isinstance(ov, dict) else None
     return DossierFact(
         id=str(fact.get("id") or ""),
         claim=claim,
         fact_class=cls,
         source_label=source_label,
+        source_url=source_url or None,
     )
 
 
@@ -444,6 +453,7 @@ def _signal_to_dossier_fact(move: dict) -> DossierFact:
         claim=claim,
         fact_class="signal",
         source_label="signal" + (f" · {move['ts'][:10]}" if move.get("ts") else ""),
+        source_url=move.get("source_url") or None,    # PB-E05
     )
 
 
@@ -837,6 +847,7 @@ def _row_to_snapshot(row: dict) -> DossierSnapshot:
                 claim=f.get("claim", ""),
                 fact_class=_coerce_fact_class(f.get("factClass")),
                 source_label=f.get("sourceLabel", ""),
+                source_url=f.get("sourceUrl") or None,
             )
             for f in (d.get("facts") or [])
         ]
