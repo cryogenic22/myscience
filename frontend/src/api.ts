@@ -2220,8 +2220,21 @@ export interface DossierVersionDTO {
   assembled_at: string | null;
 }
 
+export interface DossierGapDTO {
+  domain: string;
+  priority: 'critical' | 'high' | 'medium';
+  /** high | medium — derived from priority (benchmark gap importance). */
+  importance: string;
+  /** human-readable: what is missing. */
+  text: string;
+  /** how to fill it (domain-appropriate collection method). */
+  method: string;
+  /** true = some evidence but below threshold (only when include_thin). */
+  thin?: boolean;
+}
+
 export interface DossierGapsDTO {
-  gaps: { domain: string; priority: string }[];
+  gaps: DossierGapDTO[];
   coverage_score: number;
 }
 

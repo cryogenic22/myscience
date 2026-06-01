@@ -14,7 +14,7 @@
  *   - sources  → "coming soon"
  *   - dossier  → DossierContainer (live KB-backed 8-domain dossier) [KB3]
  *   - synthesis→ "coming soon"
- *   - gaps     → "coming soon"
+ *   - gaps     → GapsContainer (live H04 actionable collection gaps) [UX05]
  *   - scenarios→ ScenariosContainer (live PB-H09 probabilistic futures) [UX04]
  *   - workshop → "coming soon"
  *
@@ -32,6 +32,7 @@ import {
 } from '../layout/EngagementShell';
 import DossierContainer from './DossierContainer';
 import ScenariosContainer from './ScenariosContainer';
+import GapsContainer from './GapsContainer';
 import PersonaPicker from './PersonaPicker';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
@@ -196,6 +197,11 @@ export default function EngagementDetailContainer({
         <DossierContainer
           engagement={engagement}
           onMarkComplete={() => onStageChange(engagement.id, 'synthesis')}
+        />
+      ) : currentStage === 'gaps' ? (
+        <GapsContainer
+          engagement={engagement}
+          onMarkComplete={() => onStageChange(engagement.id, 'scenarios')}
         />
       ) : currentStage === 'scenarios' ? (
         <ScenariosContainer

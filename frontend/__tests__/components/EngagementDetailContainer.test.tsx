@@ -9,13 +9,15 @@ vi.mock('../../src/api', () => {
   class DossierNotAssembled extends Error {}
   return {
     engagementsApi: { get: vi.fn() },
-    dossierKbApi: { get: vi.fn(), assemble: vi.fn() },
+    dossierKbApi: { get: vi.fn(), assemble: vi.fn(), gaps: vi.fn() },
     scenariosApi: { get: vi.fn(), assemble: vi.fn() },
     DossierNotAssembled,
   };
 });
 
 import { engagementsApi, dossierKbApi, scenariosApi } from '../../src/api';
+
+// gaps() must be hoisted-safe on the mocked dossierKbApi.
 
 function dto(over: Record<string, any> = {}) {
   return {
@@ -124,6 +126,24 @@ describe('EngagementDetailContainer', () => {
     await waitFor(() => {
       expect(screen.getByText(/stage · synthesis/i)).toBeInTheDocument();
     });
+  });
+
+  it('renders the GapsContainer (not a placeholder) at the gaps stage (PB-UX05)', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'gaps' }));
+    // pending fetch → GapsContainer shows its own loading state.
+    (dossierKbApi.gaps as any).mockReturnValue(new Promise(() => {}));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
+        stage="gaps"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('gaps-loading')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 
   it('renders the ScenariosContainer (not a placeholder) at the scenarios stage (PB-UX04)', async () => {
