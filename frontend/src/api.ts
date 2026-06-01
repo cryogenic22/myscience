@@ -2179,12 +2179,16 @@ export interface DossierFactDTO {
   claim: string;
   factClass: 'reference' | 'corporate' | 'signal' | 'inferred';
   sourceLabel: string;
+  /** PB-E05: drill-through to the source record (present on most facts). */
+  sourceUrl?: string;
 }
 
 export interface DossierDomainDTO {
   domain: string;
   priority: 'critical' | 'high' | 'medium';
   state: 'complete' | 'in_progress' | 'gap';
+  /** PB-H05: per-domain evidence readiness, 0–1. */
+  readiness?: number;
   facts: DossierFactDTO[];
 }
 
@@ -2194,6 +2198,8 @@ export interface DossierSnapshotDTO {
   focal_asset: string;
   version: number | null;
   coverage_score: number;
+  /** PB-H05: priority-weighted engagement readiness, 0–1. */
+  readiness?: number;
   fact_count: number;
   domains: DossierDomainDTO[];
   assembled_by: string;

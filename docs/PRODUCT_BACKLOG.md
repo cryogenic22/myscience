@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 5     |
-| triaged       | 104   |
+| triaged       | 103   |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 7     |
+| shipped (90d) | 8     |
 
 ## Currently in flight (5)
 
@@ -1060,7 +1060,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-E02
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Delivers the anti-hallucination promise: every claim verifiable. **BACKEND SHIPPED (real-DB gated):** `DossierFact` now carries `source_url`, surfaced as `sourceUrl` in `to_dict()` (additive — omitted when absent), populated from the fact's `object_value.source_url` (market_event facts) + signal `source_url`; round-trips through the snapshot JSON. Gate: metformin dossier — 480/508 facts (94%) carry a `sourceUrl` (e.g. the openFDA enforcement URL). **REMAINING:** (a) frontend `onOpenFact` to open the source via `sourceUrl`; (b) for facts backed by `evidence_records` (not just a URL), join the richer evidence snippet via `services/evidence_ledger.py`. Acceptance (remaining): clicking a fact in the dossier opens its source.
+- **Notes**: Delivers the anti-hallucination promise: every claim verifiable. **BACKEND SHIPPED (real-DB gated):** `DossierFact.source_url` → `sourceUrl` in `to_dict()`, populated from `object_value.source_url` + signal `source_url`; metformin 480/508 facts (94%) carry one. **FRONTEND SHIPPED (PB-UX03):** clicking a dossier fact opens the `ProvenancePanel` with the source + drill-through link (`sourceUrl` threaded through the DTOs → container → page). The core acceptance is met (clicking a fact opens its source). **REMAINING (deferred enhancement):** for facts backed by `evidence_records` (not just a URL), join the richer evidence snippet via `services/evidence_ledger.py` — tracked here but lower priority than wiring the remaining stages.
 
 #### [PB-E06] Collapse competitor-dossier duplication onto one composed source
 - **Type**: refactor
@@ -1384,7 +1384,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX03] Provenance side panel (Foundation P1.3)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: feedback
@@ -1392,7 +1392,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-E05
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Shared slide-in panel: given a fact/insight/scenario, show its evidence chain, source quote, metadata. Builds on the shipped `sourceUrl` (PB-E05 backend). The single most important trust feature; used by every stage. Adopt the demo's provenance-panel design + fact-class glyphs (◇ref/◆corp/◈signal/✦inferred/internal).
+- **Notes**: **SHIPPED.** `ProvenancePanel.tsx` — shared slide-in (claim + confidence-tier glyph/label + source + drill-through link to the shipped `sourceUrl` + fact id; graceful when no URL). Also closed the dossier's "data wired, UI under-exploits it" gap (the analysis flagged this): threaded `sourceUrl` + per-domain `readiness` through the DTOs → `DossierContainer` → `EngagementDossierPage`; added a `ReadinessBar` (TOC card + domain header + engagement-level in the page header + KB-header Readiness stat), a ↗ drill hint on facts with a source, and changed `onOpenFact` to pass the full fact → opens the panel. This also delivers the **frontend half of PB-E05** (every fact now drill-through-able). +5 tests; fixed 2 tests PB-UX01 had left red on main; full suite 862 green, tsc clean, vite build OK.
 
 #### [PB-UX04] Scenarios stage — wire into stepper (Stage wiring P2.1)
 - **Type**: feature

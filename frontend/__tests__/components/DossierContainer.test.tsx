@@ -79,6 +79,25 @@ describe('DossierContainer', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
   });
 
+  it('renders per-domain readiness and opens the provenance panel on fact click (PB-UX03)', async () => {
+    const snap = makeSnapshot({ readiness: 0.42 });
+    // give the in_progress domain a fact with a source url + readiness
+    const pa = snap.domains.find((d: any) => d.domain === 'pricing_and_access');
+    pa.readiness = 0.6;
+    pa.facts = [{ id: 'f1', claim: 'WAC $675/mo', factClass: 'corporate', sourceLabel: 'sec', sourceUrl: 'https://sec.gov/x' }];
+    (dossierKbApi.get as any).mockResolvedValue(snap);
+    render(<DossierContainer engagement={ENGAGEMENT} />);
+
+    await waitFor(() => expect(screen.getByTestId('dossier-ready')).toBeInTheDocument());
+    // engagement readiness surfaced (KB header stat + page-header readiness bar)
+    expect(screen.getAllByText('42%').length).toBeGreaterThan(0);
+    // panel closed initially, then opens when the fact is clicked
+    expect(screen.queryByTestId('provenance-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('WAC $675/mo'));
+    await waitFor(() => expect(screen.getByTestId('provenance-panel')).toBeInTheDocument());
+    expect(screen.getByTestId('provenance-source-link')).toBeInTheDocument();
+  });
+
   it('shows an error (not the empty state) on a non-404 failure', async () => {
     (dossierKbApi.get as any).mockRejectedValue(new Error('500: boom'));
     render(<DossierContainer engagement={ENGAGEMENT} />);

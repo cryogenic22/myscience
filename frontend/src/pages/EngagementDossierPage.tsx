@@ -44,18 +44,27 @@ const DOMAIN_LABEL: Record<DossierDomain, string> = {
   wargame_specific:       'Wargame-Specific',
 };
 
-const FACT_CLASS_GLYPH: Record<FactClass, string> = {
+export const FACT_CLASS_GLYPH: Record<FactClass, string> = {
   reference: '◇',
   corporate: '◆',
   signal:    '◈',
   inferred:  '✦',
 };
 
-const FACT_CLASS_COLOR: Record<FactClass, string> = {
+export const FACT_CLASS_COLOR: Record<FactClass, string> = {
   reference: 'var(--color-teal, var(--color-accent))',
   corporate: 'var(--color-accent)',
   signal:    'var(--color-green, #15803d)',
   inferred:  'var(--color-state-decide, #6C2BD9)',
+};
+
+/** What each fact class means — surfaced in the provenance panel so the
+ *  confidence tier is legible, not just a glyph. */
+export const FACT_CLASS_LABEL: Record<FactClass, string> = {
+  reference: 'Reference — peer-reviewed / epidemiological',
+  corporate: 'Corporate — filing, press release, or label',
+  signal:    'Signal — derived from monitored events',
+  inferred:  'Inferred — analytic derivation',
 };
 
 const STATE_GLYPH: Record<DomainState, string> = {
@@ -75,12 +84,16 @@ export interface Fact {
   claim: string;
   factClass: FactClass;
   sourceLabel: string;
+  /** PB-E05: drill-through link to the source record. */
+  sourceUrl?: string;
 }
 
 export interface DomainView {
   domain: DossierDomain;
   priority: Priority;
   state: DomainState;
+  /** PB-H05: per-domain evidence readiness, 0–1. */
+  readiness?: number;
   facts: Fact[];
   patientJourney?: { stage: string; count: number; note: string }[];
   competitors?: { name: string; benchmark: string; status: string }[];
@@ -90,8 +103,11 @@ export interface DomainView {
 export interface EngagementDossierPageProps {
   scope: { focalAsset: string; engagementName: string };
   domains: DomainView[];
+  /** PB-H05: priority-weighted engagement readiness, 0–1 (from the snapshot). */
+  engagementReadiness?: number;
   onJumpToDomain: (domain: DossierDomain) => void;
-  onOpenFact: (factId: string) => void;
+  /** PB-UX03: receives the full fact so the provenance panel can show its chain. */
+  onOpenFact: (fact: Fact) => void;
   onMarkComplete: () => void;
 }
 
@@ -158,6 +174,30 @@ function PriorityPill({ priority }: { priority: Priority }) {
   );
 }
 
+function readinessTone(r: number): string {
+  if (r >= 0.7) return 'var(--color-green, #15803d)';
+  if (r >= 0.35) return 'var(--color-amber)';
+  return 'var(--color-red)';
+}
+
+/** PB-H05: a compact readiness meter (0–1). The agent telling you where your
+ *  attention is worth most — low readiness on a critical domain is a signal. */
+function ReadinessBar({ readiness, width = 64 }: { readiness: number; width?: number }) {
+  const pct = Math.round(Math.min(1, Math.max(0, readiness)) * 100);
+  return (
+    <span
+      title={`Readiness ${pct}%`}
+      aria-label={`Readiness ${pct} percent`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
+      <span style={{ width, height: 5, borderRadius: 3, background: 'var(--color-surface-2)', overflow: 'hidden', display: 'inline-block' }}>
+        <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: readinessTone(readiness), borderRadius: 3 }} />
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-ink-3)' }}>{pct}%</span>
+    </span>
+  );
+}
+
 // ── TOC ────────────────────────────────────────────────────────────
 
 function DomainTOC({
@@ -220,6 +260,7 @@ function DomainTOC({
                 {STATE_GLYPH[d.state]} {d.facts.length}
               </span>
             </div>
+            {typeof d.readiness === 'number' && <ReadinessBar readiness={d.readiness} />}
           </button>
         ))}
       </div>
@@ -409,7 +450,7 @@ function PayerLandscape({ payers }: { payers: NonNullable<DomainView['payers']> 
 
 // ── Facts list ────────────────────────────────────────────────────
 
-function FactsList({ facts, onOpenFact }: { facts: Fact[]; onOpenFact: (id: string) => void }) {
+function FactsList({ facts, onOpenFact }: { facts: Fact[]; onOpenFact: (fact: Fact) => void }) {
   if (facts.length === 0) {
     return (
       <div
@@ -432,10 +473,11 @@ function FactsList({ facts, onOpenFact }: { facts: Fact[]; onOpenFact: (id: stri
           key={f.id}
           data-fact-id={f.id}
           data-fact-class={f.factClass}
-          onClick={() => onOpenFact(f.id)}
+          onClick={() => onOpenFact(f)}
+          title="View provenance"
           style={{
             display: 'grid',
-            gridTemplateColumns: '24px 1fr 160px',
+            gridTemplateColumns: '24px 1fr 170px',
             gap: 10,
             padding: '8px 12px',
             background: 'var(--color-surface)',
@@ -463,9 +505,14 @@ function FactsList({ facts, onOpenFact }: { facts: Fact[]; onOpenFact: (id: stri
               color: 'var(--color-ink-3)',
               letterSpacing: '0.04em',
               textAlign: 'right',
+              display: 'flex',
+              gap: 4,
+              justifyContent: 'flex-end',
+              alignItems: 'baseline',
             }}
           >
-            {f.sourceLabel}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.sourceLabel}</span>
+            {f.sourceUrl && <span aria-label="has source link" style={{ color: 'var(--color-accent)' }}>↗</span>}
           </span>
         </li>
       ))}
@@ -480,7 +527,7 @@ function DomainSection({
   onOpenFact,
 }: {
   d: DomainView;
-  onOpenFact: (id: string) => void;
+  onOpenFact: (fact: Fact) => void;
 }) {
   const labelId = `domain-${d.domain}`;
   return (
@@ -520,9 +567,14 @@ function DomainSection({
           {DOMAIN_LABEL[d.domain]}
         </h2>
         <PriorityPill priority={d.priority} />
+        {typeof d.readiness === 'number' && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}>
+            <ReadinessBar readiness={d.readiness} width={80} />
+          </span>
+        )}
         <span
           style={{
-            marginLeft: 'auto',
+            marginLeft: typeof d.readiness === 'number' ? 0 : 'auto',
             fontFamily: 'var(--font-mono)',
             fontSize: 10.5,
             color: STATE_COLOR[d.state],
@@ -553,7 +605,7 @@ function DomainSection({
 // ── Main component ────────────────────────────────────────────────
 
 export function EngagementDossierPage(props: EngagementDossierPageProps) {
-  const { scope, domains, onJumpToDomain, onOpenFact, onMarkComplete } = props;
+  const { scope, domains, engagementReadiness, onJumpToDomain, onOpenFact, onMarkComplete } = props;
   const totalFacts = domains.reduce((acc, d) => acc + d.facts.length, 0);
   const completed = domains.filter((d) => d.state === 'complete').length;
 
@@ -619,13 +671,24 @@ export function EngagementDossierPage(props: EngagementDossierPageProps) {
           <span
             style={{
               marginLeft: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 14,
               fontFamily: 'var(--font-mono)',
               fontSize: 12,
               color: 'var(--color-ink-2)',
             }}
           >
-            <strong style={{ color: 'var(--color-ink)' }}>{completed}</strong>/{domains.length} domains complete ·{' '}
-            <strong style={{ color: 'var(--color-ink)' }}>{totalFacts}</strong> facts
+            <span>
+              <strong style={{ color: 'var(--color-ink)' }}>{completed}</strong>/{domains.length} complete ·{' '}
+              <strong style={{ color: 'var(--color-ink)' }}>{totalFacts}</strong> facts
+            </span>
+            {typeof engagementReadiness === 'number' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ letterSpacing: '0.04em' }}>readiness</span>
+                <ReadinessBar readiness={engagementReadiness} width={90} />
+              </span>
+            )}
           </span>
         </div>
       </header>
