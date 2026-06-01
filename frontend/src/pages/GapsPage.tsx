@@ -24,6 +24,8 @@ export interface Gap {
   importance: Importance;
   question: string;
   expectedSourceClass?: string;
+  /** How to fill the gap (domain-appropriate collection method). */
+  fillMethod?: string;
   remediation: Remediation;
   remediationNote?: string;
   blocksScenarios?: string[];
@@ -242,6 +244,24 @@ function GapCard({
           }}
         >
           Expected source class: <strong style={{ color: 'var(--color-ink-2)' }}>{gap.expectedSourceClass}</strong>
+        </div>
+      )}
+
+      {gap.fillMethod && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)', lineHeight: 1.5 }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--color-ink-4)',
+              marginRight: 6,
+            }}
+          >
+            How to fill
+          </span>
+          {gap.fillMethod}
         </div>
       )}
 
