@@ -302,6 +302,104 @@ def test_snapshot_gaps_lists_empty_domains_with_priority():
     assert all("priority" in g for g in gaps)
 
 
+# ── H05: per-domain readiness + overall (priority-weighted) readiness ──
+
+
+def test_domain_readiness_zero_for_empty():
+    from services.dossier_kb import _domain_readiness
+    assert _domain_readiness([]) == 0.0
+
+
+def test_domain_readiness_rewards_count_and_grounding():
+    from services.dossier_kb import _domain_readiness
+    one_signal = [DossierFact(id="1", claim="c", fact_class="signal", source_label="s")]
+    three_grounded = [
+        DossierFact(id=str(i), claim="c", fact_class="corporate", source_label="s")
+        for i in range(3)
+    ]
+    assert 0.0 < _domain_readiness(one_signal) < _domain_readiness(three_grounded) <= 1.0
+    # grounding alone lifts a single fact above its ungrounded equivalent
+    one_grounded = [DossierFact(id="1", claim="c", fact_class="reference", source_label="s")]
+    assert _domain_readiness(one_grounded) > _domain_readiness(one_signal)
+
+
+def test_build_domains_sets_readiness():
+    domains, _, _ = build_domains([_fact("wac_usd_monthly", "corporate", "675")])
+    by = {d.domain: d for d in domains}
+    assert by["pricing_and_access"].readiness > 0.0      # has a fact
+    assert by["competitive"].readiness == 0.0            # empty
+
+
+def test_domainview_to_dict_carries_readiness():
+    domains, _, _ = build_domains([_fact("wac_usd_monthly", "corporate")])
+    by = {d.domain: d.to_dict() for d in domains}
+    assert "readiness" in by["pricing_and_access"]
+    assert by["competitive"]["readiness"] == 0.0
+
+
+def test_overall_readiness_priority_weighted():
+    from services.dossier_kb import overall_readiness
+    # a strong CRITICAL domain (competitive) lifts overall more than a strong
+    # MEDIUM domain (disease_and_patient) with identical evidence.
+    crit_domains = build_domains(
+        [_fact("ma_deal", "corporate", str(i), f"c{i}") for i in range(5)])[0]
+    med_domains = build_domains(
+        [_fact("prevalence", "corporate", str(i), f"d{i}") for i in range(5)])[0]
+    assert overall_readiness(crit_domains) > overall_readiness(med_domains)
+
+
+def test_snapshot_to_dict_has_readiness():
+    domains, cov, cnt = build_domains([_fact("wac_usd_monthly", "corporate")])
+    snap = kb.DossierSnapshot(engagement_id="e", focal_asset="drug:x",
+                              domains=domains, coverage_score=cov, fact_count=cnt)
+    d = snap.to_dict()
+    assert "readiness" in d
+    assert 0.0 <= d["readiness"] <= 1.0
+
+
+# ── H04: actionable gaps (text + fill method + importance) ─────────
+
+
+def test_gaps_enriched_with_text_method_importance():
+    domains, cov, cnt = build_domains([_fact("wac_usd_monthly", "corporate")])
+    snap = kb.DossierSnapshot(engagement_id="e", focal_asset="drug:x",
+                              domains=domains, coverage_score=cov, fact_count=cnt)
+    comp = next(g for g in snap.gaps() if g["domain"] == "competitive")
+    assert comp["text"]                      # human-readable: what's missing
+    assert comp["method"]                    # how to fill it
+    assert comp["importance"] == "high"      # competitive is a critical domain
+    assert comp["thin"] is False
+
+
+def test_gaps_default_excludes_thin_but_include_thin_surfaces_it():
+    # pricing has 1 corporate fact → in_progress (thin), not an empty gap.
+    domains, cov, cnt = build_domains([_fact("wac_usd_monthly", "corporate")])
+    snap = kb.DossierSnapshot(engagement_id="e", focal_asset="drug:x",
+                              domains=domains, coverage_score=cov, fact_count=cnt)
+    assert "pricing_and_access" not in {g["domain"] for g in snap.gaps()}  # back-compat
+    thin = snap.gaps(include_thin=True)
+    thin_gap = next(g for g in thin if g["domain"] == "pricing_and_access")
+    assert thin_gap["thin"] is True
+    assert "Thin coverage" in thin_gap["text"]
+
+
+def test_row_to_snapshot_recomputes_missing_readiness():
+    # Pre-H05 snapshot JSON carried no per-domain readiness — recompute on read.
+    from services.dossier_kb import _row_to_snapshot
+    row = {
+        "id": "snap1", "engagement_id": "e1", "focal_asset": "drug:x", "version": 1,
+        "coverage_score": 0.25, "fact_count": 1, "assembled_by": "system",
+        "assembled_at": None,
+        "domains": [
+            {"domain": "pricing_and_access", "priority": "critical", "state": "in_progress",
+             "facts": [{"id": "f1", "claim": "c", "factClass": "corporate", "sourceLabel": "s"}]},
+        ],
+    }
+    snap = _row_to_snapshot(row)
+    by = {d.domain: d for d in snap.domains}
+    assert by["pricing_and_access"].readiness > 0.0   # recomputed, not defaulted to 0
+
+
 # ── DB-backed: fake db ─────────────────────────────────────────────
 
 
