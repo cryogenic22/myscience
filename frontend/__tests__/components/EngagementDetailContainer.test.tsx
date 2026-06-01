@@ -13,11 +13,12 @@ vi.mock('../../src/api', () => {
     scenariosApi: { get: vi.fn(), assemble: vi.fn() },
     synthesisApi: { get: vi.fn(), assemble: vi.fn() },
     engagementSourcesApi: { get: vi.fn() },
+    engagementBriefApi: { get: vi.fn() },
     DossierNotAssembled,
   };
 });
 
-import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi } from '../../src/api';
+import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi, engagementBriefApi } from '../../src/api';
 
 // gaps() must be hoisted-safe on the mocked dossierKbApi.
 
@@ -101,9 +102,12 @@ describe('EngagementDetailContainer', () => {
   });
 
   it('with no explicit stage, lands on the persona default (PB-UX01)', async () => {
-    // Default persona is EL → default landing stage 'brief' (a placeholder).
+    // Default persona is EL → default landing stage 'brief' (now wired to the
+    // BriefContainer). Persona-driven landing overrides the persisted
+    // engagement.stage when no explicit ?stage= is given.
     window.localStorage.removeItem('mz_persona');
     (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'workshop' }));
+    (engagementBriefApi.get as any).mockReturnValue(new Promise(() => {}));
     render(
       <EngagementDetailContainer
         eid="eng-1"
@@ -111,9 +115,7 @@ describe('EngagementDetailContainer', () => {
         onStageChange={() => {}}
       />,
     );
-    // Persona-driven landing overrides the persisted engagement.stage when no
-    // explicit ?stage= is given.
-    await waitFor(() => expect(screen.getByText(/stage · brief/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('brief-loading')).toBeInTheDocument());
   });
 
   it('explicit stage prop overrides engagement.stage', async () => {
@@ -131,6 +133,23 @@ describe('EngagementDetailContainer', () => {
     await waitFor(() => {
       expect(screen.getByTestId('gaps-loading')).toBeInTheDocument();
     });
+  });
+
+  it('renders the BriefContainer (not a placeholder) at the brief stage (PB-UX-Brief)', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'brief' }));
+    (engagementBriefApi.get as any).mockReturnValue(new Promise(() => {}));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
+        stage="brief"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('brief-loading')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 
   it('renders the SourcesContainer (not a placeholder) at the sources stage (PB-UX07)', async () => {

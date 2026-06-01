@@ -2378,3 +2378,37 @@ export const engagementSourcesApi = {
       return r.json();
     }),
 };
+
+// ── Brief (PB-UX-Brief) ─────────────────────────────────────────────
+// The Business Context Brief (BCB) for an engagement. get() returns null when
+// no brief exists yet (404) — authoring happens in the create-engagement flow.
+
+export interface BCBStrategicDecision { statement: string; rationale: string; }
+export interface BCBCompetitorThreat { entity_ref: string; threat_level: string; note: string; }
+
+export interface BusinessContextBriefDTO {
+  id: string;
+  engagement_id: string;
+  focal_asset: string;
+  situation: string;
+  strategic_decisions: BCBStrategicDecision[];
+  competitive_set: BCBCompetitorThreat[];
+  success_criteria: string[];
+  constraints: string[];
+  created_by: string;
+  created_at: string | null;
+  signed_off: boolean;
+  signed_off_by: string | null;
+  signed_off_at: string | null;
+}
+
+export const engagementBriefApi = {
+  get: (eid: string): Promise<BusinessContextBriefDTO | null> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/brief`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 404) return null;     // no brief authored yet
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};

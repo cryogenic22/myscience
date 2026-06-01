@@ -10,7 +10,7 @@
  *   /ci?tab=engagements&engagement={eid}&stage={stage}
  *
  * Currently rendered "content" per stage:
- *   - brief    → echoes the BCB JSON (raw, until BriefPage container lands)
+ *   - brief    → BriefContainer (live BCB: situation, decisions, set) [UX-Brief]
  *   - sources  → SourcesContainer (live per-engagement source coverage) [UX07]
  *   - dossier  → DossierContainer (live KB-backed 8-domain dossier) [KB3]
  *   - synthesis→ SynthesisContainer (live typed insights + audit trail) [UX06]
@@ -35,6 +35,7 @@ import ScenariosContainer from './ScenariosContainer';
 import GapsContainer from './GapsContainer';
 import SynthesisContainer from './SynthesisContainer';
 import SourcesContainer from './SourcesContainer';
+import BriefContainer from './BriefContainer';
 import PersonaPicker from './PersonaPicker';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
@@ -195,7 +196,12 @@ export default function EngagementDetailContainer({
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 0 0' }}>
         <PersonaPicker />
       </div>
-      {currentStage === 'sources' ? (
+      {currentStage === 'brief' ? (
+        <BriefContainer
+          engagement={engagement}
+          onMarkComplete={() => onStageChange(engagement.id, 'sources')}
+        />
+      ) : currentStage === 'sources' ? (
         <SourcesContainer
           engagement={engagement}
           onMarkComplete={() => onStageChange(engagement.id, 'dossier')}
