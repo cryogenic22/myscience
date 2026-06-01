@@ -14,10 +14,11 @@ vi.mock('../../src/api', () => {
   return {
     DossierNotAssembled,
     dossierKbApi: { gaps: vi.fn(), assemble: vi.fn() },
+    gapRemediationApi: { list: vi.fn(), set: vi.fn() },
   };
 });
 
-import { dossierKbApi, DossierNotAssembled } from '../../src/api';
+import { dossierKbApi, gapRemediationApi, DossierNotAssembled } from '../../src/api';
 import GapsContainer from '../../src/components/ci/GapsContainer';
 
 const ENGAGEMENT = { id: 'e1', name: 'Wegovy defense', asset: 'drug:semaglutide' } as any;
@@ -36,7 +37,12 @@ function gapsDTO(overrides: Partial<any> = {}) {
 }
 
 describe('GapsContainer', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // default: no persisted remediations, set succeeds.
+    (gapRemediationApi.list as any).mockResolvedValue({});
+    (gapRemediationApi.set as any).mockResolvedValue({ gap_domain: 'x', remediation: 'descope', note: null });
+  });
 
   it('shows the not-assembled state with an assemble action', async () => {
     (dossierKbApi.gaps as any).mockRejectedValue(new DossierNotAssembled());
@@ -69,6 +75,19 @@ describe('GapsContainer', () => {
     fireEvent.click(btn);
 
     await waitFor(() => expect(document.querySelector('[data-banner="ready"]')).toBeTruthy());
+    // PB-UX05b: the choice is persisted by raw gap domain.
+    expect(gapRemediationApi.set).toHaveBeenCalledWith('e1', 'pricing_and_access', 'primary_research');
+  });
+
+  it('seeds remediation from the persisted store on load (PB-UX05b)', async () => {
+    (dossierKbApi.gaps as any).mockResolvedValue(gapsDTO());
+    (gapRemediationApi.list as any).mockResolvedValue({
+      pricing_and_access: { gap_domain: 'pricing_and_access', remediation: 'descope', note: null },
+    });
+    render(<GapsContainer engagement={ENGAGEMENT} />);
+    await waitFor(() => expect(screen.getByTestId('gaps-ready')).toBeInTheDocument());
+    // critical gap already resolved (descope) → not blocking → workshop-ready.
+    expect(document.querySelector('[data-banner="ready"]')).toBeTruthy();
   });
 
   it('shows an error (not the empty state) on a non-404 failure', async () => {
