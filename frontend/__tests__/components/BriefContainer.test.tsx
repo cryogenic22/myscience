@@ -10,6 +10,13 @@ vi.mock('../../src/api', () => ({
   engagementBriefApi: { get: vi.fn() },
 }));
 
+// EntityComments has its own api dependency + tests; stub it here.
+vi.mock('../../src/components/ci/EntityComments', () => ({
+  default: ({ targetType, targetId }: { targetType: string; targetId: string }) => (
+    <div data-testid="brief-comments-stub">{targetType}:{targetId}</div>
+  ),
+}));
+
 import { engagementBriefApi } from '../../src/api';
 import BriefContainer from '../../src/components/ci/BriefContainer';
 
@@ -49,6 +56,8 @@ describe('BriefContainer', () => {
     expect(screen.getByText('tirzepatide')).toBeInTheDocument();
     expect(screen.getByText(/Hold ≥ 40% NBRx share/)).toBeInTheDocument();
     expect(screen.getByTestId('brief-signoff')).toHaveTextContent(/draft/i);
+    // UX08: a discussion thread is mounted on the brief.
+    expect(screen.getByTestId('brief-comments-stub')).toHaveTextContent('brief:bcb1');
   });
 
   it('shows signed-off status when the brief is signed off', async () => {
