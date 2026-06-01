@@ -2,6 +2,11 @@
 // In production (served from FastAPI), call routes directly
 export const BASE = import.meta.env.DEV ? '/api' : '';
 
+// PB-UX04 — the scenario API contract IS the ScenariosPage `Scenario`
+// interface (the backend serialises to it exactly, per services/scenarios.py).
+// Type-only import → erased at build, no runtime/layering cost, no duplication.
+import type { Scenario } from './pages/ScenariosPage';
+
 export interface SourceCoverageItem {
   source: string;
   records: number;
@@ -2255,6 +2260,40 @@ export const dossierKbApi = {
       headers: { ...authHeaders() },
     }).then(async (r) => {
       if (r.status === 404) throw new DossierNotAssembled('no dossier assembled yet');
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
+// ── Scenarios (PB-H09 / PB-UX04) ───────────────────────────────────
+// First-class probabilistic futures derived from the dossier. GET returns
+// `{scenarios: [], count: 0}` (not 404) when none are derived yet — the
+// container treats an empty list as the "not-yet-derived" state.
+
+export interface ScenariosResponse {
+  scenarios: Scenario[];
+  count: number;
+}
+
+export const scenariosApi = {
+  get: (eid: string): Promise<ScenariosResponse> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/scenarios`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /**
+   * Derive + persist scenarios from the latest dossier (assembling one if
+   * needed). `narrative=true` asks the backend to synthesise a grounded
+   * decision_output per scenario (PB-H16) — a no-op when the LLM is unset.
+   */
+  assemble: (eid: string, narrative = true): Promise<ScenariosResponse> =>
+    fetch(
+      `${BASE}/engagements/${encodeURIComponent(eid)}/scenarios/assemble?narrative=${narrative}`,
+      { method: 'POST', headers: { ...authHeaders() } },
+    ).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
     }),

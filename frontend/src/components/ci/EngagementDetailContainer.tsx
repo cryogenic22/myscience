@@ -15,7 +15,7 @@
  *   - dossier  → DossierContainer (live KB-backed 8-domain dossier) [KB3]
  *   - synthesis→ "coming soon"
  *   - gaps     → "coming soon"
- *   - scenarios→ "coming soon"
+ *   - scenarios→ ScenariosContainer (live PB-H09 probabilistic futures) [UX04]
  *   - workshop → "coming soon"
  *
  * The point of this loop is to make engagement-detail navigation
@@ -31,6 +31,7 @@ import {
   type ShellActiveEngagement,
 } from '../layout/EngagementShell';
 import DossierContainer from './DossierContainer';
+import ScenariosContainer from './ScenariosContainer';
 import PersonaPicker from './PersonaPicker';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
@@ -195,6 +196,12 @@ export default function EngagementDetailContainer({
         <DossierContainer
           engagement={engagement}
           onMarkComplete={() => onStageChange(engagement.id, 'synthesis')}
+        />
+      ) : currentStage === 'scenarios' ? (
+        <ScenariosContainer
+          engagement={engagement}
+          onMarkComplete={() => onStageChange(engagement.id, 'workshop')}
+          onPlayScenario={() => onStageChange(engagement.id, 'workshop')}
         />
       ) : (
         <StagePlaceholder stage={currentStage} />

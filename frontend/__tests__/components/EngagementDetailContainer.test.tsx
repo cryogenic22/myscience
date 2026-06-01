@@ -10,11 +10,12 @@ vi.mock('../../src/api', () => {
   return {
     engagementsApi: { get: vi.fn() },
     dossierKbApi: { get: vi.fn(), assemble: vi.fn() },
+    scenariosApi: { get: vi.fn(), assemble: vi.fn() },
     DossierNotAssembled,
   };
 });
 
-import { engagementsApi, dossierKbApi } from '../../src/api';
+import { engagementsApi, dossierKbApi, scenariosApi } from '../../src/api';
 
 function dto(over: Record<string, any> = {}) {
   return {
@@ -115,13 +116,31 @@ describe('EngagementDetailContainer', () => {
     render(
       <EngagementDetailContainer
         eid="eng-1"
+        stage="synthesis"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/stage · synthesis/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders the ScenariosContainer (not a placeholder) at the scenarios stage (PB-UX04)', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'scenarios' }));
+    // pending fetch → ScenariosContainer shows its own loading state.
+    (scenariosApi.get as any).mockReturnValue(new Promise(() => {}));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
         stage="scenarios"
         onBackToPortfolio={() => {}}
         onStageChange={() => {}}
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText(/stage · scenarios/i)).toBeInTheDocument();
+      expect(screen.getByTestId('scenarios-loading')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 });
