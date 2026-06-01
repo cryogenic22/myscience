@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -481,6 +482,40 @@ def _related_to_dossier_fact(rel: dict) -> DossierFact:
     )
 
 
+# Trial-arm markers that mean "this 'drug' row is actually a study arm, not a
+# competitor". A6's _should_exclude anchors placebo to the name start (it cleans
+# rows where the WHOLE name is junk); in the competitive set the marker is
+# usually a suffix ("metformin placebo", "X + healthy diet"), so we also scan
+# anywhere for these.
+_COMPETITOR_ARM_RE = re.compile(
+    r"(?:\bplacebo\b|\bsham\b|\bvehicle\b|\busual care\b|\bstandard of care\b|"
+    r"\bhealthy diet\b|\blifestyle\b|\bexercise\b|treatment for|\bcomparator\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_junk_competitor_name(name: Optional[str]) -> bool:
+    """Read-time filter for junk drug rows (placebo / dosage / trial-arm names —
+    e.g. 'metformin placebo', 'Metformin 1000mg', 'X + healthy diet') that the
+    entity graph links as COMPETES_WITH neighbours and that would otherwise
+    present as 'competitors'.
+
+    Reuses the A6 cleanup patterns (scripts.clean_drug_names) PLUS a trial-arm
+    scan for the competitive context — the NON-destructive, read-time complement
+    to A6's write-time cleanup, so the competitive set + scenarios improve
+    immediately without deleting any rows. Lazy import keeps the pure assembly
+    core free of script-level deps."""
+    if not name:
+        return False
+    if _COMPETITOR_ARM_RE.search(name):
+        return True
+    try:
+        from scripts.clean_drug_names import _should_exclude, DOSAGE_PATTERN
+        return bool(_should_exclude(name) or DOSAGE_PATTERN.search(name))
+    except Exception:  # never let a filter failure drop a real competitor
+        return False
+
+
 def build_domains(
     facts: list[dict],
     signals: Optional[list[dict]] = None,
@@ -506,6 +541,10 @@ def build_domains(
             by_domain[domain].append(dfact)
 
     for rel in (related or []):
+        # Skip junk drug rows (placebo/dosage/trial-arm) masquerading as
+        # competitors — reuses the A6 patterns, read-time (PB-H07).
+        if (rel.get("type") == "drug") and _is_junk_competitor_name(rel.get("name")):
+            continue
         by_domain["competitive"].append(_related_to_dossier_fact(rel))
 
     domains: list[DomainView] = []
