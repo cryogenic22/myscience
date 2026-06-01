@@ -63,6 +63,16 @@ class TestExcludePatterns:
         assert not _should_exclude("empagliflozin")
         assert not _should_exclude("metformin")
 
+    def test_combination_product_label_excluded(self):
+        """A6: 'COMBINATION_PRODUCT: ...' is a raw trial-arm label, not a drug.
+        Verified 7 such rows on prod (1 Jun 2026)."""
+        from scripts.clean_drug_names import _should_exclude
+        assert _should_exclude("COMBINATION_PRODUCT: Semaglutide 2.4 mg")
+        assert _should_exclude("COMBINATION_PRODUCT: Dapagliflozin + Metformin")
+        assert _should_exclude("combination product: fdc of spironolactone")
+        # but a real combination drug NAME (no underscore label prefix) is kept
+        assert not _should_exclude("semaglutide")
+
 
 class TestDrugNameExtraction:
     """Verify extraction of drug names from intervention strings."""

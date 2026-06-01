@@ -53,6 +53,12 @@ EXCLUDE_PATTERNS = [
     re.compile(r"\b(?:medication|treatment|allocation)\b", re.IGNORECASE),
     re.compile(r"^co-administration\b", re.IGNORECASE),
     re.compile(r"^combination\s+of\b", re.IGNORECASE),
+    # A6: "COMBINATION_PRODUCT: ..." / "combination product: ..." is a raw
+    # trial intervention label (a multi-drug arm), never a real single drug —
+    # e.g. "COMBINATION_PRODUCT: Semaglutide 2.4 mg". Verified 7 such rows on
+    # prod (1 Jun 2026). Match either separator (underscore or space) followed
+    # by the colon, so it doesn't over-match a real "combination" drug name.
+    re.compile(r"^combination[_\s]product\s*:", re.IGNORECASE),
     re.compile(r"\bmanagement\b", re.IGNORECASE),
     re.compile(r"\bnurse\b", re.IGNORECASE),
     re.compile(r"^any\s+", re.IGNORECASE),
