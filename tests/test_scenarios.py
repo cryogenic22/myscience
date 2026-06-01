@@ -89,6 +89,69 @@ def test_empty_dossier_yields_no_scenarios():
     assert out == []
 
 
+# ── Pure: team moves + decision options (PB-H10/H11) ────────────────
+
+
+def test_competitive_scenario_has_grounded_team_moves():
+    related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                "relation": "COMPETES_WITH", "edge_count": 4}]
+    s = next(x for x in derive_scenarios(_snapshot_with(related=related))
+             if "tirzepatide" in x.name)
+    # three actors, each with a move + rationale.
+    assert len(s.team_moves) == 3
+    teams = {m.team for m in s.team_moves}
+    assert "tirzepatide" in teams          # the rival, by name
+    assert "x" in teams                    # the focal asset (drug:x → x)
+    assert all(m.move and m.rationale for m in s.team_moves)
+    # moves are scenario-specific, not generic boilerplate.
+    assert any("tirzepatide" in m.move for m in s.team_moves)
+
+
+def test_competitive_scenario_options_exactly_one_recommended_no_fabricated_npv():
+    related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                "relation": "COMPETES_WITH", "edge_count": 4}]
+    s = next(x for x in derive_scenarios(_snapshot_with(related=related))
+             if "tirzepatide" in x.name)
+    assert len(s.decision_options) == 3
+    assert sum(1 for o in s.decision_options if o.recommended) == 1
+    # honest: no fabricated NPV figures (value model is a later loop).
+    assert all(o.npv_5y_dkk_bn is None for o in s.decision_options)
+    # high prior (4 edges → 0.46) → defend, not margin-harvest.
+    rec = next(o for o in s.decision_options if o.recommended)
+    assert rec.id == "defend-differentiate"
+
+
+def test_low_threat_competitive_recommends_segment_defend():
+    related = [{"id": "d3", "type": "drug", "name": "minor", "relation": "COMPETES_WITH",
+                "edge_count": 0}]  # prior 0.3 (< 0.4) → margin focus
+    s = next(x for x in derive_scenarios(_snapshot_with(related=related))
+             if "minor" in x.name)
+    rec = next(o for o in s.decision_options if o.recommended)
+    assert rec.id == "segment-defend"
+
+
+def test_signal_scenario_has_moves_and_options():
+    signals = [{"signal_id": "s1", "headline": "Novo cuts WAC 5%",
+                "kbq_tag": "pricing_access", "ts": None}]
+    s = next(x for x in derive_scenarios(_snapshot_with(signals=signals))
+             if "Novo cuts WAC" in x.name)
+    assert len(s.team_moves) == 3
+    assert len(s.decision_options) == 3
+    assert sum(1 for o in s.decision_options if o.recommended) == 1
+    # the signal headline is woven into the rational-interest framing.
+    assert any("Novo cuts WAC" in m.rationale for m in s.team_moves)
+
+
+def test_team_moves_and_options_survive_to_dict_round_trip():
+    related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                "relation": "COMPETES_WITH", "edge_count": 4}]
+    d = next(x for x in derive_scenarios(_snapshot_with(related=related))
+             if "tirzepatide" in x.name).to_dict()
+    assert len(d["teamMoves"]) == 3 and len(d["decisionOptions"]) == 3
+    assert set(d["teamMoves"][0]) == {"team", "move", "rationale"}
+    assert set(d["decisionOptions"][0]) == {"id", "statement", "rationale", "npv5yDkkBn", "recommended"}
+
+
 # ── Pure: prior heuristic + serialization ──────────────────────────
 
 
