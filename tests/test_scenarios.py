@@ -19,10 +19,10 @@ from services.scenarios import (
 from services.dossier_kb import DossierSnapshot, build_domains
 
 
-def _snapshot_with(facts=None, signals=None, related=None) -> DossierSnapshot:
+def _snapshot_with(facts=None, signals=None, related=None, focal="drug:x") -> DossierSnapshot:
     domains, cov, cnt = build_domains(facts or [], signals, None, related)
     return DossierSnapshot(
-        engagement_id="e1", focal_asset="drug:x", domains=domains,
+        engagement_id="e1", focal_asset=focal, domains=domains,
         coverage_score=cov, fact_count=cnt, id="snap1",
     )
 
@@ -74,14 +74,32 @@ def test_scenarios_capped_and_sorted_by_prior():
     assert priors == sorted(priors, reverse=True)
 
 
-def test_blocked_by_gaps_inherits_high_importance_gaps():
-    # competitive fact present, but pricing_and_access (critical) is empty → a
-    # high-importance gap that blocks confident scenario execution.
+def test_scenario_not_blocked_by_unrelated_domain_gap():
+    # PB-H10c: a competitive scenario draws evidence from the competitive domain.
+    # An empty pricing_and_access (a high-importance gap) is a CONTEXT gap in a
+    # different domain — it must NOT hard-block the competitive scenario (the
+    # prior behaviour blocked ALL scenarios on every high gap → dead-end).
     related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
                 "relation": "COMPETES_WITH", "edge_count": 4}]
     out = derive_scenarios(_snapshot_with(related=related))
-    assert out[0].blocked_by_gaps
-    assert any("payer & access" in g for g in out[0].blocked_by_gaps)
+    comp = next(s for s in out if "tirzepatide" in s.name)
+    assert comp.source_domains == ["competitive"]
+    assert comp.blocked_by_gaps == []          # own-evidence → playable
+
+
+def test_self_referential_competitor_is_suppressed():
+    # PB-H10c: a "GLP-1 analogue - semaglutide" rival when the focal asset IS
+    # semaglutide is a self-match and must not spawn a competitive scenario.
+    related = [
+        {"id": "self", "type": "drug", "name": "GLP-1 analogue - semaglutide",
+         "relation": "COMPETES_WITH", "edge_count": 2},
+        {"id": "real", "type": "drug", "name": "tirzepatide",
+         "relation": "COMPETES_WITH", "edge_count": 3},
+    ]
+    out = derive_scenarios(_snapshot_with(related=related, focal="drug:semaglutide"))
+    names = " ".join(s.name for s in out)
+    assert "tirzepatide" in names              # real rival kept
+    assert "semaglutide" not in names          # self-match suppressed
 
 
 def test_empty_dossier_yields_no_scenarios():
