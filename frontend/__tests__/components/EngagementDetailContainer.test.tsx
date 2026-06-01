@@ -12,11 +12,12 @@ vi.mock('../../src/api', () => {
     dossierKbApi: { get: vi.fn(), assemble: vi.fn(), gaps: vi.fn() },
     scenariosApi: { get: vi.fn(), assemble: vi.fn() },
     synthesisApi: { get: vi.fn(), assemble: vi.fn() },
+    engagementSourcesApi: { get: vi.fn() },
     DossierNotAssembled,
   };
 });
 
-import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi } from '../../src/api';
+import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi } from '../../src/api';
 
 // gaps() must be hoisted-safe on the mocked dossierKbApi.
 
@@ -64,11 +65,12 @@ describe('EngagementDetailContainer', () => {
   });
 
   it('renders EngagementShell + stage placeholder for a not-yet-built stage', async () => {
-    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'sources' }));
+    // workshop is the last stage still on the placeholder (wired in a later loop).
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'workshop' }));
     render(
       <EngagementDetailContainer
         eid="eng-1"
-        stage="sources"
+        stage="workshop"
         onBackToPortfolio={() => {}}
         onStageChange={() => {}}
       />,
@@ -77,7 +79,7 @@ describe('EngagementDetailContainer', () => {
       expect(screen.getByTestId('stage-placeholder')).toBeInTheDocument();
     });
     // The placeholder names the current stage.
-    expect(screen.getByText(/stage · sources/i)).toBeInTheDocument();
+    expect(screen.getByText(/stage · workshop/i)).toBeInTheDocument();
   });
 
   it('renders the DossierContainer (not a placeholder) at the dossier stage', async () => {
@@ -115,7 +117,25 @@ describe('EngagementDetailContainer', () => {
   });
 
   it('explicit stage prop overrides engagement.stage', async () => {
+    // engagement says dossier, but the URL asks for gaps → gaps wins.
     (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'dossier' }));
+    (dossierKbApi.gaps as any).mockReturnValue(new Promise(() => {}));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
+        stage="gaps"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('gaps-loading')).toBeInTheDocument();
+    });
+  });
+
+  it('renders the SourcesContainer (not a placeholder) at the sources stage (PB-UX07)', async () => {
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'sources' }));
+    (engagementSourcesApi.get as any).mockReturnValue(new Promise(() => {}));
     render(
       <EngagementDetailContainer
         eid="eng-1"
@@ -125,8 +145,9 @@ describe('EngagementDetailContainer', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText(/stage · sources/i)).toBeInTheDocument();
+      expect(screen.getByTestId('sources-loading')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 
   it('renders the SynthesisContainer (not a placeholder) at the synthesis stage (PB-UX06)', async () => {

@@ -462,6 +462,28 @@ def list_dossier_versions(
     return {"versions": versions, "count": len(versions)}
 
 
+@router.get("/engagements/{eid}/sources")
+def get_engagement_sources(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX07: per-source coverage for the engagement's latest dossier — which
+    sources feed it, fact counts, domains touched, confidence-class mix."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    snapshot = get_latest_snapshot(db, eid)
+    if snapshot is None:
+        raise HTTPException(404, f"no dossier assembled yet for engagement {eid}")
+    sources = snapshot.source_coverage()
+    return {
+        "sources": sources,
+        "source_count": len(sources),
+        "total_facts": sum(s["fact_count"] for s in sources),
+        "coverage_score": round(snapshot.coverage_score, 3),
+    }
+
+
 @router.get("/engagements/{eid}/dossier/gaps")
 def get_dossier_gaps(
     eid: str,

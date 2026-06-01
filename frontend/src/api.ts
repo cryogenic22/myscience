@@ -2349,3 +2349,32 @@ export const synthesisApi = {
       return r.json();
     }),
 };
+
+// ── Sources (PB-UX07) ───────────────────────────────────────────────
+// Per-engagement source coverage derived from the dossier snapshot. 404 →
+// no dossier yet (DossierNotAssembled, same as the gaps endpoint).
+
+export interface EngagementSourceRow {
+  source: string;
+  fact_count: number;
+  domains: string[];
+  classes: Record<string, number>;
+}
+
+export interface EngagementSourcesResponse {
+  sources: EngagementSourceRow[];
+  source_count: number;
+  total_facts: number;
+  coverage_score: number;
+}
+
+export const engagementSourcesApi = {
+  get: (eid: string): Promise<EngagementSourcesResponse> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/sources`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (r.status === 404) throw new DossierNotAssembled('no dossier assembled yet');
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};

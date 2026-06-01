@@ -320,6 +320,35 @@ class DossierSnapshot:
                 out.append(self._gap_view(d, thin=True).to_dict())
         return out
 
+    def source_coverage(self) -> list[dict]:
+        """UX07: per-source contribution to THIS engagement's dossier — which
+        sources fed it, how many facts each, which domains they touch, and the
+        confidence-class mix. Derived from the snapshot's facts (the source_label
+        prefix before '·' is the source); engagement-scoped consumption, no extra
+        query. Sorted by fact_count desc."""
+        agg: dict[str, dict] = {}
+        for d in self.domains:
+            label = _DOMAIN_LABEL.get(d.domain, d.domain.replace("_", " "))
+            for f in d.facts:
+                src = (f.source_label or "—").split("·")[0].strip() or "—"
+                e = agg.setdefault(src, {
+                    "source": src, "fact_count": 0,
+                    "domains": set(), "classes": {},
+                })
+                e["fact_count"] += 1
+                e["domains"].add(label)
+                e["classes"][f.fact_class] = e["classes"].get(f.fact_class, 0) + 1
+        out = []
+        for e in agg.values():
+            out.append({
+                "source": e["source"],
+                "fact_count": e["fact_count"],
+                "domains": sorted(e["domains"]),
+                "classes": e["classes"],
+            })
+        out.sort(key=lambda x: x["fact_count"], reverse=True)
+        return out
+
     @staticmethod
     def _gap_view(d: DomainView, *, thin: bool) -> GapView:
         label = _DOMAIN_LABEL.get(d.domain, d.domain.replace("_", " "))
