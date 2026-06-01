@@ -1622,6 +1622,211 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-06-01
 - **Notes**: Adopt directly: fact-class confidence glyphs, flywheel chips (sense/decide/act/learn), insight frame tags (risk/opp/trigger/assumption), agent indicator in topbar. Adapt: domain-specific dossier layouts for top 2-3 domains; war-room mode picker (guided first). Fonts (Source Serif/Inter/JetBrains Mono) as a dedicated design-system loop. Skip: pricing grid, theme toggle, sidebar context card.
 
+### E17 — Data Hub & horizontal intelligence substrate (DEFERRED)
+
+> **Framing (user, 1 Jun 2026):** the data + sense layer is a HORIZONTAL intelligence
+> substrate, not a CI/war-gaming database. The knowledge model (entities · facts ·
+> evidence · graph · embeddings) + the CTX/query hydration APIs are the reusable seam;
+> different orchestrating agents (CI/war-gaming today; regulatory, BD&L, med-affairs,
+> portfolio tomorrow) plug in ABOVE that seam. Design discipline: keep the data layer
+> domain-neutral and free of CI-specific coupling — model "engagement-scoped" as the
+> general "consumer-scoped" case. Source: `docs/data-hub-agentic-layer-analysis.html`.
+> **Status: all DEFERRED** — tackle after the immediate CI/UX walkthrough priorities
+> (E16 stage wiring) are complete. Not a parallel agent for now; these are future loops
+> for the same rigor (SPEC→reuse-first→TDD→real-DB red-team→PR), additive prod writes.
+
+#### [PB-D01] Activate UserDocumentConnector (D0.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size S. Uncomment the registration (connectors/__init__.py:44), add a minimal upload endpoint, wire into the pipeline. Ships the "upload PDF → entities light up" moment (master plan A8). Unlocks Tier 4 (contributed data) with zero new architecture. Domain-neutral: any consumer can contribute documents.
+
+#### [PB-D02] Register QualityMonitorHook (D0.2)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size S. One line in IntegrationPipeline.__init__ to register the (already-written) QualityMonitorHook so quality deltas across runs are tracked. Also populate the data steward's inert fair_before/fair_after. Quality-regression detection for free.
+
+#### [PB-D03] Evidence-ledger population on ingest (D0.3 / master plan A4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size M. Each connector writes evidence records on ingest (the ledger has ~1 row today; the chain is theoretical). Makes provenance OPERATIONAL — directly enriches the sourceUrl/provenance the sense-spine already surfaces (PB-E05/UX03). Highest cross-cutting value: every downstream fact can cite a real evidence trail.
+
+#### [PB-D04] HITL review queue UI (D1.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED (curation UI — user deferred all Phase-1 curation frontends). Size M. Surface the existing hitl_review_queue (HITLReviewManager.get_pending/resolve) as a curation panel: approve/reject/merge entity matches. Every human resolution creates an alias that improves future runs. When built, lives behind a dedicated Data tab (its own surface, not the engagement stages).
+
+#### [PB-D05] Source health dashboard (D1.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED (curation UI). Size M. Surface source_registry FAIR scores (5 dims), fetch history, error rates, coverage per consumer; manual re-fetch trigger. Backend (/sources/health-summary) exists.
+
+#### [PB-D06] Document upload UI + post-extraction review (D1.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-D01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED (curation UI). Size M. Drag-and-drop upload, processing status in the agent activity feed, extracted-facts review (accept/reject/edit each assertion before it enters the knowledge model). The contribution workflow's quality gate.
+
+#### [PB-D07] Fact annotations table (D1.4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size S. Separate fact_annotations table (fact_id, annotator_id, type, value, created_at) that the pipeline NEVER touches — a human overlay (relevance tags, confidence overrides, temporal qualifiers) that survives re-runs. Today a re-run can overwrite human curation.
+
+#### [PB-D08] Connector scheduling & orchestration (D2.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size L. Map each connector to a fetch cadence (CT.gov 6h, SEC 24h, news 30m), respect rate limits, track last/next-run + error rate. scheduler/runner.py exists. This is the sense loop's heartbeat — the system senses continuously, not on demand.
+
+#### [PB-D09] Transcript ingestion pipeline (D2.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-D01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size L. Audio/video → transcription (Whisper API) → speaker diarisation → UserDocumentConnector → attributed facts ("Dr. X said Y about drug Z") at an internal/contributed confidence tier. The doc's highest-value NEW capability: qualitative intelligence (advisory boards, KOL interviews) that no competitor has.
+
+#### [PB-D10] Licensed-data connector pattern (D2.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size M. A LicensedBaseConnector extending BaseConnector: credentials vault, licence-expiry tracking (registry has license_status/license_renewal_at), rate-limit enforcement, consumer-scoped visibility. Ship one reference impl (e.g. Citeline). NOTE: commercial gating (who holds which licence) is the hard part, not the tech.
+
+#### [PB-D11] Consumer-scoped data visibility (D2.4, generalised)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-D10
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size M. A consumer_sources join table (generalises the doc's engagement_sources — per the horizontal-layer framing, an engagement is one consumer). CTX pipeline filters hydration by scope: a consumer sees public + its licensed + its internal data, never another's. Multi-tenant isolation without multi-tenant infra. KEY substrate primitive for repurposing the layer across agents.
+
+#### [PB-D12] Decision-outcome → source recalibration (Learn loop, D3.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size L. When a committed decision's outcome is observed, recalibrate source predictive_accuracy (sources that predicted correctly gain weight). learning_service.py already has EWMA source accuracy but runs=0. Closes the Learn loop; source trust becomes empirical. Relates to PB-H14 (scenario calibration).
+
+#### [PB-D13] Cross-engagement / cross-consumer knowledge index (D3.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size M. Index insights/scenarios/decisions from completed engagements as retrievable context for new ones ("last time we analysed this market we concluded X; outcome was Y"). Evidence-ledger snapshots make this possible. Institutional memory — the substrate accumulates across all consumers.
+
+#### [PB-D14] Real-time / streaming signal ingestion (D3.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-D08
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size L. Move high-priority sources (FDA alerts, CT.gov updates, SEC filings) from RSS polling to webhook/streaming. Sense loop detects critical signals in minutes, not hours.
+
+#### [PB-D15] Internal-data connector framework (D3.4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-D10, PB-D11
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size L. Pattern for ingesting structured internal data (CRM exports, sales data, field notes) via upload/API/SFTP with row-level, consumer-scoped isolation. Extends LicensedBaseConnector. The client's own data is the most valuable + least accessible — turns a generic market view into "their competitive position."
+
+#### [PB-D16] Investigator embedding + resolution strategy (agentic-ready gap)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: unassigned
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: DEFERRED. Size S. The doc's audit of the 7 agentic-ready properties found one consistent gap: investigators have no embedding column + no embedding resolution strategy (low-confidence fuzzy matches sit in the unresolved queue). Add VECTOR(1536) + embedding strategy for investigators to close it.
+
 ## Out of scope (deferred per `design-strategy.md` §7)
 
 The strategy doc explicitly defers these — they're aspirational, important, and *not* the right thing to build in the next 24 weeks. Listed so we don't re-litigate.
