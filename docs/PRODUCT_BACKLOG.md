@@ -26,7 +26,7 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 5     |
-| triaged       | 84    |
+| triaged       | 85    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 6     |
@@ -1332,6 +1332,18 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
 - **Notes**: Found while auditing legacy ingestion for H17 (1 Jun). The prod `market_events` table (verified twice via information_schema, 24 cols) has `primary_entity_id/_type/_name`, `source_api`, `drug_id`, `corroborating_sources`, `content_hash` — and does NOT have `entity_id`, `entity_type`, `source_feed`, `payload`, `raw_data`, `disclosed_date`, `source_document_id`, `corroboration_count`. Two writers INSERTed into the dropped columns and threw on prod: `services/event_collector.py:_persist_event` (LIVE — api/app.py:722 every background cycle for news) and `services/db_adapter_8k.py:_EVENT_INSERT_SQL` (→ ZERO 8-K events on prod). **SHIPPED**: both INSERTs aligned to the real 24-col schema (source_api, primary_entity_id/_type, drug_id, corroborating_sources jsonb; NOT NULL event_date/source_url COALESCE'd, retrieved_at NOW(); db_adapter ON CONFLICT now names the partial-index predicate `WHERE event_hash IS NOT NULL`). EventCollector INSERT extracted to module constant `_INSERT_EVENT_SQL` for testability. Regression net `tests/test_market_events_writers_schema.py` pins both writers' columns ⊆ the real schema + required NOT NULL cols present (the net fake-DB tests structurally couldn't provide). REAL-DB GATE PASSED: throwaway insert via each writer on prod — EventCollector row lands (source_api set, event_date defaulted, drug_id set) + fact emitted; db_adapter_8k row lands (partial-index ON CONFLICT works); throwaways cleaned (events DELETEd, append-only smoke fact self-superseded).
+
+#### [PB-H19] Resolve orphaned high-value events → entities (so they become facts)
+- **Type**: data
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Found 1 Jun chasing data richness. The facts ledger (3,302 active facts) is dominated by `RECALL_CLASS_I` events (34,077, the only event_type with `drug_id` populated). The strategically VALUABLE events — `trial_readout` (255), `approval` (241), `ma_deal` (99), `regulatory_setback` (56), `supply_disruption` (50), `pricing`/`patent_ip`/`safety_signal`/`general` (~1,230 total) — have `primary_entity_id`, `primary_entity_name` AND `drug_id` all NULL, so `event_to_fact` returns None (no subject) and they NEVER become facts. They're pharma-news items whose drug/company is named only in the description (e.g. "FDA approves Lilly's Foundayo (orforglipron)"). Net: dossiers/scenarios miss every approval/trial/deal and see only recall noise — the core data-richness gap. Fix: an enrichment pass that resolves the entity from each orphaned event's description (reuse `integration/entity_resolver` + `domain/pharma/mention_normalizer`; match known drug/company names) → backfill `primary_entity_id`/`drug_id` → run `backfill_facts_from_events`. Likely wire into the EventCollector/news path so future events resolve on ingest (the real fix vs one-off backfill). Acceptance: a known approval event (e.g. Foundayo) resolves to its drug + appears as a fact in that drug's dossier.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
