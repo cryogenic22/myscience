@@ -128,6 +128,25 @@ _PREDICATE_PREFIX_DOMAIN: tuple[tuple[str, str], ...] = (
 
 _FALLBACK_DOMAIN = "wargame_specific"
 
+# B3: signals (recent_moves) carry a KBQ tag, a DIFFERENT taxonomy from fact
+# predicates (the signals table's kbq_tags vocabulary). Map them explicitly so
+# a pricing/clinical/financial signal lands in the right domain instead of all
+# falling to wargame_specific.
+_KBQ_TAG_DOMAIN: dict[str, str] = {
+    "pricing_access":  "pricing_and_access",
+    "pricing":         "pricing_and_access",
+    "access":          "pricing_and_access",
+    "clinical":        "clinical_profile",
+    "safety":          "clinical_profile",
+    "regulatory":      "pipeline_and_macro",
+    "product":         "pipeline_and_macro",
+    "m_and_a":         "competitive",
+    "competitive":     "competitive",
+    "financial":       "commercial_operational",
+    "governance":      "commercial_operational",
+    "strategic":       "wargame_specific",
+}
+
 
 def route_predicate_to_domain(predicate: Optional[str]) -> str:
     """Map a fact predicate to one of the 8 ZS domains. Total function —
@@ -141,6 +160,17 @@ def route_predicate_to_domain(predicate: Optional[str]) -> str:
         if p.startswith(prefix):
             return domain
     return _FALLBACK_DOMAIN
+
+
+def route_kbq_tag_to_domain(tag: Optional[str]) -> str:
+    """Map a signal's KBQ tag to a ZS domain (B3). Falls back through the
+    predicate router, then to wargame_specific."""
+    if not tag:
+        return _FALLBACK_DOMAIN
+    t = tag.strip().lower()
+    if t in _KBQ_TAG_DOMAIN:
+        return _KBQ_TAG_DOMAIN[t]
+    return route_predicate_to_domain(t)
 
 
 @dataclass
@@ -281,13 +311,35 @@ def _domain_state(facts: list[DossierFact]) -> str:
     return "in_progress"
 
 
-def build_domains(facts: list[dict]) -> tuple[list[DomainView], float, int]:
-    """Pure: route raw fact dicts into the 8 domains, compute per-domain state
-    and the overall coverage score. No DB, no I/O — the testable core."""
+def _signal_to_dossier_fact(move: dict) -> DossierFact:
+    """A compose_dossier recent_move (signal) → DossierFact (signal class)."""
+    headline = move.get("headline") or "signal"
+    kbq = move.get("kbq_tag")
+    claim = f"{headline}" if not kbq else f"[{kbq}] {headline}"
+    return DossierFact(
+        id=str(move.get("signal_id") or ""),
+        claim=claim,
+        fact_class="signal",
+        source_label="signal" + (f" · {move['ts'][:10]}" if move.get("ts") else ""),
+    )
+
+
+def build_domains(
+    facts: list[dict],
+    signals: Optional[list[dict]] = None,
+) -> tuple[list[DomainView], float, int]:
+    """Pure: route ledger facts + (B3) compose_dossier signals into the 8
+    domains, compute per-domain state and overall coverage. No DB, no I/O —
+    the testable core. Signals route by their kbq_tag (falls back to
+    wargame_specific via route_predicate_to_domain)."""
     by_domain: dict[str, list[DossierFact]] = {d: [] for d in DOSSIER_DOMAINS}
     for fact in facts:
         domain = route_predicate_to_domain(fact.get("predicate"))
         by_domain[domain].append(_fact_to_dossier_fact(fact))
+
+    for move in (signals or []):
+        domain = route_kbq_tag_to_domain(move.get("kbq_tag"))
+        by_domain[domain].append(_signal_to_dossier_fact(move))
 
     domains: list[DomainView] = []
     for d in DOSSIER_DOMAINS:
@@ -418,7 +470,20 @@ def assemble_dossier(
         logger.exception("facts_as_of failed for %s:%s", subject_type, subject_id)
         facts = []
 
-    domains, coverage_score, fact_count = build_domains(facts)
+    # B3/PB-E02: compose from the EXISTING knowledge layer too, not facts-only.
+    # services/dossier.py:compose_dossier already reads signals + evidence +
+    # entity_links + related entities — pulling its signals (recent_moves) in
+    # as domain facts ends the content regression vs. the legacy dossier.
+    signals: list[dict] = []
+    try:
+        from services.dossier import compose_dossier
+        composed = compose_dossier(db, entity_type=subject_type, slug_or_id=subject_id)
+        if composed is not None:
+            signals = list(composed.recent_moves or [])
+    except Exception:
+        logger.debug("compose_dossier merge failed; facts-only", exc_info=True)
+
+    domains, coverage_score, fact_count = build_domains(facts, signals)
     return DossierSnapshot(
         engagement_id=str(engagement_id),
         focal_asset=engagement.asset,
