@@ -1227,6 +1227,30 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H10] NPV-scored decision options + recommended flag
 - **Type**: enhancement
+- **Status**: in-progress
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark decision_options carry `npv_5yr` + `recommended: bool` + rationale. **PARTIAL SHIPPED (PR #142, services/scenarios.py)**: every derived scenario now carries 3 mutually-exclusive decision options with rationale + exactly one `recommended` (heuristic: high-threat→defend & differentiate, low-threat→segment & defend margin). Validated on live semaglutide. **REMAINING (the NPV half)**: quantitative `npv_5y_dkk_bn` is deliberately left None — fabricating bn-DKK figures without a value model would be dishonest. Needs a real value model (PharmaMetrics-driven or analyst-supplied) before options carry NPV. Acceptance (remaining): a decision option carries an NPV value grounded in a defensible model, not a guessed number.
+
+#### [PB-H11] Move catalog with per-team impact vectors (guided wargaming)
+- **Type**: feature
+- **Status**: in-progress
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark MOVE_CATALOG = per-team (novo/lilly/payer/hcp) moves, each with category, label, detail, stance, and an impact vector ({novo:+0.7, lilly:-0.2, payer:-0.4}) for guided play. **PARTIAL SHIPPED (PR #142)**: every scenario now carries 3 rational-interest team moves (competitive: rival/focal/payers; signal: market-mover/focal/regulators&payers), each move+rationale named to the specific rival & focal asset. Validated on live semaglutide. **REMAINING**: per-team quantitative impact vectors for guided play (reuse `move_suggester.py` / `war_game_engine.py`). Acceptance (remaining): a guided war-game offers team moves each scored against all teams.
+
+#### [PB-H10c] Scenario blocking is too coarse (all scenarios always blocked)
+- **Type**: bug
 - **Status**: triaged
 - **Priority**: medium
 - **Owner**: backend-claude
@@ -1235,19 +1259,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-H09
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Benchmark decision_options carry `npv_5yr` + `recommended: bool` + rationale. Our `decision_brief_options` (migration 052) have label/description/predicted_outcome/cost_estimate/risk_notes (text) but no quantitative NPV or recommended flag. Extend the option model with npv_5yr (nullable, analyst-supplied or modelled) + recommended. Acceptance: a brief option carries an NPV value and exactly one option is flagged recommended.
-
-#### [PB-H11] Move catalog with per-team impact vectors (guided wargaming)
-- **Type**: feature
-- **Status**: triaged
-- **Priority**: low
-- **Owner**: backend-claude
-- **Source**: feedback
-- **Source ref**: adhoc
-- **Blocked by**: PB-H09
-- **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark MOVE_CATALOG = per-team (novo/lilly/payer/hcp) moves, each with category, label, detail, stance, and an impact vector ({novo:+0.7, lilly:-0.2, payer:-0.4}) for guided play. We have `move_suggester.py` (ranked moves, single expected_impact_score) + `war_game_engine.py` MOVE_TYPES but no per-team payoff vectors. Build a move catalog keyed by team with impact vectors. Acceptance: a guided war-game offers team-specific moves each scored against all teams.
+- **Notes**: UX04 red-team on live semaglutide: ALL 5 scenarios inherit ALL high-importance dossier gaps → every scenario `blocked_by_gaps` is non-empty → "Play in War Room" + "Mark stage complete" are permanently disabled (dead-end). `derive_scenarios` blanket-assigns the dossier's high gaps to every scenario regardless of relevance (a pricing gap shouldn't block a competitive-pressure scenario that has its own evidence). Fix: gate each scenario only on gaps in domains it actually depends on, OR surface a "play anyway (provisional)" path. Also seen: a self-referential competitor "GLP-1 analogue - semaglutide" (semaglutide vs itself) — PB-H07-class hygiene; exclude focal-asset self-matches in competitive derivation. Acceptance: a scenario with sufficient own-evidence is playable; self-referential competitors are suppressed.
 
 #### [PB-H12] 3×3 Nash payoff matrix + Nash reasoning
 - **Type**: feature
@@ -1396,7 +1408,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX04] Scenarios stage — wire into stepper (Stage wiring P2.1)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: feedback
@@ -1404,7 +1416,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-UX01
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Add `scenariosApi` (assemble+list, mirror dossierKbApi) + `ScenariosContainer` (assemble-on-demand → render the orphaned `ScenariosPage`); wire into EngagementDetailContainer's stage conditional. Probability bars (prior→current), team-move cards, decision options. Persona depth: SA edits/calibrates, DM reviews + selects-for-war-game. Backend ready (G1). Highest readiness-to-ship.
+- **Notes**: SHIPPED (PR #141). `scenariosApi` (get/assemble, reuses ScenariosPage `Scenario` interface via type-only import) + `ScenariosContainer` (loading→not-derived→ready→error, mirrors DossierContainer) + wired into EngagementDetailContainer scenarios stage. Reuses ProvenancePanel (UX03) for trigger-evidence drill-through; header stats + re-derive. Real-DB red-team (live semaglutide) derives 5 grounded scenarios. Follow-up enrich PB-H10/H11 (team moves + options) shipped PR #142. Remaining for full persona depth: SA calibrate / DM select-for-war-game (→ PB-UX05+ / PB-H14).
 
 #### [PB-UX05] Gaps stage — GapsContainer (Stage wiring P2.2)
 - **Type**: feature
