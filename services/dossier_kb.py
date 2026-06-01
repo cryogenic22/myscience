@@ -128,6 +128,12 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "ma_deal":              "competitive",
     "market_share":         "competitive",
     "competitor_launch":    "competitive",
+    # PB-H07: the generic fallback predicate for uncategorized events (recalls,
+    # shortages, misc news) is "market_event" — it must NOT hit the "market"
+    # prefix rule below (which would dump every generic event into the
+    # competitive domain: 505 FDA-recall facts buried metformin's real rivals).
+    # Route it to the strategic catch-all instead. Exact match wins over prefix.
+    "market_event":         "wargame_specific",
     "prevalence":           "disease_and_patient",
     "epidemiology":         "disease_and_patient",
     "revenue":              "commercial_operational",

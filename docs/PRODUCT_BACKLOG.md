@@ -25,17 +25,18 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 3     |
-| triaged       | 86    |
+| in-progress   | 4     |
+| triaged       | 85    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 6     |
 
-## Currently in flight (3)
+## Currently in flight (4)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
 - [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass) — frontend-claude / n/a
+- [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -1189,7 +1190,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H07] Dossier — competitor threat assessment in competitive domain
 - **Type**: enhancement
-- **Status**: triaged
+- **Status**: in-progress
 - **Priority**: medium
 - **Owner**: backend-claude
 - **Source**: feedback
@@ -1197,7 +1198,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-E04
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: B5 routes related entities into the competitive domain as bare graph edges (relation + edge_count). Benchmark competitors carry a threat assessment (positioning, why they matter). Enrich `_related_to_dossier_fact` with a threat signal derived from PharmaMetrics competitive_landscape + edge weight, so competitors are ranked not just listed. Acceptance: competitive domain orders rivals by a derived threat score with cited basis.
+- **Notes**: B5 routes related entities into the competitive domain. Benchmark competitors carry a threat assessment. **PARTIAL (shipped, real-DB gated on metformin):** fixed two competitive-domain QUALITY bugs found running the spine on prod — (1) the generic `market_event` predicate hit the `("market","competitive")` prefix rule, flooding competitive with 505 FDA-recall facts (now routes to wargame_specific; competitive 505→25); (2) `_related_entities` left competitor `name=None` ("FE resolves label"), so rivals rendered as UUIDs — now resolved server-side via `_resolve_related_names` (batch per type, reuses `_TYPE_TO_TABLE`); (3) signal-scenarios no longer spawn from the wargame_specific catch-all (recall noise). **REMAINING:** (a) derive + order rivals by a threat score (PharmaMetrics competitive_landscape + edge weight) — the original acceptance; (b) competitor quality is gated by the A6 drug-hygiene cleanup — metformin's COMPETES_WITH neighbours are junk arms ("metformin placebo", "Metformin 1000mg") until A6's destructive cleanup runs on prod. Acceptance (remaining): competitive domain orders real rivals by a derived threat score with cited basis.
 
 #### [PB-H08] Dossier — fact signal back-links + confidence enum + insight implication
 - **Type**: enhancement

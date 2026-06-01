@@ -192,7 +192,11 @@ def derive_scenarios(snapshot: DossierSnapshot) -> list[Scenario]:
             candidates.append(_competitive_scenario(f))
 
     for dv in snapshot.domains:
-        if dv.priority not in ("critical", "high"):
+        # Signal-driven scenarios come from the substantive strategic domains.
+        # Skip wargame_specific (the uncategorized catch-all) — its signals are
+        # generic events (e.g. routine recalls/shortages), noise rather than a
+        # decision-forcing scenario (PB-H07).
+        if dv.priority not in ("critical", "high") or dv.domain == "wargame_specific":
             continue
         for f in dv.facts:
             if f.fact_class == "signal":

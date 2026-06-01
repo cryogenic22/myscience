@@ -51,6 +51,20 @@ def test_derive_signal_scenario_from_critical_domain():
     assert sig.evidence[0].predicate == "signal"
 
 
+def test_signal_scenarios_skip_wargame_specific():
+    # PB-H07: a 'strategic' kbq signal lands in wargame_specific (the catch-all,
+    # where routine recalls/shortages collect) and must NOT spawn a scenario; a
+    # pricing signal (a substantive critical domain) does.
+    signals = [
+        {"signal_id": "s_noise", "headline": "Routine recall", "kbq_tag": "strategic", "ts": None},
+        {"signal_id": "s_real", "headline": "Novo cuts WAC", "kbq_tag": "pricing_access", "ts": None},
+    ]
+    out = derive_scenarios(_snapshot_with(signals=signals))
+    cited = {e.fact_id for s in out for e in s.evidence}
+    assert "s_real" in cited          # pricing signal → scenario
+    assert "s_noise" not in cited     # wargame_specific signal → suppressed
+
+
 def test_scenarios_capped_and_sorted_by_prior():
     related = [{"id": f"d{i}", "type": "drug", "name": f"rival{i}",
                 "relation": "COMPETES_WITH", "edge_count": i} for i in range(8)]
