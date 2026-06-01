@@ -160,19 +160,21 @@ def synthesis_test(candidate: dict) -> SynthesisResult:
 _INSERT_INSIGHT_SQL = """
     INSERT INTO insights (
         statement, strategic_frame, derived_from, synthesis_test_passed,
-        synthesis_test_rationale, domain, created_by, tenant_scope
+        synthesis_test_rationale, domain, created_by, tenant_scope,
+        engagement_id, dossier_snapshot_id
     ) VALUES (
         %(statement)s, %(strategic_frame)s, %(derived_from)s::jsonb, %(passed)s,
-        %(rationale)s, %(domain)s, %(created_by)s, %(tenant_scope)s
+        %(rationale)s, %(domain)s, %(created_by)s, %(tenant_scope)s,
+        %(engagement_id)s, %(dossier_snapshot_id)s
     )
     RETURNING id
 """
 
 _INSERT_REJECTED_SQL = """
     INSERT INTO rejected_insights (
-        candidate_statement, rejection_reason, derived_from
+        candidate_statement, rejection_reason, derived_from, engagement_id
     ) VALUES (
-        %(statement)s, %(reason)s, %(derived_from)s::jsonb
+        %(statement)s, %(reason)s, %(derived_from)s::jsonb, %(engagement_id)s
     )
     RETURNING id
 """
@@ -201,9 +203,14 @@ def assert_insight(
     synthesis_test_rationale: str = "",
     created_by: str = "intelligence_agent",
     tenant_scope: Optional[str] = None,
+    engagement_id: Optional[str] = None,
+    dossier_snapshot_id: Optional[str] = None,
 ) -> str:
     """Run the synthesis test on the candidate; persist to insights (on pass)
-    or rejected_insights (on fail). Returns the resulting row id."""
+    or rejected_insights (on fail). Returns the resulting row id.
+
+    `engagement_id` scopes the insight to an engagement (UX06); when omitted
+    the insight is global (the legacy tenant_scope path)."""
     candidate = {
         "statement": statement,
         "strategic_frame": strategic_frame,
@@ -219,6 +226,7 @@ def assert_insight(
             "statement": statement,
             "reason": result.rationale,
             "derived_from": _citations_to_jsonb(derived_from),
+            "engagement_id": engagement_id,
         }
         res = _execute_returning(db, _INSERT_REJECTED_SQL, row)
         rid = str(res.get("id")) if res else f"rejected-{uuid4().hex[:12]}"
@@ -255,6 +263,8 @@ def assert_insight(
         "domain": insight.domain,
         "created_by": insight.created_by,
         "tenant_scope": tenant_scope,
+        "engagement_id": engagement_id,
+        "dossier_snapshot_id": dossier_snapshot_id,
     }
     res = _execute_returning(db, _INSERT_INSIGHT_SQL, row)
     iid = str(res.get("id")) if res else f"new-{uuid4().hex[:12]}"
@@ -341,3 +351,251 @@ def list_insights(
         except (InsightContractError, KeyError) as exc:
             logger.warning("skipping malformed insight row: %s", exc)
     return out
+
+
+# ── Engagement-scoped synthesis (UX06 / PB-UX06) ───────────────────
+#
+# Derive insights from a dossier snapshot (deterministic + grounded — every
+# insight cites the real facts it springs from), persist them scoped to the
+# engagement, and list the live (non-archived) set. Mirrors the scenarios
+# derive→assemble→persist→list shape. No LLM in the core; an optional polish
+# pass can refine statements later (the citations are the integrity guarantee).
+
+_MAX_SYNTH_INSIGHTS = 8
+_MAX_CITATIONS = 4
+
+# Domain → default strategic frame. A signal-class fact in the domain overrides
+# this to 'trigger' (a development that forces a decision).
+_DOMAIN_FRAME = {
+    "competitive":           "risk",
+    "pricing_and_access":    "risk",
+    "clinical_profile":      "opportunity",
+    "pipeline_and_macro":    "trigger",
+    "disease_and_patient":   "assumption",
+    "commercial_operational": "opportunity",
+    "hcp_and_patient":       "assumption",
+    "wargame_specific":      "trigger",
+}
+
+# Domain → statement template (`{focal}` = focal asset, `{n}` = citation count).
+_DOMAIN_STATEMENT = {
+    "competitive":            "Competitive exposure: {focal} contends with {n} in-class rival(s) — defending share is the central commercial risk.",
+    "pricing_and_access":     "Access risk: {focal}'s payer/pricing position rests on {n} data point(s); net-price erosion is the key uncertainty.",
+    "clinical_profile":       "Clinical strength: {focal}'s profile is supported by {n} evidence point(s) — the basis for differentiation.",
+    "pipeline_and_macro":     "Pipeline/macro trigger: {n} development(s) could shift {focal}'s trajectory.",
+    "disease_and_patient":    "Patient-landscape assumption: {n} epidemiology/patient-flow point(s) underpin {focal}'s opportunity sizing.",
+    "commercial_operational": "Commercial read: {n} corporate/financial data point(s) frame {focal}'s execution.",
+    "hcp_and_patient":        "Adoption assumption: {n} HCP/patient-behaviour point(s) shape {focal} uptake.",
+    "wargame_specific":       "Strategic signal: {n} development(s) relevant to {focal}.",
+}
+
+_PRIORITY_RANK = {"critical": 0, "high": 1, "medium": 2}
+
+
+def _focal_pretty(focal_asset: Optional[str]) -> str:
+    if not focal_asset:
+        return "the focal asset"
+    return focal_asset.split(":")[-1].strip() or "the focal asset"
+
+
+def _citation_from_fact(fact) -> dict:
+    """A grounded FactCitation dict from a DossierFact: predicate from the claim
+    prefix (or fact class), contribution = the fact's actual claim."""
+    claim = getattr(fact, "claim", "") or ""
+    predicate = claim.split(":")[0].strip().lower().replace(" ", "_") if ":" in claim \
+        else (getattr(fact, "fact_class", "") or "evidence")
+    return {
+        "fact_id": getattr(fact, "id", ""),
+        "predicate": predicate[:60],
+        "contribution": claim[:160] or "supporting evidence",
+    }
+
+
+def derive_synthesis_insights(snapshot) -> list[dict]:
+    """Pure: build grounded insight CANDIDATES from a dossier snapshot — one per
+    substantive domain that carries evidence, each citing up to 4 of its facts.
+    Domains sorted critical→high→medium; capped. Frame from the domain (a
+    signal-class fact bumps it to 'trigger'). Each candidate is the {statement,
+    strategic_frame, derived_from, domain} shape the synthesis_test gate expects;
+    callers run them through assert_insight to gate + persist."""
+    focal = _focal_pretty(getattr(snapshot, "focal_asset", None))
+    domains = sorted(
+        getattr(snapshot, "domains", []),
+        key=lambda d: (_PRIORITY_RANK.get(d.priority, 9), -len(d.facts)),
+    )
+    candidates: list[dict] = []
+    for d in domains:
+        if not d.facts:
+            continue
+        # Skip wargame_specific — the uncategorized catch-all where routine
+        # recalls/shortages collect (PB-H07). Its facts are noise, not a
+        # decision-forcing insight; mirror the scenarios derivation's exclusion.
+        if d.domain == "wargame_specific":
+            continue
+        cited = d.facts[:_MAX_CITATIONS]
+        n = len(cited)
+        frame = _DOMAIN_FRAME.get(d.domain, "assumption")
+        if any(getattr(f, "fact_class", "") == "signal" for f in cited):
+            frame = "trigger"
+        template = _DOMAIN_STATEMENT.get(
+            d.domain, "{focal}: {n} evidence point(s) inform the strategic picture.")
+        candidates.append({
+            "statement": template.format(focal=focal, n=n),
+            "strategic_frame": frame,
+            "domain": d.domain,
+            "derived_from": [_citation_from_fact(f) for f in cited],
+        })
+        if len(candidates) >= _MAX_SYNTH_INSIGHTS:
+            break
+    return candidates
+
+
+_ARCHIVE_INSIGHTS_SQL = """
+    UPDATE insights SET is_archived = TRUE
+     WHERE engagement_id = %s AND is_archived = FALSE
+"""
+_ARCHIVE_REJECTED_SQL = """
+    UPDATE rejected_insights SET is_archived = TRUE
+     WHERE engagement_id = %s AND is_archived = FALSE
+"""
+
+_SELECT_ENGAGEMENT_INSIGHTS_SQL = """
+    SELECT id, statement, strategic_frame, derived_from, synthesis_test_passed,
+           synthesis_test_rationale, domain, created_by, created_at
+      FROM insights
+     WHERE engagement_id = %(eid)s AND is_archived = FALSE
+       AND synthesis_test_passed = TRUE
+     ORDER BY created_at ASC
+"""
+_SELECT_ENGAGEMENT_REJECTED_SQL = """
+    SELECT id, candidate_statement, rejection_reason, derived_from
+      FROM rejected_insights
+     WHERE engagement_id = %(eid)s AND is_archived = FALSE
+     ORDER BY created_at ASC
+"""
+
+
+def _insight_to_camel(ins: Insight) -> dict:
+    """Serialize an Insight to the frontend SynthesisPage `Insight` shape."""
+    return {
+        "id": ins.id,
+        "statement": ins.statement,
+        "strategicFrame": ins.strategic_frame.value,
+        "domain": ins.domain,
+        "derivedFrom": [
+            {"factId": c.fact_id, "predicate": c.predicate, "contribution": c.contribution}
+            for c in ins.derived_from
+        ],
+        "synthesisTestRationale": ins.synthesis_test_rationale,
+        "createdAt": ins.created_at.isoformat()
+            if isinstance(ins.created_at, datetime) else ins.created_at,
+    }
+
+
+def _rejected_row_to_camel(row: dict) -> dict:
+    derived = row.get("derived_from") or []
+    if isinstance(derived, str):
+        try:
+            derived = json.loads(derived)
+        except (TypeError, ValueError):
+            derived = []
+    return {
+        "id": str(row.get("id", "")),
+        "candidateStatement": row.get("candidate_statement", ""),
+        "rejectionReason": row.get("rejection_reason", ""),
+        "derivedFrom": [
+            {"factId": c.get("fact_id", ""), "predicate": c.get("predicate", ""),
+             "contribution": c.get("contribution", "")}
+            for c in derived if isinstance(c, dict)
+        ],
+    }
+
+
+def list_engagement_synthesis(db, engagement_id: str) -> dict:
+    """The live (non-archived) synthesis set for an engagement, serialized to the
+    frontend shape: {insights, rejectedInsights, passRate, count}."""
+    eid = str(engagement_id)
+    try:
+        irows = db.fetch_all(_SELECT_ENGAGEMENT_INSIGHTS_SQL, {"eid": eid}) or []
+    except Exception:
+        logger.exception("list engagement insights failed for %s", eid)
+        irows = []
+    try:
+        rrows = db.fetch_all(_SELECT_ENGAGEMENT_REJECTED_SQL, {"eid": eid}) or []
+    except Exception:
+        logger.exception("list engagement rejected insights failed for %s", eid)
+        rrows = []
+
+    insights: list[dict] = []
+    for r in irows:
+        try:
+            derived = r.get("derived_from") or []
+            if isinstance(derived, str):
+                derived = json.loads(derived)
+            citations = [
+                FactCitation(fact_id=c.get("fact_id", ""), predicate=c.get("predicate", ""),
+                             contribution=c.get("contribution", ""))
+                for c in derived if isinstance(c, dict)
+            ]
+            ins = Insight(
+                id=str(r["id"]), statement=r["statement"],
+                strategic_frame=StrategicFrame(r["strategic_frame"]),
+                derived_from=citations, synthesis_test_passed=True,
+                synthesis_test_rationale=r.get("synthesis_test_rationale", ""),
+                domain=r["domain"], created_by=r.get("created_by", "intelligence_agent"),
+                created_at=r.get("created_at"),
+            )
+            insights.append(_insight_to_camel(ins))
+        except (InsightContractError, KeyError) as exc:
+            logger.warning("skipping malformed engagement insight: %s", exc)
+
+    rejected = [_rejected_row_to_camel(r) for r in rrows]
+    total = len(insights) + len(rejected)
+    pass_rate = round(100 * len(insights) / total) if total else 0
+    return {
+        "insights": insights,
+        "rejectedInsights": rejected,
+        "passRate": pass_rate,
+        "count": len(insights),
+    }
+
+
+def assemble_and_persist_insights(
+    db,
+    engagement_id: str,
+    *,
+    as_of=None,
+    created_by: str = "intelligence_agent",
+) -> dict:
+    """Derive synthesis insights from the engagement's latest dossier (assembling
+    one if needed), archive the prior batch, persist the new candidates through
+    the synthesis-test gate (scoped to the engagement), and return the live set.
+    Append-only in spirit: prior rows are archived, never deleted."""
+    from services import dossier_kb
+
+    eid = str(engagement_id)
+    snap = dossier_kb.get_latest_snapshot(db, eid)
+    if snap is None:
+        snap = dossier_kb.assemble_dossier(db, eid, as_of=as_of)
+
+    # Archive the prior batch (append-only spirit).
+    for sql in (_ARCHIVE_INSIGHTS_SQL, _ARCHIVE_REJECTED_SQL):
+        try:
+            db.execute(sql, [eid])
+        except Exception:
+            logger.exception("archive prior synthesis failed for %s", eid)
+
+    snap_id = getattr(snap, "id", None)
+    for cand in derive_synthesis_insights(snap):
+        assert_insight(
+            db,
+            statement=cand["statement"],
+            strategic_frame=cand["strategic_frame"],
+            derived_from=cand["derived_from"],
+            domain=cand["domain"],
+            created_by=created_by,
+            engagement_id=eid,
+            dossier_snapshot_id=snap_id,
+        )
+
+    return list_engagement_synthesis(db, eid)

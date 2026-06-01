@@ -213,3 +213,107 @@ class TestListInsights:
         out = list_insights(db, strategic_frame="opportunity")
         assert len(out) == 1
         assert out[0].strategic_frame is StrategicFrame.OPPORTUNITY
+
+
+# ── Engagement-scoped synthesis derivation (UX06 / PB-UX06) ────────
+
+from services.insights import (
+    derive_synthesis_insights,
+    assemble_and_persist_insights,
+    list_engagement_synthesis,
+)
+from services.dossier_kb import DossierSnapshot, build_domains
+
+
+def _snapshot_with(facts=None, signals=None, related=None, focal="drug:semaglutide"):
+    domains, cov, cnt = build_domains(facts or [], signals, None, related)
+    return DossierSnapshot(
+        engagement_id="e1", focal_asset=focal, domains=domains,
+        coverage_score=cov, fact_count=cnt, id="snap1",
+    )
+
+
+class TestDeriveSynthesisInsights:
+    def test_competitive_insight_is_grounded_and_framed(self):
+        related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                    "relation": "COMPETES_WITH", "edge_count": 4}]
+        cands = derive_synthesis_insights(_snapshot_with(related=related))
+        comp = next(c for c in cands if c["domain"] == "competitive")
+        assert comp["strategic_frame"] == "risk"
+        # grounded: cites the real competitive fact, with a contribution line.
+        assert comp["derived_from"] and comp["derived_from"][0]["fact_id"] == "d2"
+        assert comp["derived_from"][0]["contribution"]
+        assert "semaglutide" in comp["statement"]   # focal asset woven in
+
+    def test_every_candidate_passes_the_synthesis_gate(self):
+        related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                    "relation": "COMPETES_WITH", "edge_count": 4}]
+        signals = [{"signal_id": "s1", "headline": "Novo cuts WAC 5%",
+                    "kbq_tag": "pricing_access", "ts": None}]
+        cands = derive_synthesis_insights(_snapshot_with(signals=signals, related=related))
+        assert cands, "should derive at least one candidate"
+        for c in cands:
+            assert synthesis_test(c).passed, f"candidate must pass the gate: {c['statement']}"
+
+    def test_signal_fact_bumps_frame_to_trigger(self):
+        signals = [{"signal_id": "s1", "headline": "Novo cuts WAC 5%",
+                    "kbq_tag": "pricing_access", "ts": None}]
+        cands = derive_synthesis_insights(_snapshot_with(signals=signals))
+        pa = next(c for c in cands if c["domain"] == "pricing_and_access")
+        assert pa["strategic_frame"] == "trigger"   # signal overrides the domain default
+
+    def test_empty_dossier_yields_no_candidates(self):
+        assert derive_synthesis_insights(_snapshot_with()) == []
+
+
+class TestAssembleAndListSynthesis:
+    def test_assemble_archives_persists_and_lists_camelcase(self):
+        related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                    "relation": "COMPETES_WITH", "edge_count": 4}]
+        snap = _snapshot_with(related=related)
+
+        db = MagicMock()
+        db.execute = MagicMock()
+        db.fetch_one = MagicMock(return_value={"id": "new-id"})
+        # list step returns one persisted insight row.
+        insight_rows = [{
+            "id": "i1", "statement": "Competitive exposure: semaglutide …",
+            "strategic_frame": "risk",
+            "derived_from": [{"fact_id": "d2", "predicate": "competes_with", "contribution": "rival"}],
+            "synthesis_test_passed": True, "synthesis_test_rationale": "grounded",
+            "domain": "competitive", "created_by": "u1", "created_at": NOW,
+        }]
+        db.fetch_all = MagicMock(side_effect=[insight_rows, []])
+
+        import services.dossier_kb as dk
+        orig = dk.get_latest_snapshot
+        dk.get_latest_snapshot = lambda _db, _eid: snap
+        try:
+            out = assemble_and_persist_insights(db, "e1", created_by="u1")
+        finally:
+            dk.get_latest_snapshot = orig
+
+        # archived prior batch (UPDATE … is_archived) before inserting.
+        assert any("is_archived = TRUE" in c.args[0] for c in db.execute.call_args_list)
+        # persisted via the insights insert (engagement-scoped).
+        assert any("INSERT INTO insights" in c.args[0] for c in db.fetch_one.call_args_list)
+        # serialized to the frontend shape.
+        assert out["count"] == 1 and out["passRate"] == 100
+        ins = out["insights"][0]
+        assert ins["strategicFrame"] == "risk"
+        assert ins["derivedFrom"][0]["factId"] == "d2"
+
+    def test_list_pass_rate_blends_insights_and_rejected(self):
+        db = MagicMock()
+        db.fetch_all = MagicMock(side_effect=[
+            [{"id": "i1", "statement": "x", "strategic_frame": "risk",
+              "derived_from": [{"fact_id": "f1", "predicate": "p", "contribution": "c"}],
+              "synthesis_test_passed": True, "synthesis_test_rationale": "r",
+              "domain": "competitive", "created_by": "u", "created_at": NOW}],
+            [{"id": "r1", "candidate_statement": "weak", "rejection_reason": "no facts",
+              "derived_from": []}],
+        ])
+        out = list_engagement_synthesis(db, "e1")
+        assert out["count"] == 1
+        assert out["passRate"] == 50    # 1 insight / (1 insight + 1 rejected)
+        assert out["rejectedInsights"][0]["candidateStatement"] == "weak"
