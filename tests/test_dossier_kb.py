@@ -183,6 +183,40 @@ def test_metric_facts_optional_back_compat():
     assert (c1, n1) == (c2, n2)
 
 
+# ── B5 (PB-E04): competitive breadth from related entities ─────────
+
+
+def test_build_domains_routes_related_to_competitive():
+    related = [
+        {"id": "d2", "type": "drug", "name": "tirzepatide", "relation": "TARGETS_MECHANISM", "edge_count": 4},
+        {"id": "d3", "type": "drug", "name": "dulaglutide", "relation": "COMPETES_WITH", "edge_count": 2},
+    ]
+    domains, coverage, count = build_domains([], None, None, related)
+    by = {d.domain: d for d in domains}
+    comp = by["competitive"].facts
+    assert len(comp) == 2
+    assert any("tirzepatide" in f.claim for f in comp)
+    # cited edge present
+    assert any("edges" in f.claim for f in comp)
+    assert comp[0].fact_class == "inferred"
+
+
+def test_related_optional_back_compat():
+    d1, c1, n1 = build_domains([_fact("ma_deal", "corporate")])
+    d2, c2, n2 = build_domains([_fact("ma_deal", "corporate")], None, None, None)
+    assert (c1, n1) == (c2, n2)
+
+
+def test_related_fact_cites_relation_and_edges():
+    from services.dossier_kb import _related_to_dossier_fact
+    f = _related_to_dossier_fact(
+        {"id": "x", "type": "drug", "name": "semaglutide", "relation": "COMPETES_WITH", "edge_count": 7})
+    assert "semaglutide" in f.claim
+    assert "competes_with" in f.claim
+    assert "7 edges" in f.claim
+    assert "entity_graph" in f.source_label
+
+
 def _fact(predicate, fact_class="signal", value="x", fid=None):
     return {
         "id": fid or f"f-{predicate}-{fact_class}",
