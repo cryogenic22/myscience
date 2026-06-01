@@ -55,6 +55,12 @@ class _PostgresDBAdapter:
     # insert_event
     # ────────────────────────────────────────────────────────────────
 
+    # PB-H18: align to the live market_events schema. The legacy columns
+    # disclosed_date / source_feed / payload / source_document_id were dropped
+    # (real cols: source_api, no payload), so this INSERT used to throw on prod
+    # — which is why there were ZERO 8-K events. NOT NULL source_url/retrieved_at
+    # are now supplied. ON CONFLICT must name the partial unique index predicate
+    # (idx_events_hash is WHERE event_hash IS NOT NULL).
     _EVENT_INSERT_SQL = """
         INSERT INTO market_events (
             event_type,
@@ -62,22 +68,22 @@ class _PostgresDBAdapter:
             primary_entity_type,
             primary_entity_id,
             primary_entity_name,
+            drug_id,
             event_date,
-            disclosed_date,
             source_tier,
             trust_score,
             status,
             event_hash,
-            source_feed,
-            payload,
-            source_document_id,
+            source_api,
+            source_url,
+            retrieved_at,
             corroborating_sources
         ) VALUES (
-            %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s,
-            %s, %s, %s::jsonb, %s, %s::jsonb
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, COALESCE(%s, ''), NOW(), %s::jsonb
         )
-        ON CONFLICT (event_hash) DO NOTHING
+        ON CONFLICT (event_hash) WHERE event_hash IS NOT NULL DO NOTHING
         RETURNING id
     """
 
@@ -87,27 +93,25 @@ class _PostgresDBAdapter:
         Returns True if a row was inserted, False if event_hash matched
         an existing row (the row is unchanged in that case).
         """
-        # The orchestrator's row dict has an "impact_hint" field that the
-        # market_events table doesn't have; we tuck it inside the payload.
-        payload = dict(row.get("payload") or {})
-        if "impact_hint" in row and "impact_hint" not in payload:
-            payload["impact_hint"] = row["impact_hint"]
-
+        # drug_id mirrors the primary entity when it's a drug (lets the facts
+        # ledger resolve the subject). impact_hint has no column on the live
+        # schema and is dropped (it was only ever stashed in the now-absent
+        # payload column).
+        is_drug = row.get("primary_entity_type") == "drug"
         params = [
             row["event_type"],
             row["description"],
             row["primary_entity_type"],
             row["primary_entity_id"],
             row.get("primary_entity_name"),
+            row["primary_entity_id"] if is_drug else None,   # drug_id
             row["event_date"],
-            row.get("disclosed_date"),
             row.get("source_tier", "tier_1"),
             row.get("trust_score", 0.5),
             row.get("status", "new"),
             row["event_hash"],
-            row.get("source_feed"),
-            json.dumps(payload),
-            row.get("source_document_id"),
+            row.get("source_feed") or row.get("source_api"),  # → source_api
+            row.get("source_url"),                            # COALESCE '' if None
             json.dumps(row.get("corroborating_sources", [])),
         ]
 

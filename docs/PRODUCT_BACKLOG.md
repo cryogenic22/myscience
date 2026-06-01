@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 3     |
-| triaged       | 87    |
+| triaged       | 86    |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 5     |
+| shipped (90d) | 6     |
 
 ## Currently in flight (3)
 
@@ -1321,7 +1321,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H18] Fix market_events writer schema drift (stale columns)
 - **Type**: bug
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
@@ -1329,7 +1329,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Found while auditing legacy ingestion for H17 (1 Jun). The prod `market_events` table (verified twice via information_schema, 24 cols) has `primary_entity_id/_type/_name`, `source_api`, `drug_id`, `corroborating_sources`, `content_hash` — and does NOT have `entity_id`, `entity_type`, `source_feed`, `payload`, `raw_data`, `disclosed_date`, `source_document_id`, `corroboration_count`. But two writers INSERT into the dropped columns and therefore THROW on prod: `services/event_collector.py:_persist_event` (entity_id/entity_type/source_feed/raw_data/corroboration_count) — and it's LIVE (api/app.py:722 runs it every background cycle for news) — and `services/db_adapter_8k.py:_EVENT_INSERT_SQL` (source_feed/payload/disclosed_date/source_document_id), explaining why there are ZERO 8-K events on prod (top source_api = fda_shortages 34k, pharma_news 1.2k, no SEC). The working writer is the RawRecord pipeline (`integration/knowledge_store.py`). Fake-DB unit tests can't catch this (the bug is a real-schema mismatch — fake-DB blindness, same class as the A1 bug). Fix: align each broken writer's INSERT to the real 24-col schema (match the working knowledge_store / the proven columns), each verified by a throwaway insert against the real DB (insert → assert lands + emits a fact → delete in finally). Acceptance: a news event collected via EventCollector and an 8-K event via db_adapter_8k both land in market_events on the real schema and emit a fact.
+- **Notes**: Found while auditing legacy ingestion for H17 (1 Jun). The prod `market_events` table (verified twice via information_schema, 24 cols) has `primary_entity_id/_type/_name`, `source_api`, `drug_id`, `corroborating_sources`, `content_hash` — and does NOT have `entity_id`, `entity_type`, `source_feed`, `payload`, `raw_data`, `disclosed_date`, `source_document_id`, `corroboration_count`. Two writers INSERTed into the dropped columns and threw on prod: `services/event_collector.py:_persist_event` (LIVE — api/app.py:722 every background cycle for news) and `services/db_adapter_8k.py:_EVENT_INSERT_SQL` (→ ZERO 8-K events on prod). **SHIPPED**: both INSERTs aligned to the real 24-col schema (source_api, primary_entity_id/_type, drug_id, corroborating_sources jsonb; NOT NULL event_date/source_url COALESCE'd, retrieved_at NOW(); db_adapter ON CONFLICT now names the partial-index predicate `WHERE event_hash IS NOT NULL`). EventCollector INSERT extracted to module constant `_INSERT_EVENT_SQL` for testability. Regression net `tests/test_market_events_writers_schema.py` pins both writers' columns ⊆ the real schema + required NOT NULL cols present (the net fake-DB tests structurally couldn't provide). REAL-DB GATE PASSED: throwaway insert via each writer on prod — EventCollector row lands (source_api set, event_date defaulted, drug_id set) + fact emitted; db_adapter_8k row lands (partial-index ON CONFLICT works); throwaways cleaned (events DELETEd, append-only smoke fact self-superseded).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
