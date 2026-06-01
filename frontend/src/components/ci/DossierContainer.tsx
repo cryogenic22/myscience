@@ -27,7 +27,9 @@ import {
   EngagementDossierPage,
   type DomainView,
   type DossierDomain,
+  type Fact,
 } from '../../pages/EngagementDossierPage';
+import ProvenancePanel from './ProvenancePanel';
 
 interface Props {
   engagement: EngagementDTO;
@@ -39,11 +41,13 @@ function toDomainViews(snapshot: DossierSnapshotDTO): DomainView[] {
     domain: d.domain as DossierDomain,
     priority: d.priority,
     state: d.state,
+    readiness: d.readiness,
     facts: d.facts.map((f) => ({
       id: f.id,
       claim: f.claim,
       factClass: f.factClass,
       sourceLabel: f.sourceLabel,
+      sourceUrl: f.sourceUrl,
     })),
   }));
 }
@@ -55,6 +59,7 @@ export default function DossierContainer({ engagement, onMarkComplete }: Props) 
   const [notAssembled, setNotAssembled] = useState(false);
   const [assembling, setAssembling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openFact, setOpenFact] = useState<Fact | null>(null);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -181,6 +186,9 @@ export default function DossierContainer({ engagement, onMarkComplete }: Props) 
         <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap', alignItems: 'baseline' }}>
           <KbStat label="Version" value={`v${snapshot.version ?? '—'}`} />
           <KbStat label="Coverage" value={`${Math.round((snapshot.coverage_score ?? 0) * 100)}%`} />
+          {typeof snapshot.readiness === 'number' && (
+            <KbStat label="Readiness" value={`${Math.round(snapshot.readiness * 100)}%`} />
+          )}
           <KbStat label="Facts" value={String(snapshot.fact_count ?? 0)} />
         </div>
         <button
@@ -205,10 +213,14 @@ export default function DossierContainer({ engagement, onMarkComplete }: Props) 
       <EngagementDossierPage
         scope={{ focalAsset: engagement.asset, engagementName: engagement.name }}
         domains={toDomainViews(snapshot)}
+        engagementReadiness={snapshot.readiness}
         onJumpToDomain={jumpToDomain}
-        onOpenFact={() => { /* fact drill-in is a later loop */ }}
+        onOpenFact={(fact) => setOpenFact(fact)}
         onMarkComplete={() => onMarkComplete?.()}
       />
+
+      {/* PB-UX03: click a fact → its provenance chain. */}
+      <ProvenancePanel fact={openFact} onClose={() => setOpenFact(null)} />
     </div>
   );
 }

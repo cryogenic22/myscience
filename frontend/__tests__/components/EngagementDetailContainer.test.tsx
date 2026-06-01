@@ -64,6 +64,7 @@ describe('EngagementDetailContainer', () => {
     render(
       <EngagementDetailContainer
         eid="eng-1"
+        stage="sources"
         onBackToPortfolio={() => {}}
         onStageChange={() => {}}
       />,
@@ -82,6 +83,7 @@ describe('EngagementDetailContainer', () => {
     render(
       <EngagementDetailContainer
         eid="eng-1"
+        stage="dossier"
         onBackToPortfolio={() => {}}
         onStageChange={() => {}}
       />,
@@ -90,6 +92,22 @@ describe('EngagementDetailContainer', () => {
       expect(screen.getByTestId('dossier-loading')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('with no explicit stage, lands on the persona default (PB-UX01)', async () => {
+    // Default persona is EL → default landing stage 'brief' (a placeholder).
+    window.localStorage.removeItem('mz_persona');
+    (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'workshop' }));
+    render(
+      <EngagementDetailContainer
+        eid="eng-1"
+        onBackToPortfolio={() => {}}
+        onStageChange={() => {}}
+      />,
+    );
+    // Persona-driven landing overrides the persisted engagement.stage when no
+    // explicit ?stage= is given.
+    await waitFor(() => expect(screen.getByText(/stage · brief/i)).toBeInTheDocument());
   });
 
   it('explicit stage prop overrides engagement.stage', async () => {

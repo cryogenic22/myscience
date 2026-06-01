@@ -145,12 +145,15 @@ describe('EngagementDossierPage — facts', () => {
     expect(classes.has('inferred')).toBe(true);
   });
 
-  it('clicking a fact fires onOpenFact', () => {
+  it('clicking a fact fires onOpenFact with the full fact object (PB-UX03)', () => {
     const { container, onOpenFact } = setup();
     const fact = container.querySelector('[data-fact-id]') as HTMLElement;
+    const id = fact.getAttribute('data-fact-id');
     fireEvent.click(fact);
     expect(onOpenFact).toHaveBeenCalled();
-    expect(typeof onOpenFact.mock.calls[0][0]).toBe('string');
+    const arg = onOpenFact.mock.calls[0][0];
+    expect(typeof arg).toBe('object');
+    expect(arg.id).toBe(id);
   });
 });
 
