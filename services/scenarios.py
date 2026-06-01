@@ -63,9 +63,16 @@ class TeamMove:
     team: str
     move: str
     rationale: str
+    # PB-H11: illustrative directional impact of this move on each team, in
+    # [-1, 1] (acting team gains, others affected per strategic logic). A
+    # transparent structural estimate for guided war-gaming — NOT a forecast.
+    impact: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {"team": self.team, "move": self.move, "rationale": self.rationale}
+        return {
+            "team": self.team, "move": self.move, "rationale": self.rationale,
+            "impact": {k: round(float(v), 2) for k, v in (self.impact or {}).items()},
+        }
 
 
 @dataclass
@@ -171,6 +178,7 @@ def _competitive_team_moves(rival: str, focal: str) -> list[TeamMove]:
                  f"and bid aggressively for formulary position.",
             rationale=f"{rival} holds a live competitive edge; rational self-interest "
                       f"is to convert it into share before {focal} can respond.",
+            impact={rival: 0.6, focal: -0.4, "Payers": 0.1},
         ),
         TeamMove(
             team=focal,
@@ -178,6 +186,7 @@ def _competitive_team_moves(rival: str, focal: str) -> list[TeamMove]:
                  f"and lock in payer contracts ahead of {rival}'s push.",
             rationale="Protecting installed base and formulary tier is cheaper than "
                       "re-winning share once lost.",
+            impact={focal: 0.5, rival: -0.3, "Payers": -0.1},
         ),
         TeamMove(
             team="Payers",
@@ -185,6 +194,7 @@ def _competitive_team_moves(rival: str, focal: str) -> list[TeamMove]:
                  f"{rival} and {focal} compete.",
             rationale="A contested class is leverage; payers rationally play suppliers "
                       "against one another.",
+            impact={"Payers": 0.6, rival: -0.3, focal: -0.3},
         ),
     ]
 
@@ -224,12 +234,14 @@ def _signal_team_moves(headline: str, focal: str) -> list[TeamMove]:
                  "commercial or regulatory advantage.",
             rationale=f"The party behind “{headline}” is rationally motivated to "
                       f"press the opening.",
+            impact={"Market mover": 0.6, focal: -0.3, "Regulators & payers": 0.0},
         ),
         TeamMove(
             team=focal,
             move=f"Adapt the plan — stress-test the {focal} launch/defense assumptions "
                  f"this development invalidates and pre-empt the downside.",
             rationale="Early adaptation preserves optionality; waiting cedes initiative.",
+            impact={focal: 0.4, "Market mover": -0.2},
         ),
         TeamMove(
             team="Regulators & payers",
@@ -237,6 +249,7 @@ def _signal_team_moves(headline: str, focal: str) -> list[TeamMove]:
                  "approval posture across comparable assets.",
             rationale="Institutional actors recalibrate when the evidence or market "
                       "structure changes.",
+            impact={"Regulators & payers": 0.3, focal: -0.2, "Market mover": -0.2},
         ),
     ]
 
@@ -526,7 +539,8 @@ def _row_to_scenario(row: dict) -> Scenario:
         if isinstance(e, dict)
     ]
     moves = [
-        TeamMove(team=m.get("team", ""), move=m.get("move", ""), rationale=m.get("rationale", ""))
+        TeamMove(team=m.get("team", ""), move=m.get("move", ""), rationale=m.get("rationale", ""),
+                 impact=m.get("impact") if isinstance(m.get("impact"), dict) else {})
         for m in _coerce_json_list(row.get("team_moves"))
         if isinstance(m, dict)
     ]
