@@ -209,7 +209,42 @@ class DataPipelineScheduler:
             logger.exception("Post-task signal_promotion failed")
             results["signal_promotion"] = f"ERROR: {e}"
 
+        # 9. Fact convergence (market_events → facts ledger) — PB-H17. The
+        # scheduler already converges events → signals (task 8); this is the
+        # missing events → facts step that keeps the spine's ledger current so
+        # dossiers + scenarios stay grounded in fresh facts. Reuses the proven,
+        # idempotent backfill (services/fact_ingest); bounded to recent events.
+        try:
+            t0 = time.time()
+            results["fact_convergence"] = (
+                self._run_fact_convergence(since_days=7) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: fact_convergence — %s", results["fact_convergence"])
+        except Exception as e:
+            logger.exception("Post-task fact_convergence failed")
+            results["fact_convergence"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_fact_convergence(self, since_days: int = 7) -> str:
+        """Converge recent market_events into the facts ledger (PB-H17).
+        Mirrors signal promotion (events → signals); this is events → facts.
+        Reuses services.fact_ingest.backfill_facts_from_events — idempotent, so
+        re-runs only assert genuinely new facts. Own connection (long sweeps on
+        the shared one risk the Railway proxy dropping it)."""
+        from services.fact_ingest import backfill_facts_from_events
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = backfill_facts_from_events(db, since_days=since_days)
+            return (
+                f"OK: {stats.asserted} asserted, "
+                f"{stats.skipped_existing} existing, "
+                f"{stats.skipped_no_subject} no-subject"
+            )
+        finally:
+            db.close()
 
     def run_one(self, source_name: str) -> str:
         """Run a single connector by name (e.g. 'pubmed', 'clinical_trials_gov')."""

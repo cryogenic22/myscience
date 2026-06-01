@@ -73,6 +73,42 @@ DEFAULT_PRIORITY: dict[str, str] = {
     "wargame_specific":       "high",
 }
 
+# H04/H05: per-domain readiness weighting + gap framing. Priority weights roll
+# domain readiness into one engagement-level number (benchmark's "readiness 87%").
+_PRIORITY_WEIGHT: dict[str, float] = {"critical": 3.0, "high": 2.0, "medium": 1.0}
+
+# Human label per domain — used in gap descriptions.
+_DOMAIN_LABEL: dict[str, str] = {
+    "disease_and_patient":    "disease & patient landscape",
+    "clinical_profile":       "clinical profile of the focal asset",
+    "competitive":            "competitive landscape",
+    "pricing_and_access":     "payer & access",
+    "commercial_operational": "commercial & operational",
+    "hcp_and_patient":        "HCP & patient adoption",
+    "pipeline_and_macro":     "pipeline & macro / regulatory",
+    "wargame_specific":       "wargame / strategic design",
+}
+
+# How a thin/empty domain gets filled — points the sense layer at the right
+# collection. Honest and domain-appropriate (no invented primary-research prose).
+_DOMAIN_FILL_METHOD: dict[str, str] = {
+    "disease_and_patient":    "Pull epidemiology + patient-flow facts (PubMed, KFF, IQVIA channel data).",
+    "clinical_profile":       "Ingest trial readouts + label data (ClinicalTrials.gov, FDA, PubMed) for the focal asset.",
+    "competitive":            "Expand the entity graph around the asset (shared mechanism / TA) + competitive_landscape metrics.",
+    "pricing_and_access":     "Triangulate payer/pricing sources (NADAC, ICER, formulary feeds) — net price needs triangulation.",
+    "commercial_operational": "Ingest corporate financials + sales guidance (SEC filings, earnings).",
+    "hcp_and_patient":        "Add prescriber-trend + KOL signals (IQVIA Xponent, investigator links, internal panels).",
+    "pipeline_and_macro":     "Track regulatory + pipeline events (FDA, ClinicalTrials.gov, patents).",
+    "wargame_specific":       "Capture the engagement's strategic questions + scenario triggers from the brief.",
+}
+
+
+def _importance_from_priority(priority: str) -> str:
+    """Gap importance (benchmark uses high/medium): critical+high domains are
+    high-importance gaps; everything else is medium."""
+    return "high" if priority in ("critical", "high") else "medium"
+
+
 # Predicate → domain routing. Exact predicate first, then prefix fallback.
 # Unknown predicates land in wargame_specific (the catch-all strategic bucket)
 # so nothing is silently dropped.
@@ -196,13 +232,38 @@ class DomainView:
     priority: str            # critical | high | medium
     state: str               # complete | in_progress | gap
     facts: list[DossierFact] = field(default_factory=list)
+    readiness: float = 0.0   # H05: 0..1 per-domain evidence readiness
 
     def to_dict(self) -> dict:
         return {
             "domain": self.domain,
             "priority": self.priority,
             "state": self.state,
+            "readiness": round(self.readiness, 2),
             "facts": [f.to_dict() for f in self.facts],
+        }
+
+
+@dataclass
+class GapView:
+    """H04: an actionable collection gap — what's missing, how to fill it,
+    and how much it matters. Drives the engagement's gaps stage and the
+    sense layer's collection priorities (mirrors the benchmark's gap shape)."""
+    domain: str
+    priority: str
+    importance: str          # high | medium (derived from priority)
+    text: str                # human-readable: what is missing
+    method: str              # how to fill it (domain-appropriate collection)
+    thin: bool = False       # True = some evidence but below threshold
+
+    def to_dict(self) -> dict:
+        return {
+            "domain": self.domain,
+            "priority": self.priority,
+            "importance": self.importance,
+            "text": self.text,
+            "method": self.method,
+            "thin": self.thin,
         }
 
 
@@ -225,6 +286,7 @@ class DossierSnapshot:
             "focal_asset": self.focal_asset,
             "version": self.version,
             "coverage_score": round(self.coverage_score, 3),
+            "readiness": overall_readiness(self.domains),
             "fact_count": self.fact_count,
             "domains": [d.to_dict() for d in self.domains],
             "assembled_by": self.assembled_by,
@@ -232,14 +294,37 @@ class DossierSnapshot:
                 if isinstance(self.assembled_at, datetime) else self.assembled_at,
         }
 
-    def gaps(self) -> list[dict]:
-        """Domains with no usable facts — the collection priorities that feed
-        the sense layer and the engagement's 'gaps' stage."""
-        return [
-            {"domain": d.domain, "priority": d.priority}
-            for d in self.domains
-            if d.state == "gap"
-        ]
+    def gaps(self, include_thin: bool = False) -> list[dict]:
+        """Actionable collection gaps (H04) — what's missing, how to fill it,
+        how much it matters. Empty (`gap`-state) domains are always gaps; with
+        `include_thin=True`, under-covered (`in_progress`) domains surface too.
+        Each entry carries text + method + importance (the benchmark's gap
+        shape). Default `include_thin=False` preserves the original empty-only
+        contract for existing callers."""
+        out: list[dict] = []
+        for d in self.domains:
+            if d.state == "gap":
+                out.append(self._gap_view(d, thin=False).to_dict())
+            elif include_thin and d.state == "in_progress":
+                out.append(self._gap_view(d, thin=True).to_dict())
+        return out
+
+    @staticmethod
+    def _gap_view(d: DomainView, *, thin: bool) -> GapView:
+        label = _DOMAIN_LABEL.get(d.domain, d.domain.replace("_", " "))
+        if thin:
+            n = len(d.facts)
+            text = f"Thin coverage for {label}: only {n} fact(s) so far, below the bar for a confident view."
+        else:
+            text = f"No evidence collected yet for {label}."
+        return GapView(
+            domain=d.domain,
+            priority=d.priority,
+            importance=_importance_from_priority(d.priority),
+            text=text,
+            method=_DOMAIN_FILL_METHOD.get(d.domain, "Collect domain-relevant facts via the sense layer."),
+            thin=thin,
+        )
 
 
 # ── Rendering helpers (fact dict → human-readable) ─────────────────
@@ -309,6 +394,34 @@ def _domain_state(facts: list[DossierFact]) -> str:
     if n >= 3 and grounded:
         return "complete"
     return "in_progress"
+
+
+def _domain_readiness(facts: list[DossierFact]) -> float:
+    """H05: per-domain readiness in [0,1] — deterministic, no LLM. Combines
+    breadth (fact count, capped at 6) with trust (a grounded reference/corporate
+    fact present). Empty → 0.0; a single ungrounded signal → ~0.10; three
+    grounded facts → ~0.70; six+ grounded → 1.0. Mirrors the benchmark's
+    per-domain `ready` score so thin domains read as low-confidence."""
+    n = len(facts)
+    if n == 0:
+        return 0.0
+    count_score = min(n, 6) / 6.0
+    grounded = 1.0 if any(f.fact_class in ("reference", "corporate") for f in facts) else 0.0
+    return round(0.6 * count_score + 0.4 * grounded, 2)
+
+
+def overall_readiness(domains: list[DomainView]) -> float:
+    """Priority-weighted mean of per-domain readiness → the engagement-level
+    readiness number (benchmark shows e.g. 87%). Critical domains count 3×,
+    high 2×, medium 1×, so a strong competitive domain matters more than a
+    strong wargame_specific one."""
+    total_w = 0.0
+    acc = 0.0
+    for d in domains:
+        w = _PRIORITY_WEIGHT.get(d.priority, 1.0)
+        total_w += w
+        acc += w * d.readiness
+    return round(acc / total_w, 3) if total_w else 0.0
 
 
 def _signal_to_dossier_fact(move: dict) -> DossierFact:
@@ -383,6 +496,7 @@ def build_domains(
             priority=DEFAULT_PRIORITY[d],
             state=_domain_state(dfacts),
             facts=dfacts,
+            readiness=_domain_readiness(dfacts),
         ))
 
     covered = sum(1 for dv in domains if dv.state != "gap")
@@ -716,11 +830,18 @@ def _row_to_snapshot(row: dict) -> DossierSnapshot:
             )
             for f in (d.get("facts") or [])
         ]
+        stored_readiness = d.get("readiness")
+        readiness = (
+            float(stored_readiness)
+            if stored_readiness is not None
+            else _domain_readiness(facts)  # pre-H05 snapshots: recompute on read
+        )
         domains.append(DomainView(
             domain=d.get("domain", ""),
             priority=d.get("priority", "medium"),
             state=d.get("state", "gap"),
             facts=facts,
+            readiness=readiness,
         ))
     return DossierSnapshot(
         id=str(row["id"]) if row.get("id") is not None else None,

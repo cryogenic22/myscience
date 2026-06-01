@@ -26,7 +26,7 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 3     |
-| triaged       | 69    |
+| triaged       | 87    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 5     |
@@ -1095,6 +1095,241 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
 - **Notes**: Run `scripts/backfill_facts.py`, assert facts row count > 0, and add real-Postgres integration tests for dossier assembly (the gate the KB1-KB3 fake-DB unit tests structurally could not provide). Prevents "real" being asserted from fake-DB tests again. Acceptance: SELECT count(*) FROM facts > 0; integration suite green in CI.
+
+### E15 — Helix v8 benchmark parity (CI output gold standard)
+
+> **Why:** the team produced a complete reference demo of the target CI output —
+> `Helix_v8_Pharma_Wargaming` (a Novo/CagriSema obesity-launch wargame). It is the
+> gold standard for what an engagement should *render*, and it exposes exactly
+> where our sensing + knowledge + decision + learn layers fall short of it. The
+> benchmark's defining property is a **fully provenance-linked spine**:
+> signal → fact → insight → scenario → decision → outcome, with a **Learn loop**
+> that re-calibrates scenario probabilities as new signals arrive. Code-grounded
+> gap analysis (1 Jun 2026, 4 parallel Explore passes): `docs/helix-v8-benchmark-gap-analysis.html`.
+> Layer verdicts — **Sense**: 4/8 source classes full, signals rich (materiality +
+> impact) but **no forward-links**. **Dossier**: 8 domains ✓, fact_class ✓, insight
+> frames+provenance ✓ — but gaps are state-only, no readiness score, no signal
+> back-links, KOLs unwired. **Decide**: decision-brief/ledger/signing strong;
+> scenarios deterministic (no probability/provenance), no NPV options, payoff
+> matrix 2×2 not 3×3. **Learn**: telemetry + feedback loops + outcome tracking +
+> EWMA all WIRED — only scenario calibration missing. Each item = one loop:
+> SPEC -> DESIGN(reuse-first) -> BUILD(TDD) -> RED-TEAM(real DB) -> FIX -> LOG -> next.
+
+#### [PB-H01] Signal forward-links — feeds_fact_ids + affects_scenario_ids
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark signals carry `feeds_fact_ids` (dossier facts a signal feeds) and `affects_scenario_ids` (scenarios it re-weights). Our `signals` table (migration 037) is one-directional: event → signal → impact_assessment, no reverse edge. Add the two forward-link columns (additive migration) and populate them from the materiality/impact path. This unblocks both the calibration loop (PB-H14) and evidence drill-through (PB-E05). Acceptance: a seeded signal lists ≥1 fact it feeds and the scenario(s) it affects; integration test asserts the round-trip.
+
+#### [PB-H02] Enable + auto-curate ALL connectable public sources
+- **Type**: data
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H17
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER PRIORITY (1 Jun): "data breadth is key — enable for all connectors we can connect and curate automatically from public sources." Benchmark uses an 8-class source taxonomy. We cover 1 (regulatory) and 3 (SEC filings) fully; 2 (literature/conferences — PubMed/PMC only), 4 (biz news — generic RSS), 6 (payer — NADAC only) partial; 5 (presentations) and 8 (RWD/consumer) missing. Scope: turn on every free/public connector we can, wire each through the unified ingestion hook (PB-H17) so it flows sense→fact→dossier, and let `services/data_steward.py` auto-curate (dedup/normalise/quality-score — it already loops). Sequence: payer (class 6 — drives the most benchmark facts) → conference/literature (class 2) → biz-news specialisation (class 4) → RWD (class 8 public proxies). Reuse `connectors/base.py` + source_registry FAIR scoring. Acceptance: every newly-enabled public connector is registered, health-checked, auto-curated, and lands facts in the ledger.
+
+#### [PB-H03] Document upload + internal/client sources into the spine
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H17
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER PRIORITY (1 Jun): "ability to add documents and upload to be used to connect like annual reports etc, and then ability to add more data sources that are internal when we do with client." Two channels, both via the unified ingestion hook (PB-H17): (a) DOCUMENT UPLOAD — annual reports, decks, PDFs → facts. The pipeline EXISTS (`connectors/user_document.py` + SPEC_014 NER); this loop verifies it lands facts in the ledger + dossier (not just chunks) and wires the UI. (b) INTERNAL/CLIENT sources (MSL notes, KOL/PBM panels, HCP surveys) — tenant-scoped, `internal`-class facts, the SME/expert-context channel. Acceptance: an uploaded annual report and a sample internal feed each produce dossier facts (tenant-scoped for internal).
+
+#### [PB-H04] Dossier — actionable gaps (text + fill method + importance)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark gaps are actionable: each carries `text` (what's missing), `method` (how to fill — e.g. primary research design), `importance` (high/medium). Our `DossierSnapshot.gaps()` (dossier_kb.py:235) returns state-only `{domain, priority}`. Add a `GapView` (text/method/importance) so the engagement's gaps stage drives real collection priorities. Pure-logic — fully unit-testable. Acceptance: a thin domain surfaces a gap with a human-readable description + fill method + importance; round-trips through the snapshot JSON.
+
+#### [PB-H05] Dossier — per-domain readiness score (0–1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark shows a per-domain `ready` score (0–1, e.g. 0.85) and rolls it into engagement readiness (87%). We have only a 3-state `state` (gap/in_progress/complete) + an aggregate coverage_score. Add `readiness: float` to `DomainView`, derived from fact count + grounded-class presence + priority weighting (deterministic, no LLM). Pure-logic. Acceptance: a populated domain scores higher than a thin one; aggregate engagement readiness derivable.
+
+#### [PB-H06] Dossier — wire KOLs into clinical domain
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark Domain 2 carries KOLs (name, affiliation, sentiment, position, stance). We have an `investigators` entity type + table (migration 040) but `compose_dossier`/`dossier_kb` never query it. Wire investigators linked to the focal asset into the clinical_profile domain as structured KOL content. Acceptance: a drug with linked investigators shows ≥1 KOL in its clinical domain.
+
+#### [PB-H07] Dossier — competitor threat assessment in competitive domain
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E04
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: B5 routes related entities into the competitive domain as bare graph edges (relation + edge_count). Benchmark competitors carry a threat assessment (positioning, why they matter). Enrich `_related_to_dossier_fact` with a threat signal derived from PharmaMetrics competitive_landscape + edge weight, so competitors are ranked not just listed. Acceptance: competitive domain orders rivals by a derived threat score with cited basis.
+
+#### [PB-H08] Dossier — fact signal back-links + confidence enum + insight implication
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark facts carry `signal_ids` (back-links to the signals that produced them), confidence as a High/Medium enum, and split src_id/src_label; insights carry an `implication`. We have fact_class ✓ + insight frames+provenance ✓, but confidence is a bare decimal in source_label, no signal back-links, no insight implication. Depends on PB-H01 (signals must carry the forward edge first). Acceptance: a signal-derived fact lists its source signal id; insight renders an implication line.
+
+#### [PB-H09] Scenario as first-class probabilistic object (grounded in dossier facts)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: urgent
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E04
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: THE spine keystone. Benchmark scenarios are first-class objects: `prior_prob`, `current_prob`, `calibration_note`, `trigger`, `from_fact_ids` (provenance back to dossier facts), per-team `moves`, NPV-scored `decision_options`. Our `scenario_engine.py` is deterministic what-if (no probability, no provenance); `game_theory.py` has Bayesian runs but no persisted scenario object. DESIGN must reuse-audit scenario_engine / game_theory / war_game_adversary / war_room_rounds before adding a new `scenarios` table (additive). Derive candidate scenarios from the now-rich dossier (B2–B5), each carrying from_fact_ids + an initial prior. Unblocks PB-H14 (calibration). Acceptance: assembling a scenario from a real engagement's dossier yields ≥1 scenario citing the dossier facts that justify it, with a prior probability.
+
+#### [PB-H10] NPV-scored decision options + recommended flag
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark decision_options carry `npv_5yr` + `recommended: bool` + rationale. Our `decision_brief_options` (migration 052) have label/description/predicted_outcome/cost_estimate/risk_notes (text) but no quantitative NPV or recommended flag. Extend the option model with npv_5yr (nullable, analyst-supplied or modelled) + recommended. Acceptance: a brief option carries an NPV value and exactly one option is flagged recommended.
+
+#### [PB-H11] Move catalog with per-team impact vectors (guided wargaming)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark MOVE_CATALOG = per-team (novo/lilly/payer/hcp) moves, each with category, label, detail, stance, and an impact vector ({novo:+0.7, lilly:-0.2, payer:-0.4}) for guided play. We have `move_suggester.py` (ranked moves, single expected_impact_score) + `war_game_engine.py` MOVE_TYPES but no per-team payoff vectors. Build a move catalog keyed by team with impact vectors. Acceptance: a guided war-game offers team-specific moves each scored against all teams.
+
+#### [PB-H12] 3×3 Nash payoff matrix + Nash reasoning
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H11
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark PAYOFF_MATRIX is 3×3 (Novo strategies × Lilly strategies), each cell an (npv_a, npv_b) pair, with a computed `nash_cell` + `nash_reasoning`. Our `simulation/payoff.py` builds 2×2 from Bayesian runs (delta_pct, not NPV pairs) and `game_theory.py` does Stackelberg (sequential) not simultaneous Nash. Generalise to N×N, emit NPV pairs, add a simultaneous-move Nash solver + reasoning. Note: SPEC-025 Bayesian/Stackelberg layer was deferred — this revisits it with the benchmark as the concrete target. Acceptance: a 3×3 matrix returns a Nash cell with a textual justification.
+
+#### [PB-H13] Autonomous multi-round war-game play
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H12
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark AUTONOMOUS_PLAY = a scripted multi-round team-move sequence with narration. We have `war_game_adversary.WarGameOrchestrator` (reactive per-option rounds) but no autonomous campaign that loops the war room through rounds without human prompting. Add an auto-play orchestration over the move catalog + payoff matrix. Acceptance: a war-game run produces a coherent N-round move/counter-move transcript autonomously.
+
+#### [PB-H14] Scenario calibration loop (re-weight probability from new signals)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09, PB-H01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: THE Learn-loop gap. Benchmark re-weights `prior_prob → current_prob` as signals arrive, each change carrying a `calibration_note` tracing to the causing signal. Our learn layer is strong and WIRED (telemetry, 3 feedback loops, outcome detection every 1h, EWMA source-accuracy via `learning_service.py`) — but scenario probabilities are never recalibrated. Wire signal arrival (via affects_scenario_ids, PB-H01) → Bayesian update of scenario current_prob (reuse `learning_service.ewma_update`) → write a calibration_note. Closes the flywheel. Acceptance: a new signal affecting a scenario shifts its current_prob and records a calibration_note citing the signal.
+
+#### [PB-H15] SDAL flywheel KPI dashboard (sense / decide / act / learn)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H14
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Benchmark dashboard ties 4 KPIs to the sense/decide/act/learn loops (signals processed 7d, scenarios under evaluation, decisions committed, calibration updates 7d). We have the underlying data (query_telemetry, war_room_sessions, decisions, learning_runs) + `agents_activity.py` feeds, but no unified loop-keyed KPI surface. Aggregate the four into one dashboard endpoint + view. Acceptance: a dashboard shows one live KPI per flywheel loop, each linking to its detail view.
+
+#### [PB-H16] Agentic narrative synthesis (depth-first, not prose-exact)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER DIRECTION (1 Jun): "for narrative we should get closer using agentic and LLM support but need not be exact — accuracy and depth of intelligence matter more, and quality of the war-game and decision-making is key." So: do NOT chase the demo's hand-authored prose fidelity. Use LLM/agentic synthesis to turn the grounded dossier + scenarios into narrative (scenario triggers, insight implications, decision_output) — but the bar is ACCURACY (every claim traces to a cited fact, no hallucinated numbers — reuse the H2 numeric-grounding discipline) and DEPTH of strategic reasoning / decision quality, not matching the demo word-for-word. Build on `services/llm.py` synthesis + the dossier/scenario provenance; gate with the golden-query eval (I1). Acceptance: scenario narrative + decision_output are LLM-generated, every quantitative claim cites a dossier fact, and a reviewer rates the strategic depth ≥ the templated baseline.
+
+#### [PB-H17] Unified spine ingestion hook (connector / upload / internal → sense layer)
+- **Type**: infra
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER DIRECTION (1 Jun): internal/client sources need "easy hooks to connect the data into the spine and the sense layer." The enabler for the whole data-breadth track (H02/H03). Define ONE uniform ingestion contract so any source — a public connector, an uploaded annual report, or an internal client feed — flows the same way: fetch/parse → normalise → resolve entities → embed → store → emit signal/fact → land in the dossier. Reuse + harden what exists: `connectors/base.py` Connector contract, `integration/pipeline.py` (fetch→normalize→resolve→embed→store→cross-link), `integration/pipeline_hooks.py` (PRE_STORE/POST_STORE/ON_NEW_ENTITY) and `services/fact_ingest.py` (event→fact). Deliverable: a documented `register_source()` / ingestion adapter so adding a new feed is a thin plug-in, not a bespoke integration; existing connectors refactored onto it as proof. Acceptance: a new toy source added via the hook lands a fact in the ledger with <50 lines of source-specific code. PARTIAL: the events→facts convergence half shipped as Loop H17a (scheduler post-task, reusing backfill_facts_from_events) — see PB-H18 for the writer bug it surfaced.
+
+#### [PB-H18] Fix market_events writer schema drift (stale columns)
+- **Type**: bug
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Found while auditing legacy ingestion for H17 (1 Jun). The prod `market_events` table (verified twice via information_schema, 24 cols) has `primary_entity_id/_type/_name`, `source_api`, `drug_id`, `corroborating_sources`, `content_hash` — and does NOT have `entity_id`, `entity_type`, `source_feed`, `payload`, `raw_data`, `disclosed_date`, `source_document_id`, `corroboration_count`. But two writers INSERT into the dropped columns and therefore THROW on prod: `services/event_collector.py:_persist_event` (entity_id/entity_type/source_feed/raw_data/corroboration_count) — and it's LIVE (api/app.py:722 runs it every background cycle for news) — and `services/db_adapter_8k.py:_EVENT_INSERT_SQL` (source_feed/payload/disclosed_date/source_document_id), explaining why there are ZERO 8-K events on prod (top source_api = fda_shortages 34k, pharma_news 1.2k, no SEC). The working writer is the RawRecord pipeline (`integration/knowledge_store.py`). Fake-DB unit tests can't catch this (the bug is a real-schema mismatch — fake-DB blindness, same class as the A1 bug). Fix: align each broken writer's INSERT to the real 24-col schema (match the working knowledge_store / the proven columns), each verified by a throwaway insert against the real DB (insert → assert lands + emits a fact → delete in finally). Acceptance: a news event collected via EventCollector and an 8-K event via db_adapter_8k both land in market_events on the real schema and emit a fact.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
