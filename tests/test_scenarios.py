@@ -87,6 +87,24 @@ def test_scenario_not_blocked_by_unrelated_domain_gap():
     assert comp.blocked_by_gaps == []          # own-evidence → playable
 
 
+def test_team_moves_carry_bounded_impact_vectors():
+    # PB-H11: each team move carries an illustrative directional impact vector
+    # keyed by team, bounded to [-1, 1], with the acting team positive.
+    related = [{"id": "d2", "type": "drug", "name": "tirzepatide",
+                "relation": "COMPETES_WITH", "edge_count": 4}]
+    s = next(x for x in derive_scenarios(_snapshot_with(related=related))
+             if "tirzepatide" in x.name)
+    assert s.team_moves
+    for m in s.team_moves:
+        assert m.impact, f"move by {m.team} must carry an impact vector"
+        assert all(-1.0 <= v <= 1.0 for v in m.impact.values())
+        # the acting team is helped by its own move.
+        assert m.impact.get(m.team, 0) > 0
+    # round-trips to the frontend shape.
+    d = s.to_dict()
+    assert "impact" in d["teamMoves"][0]
+
+
 def test_self_referential_competitor_is_suppressed():
     # PB-H10c: a "GLP-1 analogue - semaglutide" rival when the focal asset IS
     # semaglutide is a self-match and must not spawn a competitive scenario.
@@ -166,7 +184,7 @@ def test_team_moves_and_options_survive_to_dict_round_trip():
     d = next(x for x in derive_scenarios(_snapshot_with(related=related))
              if "tirzepatide" in x.name).to_dict()
     assert len(d["teamMoves"]) == 3 and len(d["decisionOptions"]) == 3
-    assert set(d["teamMoves"][0]) == {"team", "move", "rationale"}
+    assert set(d["teamMoves"][0]) == {"team", "move", "rationale", "impact"}
     assert set(d["decisionOptions"][0]) == {"id", "statement", "rationale", "npv5yDkkBn", "recommended"}
 
 

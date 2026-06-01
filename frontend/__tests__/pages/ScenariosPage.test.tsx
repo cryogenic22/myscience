@@ -27,7 +27,8 @@ const SCENARIOS = [
     probabilityCurrent: 0.62,
     teamMoves: [
       { team: 'Lilly',  move: 'Aggressive WAC parity + premium specialist rebates',
-        rationale: 'Maximises early-market lock-in given orforglipron oral advantage' },
+        rationale: 'Maximises early-market lock-in given orforglipron oral advantage',
+        impact: { Lilly: 0.6, Novo: -0.4, Payer: 0.1 } },
       { team: 'Payer',  move: 'Step-edit to Foundayo before brand specialty access',
         rationale: 'Cost-containment lever opens with multiple options' },
       { team: 'HCP',    move: 'Hedge prescribing to oral options first',
@@ -101,6 +102,15 @@ describe('ScenariosPage — scenario cards', () => {
     expect(container.querySelectorAll('[data-scenario-id]').length).toBe(2);
     expect(screen.getByText(/Lilly Offensive/)).toBeInTheDocument();
     expect(screen.getByText(/Lilly launches orforglipron/)).toBeInTheDocument();
+  });
+
+  it('renders per-team impact chips on team moves when expanded (PB-H11)', () => {
+    const { container } = setup({ activeScenarioId: 'scn-A' });
+    const chip = container.querySelector('[data-impact-team="Lilly"]');
+    expect(chip).toBeTruthy();
+    expect(chip).toHaveTextContent('Lilly +0.6');
+    // a negative impact renders too
+    expect(container.querySelector('[data-impact-team="Novo"]')).toHaveTextContent('Novo -0.4');
   });
 
   it('shows probability dial — prior + current when both present', () => {

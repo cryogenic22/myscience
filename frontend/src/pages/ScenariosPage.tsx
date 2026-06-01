@@ -27,6 +27,8 @@ export interface TeamMove {
   team: string;
   move: string;
   rationale: string;
+  /** PB-H11: illustrative directional impact per team, in [-1, 1]. */
+  impact?: Record<string, number>;
 }
 
 export interface DecisionOption {
@@ -296,6 +298,31 @@ function ScenarioCard({
                     <div style={{ fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.5 }}>
                       {m.rationale}
                     </div>
+                    {m.impact && Object.keys(m.impact).length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }} title="Illustrative directional impact (structural estimate, not a forecast)">
+                        {Object.entries(m.impact).map(([team, delta]) => {
+                          const pos = delta >= 0;
+                          return (
+                            <span
+                              key={team}
+                              data-impact-team={team}
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: 10,
+                                letterSpacing: '0.02em',
+                                padding: '1px 6px',
+                                borderRadius: 'var(--radius-pill)',
+                                background: pos ? 'var(--color-green-soft, rgba(21,128,61,0.08))' : 'rgba(185,28,28,0.08)',
+                                color: pos ? 'var(--color-green, #15803d)' : 'var(--color-red, #b91c1c)',
+                                border: `1px solid ${pos ? 'var(--color-green, #15803d)' : 'var(--color-red, #b91c1c)'}`,
+                              }}
+                            >
+                              {team} {pos ? '+' : ''}{delta.toFixed(1)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
