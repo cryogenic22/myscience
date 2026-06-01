@@ -280,6 +280,26 @@ def test_fact_class_coerced_to_valid():
     assert by["pricing_and_access"].facts[0].fact_class == "signal"
 
 
+def test_render_value_prefers_description_for_event_facts():
+    # market_event facts carry human text in `description`; without it they
+    # rendered as raw JSON that leaked into scenario names (caught on real DB).
+    from services.dossier_kb import _render_value
+    ov = {"event_type": "approval", "description": "FDA approved drug X",
+          "event_id": "e1", "source_url": "u"}
+    out = _render_value(ov)
+    assert out == "FDA approved drug X"
+    assert "event_id" not in out          # no raw-JSON leak
+
+
+def test_render_value_skips_empty_description():
+    from services.dossier_kb import _render_value
+    # None description falls through to the next usable key
+    assert _render_value({"description": None, "summary": "the summary"}) == "the summary"
+    # nothing usable → compact JSON (still a non-empty string, never "None")
+    out = _render_value({"description": "", "event_id": "x"})
+    assert out and out != "None"
+
+
 def test_claim_renders_predicate_and_value():
     domains, _, _ = build_domains([_fact("wac_usd_monthly", "corporate", "675")])
     by = {d.domain: d for d in domains}

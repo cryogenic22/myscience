@@ -36,6 +36,28 @@ TIER_BASE_SCORES = {
 
 CORROBORATION_BONUS = 0.15
 
+# PB-H18: the live market_events schema (24 cols) uses primary_entity_id/_type,
+# source_api, drug_id, corroborating_sources (jsonb) — NOT the legacy
+# entity_id/entity_type/source_feed/raw_data/corroboration_count this writer
+# used to target (which threw UndefinedColumn on prod every cycle, so news
+# events never persisted and never emitted facts). NOT NULL cols with no
+# default — event_type, event_date, source_api, source_url, retrieved_at — are
+# all supplied (event_date/source_url COALESCE'd, since news candidates can
+# carry neither). Mirrors the working writer integration/knowledge_store.py.
+_INSERT_EVENT_SQL = """
+    INSERT INTO market_events (
+        event_hash, event_type, description, source_api,
+        source_url, source_tier, trust_score,
+        primary_entity_id, primary_entity_type, drug_id,
+        event_date, retrieved_at, status, corroborating_sources
+    ) VALUES (
+        %s, %s, %s, %s,
+        COALESCE(%s, ''), %s, %s,
+        %s, %s, %s,
+        COALESCE(%s, CURRENT_DATE), NOW(), 'new', '[]'::jsonb
+    )
+"""
+
 
 # ── Dataclasses ────────────────────────────────────────────────────
 
@@ -207,33 +229,22 @@ class EventCollector:
         trust_score: float,
         entity: dict | None,
     ) -> None:
-        """INSERT a new market event row."""
+        """INSERT a new market event row (PB-H18: real-schema columns)."""
+        is_drug = bool(entity and entity.get("type") == "drug")
         self.db.execute(
-            """
-            INSERT INTO market_events (
-                event_hash, event_type, description, source_feed,
-                source_url, source_tier, trust_score,
-                entity_id, entity_type, event_date,
-                raw_data, status, corroboration_count, created_at
-            ) VALUES (
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, 'new', 0, NOW()
-            )
-            """,
+            _INSERT_EVENT_SQL,
             [
                 event_hash,
                 candidate.event_type,
                 candidate.description,
-                candidate.source_feed,
-                candidate.source_url,
+                candidate.source_feed,                      # → source_api
+                candidate.source_url,                       # COALESCE '' if None
                 candidate.source_tier,
                 trust_score,
-                entity["id"] if entity else None,
-                entity["type"] if entity else None,
-                candidate.event_date,
-                str(candidate.raw_data),
+                entity["id"] if entity else None,           # primary_entity_id
+                entity["type"] if entity else None,         # primary_entity_type
+                entity["id"] if is_drug else None,          # drug_id (fact subject)
+                candidate.event_date,                       # COALESCE CURRENT_DATE if None
             ],
         )
 
