@@ -99,6 +99,10 @@ class Scenario:
     decision_options: list[DecisionOption] = field(default_factory=list)
     decision_output: Optional[str] = None
     blocked_by_gaps: list[str] = field(default_factory=list)
+    # PB-H10c: the dossier domain(s) this scenario draws its evidence from —
+    # used to scope which gaps block it (own-domain gaps only, not every high
+    # gap). Transient: not serialized, not persisted.
+    source_domains: list[str] = field(default_factory=list, compare=False)
     # set on persist / read
     id: Optional[str] = None
     engagement_id: Optional[str] = None
@@ -263,10 +267,26 @@ def _signal_options(focal: str) -> list[DecisionOption]:
     ]
 
 
+def _competitive_pretty(claim: str) -> str:
+    """Rival display name from a competitive fact claim like
+    'drug:tirzepatide — competes_with (4 edges)' → 'tirzepatide'."""
+    head = (claim or "").split(" — ")[0].split(" (")[0].strip()
+    return head.split(":")[-1].strip() if ":" in head else head
+
+
+def _is_self_competitor(rival_pretty: str, focal: str) -> bool:
+    """PB-H10c: suppress focal self-matches — e.g. a 'GLP-1 analogue - semaglutide'
+    competitor row when the focal asset IS semaglutide. Substring either way (the
+    rival label often embeds the focal generic)."""
+    r = (rival_pretty or "").strip().lower()
+    f = (focal or "").strip().lower()
+    if not r or not f or f in ("the focal asset",):
+        return False
+    return r == f or f in r or r in f
+
+
 def _competitive_scenario(fact, focal_asset: Optional[str] = None) -> Scenario:
-    # competitive facts read like "drug:tirzepatide — competes_with (4 edges)"
-    head = fact.claim.split(" — ")[0].split(" (")[0].strip()
-    pretty = head.split(":")[-1].strip() if ":" in head else head
+    pretty = _competitive_pretty(fact.claim)
     focal = _focal_pretty(focal_asset)
     prior = _prior_from_fact(fact.claim, fact.fact_class)
     return Scenario(
@@ -279,6 +299,7 @@ def _competitive_scenario(fact, focal_asset: Optional[str] = None) -> Scenario:
         evidence=[ScenarioEvidence(fact_id=fact.id, predicate="competitive_relation")],
         team_moves=_competitive_team_moves(pretty, focal),
         decision_options=_competitive_options(pretty, focal, prior),
+        source_domains=["competitive"],
     )
 
 
@@ -296,6 +317,7 @@ def _signal_scenario(domain: str, fact, focal_asset: Optional[str] = None) -> Sc
         evidence=[ScenarioEvidence(fact_id=fact.id, predicate="signal")],
         team_moves=_signal_team_moves(name, focal),
         decision_options=_signal_options(focal),
+        source_domains=[domain],
     )
 
 
@@ -317,9 +339,14 @@ def derive_scenarios(snapshot: DossierSnapshot) -> list[Scenario]:
 
     focal = getattr(snapshot, "focal_asset", None)
 
+    focal_pretty = _focal_pretty(focal)
     comp = _domain(snapshot, "competitive")
     if comp is not None:
         for f in comp.facts[:_MAX_COMPETITIVE]:
+            # PB-H10c: drop focal self-matches (e.g. "GLP-1 analogue - semaglutide"
+            # when the focal asset is semaglutide).
+            if _is_self_competitor(_competitive_pretty(f.claim), focal_pretty):
+                continue
             candidates.append(_competitive_scenario(f, focal))
 
     for dv in snapshot.domains:
@@ -344,14 +371,20 @@ def derive_scenarios(snapshot: DossierSnapshot) -> list[Scenario]:
     uniq.sort(key=lambda s: s.prior_prob, reverse=True)
     uniq = uniq[:_MAX_SCENARIOS]
 
-    # The dossier's high-importance gaps block confident execution of any
-    # scenario — surface them (reuse of D1's actionable gaps).
-    blocking = [
-        g["text"] for g in snapshot.gaps(include_thin=False)
+    # PB-H10c: block each scenario only on high-importance gaps in the domain(s)
+    # it actually draws evidence from — NOT every high gap in the dossier. A
+    # scenario with sufficient own-evidence stays playable (provisional);
+    # peripheral context gaps are surfaced by the gaps stage, not hard-blockers.
+    # This fixes the prior behaviour where ALL scenarios were always blocked.
+    high_gaps = [
+        g for g in snapshot.gaps(include_thin=False)
         if g.get("importance") == "high"
     ]
     for s in uniq:
-        s.blocked_by_gaps = list(blocking)
+        s.blocked_by_gaps = [
+            g["text"] for g in high_gaps
+            if g.get("domain") in s.source_domains
+        ]
     return uniq
 
 
