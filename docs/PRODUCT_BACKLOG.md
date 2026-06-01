@@ -1420,7 +1420,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX05] Gaps stage — GapsContainer (Stage wiring P2.2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: feedback
@@ -1428,19 +1428,31 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-UX01
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Wire `GapsContainer` to the shipped `/dossier/gaps` (text+method+importance from D1). Importance-ranked rows with resolve actions (commission / accept / de-scope). KC+SA co-own; DM sees summary. Gap status changes → activity timeline (PB-UX11).
+- **Notes**: SHIPPED (PR #143). Widened DossierGapsDTO; GapsContainer mirrors DossierContainer (assemble→render GapsPage); importance mapped from priority so the critical-gap workshop-blocking rule fires; added `fillMethod` to GapsPage ("how to fill"). Real-DB red-team (semaglutide) = 4 grounded gaps incl. critical pricing/access. Remediation is client-side → PB-UX05b for persistence.
+
+#### [PB-UX05b] Persist gap remediation choices
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX05
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: UX05 ships gap remediation (primary_research/accept/descope) as CLIENT-SIDE state — it drives the readiness banner + complete gate in-session but doesn't survive reload, and doesn't feed the scenario blocking (PB-H10c). Add a gap_remediations table (engagement_id, gap_domain, remediation, note, by, at) + GET/PUT endpoints; GapsContainer reads/writes them. Acceptance: a remediation choice persists across reloads and a resolved critical gap unblocks the relevant scenarios.
 
 #### [PB-UX06] Synthesis stage — SynthesisContainer (Stage wiring P2.3)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
-- **Owner**: frontend-claude
+- **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-UX03
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Wire the H16 narrative engine as cross-domain insight frames (risk/opportunity/trigger/assumption) with provenance trace. SA composes/edits (propose-confirm), KC verifies evidence, DM reads. Depends on dossier quality — ship after gaps + data improve (PB-H19).
+- **Notes**: SHIPPED (PR #144) — was build-not-wire (no engagement-scoped insight derivation existed). migration 074 (engagement_id+dossier_snapshot_id+is_archived on insights/rejected_insights, applied to prod); `derive_synthesis_insights` (deterministic grounded candidates, one per substantive domain, frame from domain + signal→trigger, skips wargame_specific noise) → synthesis_test gate → assemble_and_persist + list_engagement_synthesis; GET/POST /engagements/{eid}/synthesis; synthesisApi + SynthesisContainer (reuses ProvenancePanel). Real-DB red-team (semaglutide) = 3 grounded insights (competitive/clinical/pipeline), 100% pass. FUTURE: optional H16 LLM polish of insight statements (the deterministic core is grounded; LLM would sharpen prose).
 
 #### [PB-UX07] Sources stage — coverage view + upload (Stage wiring P2.4)
 - **Type**: feature
