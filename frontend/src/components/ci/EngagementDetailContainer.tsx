@@ -16,7 +16,7 @@
  *   - synthesis→ SynthesisContainer (live typed insights + audit trail) [UX06]
  *   - gaps     → GapsContainer (live H04 actionable collection gaps) [UX05]
  *   - scenarios→ ScenariosContainer (live PB-H09 probabilistic futures) [UX04]
- *   - workshop → "coming soon"
+ *   - workshop → WorkshopContainer (launch war room from a scenario) [UX-Workshop]
  *
  * The point of this loop is to make engagement-detail navigation
  * actually work end-to-end; the per-stage content surfaces are their
@@ -36,6 +36,7 @@ import GapsContainer from './GapsContainer';
 import SynthesisContainer from './SynthesisContainer';
 import SourcesContainer from './SourcesContainer';
 import BriefContainer from './BriefContainer';
+import WorkshopContainer from './WorkshopContainer';
 import PersonaPicker from './PersonaPicker';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
@@ -227,6 +228,8 @@ export default function EngagementDetailContainer({
           onMarkComplete={() => onStageChange(engagement.id, 'workshop')}
           onPlayScenario={() => onStageChange(engagement.id, 'workshop')}
         />
+      ) : currentStage === 'workshop' ? (
+        <WorkshopContainer engagement={engagement} />
       ) : (
         <StagePlaceholder stage={currentStage} />
       )}

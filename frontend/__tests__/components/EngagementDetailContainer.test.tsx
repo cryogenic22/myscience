@@ -5,6 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import EngagementDetailContainer from '../../src/components/ci/EngagementDetailContainer';
 
+// WorkshopContainer pulls in the heavy, self-contained WarRoomView (which has
+// its own api imports). Stub it — the workshop wiring is what's under test here.
+vi.mock('../../src/components/ci/war/WarRoomView', () => ({
+  default: () => <div data-testid="warroom-stub" />,
+}));
+
 vi.mock('../../src/api', () => {
   class DossierNotAssembled extends Error {}
   return {
@@ -14,11 +20,12 @@ vi.mock('../../src/api', () => {
     synthesisApi: { get: vi.fn(), assemble: vi.fn() },
     engagementSourcesApi: { get: vi.fn() },
     engagementBriefApi: { get: vi.fn() },
+    warRoomApi: { list: vi.fn(), create: vi.fn(), detail: vi.fn() },
     DossierNotAssembled,
   };
 });
 
-import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi, engagementBriefApi } from '../../src/api';
+import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi, engagementBriefApi, warRoomApi } from '../../src/api';
 
 // gaps() must be hoisted-safe on the mocked dossierKbApi.
 
@@ -65,9 +72,11 @@ describe('EngagementDetailContainer', () => {
     expect(back).toHaveBeenCalledTimes(1);
   });
 
-  it('renders EngagementShell + stage placeholder for a not-yet-built stage', async () => {
-    // workshop is the last stage still on the placeholder (wired in a later loop).
+  it('renders the WorkshopContainer (not a placeholder) at the workshop stage (PB-UX-Workshop)', async () => {
+    // All 7 stages are now wired — workshop renders the WorkshopContainer.
     (engagementsApi.get as any).mockResolvedValue(dto({ stage: 'workshop' }));
+    (scenariosApi.get as any).mockReturnValue(new Promise(() => {}));
+    (warRoomApi.list as any).mockReturnValue(new Promise(() => {}));
     render(
       <EngagementDetailContainer
         eid="eng-1"
@@ -77,10 +86,9 @@ describe('EngagementDetailContainer', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByTestId('stage-placeholder')).toBeInTheDocument();
+      expect(screen.getByTestId('workshop-loading')).toBeInTheDocument();
     });
-    // The placeholder names the current stage.
-    expect(screen.getByText(/stage · workshop/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('stage-placeholder')).not.toBeInTheDocument();
   });
 
   it('renders the DossierContainer (not a placeholder) at the dossier stage', async () => {
