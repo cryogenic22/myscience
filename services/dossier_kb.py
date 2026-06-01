@@ -343,9 +343,13 @@ def _render_value(object_value: Any) -> str:
     if isinstance(object_value, (int, float, bool)):
         return str(object_value)
     if isinstance(object_value, dict):
-        # Prefer the conventional single-value keys.
-        for key in ("value", "text", "summary", "amount", "usd", "date"):
-            if key in object_value:
+        # Prefer the conventional single-value keys. `description` is included
+        # because market_event facts carry their human text there — without it
+        # they rendered as raw JSON ("{\"event_id\":...}") which then leaked
+        # into scenario names + narrative. Skip None/empty so we fall through
+        # to the next key rather than printing "None".
+        for key in ("value", "text", "summary", "description", "amount", "usd", "date"):
+            if object_value.get(key) not in (None, ""):
                 return str(object_value[key])
         try:
             return json.dumps(object_value, separators=(",", ":"))[:160]
