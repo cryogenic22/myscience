@@ -2442,3 +2442,37 @@ export const gapRemediationApi = {
       return r.json();
     }),
 };
+
+// ── Generic entity comments (PB-UX02) ───────────────────────────────
+
+export interface EntityComment {
+  id: string;
+  target_type: string;
+  target_id: string;
+  author_user_id: string | null;
+  author_display_name: string;
+  body: string;
+  mentions: string[];
+  created_at: string | null;
+  edited_at: string | null;
+}
+
+export const commentsApi = {
+  list: (targetType: string, targetId: string): Promise<{ comments: EntityComment[]; count: number }> =>
+    fetch(`${BASE}/comments?target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(targetId)}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  add: (targetType: string, targetId: string, body: string): Promise<EntityComment> =>
+    fetch(`${BASE}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ target_type: targetType, target_id: targetId, body }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
