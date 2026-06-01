@@ -50,6 +50,33 @@ def test_route_market_event_does_not_pollute_competitive():
     assert route_predicate_to_domain("competitor_launch") == "competitive"
 
 
+def test_is_junk_competitor_name_reuses_a6_patterns():
+    from services.dossier_kb import _is_junk_competitor_name
+    assert _is_junk_competitor_name("metformin placebo")
+    assert _is_junk_competitor_name("Metformin 1000mg")
+    assert _is_junk_competitor_name("Metformin / Placebo treatment for 4 months")
+    assert not _is_junk_competitor_name("tirzepatide")
+    assert not _is_junk_competitor_name("semaglutide")
+    assert not _is_junk_competitor_name(None)
+
+
+def test_build_domains_filters_junk_competitors():
+    # PB-H07 read-time: junk drug rows (placebo/dosage arms) the graph links as
+    # COMPETES_WITH must not present as competitors; real rivals are kept.
+    related = [
+        {"id": "d1", "type": "drug", "name": "tirzepatide", "relation": "COMPETES_WITH", "edge_count": 4},
+        {"id": "d2", "type": "drug", "name": "metformin placebo", "relation": "COMPETES_WITH", "edge_count": 2},
+        {"id": "d3", "type": "drug", "name": "Metformin 1000mg", "relation": "COMPETES_WITH", "edge_count": 1},
+    ]
+    domains, _, _ = build_domains([], None, None, related)
+    comp = {d.domain: d for d in domains}["competitive"]
+    claims = " ".join(f.claim for f in comp.facts)
+    assert "tirzepatide" in claims          # real competitor kept
+    assert "placebo" not in claims          # junk filtered
+    assert "1000mg" not in claims           # dosage junk filtered
+    assert len(comp.facts) == 1
+
+
 def test_route_unknown_and_none_fall_back():
     assert route_predicate_to_domain("totally_novel_thing") == "wargame_specific"
     assert route_predicate_to_domain(None) == "wargame_specific"
