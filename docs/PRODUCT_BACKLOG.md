@@ -26,7 +26,7 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 3     |
-| triaged       | 86    |
+| triaged       | 87    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 5     |
@@ -1317,7 +1317,19 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: USER DIRECTION (1 Jun): internal/client sources need "easy hooks to connect the data into the spine and the sense layer." The enabler for the whole data-breadth track (H02/H03). Define ONE uniform ingestion contract so any source — a public connector, an uploaded annual report, or an internal client feed — flows the same way: fetch/parse → normalise → resolve entities → embed → store → emit signal/fact → land in the dossier. Reuse + harden what exists: `connectors/base.py` Connector contract, `integration/pipeline.py` (fetch→normalize→resolve→embed→store→cross-link), `integration/pipeline_hooks.py` (PRE_STORE/POST_STORE/ON_NEW_ENTITY) and `services/fact_ingest.py` (event→fact). Deliverable: a documented `register_source()` / ingestion adapter so adding a new feed is a thin plug-in, not a bespoke integration; existing connectors refactored onto it as proof. Acceptance: a new toy source added via the hook lands a fact in the ledger with <50 lines of source-specific code.
+- **Notes**: USER DIRECTION (1 Jun): internal/client sources need "easy hooks to connect the data into the spine and the sense layer." The enabler for the whole data-breadth track (H02/H03). Define ONE uniform ingestion contract so any source — a public connector, an uploaded annual report, or an internal client feed — flows the same way: fetch/parse → normalise → resolve entities → embed → store → emit signal/fact → land in the dossier. Reuse + harden what exists: `connectors/base.py` Connector contract, `integration/pipeline.py` (fetch→normalize→resolve→embed→store→cross-link), `integration/pipeline_hooks.py` (PRE_STORE/POST_STORE/ON_NEW_ENTITY) and `services/fact_ingest.py` (event→fact). Deliverable: a documented `register_source()` / ingestion adapter so adding a new feed is a thin plug-in, not a bespoke integration; existing connectors refactored onto it as proof. Acceptance: a new toy source added via the hook lands a fact in the ledger with <50 lines of source-specific code. PARTIAL: the events→facts convergence half shipped as Loop H17a (scheduler post-task, reusing backfill_facts_from_events) — see PB-H18 for the writer bug it surfaced.
+
+#### [PB-H18] Fix market_events writer schema drift (stale columns)
+- **Type**: bug
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Found while auditing legacy ingestion for H17 (1 Jun). The prod `market_events` table (verified twice via information_schema, 24 cols) has `primary_entity_id/_type/_name`, `source_api`, `drug_id`, `corroborating_sources`, `content_hash` — and does NOT have `entity_id`, `entity_type`, `source_feed`, `payload`, `raw_data`, `disclosed_date`, `source_document_id`, `corroboration_count`. But two writers INSERT into the dropped columns and therefore THROW on prod: `services/event_collector.py:_persist_event` (entity_id/entity_type/source_feed/raw_data/corroboration_count) — and it's LIVE (api/app.py:722 runs it every background cycle for news) — and `services/db_adapter_8k.py:_EVENT_INSERT_SQL` (source_feed/payload/disclosed_date/source_document_id), explaining why there are ZERO 8-K events on prod (top source_api = fda_shortages 34k, pharma_news 1.2k, no SEC). The working writer is the RawRecord pipeline (`integration/knowledge_store.py`). Fake-DB unit tests can't catch this (the bug is a real-schema mismatch — fake-DB blindness, same class as the A1 bug). Fix: align each broken writer's INSERT to the real 24-col schema (match the working knowledge_store / the proven columns), each verified by a throwaway insert against the real DB (insert → assert lands + emits a fact → delete in finally). Acceptance: a news event collected via EventCollector and an 8-K event via db_adapter_8k both land in market_events on the real schema and emit a fact.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
