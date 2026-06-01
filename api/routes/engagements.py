@@ -64,6 +64,10 @@ from services.insights import (
     assemble_and_persist_insights,
     list_engagement_synthesis,
 )
+from services.gap_remediation import (
+    set_remediation as set_gap_remediation,
+    list_remediations as list_gap_remediations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -499,6 +503,46 @@ def get_dossier_gaps(
         "gaps": snapshot.gaps(),
         "coverage_score": round(snapshot.coverage_score, 3),
     }
+
+
+# ── Gap remediation persistence (UX05b) ──
+
+
+class GapRemediationBody(BaseModel):
+    remediation: str
+    note: Optional[str] = None
+
+
+@router.get("/engagements/{eid}/gaps/remediations")
+def get_gap_remediations(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """The persisted remediation choices for an engagement's gaps,
+    keyed by gap domain."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    return {"remediations": list_gap_remediations(db, eid)}
+
+
+@router.put("/engagements/{eid}/gaps/{gap_domain}/remediation")
+def put_gap_remediation(
+    eid: str,
+    gap_domain: str,
+    body: GapRemediationBody,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """Persist (upsert) the remediation choice for one gap domain."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    try:
+        return set_gap_remediation(
+            db, eid, gap_domain, body.remediation,
+            note=body.note, created_by=str(user["id"]))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 # ── Scenarios (PB-H09): probabilistic futures derived from the dossier ──

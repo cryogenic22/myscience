@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   dossierKbApi,
+  gapRemediationApi,
   DossierNotAssembled,
   type DossierGapsDTO,
   type EngagementDTO,
@@ -49,7 +50,7 @@ export default function GapsContainer({ engagement, onMarkComplete }: Props) {
   const [notAssembled, setNotAssembled] = useState(false);
   const [assembling, setAssembling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // gapId → chosen remediation (client-side; see PB-UX05b).
+  // raw gap_domain → persisted remediation (PB-UX05b: durable, server-backed).
   const [remediations, setRemediations] = useState<Record<string, Remediation>>({});
 
   const load = useCallback(() => {
@@ -57,8 +58,19 @@ export default function GapsContainer({ engagement, onMarkComplete }: Props) {
     setLoading(true);
     setError(null);
     setNotAssembled(false);
-    dossierKbApi.gaps(eid)
-      .then((d) => { if (!cancelled) setData(d); })
+    Promise.all([
+      dossierKbApi.gaps(eid),
+      gapRemediationApi.list(eid).catch(() => ({} as Record<string, any>)),
+    ])
+      .then(([d, rem]) => {
+        if (cancelled) return;
+        setData(d);
+        const seeded: Record<string, Remediation> = {};
+        for (const [domain, r] of Object.entries(rem)) {
+          seeded[domain] = (r as any).remediation as Remediation;
+        }
+        setRemediations(seeded);
+      })
       .catch((e) => {
         if (cancelled) return;
         if (e instanceof DossierNotAssembled) setNotAssembled(true);
@@ -67,6 +79,14 @@ export default function GapsContainer({ engagement, onMarkComplete }: Props) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [eid]);
+
+  // Persist a remediation choice (optimistic; reverts the key on failure).
+  const setRemediation = (gapDomain: string, remediation: Remediation) => {
+    setRemediations((prev) => ({ ...prev, [gapDomain]: remediation }));
+    gapRemediationApi.set(eid, gapDomain, remediation).catch((e) => {
+      setError(`Failed to save remediation: ${String(e?.message ?? e)}`);
+    });
+  };
 
   useEffect(() => load(), [load]);
 
@@ -94,7 +114,7 @@ export default function GapsContainer({ engagement, onMarkComplete }: Props) {
         importance: importanceFromPriority(g.priority),
         question: g.text,
         fillMethod: g.method,
-        remediation: remediations[id] ?? 'pending',
+        remediation: remediations[g.domain] ?? 'pending',
       } as Gap;
     });
   }, [data, remediations]);
@@ -193,7 +213,7 @@ export default function GapsContainer({ engagement, onMarkComplete }: Props) {
         scope={{ engagementName: engagement.name, focalAsset: engagement.asset }}
         gaps={gaps}
         onSetRemediation={(gapId, remediation) =>
-          setRemediations((prev) => ({ ...prev, [gapId]: remediation }))}
+          setRemediation(gapId.replace(/^gap-/, ''), remediation)}
         onMarkComplete={() => onMarkComplete?.()}
       />
     </div>

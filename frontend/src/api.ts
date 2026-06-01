@@ -2412,3 +2412,33 @@ export const engagementBriefApi = {
       return r.json();
     }),
 };
+
+// ── Gap remediation persistence (PB-UX05b) ──────────────────────────
+
+export interface GapRemediationDTO {
+  gap_domain: string;
+  remediation: string;
+  note: string | null;
+  created_by?: string;
+  updated_at?: string | null;
+}
+
+export const gapRemediationApi = {
+  list: (eid: string): Promise<Record<string, GapRemediationDTO>> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/gaps/remediations`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).remediations ?? {};
+    }),
+
+  set: (eid: string, gapDomain: string, remediation: string, note?: string): Promise<GapRemediationDTO> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/gaps/${encodeURIComponent(gapDomain)}/remediation`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ remediation, note }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};

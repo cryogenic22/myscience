@@ -20,12 +20,13 @@ vi.mock('../../src/api', () => {
     synthesisApi: { get: vi.fn(), assemble: vi.fn() },
     engagementSourcesApi: { get: vi.fn() },
     engagementBriefApi: { get: vi.fn() },
+    gapRemediationApi: { list: vi.fn(), set: vi.fn() },
     warRoomApi: { list: vi.fn(), create: vi.fn(), detail: vi.fn() },
     DossierNotAssembled,
   };
 });
 
-import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi, engagementBriefApi, warRoomApi } from '../../src/api';
+import { engagementsApi, dossierKbApi, scenariosApi, synthesisApi, engagementSourcesApi, engagementBriefApi, gapRemediationApi, warRoomApi } from '../../src/api';
 
 // gaps() must be hoisted-safe on the mocked dossierKbApi.
 
@@ -41,7 +42,10 @@ function dto(over: Record<string, any> = {}) {
 }
 
 describe('EngagementDetailContainer', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (gapRemediationApi.list as any).mockResolvedValue({});
+  });
 
   it('shows loading state while fetching', () => {
     (engagementsApi.get as any).mockReturnValue(new Promise(() => {}));
