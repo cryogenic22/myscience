@@ -1251,7 +1251,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H10c] Scenario blocking is too coarse (all scenarios always blocked)
 - **Type**: bug
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: backend-claude
 - **Source**: feedback
@@ -1259,7 +1259,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: PB-H09
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: UX04 red-team on live semaglutide: ALL 5 scenarios inherit ALL high-importance dossier gaps → every scenario `blocked_by_gaps` is non-empty → "Play in War Room" + "Mark stage complete" are permanently disabled (dead-end). `derive_scenarios` blanket-assigns the dossier's high gaps to every scenario regardless of relevance (a pricing gap shouldn't block a competitive-pressure scenario that has its own evidence). Fix: gate each scenario only on gaps in domains it actually depends on, OR surface a "play anyway (provisional)" path. Also seen: a self-referential competitor "GLP-1 analogue - semaglutide" (semaglutide vs itself) — PB-H07-class hygiene; exclude focal-asset self-matches in competitive derivation. Acceptance: a scenario with sufficient own-evidence is playable; self-referential competitors are suppressed.
+- **Notes**: SHIPPED (PR #145). Each scenario now blocked only by high gaps in its own evidence domain(s) (transient Scenario.source_domains) — own-evidence scenarios stay playable; context gaps belong to the gaps stage. Self-matches suppressed (_is_self_competitor). Real-DB red-team (semaglutide): 5→4 scenarios (self-match dropped), all 4 playable. Acceptance met.
 
 #### [PB-H12] 3×3 Nash payoff matrix + Nash reasoning
 - **Type**: feature
@@ -1456,15 +1456,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX07] Sources stage — coverage view + upload (Stage wiring P2.4)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: frontend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-UX01
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Read-only coverage view of the 8 source classes (connected/partial/missing + freshness), engagement-scoped (vs the admin ConnectorPermissionsTab). KC gets document upload into a source class → Data Automaton extracts (reuse connectors/user_document.py). Read-only ships fast; upload is the KC feature.
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED read-only coverage (PR #146): DossierSnapshot.source_coverage() + GET /engagements/{eid}/sources + SourcesContainer (per-source fact counts, domains, class mix, contribution bars). Real-DB red-team (semaglutide) = 4 sources / 290 facts; honestly surfaces noise concentration (ties PB-H07). UPLOAD half deferred to Data Hub epic E17 (PB-D01/D06) per user (curation UIs deferred).
 
 #### [PB-UX08] Brief persistence + comments (Stage wiring P2.5)
 - **Type**: feature
