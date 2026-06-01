@@ -157,6 +157,32 @@ def test_signals_widen_coverage_vs_facts_only():
     assert cov_composed > cov_facts_only
 
 
+# ── B4 (PB-E03): PharmaMetrics facts feed the domains ──────────────
+
+
+def test_build_domains_merges_metric_facts():
+    from services.dossier_kb import DossierFact
+    metric_facts = [
+        ("pipeline_and_macro", DossierFact(id="m1", claim="Pipeline score 12.5 (88th percentile)",
+                                           fact_class="corporate", source_label="PharmaMetrics")),
+        ("clinical_profile", DossierFact(id="m2", claim="Trial success rate 67%",
+                                         fact_class="corporate", source_label="PharmaMetrics")),
+    ]
+    domains, coverage, count = build_domains([], None, metric_facts)
+    by = {d.domain: d for d in domains}
+    assert any("Pipeline score" in f.claim for f in by["pipeline_and_macro"].facts)
+    assert any("success rate" in f.claim for f in by["clinical_profile"].facts)
+    assert count == 2
+    # corporate-class metric facts are "grounded"
+    assert by["pipeline_and_macro"].facts[0].fact_class == "corporate"
+
+
+def test_metric_facts_optional_back_compat():
+    d1, c1, n1 = build_domains([_fact("ma_deal", "corporate")])
+    d2, c2, n2 = build_domains([_fact("ma_deal", "corporate")], None, None)
+    assert (c1, n1) == (c2, n2)
+
+
 def _fact(predicate, fact_class="signal", value="x", fid=None):
     return {
         "id": fid or f"f-{predicate}-{fact_class}",
