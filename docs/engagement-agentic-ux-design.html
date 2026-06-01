@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Engagement Workflow — Agentic UX Design (1 Jun 2026)</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --zs-orange:#F26C0D;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --serif:"Fraunces",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 28px 120px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:38px;letter-spacing:-.02em;margin:0 0 6px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:24px;margin:50px 0 14px;padding-top:22px;border-top:1px solid var(--line);}
+  h3{font-size:14.5px;letter-spacing:.01em;margin:26px 0 8px;color:var(--ink);}
+  p{color:var(--ink2);margin:0 0 14px;} .sub{color:var(--ink3);font-size:15px;margin:0 0 24px;}
+  .mono{font-family:var(--mono);} code{font-family:var(--mono);font-size:.84em;background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--teal);}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;font-weight:600;}
+  .c-agent{background:rgba(167,139,250,.16);color:var(--violet);} .c-hitl{background:rgba(251,191,36,.16);color:var(--amber);}
+  .c-green{background:rgba(52,211,153,.14);color:var(--green);} .c-blue{background:rgba(91,140,255,.16);color:var(--accent);}
+  .num{font-family:var(--mono);color:var(--ink4);font-size:12px;margin-right:8px;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.5px;}
+  th,td{text-align:left;padding:9px 11px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);}
+  td{color:var(--ink2);} td.stg{font-family:var(--mono);color:var(--accent);font-weight:600;white-space:nowrap;}
+  .callout{background:var(--surface);border-radius:14px;padding:20px 22px;margin:20px 0;border-left:3px solid var(--teal);}
+  .callout.violet{border-left-color:var(--violet);} .callout.amber{border-left-color:var(--amber);}
+  ul{margin:6px 0 16px;padding-left:22px;color:var(--ink2)} li{margin:7px 0}
+  .mock{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;line-height:1.7;white-space:pre-wrap;}
+  .mock .a{color:var(--violet);} .mock .h{color:var(--amber);} .mock .g{color:var(--green);} .mock .d{color:var(--ink4);} .mock .o{color:var(--zs-orange);}
+  .foot{margin-top:54px;color:var(--ink4);font-size:13px;font-family:var(--mono);border-top:1px solid var(--line);padding-top:18px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="num mono">MARKET ZERO · ENGAGEMENT WORKFLOW · AGENTIC UX DESIGN · 1 JUN 2026</div>
+  <h1>An engagement is an agent crew you supervise</h1>
+  <p class="sub">Research + design for the 7-stage engagement experience. The question isn't "how do we
+  wire these stages" — it's "what is the right division of labour between <strong>autonomous agents</strong> and
+  the <strong>human expert</strong>, and how does the interface make that division legible, trustworthy, and
+  beautiful." This doc sets the operating model and the per-stage design; the wiring follows it.</p>
+
+  <!-- OPERATING MODEL -->
+  <h2>1 · The operating model — agents do the work, you make the calls</h2>
+  <p>We already run three agent loops (the Helix v8 model). The UX should make them visible and supervisable,
+  not hidden:</p>
+  <ul>
+    <li><span class="chip c-agent">Data&nbsp;Automaton</span> acquire → normalise → extract → reconcile → <strong>publish facts</strong> (with provenance).</li>
+    <li><span class="chip c-agent">Intelligence&nbsp;Agent</span> scope → template → assemble → verify → <strong>compose the dossier + scenarios</strong>.</li>
+    <li><span class="chip c-agent">Helix</span> sense → decide → act → <strong>learn</strong> (re-calibrate from outcomes).</li>
+  </ul>
+  <p>The human is not a data-entry clerk — they are the <strong>supervisor and decision-maker</strong>. The core
+  interaction loop at every stage is the same:</p>
+  <div class="mock"><span class="a">▣ AGENT</span> does the heavy lifting autonomously and shows its work, confidence, and sources
+<span class="d">        │</span>
+<span class="h">◇ HUMAN</span> reviews at a checkpoint → <span class="g">approve</span> · <span class="o">steer</span> (add context / correct) · <span class="d">send back</span>
+<span class="d">        │</span>
+<span class="a">▣ AGENT</span> incorporates the steer, advances the stage, and logs what changed</div>
+
+  <div class="callout violet">
+    <strong style="color:var(--ink)">The trust contract — three things every agent output must show.</strong>
+    <p style="margin:8px 0 0">This is what separates a credible agentic system from a chatbot, and it's the
+    backbone of the aesthetic:</p>
+    <ul style="margin:8px 0 0">
+      <li><strong>Provenance</strong> — every claim links to its source (we ship <code>sourceUrl</code> on facts now). Nothing is asserted without a trail.</li>
+      <li><strong>Confidence</strong> — every output carries a tier (reference / corporate / signal / inferred) and a readiness score. The human sees how much to trust it.</li>
+      <li><strong>Gaps</strong> — the agent names what it <em>couldn't</em> establish (we ship actionable gaps now). Honesty about the unknown is a feature, not a flaw.</li>
+    </ul>
+  </div>
+
+  <!-- AUTONOMY SPECTRUM -->
+  <h2>2 · The autonomy spectrum — not every stage needs the same leash</h2>
+  <p>HITL isn't binary. Each stage sits somewhere on a spectrum, and the UI should reflect it:</p>
+  <table>
+    <thead><tr><th style="width:22%">Mode</th><th>What it means</th><th>Which stages</th></tr></thead>
+    <tbody>
+      <tr><td class="stg">Auto-run</td><td>Agent runs unattended; human reviews the result. A green "looks right" is enough to advance.</td><td>sources, dossier, gaps</td></tr>
+      <tr><td class="stg">Propose-confirm</td><td>Agent proposes a draft; human edits/approves before it's committed. The default for anything that becomes a decision input.</td><td>brief, synthesis, scenarios</td></tr>
+      <tr><td class="stg">Co-pilot</td><td>Human drives, agent reacts in real time (the adversary, the what-if). Human is in the loop continuously.</td><td>workshop (war-game)</td></tr>
+    </tbody>
+  </table>
+
+  <!-- PER-STAGE DESIGN -->
+  <h2>3 · The 7 stages as an agent workflow</h2>
+  <p>Today only <strong>dossier</strong> is wired; the rest show a placeholder. Each row below is the target
+  design — the agent's autonomous job, the human checkpoint, and the interaction pattern.</p>
+  <table>
+    <thead><tr><th style="width:11%">Stage</th><th style="width:9%">Mode</th><th style="width:34%">Agent does (autonomous)</th><th>Human checkpoint (HITL)</th></tr></thead>
+    <tbody>
+      <tr><td class="stg">brief</td><td><span class="chip c-hitl">propose</span></td><td>Drafts the Business Context Brief from the asset + situation: focal asset, competitive set, the 5 strategic questions, decisions required.</td><td>Edit the questions/decisions; this is the human <em>framing the engagement</em> — the one stage that's mostly human intent.</td></tr>
+      <tr><td class="stg">sources</td><td><span class="chip c-green">auto</span></td><td>Reports which of the 8 source classes are connected + fresh for this asset; runs collection; shows coverage + freshness per class.</td><td>Glance at coverage; add an upload (annual report) or flag a missing internal source. Approve.</td></tr>
+      <tr><td class="stg">dossier ✓</td><td><span class="chip c-green">auto</span></td><td>Assembles the 8-domain dossier from facts + signals + metrics + graph; scores per-domain readiness; every fact carries provenance.</td><td>Read the domains; click any fact → its source. Trust the readiness; advance.</td></tr>
+      <tr><td class="stg">synthesis</td><td><span class="chip c-hitl">propose</span></td><td>Composes the cross-domain insight: what the dossier <em>means</em> (opportunity / risk / trigger), grounded in cited facts (the H16 narrative engine, numbers verified).</td><td>Accept/refine the framing. This is where analyst judgment + agent depth meet — the heart of "intelligence."</td></tr>
+      <tr><td class="stg">gaps</td><td><span class="chip c-green">auto</span></td><td>Surfaces the actionable gaps (what's missing, how to fill it, importance) that block a confident view; drives the next collection.</td><td>Decide which gaps to commission (primary research) vs accept; gaps you accept become caveats in the output.</td></tr>
+      <tr><td class="stg">scenarios</td><td><span class="chip c-hitl">propose</span></td><td>Derives probabilistic scenarios from the dossier — each cites the facts that justify it, carries a prior, lists blocking gaps (G1 shipped).</td><td>Promote/dismiss scenarios; adjust priors; pick the ones worth war-gaming. <strong>This is the next wiring target.</strong></td></tr>
+      <tr><td class="stg">workshop</td><td><span class="chip c-blue">co-pilot</span></td><td>Plays the adversary live (payer / competitor / KOL), reacts to the team's moves, runs the payoff/Nash analysis, tracks the committed decision.</td><td>The team plays; the agent reacts. Human commits the decision; the agent signs + tracks the outcome → feeds the Learn loop.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- CROSS-CUTTING -->
+  <h2>4 · Cross-cutting UX patterns (the parts that make it feel agentic)</h2>
+  <h3>The agent activity rail</h3>
+  <p>A persistent right-rail (or header strip) shows what the agents are doing <em>right now</em> for this
+  engagement — the live <code>sense → decide → act → learn</code> pulse. Not a spinner; a legible feed of
+  "Data Automaton published 14 facts · Intelligence Agent verified domain 4 · 6 gaps surfaced." It makes the
+  autonomy <em>felt</em>.</p>
+  <h3>Readiness as the spine of navigation</h3>
+  <p>Each stage in the stepper carries a readiness ring (0–100%), not just done/not-done. The engagement-level
+  readiness (the benchmark's "87%") is the headline. Low readiness on a critical stage is the agent telling you
+  where your attention is worth most.</p>
+  <h3>Provenance drill-through everywhere</h3>
+  <p>Any fact, number, or claim is clickable → opens the source (we ship <code>sourceUrl</code>). This is the
+  anti-hallucination promise made visible; it's what lets an expert trust an agent-authored dossier.</p>
+  <h3>Steering, not forms</h3>
+  <p>The human adds context by <em>talking to the stage</em> ("weight the payer lens higher", "this competitor
+  matters more than its edge count suggests") — an inline steer box per stage, not a 20-field form. The agent
+  re-runs with the steer and shows the diff.</p>
+
+  <!-- AESTHETIC -->
+  <h2>5 · Next-gen aesthetic direction</h2>
+  <p>The reference is the Helix v8 demo: calm, dark, provenance-forward, editorial. Concretely:</p>
+  <ul>
+    <li><strong>Calm dark canvas, editorial type.</strong> Serif display (Fraunces / Source Serif) for headings + insight prose; a clean sans for body; mono for facts, IDs, provenance. Intelligence should read like a well-set briefing, not a dashboard.</li>
+    <li><strong>Confidence-tiered color, not decoration.</strong> Color carries meaning: a fact-class glyph (◇ reference · ◆ corporate · ◈ signal · ✦ inferred), readiness greens/ambers, the ZS orange reserved for <em>the decision</em> / the recommended move. Restraint is the aesthetic.</li>
+    <li><strong>Agent presence, quietly.</strong> A subtle "agent is working" shimmer + the activity rail — the system feels alive and autonomous without being noisy.</li>
+    <li><strong>Progressive disclosure.</strong> Each stage opens with the headline + readiness; detail (facts, provenance, gaps) expands on intent. The expert isn't drowned; they drill where they care.</li>
+    <li><strong>Motion with meaning.</strong> When the agent advances a stage or re-calibrates a probability, a small, purposeful transition shows the change (prior → current). Never gratuitous.</li>
+  </ul>
+  <div class="mock"><span class="d">┌─ CagriSema · Launch ───────────────────────────── readiness 87% ─┐</span>
+<span class="d">│</span>  brief ✓   sources ✓   <span class="g">dossier ✓</span>   synthesis ◐   gaps ◐   <span class="o">scenarios ●</span>   workshop ○
+<span class="d">│</span>
+<span class="d">│</span>  <span class="o">SCENARIOS</span>  <span class="a">▣ Intelligence Agent derived 6 from the dossier</span>
+<span class="d">│</span>
+<span class="d">│</span>  ● Lilly goes on offense        prior <span class="g">0.50</span> → now <span class="g">0.62</span>  <span class="d">cites 5 facts</span>
+<span class="d">│</span>    <span class="d">trigger: Lilly deepens tirzepatide rebates within 30d…  ◆◆◈</span>
+<span class="d">│</span>    <span class="h">◇ blocked by: no H2H body-composition trial (high)</span>
+<span class="d">│</span>  ● Oral disruption accelerates  prior 0.35 → now 0.45  <span class="d">cites 5 facts</span>
+<span class="d">│</span>
+<span class="d">│</span>  <span class="h">◇ your call:</span> promote to war-game · adjust prior · dismiss · <span class="o">steer ▸</span>
+<span class="d">└────────────────────────────────────────────────────────────────┘</span></div>
+
+  <!-- IMPLEMENTATION -->
+  <h2>6 · Implementation sequence (build to the design)</h2>
+  <p>Wiring follows the design, highest-readiness-to-ship first. Each is a loop (real-DB gated):</p>
+  <ul>
+    <li><strong>Now — scenarios stage.</strong> Backend ready (G1), <code>ScenariosPage</code> fully built (just orphaned). Add <code>scenariosApi</code> + a <code>ScenariosContainer</code> (mirror <code>DossierContainer</code>: assemble-on-demand → render) + wire into the stepper. The reference implementation of the agent→HITL pattern. Seed a demo engagement so it's live.</li>
+    <li><strong>Next — gaps + synthesis.</strong> Gaps backend exists (<code>/dossier/gaps</code>); wire <code>GapsContainer</code>. Synthesis = the H16 narrative engine surfaced as the cross-domain insight (propose-confirm).</li>
+    <li><strong>Then — brief + sources.</strong> Brief = BCB propose-confirm (backend exists). Sources = coverage view over the 8 classes (read-only first).</li>
+    <li><strong>Then — workshop.</strong> Bring the war-game cockpit <em>into</em> the stepper as the co-pilot stage (it exists as a separate tab today).</li>
+    <li><strong>Cross-cutting — the agent activity rail + readiness rings + steer box</strong> as shared components, applied across stages.</li>
+  </ul>
+
+  <div class="callout amber">
+    <strong style="color:var(--ink)">Honest constraint.</strong>
+    <p style="margin:8px 0 0">The experience is only as good as the data underneath. Two known gaps gate the
+    demo quality: the <strong>orphaned high-value events</strong> (approvals/trials/deals not yet entity-resolved →
+    PB-H19) and the <strong>junk competitor rows</strong> (need the A6 destructive cleanup). A clean branded
+    asset will demo far better than metformin. The agentic UX makes the data's honesty visible — which is the
+    point — but landing the strategic facts (PB-H19) is what makes a stage like <em>synthesis</em> sing.</p>
+  </div>
+
+  <div class="foot">
+    Claude Code · engagement agentic-UX design · operating model + per-stage HITL + aesthetic direction ·
+    build sequence: scenarios → gaps/synthesis → brief/sources → workshop · grounded in shipped backend (dossier, scenarios, provenance, gaps).
+  </div>
+
+</div>
+</body>
+</html>
