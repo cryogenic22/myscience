@@ -41,6 +41,15 @@ def test_route_by_prefix():
     assert route_predicate_to_domain("regulatory_milestone") == "pipeline_and_macro"
 
 
+def test_route_market_event_does_not_pollute_competitive():
+    # PB-H07: the generic fallback predicate must NOT hit the "market" prefix
+    # (which dumped 505 FDA-recall facts into the competitive domain). Real
+    # competitive predicates still route to competitive.
+    assert route_predicate_to_domain("market_event") == "wargame_specific"
+    assert route_predicate_to_domain("market_share") == "competitive"
+    assert route_predicate_to_domain("competitor_launch") == "competitive"
+
+
 def test_route_unknown_and_none_fall_back():
     assert route_predicate_to_domain("totally_novel_thing") == "wargame_specific"
     assert route_predicate_to_domain(None) == "wargame_specific"

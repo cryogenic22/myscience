@@ -236,13 +236,41 @@ def _related_entities(db: Any, entity_type: str, entity_id: str) -> list[dict]:
             out.append({
                 "id":         r.get("neighbor_id"),
                 "type":       r.get("neighbor_type"),
-                "name":       None,  # backend sends id+type; FE resolves label
+                "name":       None,  # resolved below (PB-H07)
                 "relation":   r.get("link_type"),
                 "edge_count": int(r.get("edge_count") or 0),
             })
+        _resolve_related_names(db, out)
     except Exception:
         logger.debug("dossier: related_entities lookup failed", exc_info=True)
     return out
+
+
+def _resolve_related_names(db: Any, related: list[dict]) -> None:
+    """PB-H07: fill in `name` for related entities server-side. The dossier KB
+    composes these into the competitive domain + scenario triggers, so leaving
+    them None (the old 'FE resolves label' assumption) rendered competitors as
+    bare UUIDs. Batch one lookup per entity type (reuses _TYPE_TO_TABLE)."""
+    by_type: dict[str, list[str]] = {}
+    for r in related:
+        if r.get("id") and r.get("type") in _TYPE_TO_TABLE:
+            by_type.setdefault(r["type"], []).append(r["id"])
+    names: dict[str, str] = {}
+    for etype, ids in by_type.items():
+        table, id_col, name_col = _TYPE_TO_TABLE[etype]
+        try:
+            for nr in db.fetch_all(
+                f"SELECT {id_col}::text AS id, {name_col} AS name "
+                f"FROM {table} WHERE {id_col}::text = ANY(%s)",
+                [ids],
+            ) or []:
+                if nr.get("name"):
+                    names[str(nr["id"])] = nr["name"]
+        except Exception:
+            logger.debug("related name resolve failed for type %s", etype, exc_info=True)
+    for r in related:
+        if r.get("id") in names:
+            r["name"] = names[r["id"]]
 
 
 def compose_dossier(db: Any, *, entity_type: str, slug_or_id: str) -> Optional[DossierResult]:
