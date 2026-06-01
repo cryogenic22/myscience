@@ -53,6 +53,63 @@ def test_parse_asset_ref():
     assert parse_asset_ref("wegovy") == ("drug", "wegovy")
 
 
+# ── B2 (PB-E01): resolve_asset_to_subject ──────────────────────────
+
+
+class _ResolveDB:
+    """Fake DB for resolver tests. by_name maps lowercased slug → drug id;
+    by_alias maps lowercased alias → (entity_type, id)."""
+
+    def __init__(self, by_name=None, by_alias=None):
+        self.by_name = by_name or {}
+        self.by_alias = by_alias or {}
+
+    def fetch_one(self, sql, params=None):
+        s = (sql or "").lower()
+        if "from drugs" in s:
+            slug = str(params[0]).lower()
+            hid = self.by_name.get(slug)
+            return {"id": hid} if hid else None
+        if "from entity_aliases" in s:
+            alias = str(params[0]).lower()
+            etype = params[1]
+            hit = self.by_alias.get(alias)
+            if hit and hit[0] == etype:
+                return {"id": hit[1]}
+            return None
+        # other entity tables
+        slug = str(params[0]).lower()
+        hid = self.by_name.get(slug)
+        return {"id": hid} if hid else None
+
+
+def test_resolve_uuid_passes_through():
+    uuid = "15b2232d-b931-4c1a-9aaa-000000000001"
+    assert kb.resolve_asset_to_subject(_ResolveDB(), f"drug:{uuid}") == ("drug", uuid)
+
+
+def test_resolve_by_generic_name():
+    db = _ResolveDB(by_name={"semaglutide": "drug-uuid-1"})
+    assert kb.resolve_asset_to_subject(db, "drug:semaglutide") == ("drug", "drug-uuid-1")
+
+
+def test_resolve_by_brand_name_falls_through_to_drugs_query():
+    # brand match handled inside the same drugs query (OR brand_name); fake maps the slug
+    db = _ResolveDB(by_name={"wegovy": "drug-uuid-2"})
+    assert kb.resolve_asset_to_subject(db, "drug:wegovy") == ("drug", "drug-uuid-2")
+
+
+def test_resolve_via_alias_when_name_misses():
+    db = _ResolveDB(by_name={}, by_alias={"ozempic": ("drug", "drug-uuid-3")})
+    assert kb.resolve_asset_to_subject(db, "drug:ozempic") == ("drug", "drug-uuid-3")
+
+
+def test_resolve_unresolved_falls_back_to_raw_slug():
+    db = _ResolveDB(by_name={}, by_alias={})
+    # graceful degradation: returns the slug, never raises
+    assert kb.resolve_asset_to_subject(db, "drug:nonexistent") == ("drug", "nonexistent")
+
+
 # ── Pure: build_domains ────────────────────────────────────────────
 
 
