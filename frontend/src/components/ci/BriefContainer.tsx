@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { engagementBriefApi, type BusinessContextBriefDTO, type EngagementDTO } from '../../api';
+import EntityComments from './EntityComments';
 
 interface Props {
   engagement: EngagementDTO;
@@ -162,6 +163,11 @@ export default function BriefContainer({ engagement, onMarkComplete }: Props) {
           </Section>
         )}
       </div>
+
+      {/* UX08 — collaboration on the brief (reuses the generic EntityComments). */}
+      <section style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 16 }}>
+        <EntityComments targetType="brief" targetId={brief.id} title="Brief discussion" />
+      </section>
 
       <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 16, borderTop: '1px solid var(--color-divider)' }}>
         <button
