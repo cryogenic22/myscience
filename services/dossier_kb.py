@@ -313,6 +313,82 @@ def parse_asset_ref(asset: str) -> tuple[str, str]:
     return ("drug", asset.strip())
 
 
+def _looks_like_uuid(s: str) -> bool:
+    return len(s) == 36 and s.count("-") == 4
+
+
+# Entity-type → (table, name column) for slug→canonical-id resolution. Mirrors
+# services/dossier.py:_TYPE_TO_TABLE; kept local to avoid a circular import.
+_RESOLVE_TABLE: dict[str, tuple[str, str]] = {
+    "drug":             ("drugs", "generic_name"),
+    "company":          ("companies", "name"),
+    "mechanism":        ("mechanisms_of_action", "name"),
+    "trial":            ("clinical_trials", "official_title"),
+    "therapeutic_area": ("therapeutic_areas", "name"),
+}
+
+
+def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
+    """Resolve an engagement asset ref ('drug:wegovy') to the (subject_type,
+    canonical_id) the facts ledger is keyed by.
+
+    The facts ledger stores drug subjects by the drugs.id UUID (A1 finding:
+    market_events.drug_id → facts.subject_entity_id), so a raw slug never
+    matches. Resolve the slug to the canonical id first:
+      1. already a UUID → use as-is
+      2. exact name match (drugs: generic_name OR brand_name; others: name)
+      3. entity_aliases exact match
+      4. unresolved → fall back to the raw slug (caller still gets a valid,
+         if empty, dossier — graceful degradation, never a crash)
+    """
+    subject_type, ident = parse_asset_ref(asset)
+    if not ident:
+        return (subject_type, ident)
+    if _looks_like_uuid(ident):
+        return (subject_type, ident)
+
+    table_info = _RESOLVE_TABLE.get(subject_type)
+    if table_info is None:
+        return (subject_type, ident)
+    table, name_col = table_info
+
+    # Exact name match. Drugs also match brand_name (the demo case: 'wegovy').
+    try:
+        if subject_type == "drug":
+            row = db.fetch_one(
+                "SELECT id::text AS id FROM drugs "
+                "WHERE LOWER(generic_name) = LOWER(%s) "
+                "   OR LOWER(brand_name)  = LOWER(%s) LIMIT 1",
+                [ident, ident],
+            )
+        else:
+            row = db.fetch_one(
+                f"SELECT id::text AS id FROM {table} "
+                f"WHERE LOWER({name_col}) = LOWER(%s) LIMIT 1",
+                [ident],
+            )
+        if row and row.get("id"):
+            return (subject_type, str(row["id"]))
+    except Exception:
+        logger.exception("resolve_asset_to_subject: name lookup failed for %s", asset)
+
+    # entity_aliases fallback (alias_text → resolved entity id of this type).
+    try:
+        arow = db.fetch_one(
+            "SELECT entity_id::text AS id FROM entity_aliases "
+            "WHERE LOWER(alias_text) = LOWER(%s) AND entity_type = %s LIMIT 1",
+            [ident, subject_type],
+        )
+        if arow and arow.get("id"):
+            return (subject_type, str(arow["id"]))
+    except Exception:
+        logger.debug("resolve_asset_to_subject: alias lookup failed", exc_info=True)
+
+    # Unresolved — return the raw slug. Dossier will be empty but valid.
+    logger.info("resolve_asset_to_subject: unresolved asset %r (using raw slug)", asset)
+    return (subject_type, ident)
+
+
 # ── DB-backed orchestration ────────────────────────────────────────
 
 
@@ -333,7 +409,9 @@ def assemble_dossier(
     if engagement is None:
         raise EngagementNotFound(engagement_id)
 
-    subject_type, subject_id = parse_asset_ref(engagement.asset)
+    # Resolve the asset slug to the canonical id the facts ledger is keyed by
+    # (B2/PB-E01). The raw slug never matched, so dossiers were always empty.
+    subject_type, subject_id = resolve_asset_to_subject(db, engagement.asset)
     try:
         facts = facts_as_of(db, subject_type, subject_id, as_of=as_of)
     except Exception:
