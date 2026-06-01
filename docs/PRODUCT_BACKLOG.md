@@ -26,7 +26,7 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 3     |
-| triaged       | 84    |
+| triaged       | 86    |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 5     |
@@ -1127,29 +1127,29 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-06-01
 - **Notes**: Benchmark signals carry `feeds_fact_ids` (dossier facts a signal feeds) and `affects_scenario_ids` (scenarios it re-weights). Our `signals` table (migration 037) is one-directional: event → signal → impact_assessment, no reverse edge. Add the two forward-link columns (additive migration) and populate them from the materiality/impact path. This unblocks both the calibration loop (PB-H14) and evidence drill-through (PB-E05). Acceptance: a seeded signal lists ≥1 fact it feeds and the scenario(s) it affects; integration test asserts the round-trip.
 
-#### [PB-H02] Source-class coverage — fill class 2/6/8 gaps
+#### [PB-H02] Enable + auto-curate ALL connectable public sources
 - **Type**: data
 - **Status**: triaged
-- **Priority**: medium
+- **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
-- **Blocked by**: n/a
+- **Blocked by**: PB-H17
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Benchmark uses an 8-class source taxonomy. We cover 1 (regulatory) and 3 (SEC filings) fully; 2 (literature/conferences — PubMed/PMC only, no NEJM/Lancet/Nature/ADA/ECO/OW/AACE), 4 (biz news — generic RSS, no Fierce/Endpoints/STAT/BioPharma Dive), and 6 (payer — NADAC only, no 46brooklyn/ICER/Policy Reporter/AMCP) are partial; 5 (sci presentations) and 8 (RWD/consumer — IQVIA/Trilliant/Symphony/KFF/iSpot) are missing. Prioritise class 6 (payer triangulation drives the most benchmark facts) then class 2 conference feeds. Reuse `connectors/base.py` Connector contract + source_registry FAIR scoring. Acceptance: ≥1 new connector per targeted class, registered + health-checked.
+- **Notes**: USER PRIORITY (1 Jun): "data breadth is key — enable for all connectors we can connect and curate automatically from public sources." Benchmark uses an 8-class source taxonomy. We cover 1 (regulatory) and 3 (SEC filings) fully; 2 (literature/conferences — PubMed/PMC only), 4 (biz news — generic RSS), 6 (payer — NADAC only) partial; 5 (presentations) and 8 (RWD/consumer) missing. Scope: turn on every free/public connector we can, wire each through the unified ingestion hook (PB-H17) so it flows sense→fact→dossier, and let `services/data_steward.py` auto-curate (dedup/normalise/quality-score — it already loops). Sequence: payer (class 6 — drives the most benchmark facts) → conference/literature (class 2) → biz-news specialisation (class 4) → RWD (class 8 public proxies). Reuse `connectors/base.py` + source_registry FAIR scoring. Acceptance: every newly-enabled public connector is registered, health-checked, auto-curated, and lands facts in the ledger.
 
-#### [PB-H03] Internal / tenant-scoped sources (class 7)
+#### [PB-H03] Document upload + internal/client sources into the spine
 - **Type**: feature
 - **Status**: triaged
-- **Priority**: medium
+- **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
-- **Blocked by**: n/a
+- **Blocked by**: PB-H17
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Benchmark class 7 = MSL call notes, KOL pulse panels, PBM advisory panels, HCP NPS surveys — tenant-scoped, no external URL, feeding `internal`-class facts. We have `user_document.py` upload + NER but no structured panel/survey ingestion. This is the SME/expert-context channel the user explicitly asked about: a path for experts to inject domain context that agents then use. Build on the document-upload pipeline + tenant scope (E11). Acceptance: an internal panel result becomes an `internal`-class dossier fact, tenant-scoped.
+- **Notes**: USER PRIORITY (1 Jun): "ability to add documents and upload to be used to connect like annual reports etc, and then ability to add more data sources that are internal when we do with client." Two channels, both via the unified ingestion hook (PB-H17): (a) DOCUMENT UPLOAD — annual reports, decks, PDFs → facts. The pipeline EXISTS (`connectors/user_document.py` + SPEC_014 NER); this loop verifies it lands facts in the ledger + dossier (not just chunks) and wires the UI. (b) INTERNAL/CLIENT sources (MSL notes, KOL/PBM panels, HCP surveys) — tenant-scoped, `internal`-class facts, the SME/expert-context channel. Acceptance: an uploaded annual report and a sample internal feed each produce dossier facts (tenant-scoped for internal).
 
 #### [PB-H04] Dossier — actionable gaps (text + fill method + importance)
 - **Type**: feature
@@ -1294,6 +1294,30 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
 - **Notes**: Benchmark dashboard ties 4 KPIs to the sense/decide/act/learn loops (signals processed 7d, scenarios under evaluation, decisions committed, calibration updates 7d). We have the underlying data (query_telemetry, war_room_sessions, decisions, learning_runs) + `agents_activity.py` feeds, but no unified loop-keyed KPI surface. Aggregate the four into one dashboard endpoint + view. Acceptance: a dashboard shows one live KPI per flywheel loop, each linking to its detail view.
+
+#### [PB-H16] Agentic narrative synthesis (depth-first, not prose-exact)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H09
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER DIRECTION (1 Jun): "for narrative we should get closer using agentic and LLM support but need not be exact — accuracy and depth of intelligence matter more, and quality of the war-game and decision-making is key." So: do NOT chase the demo's hand-authored prose fidelity. Use LLM/agentic synthesis to turn the grounded dossier + scenarios into narrative (scenario triggers, insight implications, decision_output) — but the bar is ACCURACY (every claim traces to a cited fact, no hallucinated numbers — reuse the H2 numeric-grounding discipline) and DEPTH of strategic reasoning / decision quality, not matching the demo word-for-word. Build on `services/llm.py` synthesis + the dossier/scenario provenance; gate with the golden-query eval (I1). Acceptance: scenario narrative + decision_output are LLM-generated, every quantitative claim cites a dossier fact, and a reviewer rates the strategic depth ≥ the templated baseline.
+
+#### [PB-H17] Unified spine ingestion hook (connector / upload / internal → sense layer)
+- **Type**: infra
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: USER DIRECTION (1 Jun): internal/client sources need "easy hooks to connect the data into the spine and the sense layer." The enabler for the whole data-breadth track (H02/H03). Define ONE uniform ingestion contract so any source — a public connector, an uploaded annual report, or an internal client feed — flows the same way: fetch/parse → normalise → resolve entities → embed → store → emit signal/fact → land in the dossier. Reuse + harden what exists: `connectors/base.py` Connector contract, `integration/pipeline.py` (fetch→normalize→resolve→embed→store→cross-link), `integration/pipeline_hooks.py` (PRE_STORE/POST_STORE/ON_NEW_ENTITY) and `services/fact_ingest.py` (event→fact). Deliverable: a documented `register_source()` / ingestion adapter so adding a new feed is a thin plug-in, not a bespoke integration; existing connectors refactored onto it as proof. Acceptance: a new toy source added via the hook lands a fact in the ledger with <50 lines of source-specific code.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
