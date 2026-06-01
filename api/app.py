@@ -306,6 +306,11 @@ def create_app() -> FastAPI:
         all_routers.append(engagements_route.router)
     except Exception as _e:
         logger.error("Failed to import engagements router (Loop A): %s", _e)
+    try:
+        from api.routes import comments as comments_route   # UX02 generic entity comments
+        all_routers.append(comments_route.router)
+    except Exception as _e:
+        logger.error("Failed to import comments router (UX02): %s", _e)
     if _NEW_ROUTERS_OK:
         all_routers.extend([feedback.router, steward.router, literature.router, intelligence.router, agent.router])
     if _UPLOAD_ROUTER_OK:
