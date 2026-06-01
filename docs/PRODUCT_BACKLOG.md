@@ -26,7 +26,7 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 5     |
-| triaged       | 85    |
+| triaged       | 105   |
 | blocked       | 0     |
 | proposed      | 0     |
 | shipped (90d) | 6     |
@@ -1344,6 +1344,259 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
 - **Notes**: Found 1 Jun chasing data richness. The facts ledger (3,302 active facts) is dominated by `RECALL_CLASS_I` events (34,077, the only event_type with `drug_id` populated). The strategically VALUABLE events — `trial_readout` (255), `approval` (241), `ma_deal` (99), `regulatory_setback` (56), `supply_disruption` (50), `pricing`/`patent_ip`/`safety_signal`/`general` (~1,230 total) — have `primary_entity_id`, `primary_entity_name` AND `drug_id` all NULL, so `event_to_fact` returns None (no subject) and they NEVER become facts. They're pharma-news items whose drug/company is named only in the description (e.g. "FDA approves Lilly's Foundayo (orforglipron)"). Net: dossiers/scenarios miss every approval/trial/deal and see only recall noise — the core data-richness gap. Fix: an enrichment pass that resolves the entity from each orphaned event's description (reuse `integration/entity_resolver` + `domain/pharma/mention_normalizer`; match known drug/company names) → backfill `primary_entity_id`/`drug_id` → run `backfill_facts_from_events`. Likely wire into the EventCollector/news path so future events resolve on ingest (the real fix vs one-off backfill). Acceptance: a known approval event (e.g. Foundayo) resolves to its drug + appears as a fact in that drug's dossier.
+
+### E16 — Engagement experience: personas, collaboration & deliverables
+
+> **Why:** the UX analysis (`docs/ux-analysis-personas-collaboration.html`, companion to
+> `engagement-agentic-ux-design.html`) reframes the engagement from a single-user flow into a
+> **four-persona team sport** — Knowledge Curator (KC), Strategy Analyst (SA), Decision Maker (DM),
+> Engagement Lead (EL) — defined by jobs-to-be-done, **deployment-agnostic** (works for ZS-delivered AND
+> client self-service). The shipped frontend wires only the *dossier* stage; the rest are stubs. This epic
+> encodes the analysis's phased build: **Foundation** (persona depth + collaboration primitives + provenance
+> panel) → **Stage wiring** (the 5 unbuilt stages, with persona depth) → **Collaboration & deliverables**
+> (team, activity, export) → **War-room depth & Learn**. Operating model = agent does work → human checkpoint
+> → agent advances (per the design doc). Each item = one loop; frontend loops verify via `vite build`/tsc +
+> the seeded demo engagement (semaglutide).
+
+#### [PB-UX01] Persona selector + usePersonaDefaults (Foundation P1.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Role picker (KC/SA/DM/EL) on the user profile (localStorage like `useDemoAutoLogin`, JWT later). New `usePersonaDefaults` hook → default landing stage, per-stage depth (`full`|`summary`), action visibility (steer/commit/manage). Progressive disclosure, NOT access control. Touch EngagementShell + EngagementSidebar. Unblocks all persona-driven UX.
+
+#### [PB-UX02] Generic EntityComments component (Foundation P1.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Generalise the war-room `CommentsPanel` to any entity (fact/insight/scenario/gap/decision) via `target_type`+`target_id`. Backend: extend the comments table with those columns (currently hardcoded war_room_round). Frontend: reusable `EntityComments` + count badge + @mention parse. The collaboration primitive every stage inherits. Comment-based only — NO CRDT/real-time (scope discipline).
+
+#### [PB-UX03] Provenance side panel (Foundation P1.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-E05
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Shared slide-in panel: given a fact/insight/scenario, show its evidence chain, source quote, metadata. Builds on the shipped `sourceUrl` (PB-E05 backend). The single most important trust feature; used by every stage. Adopt the demo's provenance-panel design + fact-class glyphs (◇ref/◆corp/◈signal/✦inferred/internal).
+
+#### [PB-UX04] Scenarios stage — wire into stepper (Stage wiring P2.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Add `scenariosApi` (assemble+list, mirror dossierKbApi) + `ScenariosContainer` (assemble-on-demand → render the orphaned `ScenariosPage`); wire into EngagementDetailContainer's stage conditional. Probability bars (prior→current), team-move cards, decision options. Persona depth: SA edits/calibrates, DM reviews + selects-for-war-game. Backend ready (G1). Highest readiness-to-ship.
+
+#### [PB-UX05] Gaps stage — GapsContainer (Stage wiring P2.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Wire `GapsContainer` to the shipped `/dossier/gaps` (text+method+importance from D1). Importance-ranked rows with resolve actions (commission / accept / de-scope). KC+SA co-own; DM sees summary. Gap status changes → activity timeline (PB-UX11).
+
+#### [PB-UX06] Synthesis stage — SynthesisContainer (Stage wiring P2.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX03
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Wire the H16 narrative engine as cross-domain insight frames (risk/opportunity/trigger/assumption) with provenance trace. SA composes/edits (propose-confirm), KC verifies evidence, DM reads. Depends on dossier quality — ship after gaps + data improve (PB-H19).
+
+#### [PB-UX07] Sources stage — coverage view + upload (Stage wiring P2.4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Read-only coverage view of the 8 source classes (connected/partial/missing + freshness), engagement-scoped (vs the admin ConnectorPermissionsTab). KC gets document upload into a source class → Data Automaton extracts (reuse connectors/user_document.py). Read-only ships fast; upload is the KC feature.
+
+#### [PB-UX08] Brief persistence + comments (Stage wiring P2.5)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX02
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Wire `useBriefAutosave` to the real backend (`/engagements/{eid}/brief`, currently console-only stub). Add EntityComments on the brief — it's the engagement's contract, everyone agrees on it. EL/KC author; all review.
+
+#### [PB-UX09] Dossier curation surface (Stage wiring P2.6)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Make the dossier curatable, not read-only: fact-level inline edit (claim/confidence/supersede), "Add fact" per domain for domain-expert enrichment (contributor + function-tag attribution), per-section export (PDF/Markdown). Backend: extend facts with contributed_by/contributor_function/edit_history. KEEP LEAN — facts not pages; agent writes prose from the fact base.
+
+#### [PB-UX10] Engagement team management (Collaboration P3.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX01
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: `engagement_members` table (engagement_id, user_id, role KC/SA/DM/EL, invited_at, accepted_at) — per-engagement roles, not global. EL-only settings panel; invite-by-email. Needs auth maturity; can start email-only.
+
+#### [PB-UX11] Activity timeline (Collaboration P3.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Unified human+agent activity feed scoped to the engagement. `activity_log` table (actor_type agent|human, actor_id, action, target_type/id, ts, metadata). `ActivityDrawer` extends the demo's agent-drawer pattern. EL's primary oversight surface; the agent-activity rail from the design doc.
+
+#### [PB-UX12] Export — Executive Brief + Intelligence Dossier (Deliverables P3.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX04
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Server-side PDF: Executive Brief (1-page, DM) + Intelligence Dossier (full 8-domain, KC/SA, provenance preserved). Agent-generated → human-reviewed → download (propose-confirm). Branded template (ZS or client). The engagement's tangible output.
+
+#### [PB-UX13] Export — Strategy Deck PPTX (Deliverables P3.4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX12
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Slide pack (situation, insights, scenario matrix, war-room outcomes, decision rationale) via the existing PPTX/zs-slides pipeline. Agent selects content; user reviews; downloads. Per-org branding.
+
+#### [PB-UX14] Engagement duplication (Deliverables P3.5 — quick win)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: "Duplicate engagement" context-menu action on EngagementsTab cards — copies brief + source config + scenario structure, clears agent-generated content. 70% of template value for 10% of effort.
+
+#### [PB-UX15] War-room seats + cross-functional guests (Collaboration P3.6)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX10
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Configurable war-room seats (focal/competitor/stakeholder) with function tags (clinical/commercial/medical/access/finance), independent of engagement personas. Email-link guest invites scoped to the war room only (scoped JWT) — guests don't need engagement access. Move log shows seat + function lens. `war_room_seats` + `war_room_invitations` tables.
+
+#### [PB-UX16] War-room guided move composer (War-room depth P4.1)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX15
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Full move composer (move types, team assignment, board-state meters) extending the war-room shell; multi-player turn-based. Adopt the demo's composer-panel. Guided mode first (maps to existing CommentsPanel flow).
+
+#### [PB-UX17] War-room autonomous + game-theory modes (War-room depth P4.2/P4.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX16
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Autonomous mode (agent plays all teams + narrates; user observes/steers) + game-theory mode (3×3 payoff matrix + Nash — see PB-H12). XL; needs deep agent orchestration + structured game-theory backend.
+
+#### [PB-UX18] Decision outcome tracking — Learn loop (War-room depth P4.4)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-UX04
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: After a decision commits (DM, signed + timestamped), the Helix agent monitors signals for outcome indicators and recalibrates (closes sense→decide→act→learn). Overlaps PB-H14 (scenario calibration); the learn machinery (learning_service EWMA, outcome_scheduler) is wired — this surfaces it on the committed decision.
+
+#### [PB-UX19] Engagement version history & snapshots (War-room depth P4.5)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: low
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: `engagement_snapshots` at checkpoints (stage advance, war-room entry, decision commit) — immutable, browsable, restorable. `useStageAutosave` generalises useBriefAutosave. Dossier snapshots already exist (migration 072) — extend engagement-wide.
+
+#### [PB-UX20] Adopt demo design language as codebase standard (cross-cutting)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-01
+- **Last touched**: 2026-06-01
+- **Notes**: Adopt directly: fact-class confidence glyphs, flywheel chips (sense/decide/act/learn), insight frame tags (risk/opp/trigger/assumption), agent indicator in topbar. Adapt: domain-specific dossier layouts for top 2-3 domains; war-room mode picker (guided first). Fonts (Source Serif/Inter/JetBrains Mono) as a dedicated design-system loop. Skip: pricing grid, theme toggle, sidebar context card.
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
