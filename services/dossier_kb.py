@@ -324,15 +324,41 @@ def _signal_to_dossier_fact(move: dict) -> DossierFact:
     )
 
 
+# Link types that mark a related entity as competitively relevant: shared
+# mechanism / TA = competes for the same indication; explicit COMPETES_WITH.
+_COMPETITIVE_RELATIONS = {"competes_with", "targets_mechanism", "in_therapeutic_area"}
+
+
+def _related_to_dossier_fact(rel: dict) -> DossierFact:
+    """B5: a compose_dossier related_entity → competitive-domain DossierFact,
+    carrying the cited graph edge (relation + edge_count)."""
+    rel_type = (rel.get("relation") or "linked").lower()
+    name = rel.get("name") or rel.get("id") or "entity"
+    rtype = rel.get("type") or "entity"
+    edges = rel.get("edge_count")
+    claim = f"{rtype}:{name} — {rel_type}"
+    if edges:
+        claim += f" ({edges} edges)"
+    return DossierFact(
+        id=str(rel.get("id") or ""),
+        claim=claim,
+        # inferred: derived from the graph, not a primary corporate/reference fact
+        fact_class="inferred",
+        source_label=f"entity_graph · {rel_type}",
+    )
+
+
 def build_domains(
     facts: list[dict],
     signals: Optional[list[dict]] = None,
     metric_facts: Optional[list[tuple[str, "DossierFact"]]] = None,
+    related: Optional[list[dict]] = None,
 ) -> tuple[list[DomainView], float, int]:
     """Pure: route ledger facts + (B3) compose_dossier signals + (B4) metric
-    facts into the 8 domains, compute per-domain state and overall coverage.
-    No DB, no I/O — the testable core. Signals route by their kbq_tag;
-    metric_facts arrive pre-routed as (domain, DossierFact) pairs."""
+    facts + (B5) competitively-relevant related entities into the 8 domains,
+    compute per-domain state and overall coverage. No DB, no I/O — the testable
+    core. Signals route by kbq_tag; metric_facts arrive pre-routed; related are
+    pre-filtered competitive entities routed to the competitive domain."""
     by_domain: dict[str, list[DossierFact]] = {d: [] for d in DOSSIER_DOMAINS}
     for fact in facts:
         domain = route_predicate_to_domain(fact.get("predicate"))
@@ -345,6 +371,9 @@ def build_domains(
     for domain, dfact in (metric_facts or []):
         if domain in by_domain:
             by_domain[domain].append(dfact)
+
+    for rel in (related or []):
+        by_domain["competitive"].append(_related_to_dossier_fact(rel))
 
     domains: list[DomainView] = []
     for d in DOSSIER_DOMAINS:
@@ -547,11 +576,18 @@ def assemble_dossier(
     # entity_links + related entities — pulling its signals (recent_moves) in
     # as domain facts ends the content regression vs. the legacy dossier.
     signals: list[dict] = []
+    related: list[dict] = []
     try:
         from services.dossier import compose_dossier
         composed = compose_dossier(db, entity_type=subject_type, slug_or_id=subject_id)
         if composed is not None:
             signals = list(composed.recent_moves or [])
+            # B5/PB-E04: competitive breadth — the related entities that share a
+            # mechanism / TA (or explicitly compete) are the competitive set.
+            related = [
+                r for r in (composed.related_entities or [])
+                if (r.get("relation") or "").lower() in _COMPETITIVE_RELATIONS
+            ]
     except Exception:
         logger.debug("compose_dossier merge failed; facts-only", exc_info=True)
 
@@ -559,7 +595,8 @@ def assemble_dossier(
     # real pipeline strength / trial success / evidence density, no LLM math.
     metric_facts = _metric_facts(db, subject_type, subject_id)
 
-    domains, coverage_score, fact_count = build_domains(facts, signals, metric_facts)
+    domains, coverage_score, fact_count = build_domains(
+        facts, signals, metric_facts, related)
     return DossierSnapshot(
         engagement_id=str(engagement_id),
         focal_asset=engagement.asset,
