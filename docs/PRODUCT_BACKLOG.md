@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 5     |
-| triaged       | 105   |
+| triaged       | 104   |
 | blocked       | 0     |
 | proposed      | 0     |
-| shipped (90d) | 6     |
+| shipped (90d) | 7     |
 
 ## Currently in flight (5)
 
@@ -1360,7 +1360,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX01] Persona selector + usePersonaDefaults (Foundation P1.1)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: feedback
@@ -1368,7 +1368,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
 - **Last touched**: 2026-06-01
-- **Notes**: Role picker (KC/SA/DM/EL) on the user profile (localStorage like `useDemoAutoLogin`, JWT later). New `usePersonaDefaults` hook → default landing stage, per-stage depth (`full`|`summary`), action visibility (steer/commit/manage). Progressive disclosure, NOT access control. Touch EngagementShell + EngagementSidebar. Unblocks all persona-driven UX.
+- **Notes**: **SHIPPED.** `src/hooks/usePersona.ts`: Persona type (KC/SA/DM/EL), PERSONAS catalog, PRIMARY_STAGES, pure `personaDefaults(persona)` → {defaultStage, primaryStages, stageDepth(full|summary), canSteerAgent, canCommitDecision, canManageTeam}, and `usePersona()` localStorage hook (key `mz_persona`, default EL = hides nothing, cross-tab sync). `PersonaPicker.tsx` (lightweight select). Wired into EngagementDetailContainer: persona-driven default landing stage (explicit ?stage= still wins; never gates nav) + picker rendered. Progressive disclosure, NOT access control. +9 vitest tests (37 hook tests green), tsc clean, vite build OK. The foundation all persona-driven UX builds on; `stageDepth`/`canSteerAgent`/etc. consumed as each stage container ships.
 
 #### [PB-UX02] Generic EntityComments component (Foundation P1.2)
 - **Type**: feature
