@@ -327,11 +327,12 @@ def _signal_to_dossier_fact(move: dict) -> DossierFact:
 def build_domains(
     facts: list[dict],
     signals: Optional[list[dict]] = None,
+    metric_facts: Optional[list[tuple[str, "DossierFact"]]] = None,
 ) -> tuple[list[DomainView], float, int]:
-    """Pure: route ledger facts + (B3) compose_dossier signals into the 8
-    domains, compute per-domain state and overall coverage. No DB, no I/O —
-    the testable core. Signals route by their kbq_tag (falls back to
-    wargame_specific via route_predicate_to_domain)."""
+    """Pure: route ledger facts + (B3) compose_dossier signals + (B4) metric
+    facts into the 8 domains, compute per-domain state and overall coverage.
+    No DB, no I/O — the testable core. Signals route by their kbq_tag;
+    metric_facts arrive pre-routed as (domain, DossierFact) pairs."""
     by_domain: dict[str, list[DossierFact]] = {d: [] for d in DOSSIER_DOMAINS}
     for fact in facts:
         domain = route_predicate_to_domain(fact.get("predicate"))
@@ -340,6 +341,10 @@ def build_domains(
     for move in (signals or []):
         domain = route_kbq_tag_to_domain(move.get("kbq_tag"))
         by_domain[domain].append(_signal_to_dossier_fact(move))
+
+    for domain, dfact in (metric_facts or []):
+        if domain in by_domain:
+            by_domain[domain].append(dfact)
 
     domains: list[DomainView] = []
     for d in DOSSIER_DOMAINS:
@@ -444,6 +449,73 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
 # ── DB-backed orchestration ────────────────────────────────────────
 
 
+def _metric_facts(db, subject_type: str, subject_id: str) -> list[tuple[str, DossierFact]]:
+    """B4/PB-E03: pull quant metrics from PharmaMetrics (materialized views)
+    for a drug subject and emit them as corporate-class DossierFacts, each
+    pre-routed to its ZS domain. Best-effort: any MV miss degrades to fewer
+    facts, never an error. Only drugs have these metrics today."""
+    if subject_type != "drug" or not subject_id:
+        return []
+    out: list[tuple[str, DossierFact]] = []
+    try:
+        from services.metrics import PharmaMetrics
+        from config import config as _cfg
+        pm = PharmaMetrics(db, _cfg)
+    except Exception:
+        logger.debug("PharmaMetrics unavailable for metric facts", exc_info=True)
+        return []
+
+    def _mk(fid: str, claim: str) -> DossierFact:
+        return DossierFact(id=fid, claim=claim, fact_class="corporate",
+                           source_label="PharmaMetrics · materialized view")
+
+    # Pipeline strength → pipeline_and_macro
+    try:
+        rows = pm.drug_pipeline_strength(drug_id=subject_id, limit=1) or []
+        if rows:
+            r = rows[0]
+            score = r.get("pipeline_score")
+            pct = r.get("percentile_rank")
+            total = r.get("total_trials")
+            if score is not None:
+                claim = f"Pipeline score {round(float(score), 1)}"
+                if pct is not None:
+                    claim += f" ({pct}th percentile)"
+                if total is not None:
+                    claim += f" across {total} trials"
+                out.append(("pipeline_and_macro", _mk(f"metric-pipeline-{subject_id}", claim)))
+    except Exception:
+        logger.debug("drug_pipeline_strength metric fact failed", exc_info=True)
+
+    # Trial success → clinical_profile
+    try:
+        rows = pm.trial_success_rate(drug_id=subject_id, limit=1) or []
+        if rows:
+            r = rows[0]
+            sr = r.get("success_rate")
+            if sr is not None:
+                out.append(("clinical_profile",
+                            _mk(f"metric-success-{subject_id}",
+                                f"Trial success rate {round(float(sr) * 100)}%")))
+    except Exception:
+        logger.debug("trial_success_rate metric fact failed", exc_info=True)
+
+    # Evidence density → clinical_profile
+    try:
+        rows = pm.evidence_density(drug_id=subject_id, limit=1) or []
+        if rows:
+            r = rows[0]
+            total_articles = r.get("total_articles") or r.get("article_count")
+            if total_articles is not None:
+                out.append(("clinical_profile",
+                            _mk(f"metric-evidence-{subject_id}",
+                                f"{total_articles} PubMed articles (evidence density)")))
+    except Exception:
+        logger.debug("evidence_density metric fact failed", exc_info=True)
+
+    return out
+
+
 def assemble_dossier(
     db,
     engagement_id: str,
@@ -483,7 +555,11 @@ def assemble_dossier(
     except Exception:
         logger.debug("compose_dossier merge failed; facts-only", exc_info=True)
 
-    domains, coverage_score, fact_count = build_domains(facts, signals)
+    # B4/PB-E03: quant-backed facts from PharmaMetrics (materialized views) —
+    # real pipeline strength / trial success / evidence density, no LLM math.
+    metric_facts = _metric_facts(db, subject_type, subject_id)
+
+    domains, coverage_score, fact_count = build_domains(facts, signals, metric_facts)
     return DossierSnapshot(
         engagement_id=str(engagement_id),
         focal_asset=engagement.asset,
