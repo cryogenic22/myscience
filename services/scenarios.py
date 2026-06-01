@@ -229,9 +229,14 @@ def assemble_scenarios(
     *,
     as_of: Optional[datetime] = None,
     assembled_by: str = "system",
+    synthesizer=None,
 ) -> list[Scenario]:
     """Derive scenarios for an engagement from its latest dossier snapshot
-    (assembling one on the fly if none persisted yet). Does NOT persist."""
+    (assembling one on the fly if none persisted yet). Does NOT persist.
+
+    If `synthesizer` is supplied and enabled (PB-H16), each scenario's
+    decision_output is filled by grounded LLM synthesis over the facts it
+    cites; otherwise scenarios keep their templated state (no LLM, no cost)."""
     from services import dossier_kb
 
     snap = dossier_kb.get_latest_snapshot(db, engagement_id)
@@ -243,6 +248,13 @@ def assemble_scenarios(
         s.engagement_id = str(engagement_id)
         s.dossier_snapshot_id = snap.id
         s.created_by = assembled_by
+
+    if synthesizer is not None and getattr(synthesizer, "enabled", False):
+        try:
+            from services.scenario_narrative import enrich_scenarios_with_narrative
+            enrich_scenarios_with_narrative(scenarios, snap, synthesizer)
+        except Exception:
+            logger.warning("scenario narrative enrichment failed", exc_info=True)
     return scenarios
 
 
@@ -319,9 +331,11 @@ def assemble_and_persist(
     *,
     as_of: Optional[datetime] = None,
     assembled_by: str = "system",
+    synthesizer=None,
 ) -> list[Scenario]:
     scenarios = assemble_scenarios(
-        db, engagement_id, as_of=as_of, assembled_by=assembled_by)
+        db, engagement_id, as_of=as_of, assembled_by=assembled_by,
+        synthesizer=synthesizer)
     persist_scenarios(db, engagement_id, scenarios)
     return scenarios
 

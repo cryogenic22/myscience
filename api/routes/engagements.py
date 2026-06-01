@@ -481,13 +481,21 @@ def get_dossier_gaps(
 @router.post("/engagements/{eid}/scenarios/assemble", status_code=201)
 def assemble_scenarios_endpoint(
     eid: str,
+    narrative: bool = Query(
+        False,
+        description="If true, synthesise a grounded decision_output per scenario "
+                    "via LLM (PB-H16). No-op when the LLM is unconfigured.",
+    ),
     user: dict = Depends(require_role("uploader")),
     db: Database = Depends(get_db),
 ):
     """Derive + persist scenarios for an engagement from its latest dossier
-    (assembling one if none exists). Returns the live scenario set."""
+    (assembling one if none exists). Returns the live scenario set. With
+    ?narrative=true, each scenario gets a fact-grounded decision_output."""
+    synthesizer = get_llm() if narrative else None
     try:
-        scenarios = assemble_scenarios_and_persist(db, eid, assembled_by=str(user["id"]))
+        scenarios = assemble_scenarios_and_persist(
+            db, eid, assembled_by=str(user["id"]), synthesizer=synthesizer)
     except EngagementNotFound as e:
         raise HTTPException(404, f"engagement not found: {eid}") from e
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
