@@ -75,6 +75,7 @@ function AppRoutes() {
               key="workspace"
               onBack={() => navigate('/')}
               onSearch={() => navigate('/search')}
+              onCI={() => navigate('/ci')}
               initialQuestion={seedQuestion}
             />
           }
