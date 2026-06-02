@@ -121,6 +121,10 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "efficacy_outcome":     "clinical_profile",
     "safety_signal":        "clinical_profile",
     "adverse_event":        "clinical_profile",
+    # DR-1/DR-3/DR-4 fact-emitter predicates (lifted from entity tables).
+    "clinical_trial":       "clinical_profile",
+    "adverse_event_report": "clinical_profile",
+    "label_indication":     "clinical_profile",
     "fda_approval_date":    "pipeline_and_macro",
     "regulatory_approval":  "pipeline_and_macro",
     "regulatory_setback":   "pipeline_and_macro",

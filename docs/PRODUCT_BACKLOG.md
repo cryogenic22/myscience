@@ -1924,6 +1924,25 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 > (PubMed/PMC) · **DR-8** connector scheduling. Priority: DR-0+DR-1+DR-2+DR-5 first
 > (biggest dossier-quality jump from data we already hold). The licensed gaps
 > (Rx volume / claims / prescriber behaviour) stay in E17 tiers 2–3.
+>
+> **SHIPPED (2 Jun):** **DR-0** fact-emitter framework (`services/fact_emitters/`:
+> `EmittedFact`/`EmitStats`/`FactEmitter` + idempotent `emit_one`/`run_emitter`,
+> keyed on `object_value.source_row_id`); **DR-1** clinical-trials emitter
+> (`ClinicalTrialEmitter`: clinical_trials → `clinical_trial` facts routed to
+> `clinical_profile`); **DR-5** evidence-on-ingest (a standalone `evidence_record`
+> per newly-asserted fact, linked via `facts.source_doc_id`). Also fixed a latent
+> bug: `facts_as_of` never SELECTed `fact_class`, so every ledger fact rendered in
+> the dossier as `signal` — now corrected. **Real-DB gate (semaglutide):** 174
+> trial facts asserted, re-run idempotent, evidence_records 1→174, clinical_profile
+> went gap→complete (readiness 1.0), overall readiness 0.36→0.47.
+> **DR-2 (pricing) is BLOCKED:** `drug_pricing` is empty (0 rows) and there is no
+> `nadac_prices` table — no source data to lift; needs a NADAC ingest first
+> (E17/pricing backlog), so it is deferred, not skipped. **Still open:** DR-3
+> (FAERS/adverse_events, 1,992 drug-linked rows ready), DR-4 (SPL labels, 175
+> ready), DR-8 (scheduler wiring + full cross-drug backfill — emitters currently
+> run per-drug on demand). Minor: the 174 demo facts carry pre-fix claim wording
+> ("Clinical trial: Trial NCT…"); future emits use the cleaned format (append-only,
+> so existing rows weren't rewritten).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
