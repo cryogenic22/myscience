@@ -1827,6 +1827,86 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-06-01
 - **Notes**: DEFERRED. Size S. The doc's audit of the 7 agentic-ready properties found one consistent gap: investigators have no embedding column + no embedding resolution strategy (low-confidence fuzzy matches sit in the unresolved queue). Add VECTOR(1536) + embedding strategy for investigators to close it.
 
+### E18 — Integrated CI experience (flywheel IA)
+
+> From the integrated-experience prototype (`docs/ci-integrated-experience-prototype.html`, v2).
+> Reorganises the 9 flat artifact tabs around the sense→understand→decide→act→learn
+> flywheel; Dossier + War Game become reusable building blocks (standalone + as engagement
+> stages); the missing **promote bridge** (signal → dossier/war-game/engagement) is the
+> connective tissue. User-approved: "build it, visible IA first."
+
+#### [PB-IX02] Consolidate the 3 feeds → one Intelligence surface
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED (PR #154). IntelligenceTab wraps Sensing Feed + Daily Digest + Signals DB behind a view toggle (Digest/Stream/Signals DB); CIPage 3 nav entries → 1; old deep-links route via viewFromTab.
+
+#### [PB-IX03] Standalone Dossier surface (light path)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: n/a
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED (PR #155). assemble_dossier_for_asset (extracted from the engagement path) + GET /dossier-preview + StandaloneDossierTab (reuses EngagementDossierPage + ProvenancePanel) + Promote-to-engagement. Real-DB: semaglutide → 290 facts/8 domains, no engagement.
+
+#### [PB-IX05] Re-group the CI nav around the flywheel
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-IX02, PB-IX03
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED (PR #156). NAV_GROUPS: Sense / Engage (Dossier·War Game·Engagements) / Act / Learn / Admin. 'rooms' relabelled "War Game" (its own section per v2 feedback). All tab keys preserved.
+
+#### [PB-IX01] Promote bridge — signal → dossier / war-game / engagement
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-IX02, PB-IX03
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: The missing connector. A signal action menu (in IntelligenceTab) → seed a standalone dossier, a war game, or a full engagement from the signal. Upstream `signal_promoter.py` (events→signals) + `decisions.promote_round` (round→decision) exist; this adds the middle signal→work promotion + a seed endpoint. Highest-value IA loop.
+
+#### [PB-IX04] War Game surface + mode picker (turn-based / game-theory / autonomous)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-IX05
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: Unify the three play modes under one War Game home: guided turn-based (live: war_game_engine/adversary), game-theory payoff+Nash (PB-H12), autonomous N-round sim (PB-H13). Standalone start OR seeded from a scenario. The "rooms" tab is already relabelled War Game (IX-5); this gives it the mode picker + standalone launch.
+
+#### [PB-IX06] Learn loop closes to Sense (re-order Digest from calibration)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-H14
+- **Created**: 2026-06-02
+- **Last touched**: 2026-06-02
+- **Notes**: The flywheel's closing arc — scenario-prior + source-trust recalibration (PB-H14) re-orders what the Intelligence Digest surfaces first. Highest value, highest risk; depends on the Learn loop.
+
 ## Out of scope (deferred per `design-strategy.md` §7)
 
 The strategy doc explicitly defers these — they're aspirational, important, and *not* the right thing to build in the next 24 weeks. Listed so we don't re-litigate.
