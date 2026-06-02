@@ -2379,6 +2379,20 @@ export const engagementSourcesApi = {
     }),
 };
 
+// ── Standalone dossier (IX-3) ───────────────────────────────────────
+// Build an 8-domain dossier for any asset without an engagement (ephemeral
+// preview). Same snapshot shape as the engagement dossier.
+
+export const dossierPreviewApi = {
+  get: (asset: string): Promise<DossierSnapshotDTO> =>
+    fetch(`${BASE}/dossier-preview?asset=${encodeURIComponent(asset)}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
+
 // ── Brief (PB-UX-Brief) ─────────────────────────────────────────────
 // The Business Context Brief (BCB) for an engagement. get() returns null when
 // no brief exists yet (404) — authoring happens in the create-engagement flow.

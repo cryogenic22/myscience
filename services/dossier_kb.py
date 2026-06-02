@@ -764,9 +764,28 @@ def assemble_dossier(
     if engagement is None:
         raise EngagementNotFound(engagement_id)
 
+    snap = assemble_dossier_for_asset(
+        db, engagement.asset, assembled_by=assembled_by, as_of=as_of)
+    snap.engagement_id = str(engagement_id)
+    return snap
+
+
+def assemble_dossier_for_asset(
+    db,
+    asset: str,
+    *,
+    assembled_by: str = "system",
+    as_of: Optional[datetime] = None,
+) -> DossierSnapshot:
+    """IX-3: assemble (but do NOT persist) an 8-domain dossier for ANY asset,
+    independent of an engagement — the standalone 'build a dossier' light path.
+    Same resolve → facts → compose → metrics → build_domains pipeline the
+    engagement path uses; returns a snapshot with engagement_id=None."""
+    from services.facts_ledger import facts_as_of
+
     # Resolve the asset slug to the canonical id the facts ledger is keyed by
     # (B2/PB-E01). The raw slug never matched, so dossiers were always empty.
-    subject_type, subject_id = resolve_asset_to_subject(db, engagement.asset)
+    subject_type, subject_id = resolve_asset_to_subject(db, asset)
     try:
         facts = facts_as_of(db, subject_type, subject_id, as_of=as_of)
     except Exception:
@@ -774,9 +793,6 @@ def assemble_dossier(
         facts = []
 
     # B3/PB-E02: compose from the EXISTING knowledge layer too, not facts-only.
-    # services/dossier.py:compose_dossier already reads signals + evidence +
-    # entity_links + related entities — pulling its signals (recent_moves) in
-    # as domain facts ends the content regression vs. the legacy dossier.
     signals: list[dict] = []
     related: list[dict] = []
     try:
@@ -784,7 +800,7 @@ def assemble_dossier(
         composed = compose_dossier(db, entity_type=subject_type, slug_or_id=subject_id)
         if composed is not None:
             signals = list(composed.recent_moves or [])
-            # B5/PB-E04: competitive breadth — the related entities that share a
+            # B5/PB-E04: competitive breadth — related entities that share a
             # mechanism / TA (or explicitly compete) are the competitive set.
             related = [
                 r for r in (composed.related_entities or [])
@@ -793,15 +809,14 @@ def assemble_dossier(
     except Exception:
         logger.debug("compose_dossier merge failed; facts-only", exc_info=True)
 
-    # B4/PB-E03: quant-backed facts from PharmaMetrics (materialized views) —
-    # real pipeline strength / trial success / evidence density, no LLM math.
+    # B4/PB-E03: quant-backed facts from PharmaMetrics (materialized views).
     metric_facts = _metric_facts(db, subject_type, subject_id)
 
     domains, coverage_score, fact_count = build_domains(
         facts, signals, metric_facts, related)
     return DossierSnapshot(
-        engagement_id=str(engagement_id),
-        focal_asset=engagement.asset,
+        engagement_id=None,
+        focal_asset=asset,
         domains=domains,
         coverage_score=coverage_score,
         fact_count=fact_count,
