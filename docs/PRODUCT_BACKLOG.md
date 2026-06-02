@@ -1907,6 +1907,24 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-06-02
 - **Notes**: The flywheel's closing arc — scenario-prior + source-trust recalibration (PB-H14) re-orders what the Intelligence Digest surfaces first. Highest value, highest risk; depends on the Learn loop.
 
+### E19 — Data richness (DR-loops): lift latent source data into the fact ledger
+
+> From `docs/state-of-build-and-data-richness.html` (grounded in the live DB, 2 Jun).
+> **Diagnosis:** the `facts` ledger the dossier reads has 3,303 rows but only 2
+> distinct predicates (market_event, wac_usd) — a news-event monoculture — while
+> 5,524 clinical_trials + 2,075 adverse_events + 185 drug_labels sit in entity
+> tables and never become domain facts. **Not a sourcing problem; a plumbing
+> problem.** Fix = a thin fact-emitter layer (entity rows → typed domain facts via
+> the existing `route_predicate_to_domain`, writing evidence as it goes). No new
+> sources. Sequenced loops (see the report for detail):
+> **DR-0** emitter framework · **DR-1** clinical (clinical_trials→clinical/pipeline) ·
+> **DR-2** pricing (NADAC→pricing&access, fixes the critical gap) · **DR-3** safety
+> (FAERS) · **DR-4** labels (SPL) · **DR-5** evidence-ledger-on-ingest (1→thousands) ·
+> **DR-6** mechanism/target (ChEMBL/OpenTargets) · **DR-7** literature/epidemiology
+> (PubMed/PMC) · **DR-8** connector scheduling. Priority: DR-0+DR-1+DR-2+DR-5 first
+> (biggest dossier-quality jump from data we already hold). The licensed gaps
+> (Rx volume / claims / prescriber behaviour) stay in E17 tiers 2–3.
+
 ## Out of scope (deferred per `design-strategy.md` §7)
 
 The strategy doc explicitly defers these — they're aspirational, important, and *not* the right thing to build in the next 24 weeks. Listed so we don't re-litigate.

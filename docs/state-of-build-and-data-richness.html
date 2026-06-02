@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Market Zero · State of the Build + Data-Richness Analysis</title>
+<style>
+  :root{
+    --ink:#1b1a18;--ink2:#3d3a36;--ink3:#6b6760;--ink4:#9c968c;
+    --bg:#faf8f4;--surface:#fff;--surface2:#f3efe8;--surface3:#ece7dd;
+    --line:#e5dfd4;--line2:#d4cdbf;
+    --accent:#b5642f;--accent-soft:rgba(181,100,47,.09);
+    --green:#3f7d4e;--green-soft:rgba(63,125,78,.10);
+    --amber:#b4791f;--amber-soft:rgba(180,121,31,.10);--red:#b03a2e;--red-soft:rgba(176,58,46,.09);
+    --serif:"Fraunces",Georgia,serif;--body:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink2);font-family:var(--body);font-size:14.5px;line-height:1.58}
+  .wrap{max-width:1000px;margin:0 auto;padding:46px 26px 96px}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+  h1{font-family:var(--serif);font-weight:430;font-size:40px;line-height:1.08;letter-spacing:-.02em;color:var(--ink);margin:12px 0 10px}
+  h2{font-family:var(--serif);font-weight:450;font-size:27px;color:var(--ink);margin:14px 0 4px}
+  h3{font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink);margin:26px 0 6px}
+  .sub{font-size:16px;color:var(--ink3);max-width:76ch}
+  .part{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);border-top:2px solid var(--accent);padding-top:10px;margin:64px 0 6px}
+  .rule{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);border-bottom:1px solid var(--line);padding-bottom:7px;margin:40px 0 18px}
+  p{margin:10px 0;max-width:76ch}.lead{font-size:16.5px;color:var(--ink2)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:20px 0}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px 16px}
+  .stat .n{font-family:var(--serif);font-size:28px;color:var(--ink);line-height:1}
+  .stat .l{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-top:7px}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+  .mono{font-family:var(--mono);font-size:12px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--surface2);padding:1px 5px;border-radius:4px;color:var(--ink)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .done{color:var(--green);background:var(--green-soft);border-color:var(--green)}
+  .partial{color:var(--amber);background:var(--amber-soft);border-color:var(--amber)}
+  .gap{color:var(--red);background:var(--red-soft);border-color:var(--red)}
+  .defer{color:var(--ink3);background:var(--surface2);border-color:var(--line2)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+  .card.flag{border-left:3px solid var(--red)}
+  .card.win{border-left:3px solid var(--green)}
+  .card.accent{border-left:3px solid var(--accent)}
+  ul.tight{margin:8px 0;padding-left:20px}ul.tight li{margin:5px 0}
+  .bar{height:7px;border-radius:4px;background:var(--surface3);overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%}
+  .foot{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;font-family:var(--mono);font-size:11px;color:var(--ink4)}
+  .hl{background:var(--amber-soft);padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Market Zero · State of the build + data-richness analysis</div>
+  <h1>How far we've come — and why the data feels thin</h1>
+  <p class="sub">Two parts. <b>Part A</b> is an honest accounting of what's been built, what's left, and the key missing loops. <b>Part B</b> is a grounded diagnosis of the data-richness problem — measured against the live database — and a plan to make the sense layer rich using only the public sources we already ingest.</p>
+  <div class="mono" style="color:var(--ink4);margin-top:14px">2 Jun 2026 · grounded in live Railway DB + merged PRs #124–#156</div>
+
+  <!-- ───────────────────────── PART A ───────────────────────── -->
+  <div class="part">Part A · State of the build</div>
+  <h2>What's been achieved</h2>
+  <p class="lead">The system went from "a pile of surfaces" to <b>one working spine</b>: <span class="mono">signal → fact → dossier → synthesis → gaps → scenario → war-game → decision</span>, fact-grounded end-to-end, with an information architecture organised around the flywheel.</p>
+
+  <div class="grid">
+    <div class="stat"><div class="n">7/7</div><div class="l">Engagement stages live</div></div>
+    <div class="stat"><div class="n">~30</div><div class="l">Loops shipped (PRs #124–156)</div></div>
+    <div class="stat"><div class="n">915</div><div class="l">Frontend tests green</div></div>
+    <div class="stat"><div class="n">5</div><div class="l">Prod migrations (072–076)</div></div>
+    <div class="stat"><div class="n">2</div><div class="l">Standalone tools (Dossier · War Game)</div></div>
+  </div>
+
+  <h3>The spine — what works today</h3>
+  <table>
+    <thead><tr><th>Capability</th><th>State</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Dossier — 8-domain, fact-grounded, readiness + gaps</td><td><span class="pill done">live</span></td><td>Standalone (any asset) + engagement stage; provenance drill-through</td></tr>
+      <tr><td>Synthesis — typed insights, citation-gated</td><td><span class="pill done">live</span></td><td>Engagement-scoped derivation; rejected-candidate audit trail</td></tr>
+      <tr><td>Gaps — importance-ranked, remediation persisted</td><td><span class="pill done">live</span></td><td>Workshop-blocking rule; durable choices (migration 075)</td></tr>
+      <tr><td>Scenarios — probabilistic, fact-cited, playable</td><td><span class="pill done">live</span></td><td>Team moves + decision options + per-team impact vectors</td></tr>
+      <tr><td>War Game — launch from a scenario, play inline</td><td><span class="pill done">live</span></td><td>Turn-based today; its own surface</td></tr>
+      <tr><td>Decisions — promoted war-room round, signed</td><td><span class="pill done">live</span></td><td>Cross-engagement ledger</td></tr>
+      <tr><td>Integrated IA — flywheel nav, consolidated feeds</td><td><span class="pill done">live</span></td><td>3 feeds → 1 Intelligence surface; grouped nav</td></tr>
+      <tr><td>Collaboration — generic comments on any entity</td><td><span class="pill done">live</span></td><td>@mention parse; mounted on the brief</td></tr>
+    </tbody>
+  </table>
+
+  <h2>What's left — and the key missing loops</h2>
+  <div class="card flag">
+    <b>The one that matters most: the Learn loop is open.</b> The flywheel is <span class="mono">sense → decide → act → <span class="hl">learn</span></span> — but today the loop never closes. Scenario priors are static structural heuristics; decision outcomes don't re-weight source trust; nothing feeds back into what Sense surfaces. <b>This is the single highest-leverage missing capability</b> (PB-H14 / PB-IX06). Until it closes, the system advises but does not get smarter.
+  </div>
+  <table>
+    <thead><tr><th>Missing loop</th><th>Why it matters</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td><b>Learn loop</b> (PB-H14 → IX-6)</td><td>Closes the flywheel; priors recalibrate from outcomes &amp; re-order the feed</td><td><span class="pill gap">missing</span></td></tr>
+      <tr><td><b>Promote bridge</b> (PB-IX01)</td><td>signal → dossier/war-game/engagement; connects the islands</td><td><span class="pill gap">missing</span></td></tr>
+      <tr><td><b>Data richness</b> (Part B)</td><td>The dossier domains starve — see below; <b>biggest quality lever</b></td><td><span class="pill gap">missing</span></td></tr>
+      <tr><td>War-game depth (PB-H12/H13)</td><td>Game-theory Nash + autonomous simulation modes</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td>NPV value model (PB-H10)</td><td>Quantitative decision economics (left blank, not faked)</td><td><span class="pill defer">deferred</span></td></tr>
+      <tr><td>In-app brief editing (PB-UX08)</td><td>Author/edit the BCB outside the create flow</td><td><span class="pill defer">deferred</span></td></tr>
+    </tbody>
+  </table>
+  <p>Honest scorecard: the <b>structure</b> is ~90% there (every stage works, the IA is coherent). The <b>intelligence quality</b> is gated by two things — <b>data richness</b> (Part B) and the <b>Learn loop</b>. Fix those two and the system stops being a well-organised shell and starts being genuinely smart.</p>
+
+  <!-- ───────────────────────── PART B ───────────────────────── -->
+  <div class="part">Part B · Data &amp; sense-layer richness</div>
+  <h2>The diagnosis — measured, not guessed</h2>
+  <p class="lead">You're right that the data feels thin. But the cause is surprising: <b>it isn't that we lack sources — it's that the rich source data we already ingest never reaches the fact ledger the dossier reads.</b></p>
+
+  <div class="card flag">
+    <b>The smoking gun (live DB, 2 Jun):</b> the <code>facts</code> ledger — what every dossier, synthesis and scenario is built from — has <b>3,303 rows but only 2 distinct predicates</b>: <code>market_event</code> (3,302) and <code>wac_usd</code> (1). Meanwhile, sitting in entity tables, untouched by the ledger:
+    <div class="grid" style="margin-top:12px">
+      <div class="stat"><div class="n">5,524</div><div class="l">clinical_trials</div></div>
+      <div class="stat"><div class="n">2,075</div><div class="l">adverse_events (FAERS)</div></div>
+      <div class="stat"><div class="n">185</div><div class="l">drug_labels (SPL)</div></div>
+      <div class="stat"><div class="n">1,820</div><div class="l">drugs</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">evidence_records (!)</div></div>
+    </div>
+  </div>
+
+  <p>So the dossier is effectively a <b>news-event monoculture</b>. 35,883 market events from RSS/news dominate; the structured clinical, safety, label and pricing data — already fetched and stored — is invisible to the dossier because <b>no step lifts it into typed domain facts</b>. That's why pricing/access shows a critical gap with a single price fact, why disease &amp; patient and HCP domains starve, and why scenarios lean on competitive-graph + news rather than evidence.</p>
+
+  <div class="card win">
+    <b>The good news:</b> this is a plumbing problem, not a sourcing problem. The connectors work, the data is in the building, the predicate→domain router already exists (<code>route_predicate_to_domain</code>), and the evidence-ledger schema is built. We need a thin <b>fact-emitter layer</b> that turns entity-table rows into domain facts (with evidence) — no new data sources required.
+  </div>
+
+  <h2>Source → dossier-domain coverage (today vs. achievable)</h2>
+  <p>Each public source we already run maps cleanly to one or more of the 8 dossier domains. Today only news + a few metric views emit facts; the rest is latent.</p>
+  <table>
+    <thead><tr><th>Public source (ingested)</th><th>Sitting in</th><th>Should feed domain</th><th>Emits facts today?</th></tr></thead>
+    <tbody>
+      <tr><td>ClinicalTrials.gov</td><td class="mono">clinical_trials · 5,524</td><td>Clinical profile · Pipeline</td><td><span class="pill gap">no</span></td></tr>
+      <tr><td>OpenFDA Labels (SPL)</td><td class="mono">drug_labels · 185</td><td>Clinical profile · Regulatory</td><td><span class="pill gap">no</span></td></tr>
+      <tr><td>OpenFDA FAERS</td><td class="mono">adverse_events · 2,075</td><td>Clinical profile (safety)</td><td><span class="pill gap">no</span></td></tr>
+      <tr><td>NADAC / CMS ASP</td><td class="mono">pricing tables</td><td>Pricing &amp; access</td><td><span class="pill gap">1 fact</span></td></tr>
+      <tr><td>ChEMBL / Open Targets</td><td class="mono">mechanisms · targets</td><td>Clinical profile · Mechanism</td><td><span class="pill gap">no</span></td></tr>
+      <tr><td>PubMed / PMC</td><td class="mono">articles</td><td>Disease &amp; patient · Clinical</td><td><span class="pill partial">density only</span></td></tr>
+      <tr><td>SEC EDGAR (10-K/8-K)</td><td class="mono">filings + extraction</td><td>Commercial / operational</td><td><span class="pill partial">events only</span></td></tr>
+      <tr><td>News RSS</td><td class="mono">market_events · 35,883</td><td>(catch-all / signals)</td><td><span class="pill done">over-represented</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>The plan — make the sense layer rich from what we already have</h2>
+  <p>A sequenced track (<b>DR-loops</b>) that lifts latent data into the ledger, writes evidence as it goes, and keeps it fresh. Same loop discipline: TDD + real-DB red-team + additive prod writes.</p>
+  <table>
+    <thead><tr><th>#</th><th>Loop</th><th>What it does</th><th>Fills</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">DR-0</td><td><b>Fact-emitter framework</b></td><td>A shared emitter contract (entity rows → typed facts via the existing predicate router) + evidence write. The spine for the rest.</td><td>foundation</td></tr>
+      <tr><td class="mono">DR-1</td><td><b>Clinical fact emitter</b></td><td>clinical_trials → phase, endpoints, enrolment, readouts as <code>clinical_profile</code> / <code>pipeline</code> facts. 5,524 rows latent.</td><td>Clinical · Pipeline</td></tr>
+      <tr><td class="mono">DR-2</td><td><b>Pricing fact emitter</b></td><td>NADAC/ASP → unit cost, WAC, trend as <code>pricing_and_access</code> facts. Fixes the critical gap (1 fact today).</td><td>Pricing &amp; access</td></tr>
+      <tr><td class="mono">DR-3</td><td><b>Safety fact emitter</b></td><td>FAERS adverse_events → PRR/top events as safety facts. 2,075 rows latent.</td><td>Clinical (safety)</td></tr>
+      <tr><td class="mono">DR-4</td><td><b>Label fact emitter</b></td><td>SPL drug_labels → indications, dosing, boxed warnings as clinical/regulatory facts.</td><td>Clinical · Regulatory</td></tr>
+      <tr><td class="mono">DR-5</td><td><b>Evidence-ledger on ingest</b> (D0.3)</td><td>Every emitter writes an evidence record → provenance becomes operational (1 → thousands).</td><td>trust / all</td></tr>
+      <tr><td class="mono">DR-6</td><td><b>Mechanism / target emitter</b></td><td>ChEMBL + Open Targets → MoA, target, druggability facts.</td><td>Clinical · Mechanism</td></tr>
+      <tr><td class="mono">DR-7</td><td><b>Literature / epidemiology emitter</b></td><td>PubMed/PMC → disease burden, patient-flow, KOL-sentiment facts (beyond evidence density).</td><td>Disease &amp; patient</td></tr>
+      <tr><td class="mono">DR-8</td><td><b>Connector scheduling</b> (D2.1)</td><td>Per-source cadence so domains stay fresh, not on-demand. The sense loop's heartbeat.</td><td>freshness</td></tr>
+    </tbody>
+  </table>
+
+  <h3>What this unlocks</h3>
+  <ul class="tight">
+    <li><b>The dossier fills out.</b> Pricing/access, clinical, safety and disease domains go from "gap" to evidenced — readiness climbs from ~36% toward the level a brand team would trust.</li>
+    <li><b>Scenarios get sharper.</b> Grounded in trial readouts, safety signals and real prices — not just news + the competitive graph.</li>
+    <li><b>Provenance becomes real.</b> Every fact carries an evidence record; the drill-through stops being mostly empty.</li>
+    <li><b>It compounds with the Learn loop.</b> More, better-typed facts give calibration something to learn from.</li>
+  </ul>
+  <p class="mono" style="color:var(--ink4)">Note: the genuinely licensed gaps (IQVIA/Rx volume, claims, real prescriber behaviour) remain — they're the HCP-adoption + commercial-share domains that public data can only partly proxy. Those stay in the deferred Data Hub (E17, tiers 2–3). DR-1..8 is everything achievable from free sources we already pay nothing for.</p>
+
+  <h2>Recommended priority across both tracks</h2>
+  <ol>
+    <li><b>DR-0 + DR-1 + DR-2</b> — fact-emitter framework + clinical + pricing. Biggest, fastest dossier-quality jump from data we already hold.</li>
+    <li><b>DR-5</b> — evidence-on-ingest, so the new facts are traceable from day one.</li>
+    <li><b>PB-IX01 promote bridge</b> — connect Sense → work (the IA's missing link).</li>
+    <li><b>PB-H14 / IX-6 Learn loop</b> — close the flywheel once there's rich data to learn from.</li>
+    <li><b>DR-3/4/6/7/8</b> — broaden coverage + keep it fresh.</li>
+  </ol>
+
+  <div class="foot">Grounded in the live Railway DB (entity volumes, fact-predicate distribution, evidence count — all queried 2 Jun) + merged PRs #124–#156 · backlog Epics E15/E16/E17/E18 · proposes the DR-loop track; no code changed in this analysis.</div>
+
+</div>
+</body>
+</html>
