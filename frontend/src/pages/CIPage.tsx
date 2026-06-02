@@ -17,11 +17,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Activity, Target,
+  ArrowLeft, Activity, Target, BookOpen,
   ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase,
 } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import IntelligenceTab, { type IntelView } from '../components/ci/IntelligenceTab';
+import StandaloneDossierTab from '../components/ci/StandaloneDossierTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
@@ -42,7 +43,7 @@ import { ContentRegion } from '../components/layout/ContentRegion';
 import { CockpitMobileNav } from '../components/layout/CockpitMobileNav';
 
 type TabKey =
-  | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'engagements'
+  | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'dossier' | 'engagements'
   | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
 // IX-2 — map a legacy feed tab key to the consolidated Intelligence view.
@@ -67,6 +68,9 @@ const ALL_TABS: Array<{
   // Loop B — v7 engagement spine surfaced inside /ci. Sits between the
   // sensing surfaces and the war-room/decision surfaces so the IA
   // mirrors the workflow: sense → scope (engagement) → war-game → commit.
+  // IX-3 — Dossier as a standalone "build a KB on any asset" surface (the
+  // light path), alongside the full Engagement flow.
+  { key: 'dossier',     label: 'Dossier', icon: BookOpen },
   { key: 'engagements', label: 'Engagements', icon: Briefcase },
   { key: 'rooms',       label: 'War Rooms', icon: ShieldAlert },
   { key: 'decisions',   label: 'Decisions', icon: CheckSquare },
@@ -252,6 +256,15 @@ export default function CIPage() {
           />
         )}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'dossier' && (
+          <StandaloneDossierTab
+            onPromote={() => {
+              const next = new URLSearchParams(params);
+              next.set('tab', 'engagements');
+              setParams(next, { replace: false });
+            }}
+          />
+        )}
         {tab === 'engagements' && (
           activeEngagement
             ? <EngagementDetailContainer
