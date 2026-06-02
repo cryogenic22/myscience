@@ -224,7 +224,41 @@ class DataPipelineScheduler:
             logger.exception("Post-task fact_convergence failed")
             results["fact_convergence"] = f"ERROR: {e}"
 
+        # 10. Fact emitters (entity tables → facts ledger) — DR-8 / Epic E19.
+        # Lifts clinical_trials / adverse_events / drug_labels into the ledger
+        # so dossiers carry granular clinical evidence, not just the
+        # market_event monoculture. Bounded + idempotent (skips on
+        # source_row_id), so each cycle only asserts genuinely new rows. Reuses
+        # services.fact_emitters; own connection (long sweeps risk a Railway
+        # proxy drop). For a full cross-drug catch-up run
+        # scripts/backfill_fact_emitters instead.
+        try:
+            t0 = time.time()
+            results["fact_emitters"] = (
+                self._run_fact_emitters(limit=200) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: fact_emitters — %s", results["fact_emitters"])
+        except Exception as e:
+            logger.exception("Post-task fact_emitters failed")
+            results["fact_emitters"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_fact_emitters(self, limit: int = 200) -> str:
+        """Converge recent entity rows into the facts ledger (DR-8). Mirrors
+        fact_convergence; bounded per emitter, idempotent. Own connection."""
+        from services.fact_emitters.base import run_all_emitters
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = run_all_emitters(db, limit=limit)
+            return "OK: " + ", ".join(
+                f"{name}={s.asserted}a/{s.skipped_existing}e"
+                for name, s in stats.items()
+            )
+        finally:
+            db.close()
 
     def _run_fact_convergence(self, since_days: int = 7) -> str:
         """Converge recent market_events into the facts ledger (PB-H17).

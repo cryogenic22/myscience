@@ -522,24 +522,55 @@ def _related_to_dossier_fact(rel: dict) -> DossierFact:
 # anywhere for these.
 _COMPETITOR_ARM_RE = re.compile(
     r"(?:\bplacebo\b|\bsham\b|\bvehicle\b|\busual care\b|\bstandard of care\b|"
-    r"\bhealthy diet\b|\blifestyle\b|\bexercise\b|treatment for|\bcomparator\b)",
+    r"\bhealthy diet\b|\blifestyle\b|\bexercise\b|treatment for|\bcomparator\b|"
+    # RC4: dosing-arm descriptors that mean 'this is a study arm / formulation
+    # variant of a drug, not a distinct competitor' — e.g. 'Tirzepatide Dose 1',
+    # 'X high dose', 'Y QW', 'Z pen', 'once weekly'.
+    r"\bdose\s*\d+\b|\b(?:low|mid|middle|high)\s+dose\b|\bdose\s+(?:low|mid|middle|high)\b|"
+    r"\b(?:once\s+)?(?:weekly|daily|monthly)\b|\bq[dwm]\b|\bb?id\b|\btid\b|"
+    r"\bpen\b|\bautoinjector\b|\bprefilled\b)",
+    re.IGNORECASE,
+)
+
+# Noise tokens stripped to compare a competitor's BASE name against the subject's
+# (RC4 self-competition: 'Tirzepatide Dose 1' must not be a competitor of
+# tirzepatide). Strips dosing/formulation/arm noise + numbers.
+_BASE_NOISE_RE = re.compile(
+    r"\b(?:dose|arm|cohort|group|pen|injection|injectable|tablet|capsule|oral|"
+    r"subcutaneous|sc|iv|qd|qw|qm|bid|tid|weekly|daily|monthly|low|mid|middle|"
+    r"high|placebo|product|extended|release|er|ir|xr|sr)\b|"
+    r"\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|ml|units?|iu)?",
     re.IGNORECASE,
 )
 
 
-def _is_junk_competitor_name(name: Optional[str]) -> bool:
+def _base_drug_name(name: Optional[str]) -> str:
+    """Reduce a drug/arm name to its base for self-competition comparison."""
+    if not name:
+        return ""
+    base = _BASE_NOISE_RE.sub(" ", name.lower())
+    base = re.sub(r"[^a-z ]", " ", base)
+    return re.sub(r"\s+", " ", base).strip()
+
+
+def _is_junk_competitor_name(name: Optional[str], subject_name: Optional[str] = None) -> bool:
     """Read-time filter for junk drug rows (placebo / dosage / trial-arm names —
-    e.g. 'metformin placebo', 'Metformin 1000mg', 'X + healthy diet') that the
+    e.g. 'metformin placebo', 'Metformin 1000mg', 'Tirzepatide Dose 1') that the
     entity graph links as COMPETES_WITH neighbours and that would otherwise
-    present as 'competitors'.
+    present as 'competitors'. When ``subject_name`` is given, also suppresses
+    self-competition: a 'competitor' whose base name equals the subject's
+    (RC4 — the dossier's own drug appearing as its rival via a dosing variant).
 
     Reuses the A6 cleanup patterns (scripts.clean_drug_names) PLUS a trial-arm
     scan for the competitive context — the NON-destructive, read-time complement
-    to A6's write-time cleanup, so the competitive set + scenarios improve
-    immediately without deleting any rows. Lazy import keeps the pure assembly
-    core free of script-level deps."""
+    to A6's write-time cleanup. Lazy import keeps the pure assembly core free of
+    script-level deps."""
     if not name:
         return False
+    if subject_name:
+        base = _base_drug_name(name)
+        if base and base == _base_drug_name(subject_name):
+            return True  # self-competition (same drug, different arm/dose)
     if _COMPETITOR_ARM_RE.search(name):
         return True
     try:
@@ -554,6 +585,7 @@ def build_domains(
     signals: Optional[list[dict]] = None,
     metric_facts: Optional[list[tuple[str, "DossierFact"]]] = None,
     related: Optional[list[dict]] = None,
+    subject_name: Optional[str] = None,
 ) -> tuple[list[DomainView], float, int]:
     """Pure: route ledger facts + (B3) compose_dossier signals + (B4) metric
     facts + (B5) competitively-relevant related entities into the 8 domains,
@@ -576,7 +608,7 @@ def build_domains(
     for rel in (related or []):
         # Skip junk drug rows (placebo/dosage/trial-arm) masquerading as
         # competitors — reuses the A6 patterns, read-time (PB-H07).
-        if (rel.get("type") == "drug") and _is_junk_competitor_name(rel.get("name")):
+        if (rel.get("type") == "drug") and _is_junk_competitor_name(rel.get("name"), subject_name):
             continue
         by_domain["competitive"].append(_related_to_dossier_fact(rel))
 
@@ -668,8 +700,10 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
                 "  + (SELECT count(*) FROM clinical_trials ct "
                 "       WHERE ct.drug_id = d.id) AS richness "
                 "FROM drugs d "
-                "WHERE LOWER(d.generic_name) = LOWER(%s) "
-                "   OR LOWER(d.brand_name)  = LOWER(%s) "
+                "WHERE (LOWER(d.generic_name) = LOWER(%s) "
+                "    OR LOWER(d.brand_name)  = LOWER(%s)) "
+                "  AND d.record_status IS DISTINCT FROM 'merged' "
+                "  AND d.record_status IS DISTINCT FROM 'superseded' "
                 "ORDER BY richness DESC, d.id "
                 "LIMIT 1",
                 [ident, ident],
@@ -837,8 +871,19 @@ def assemble_dossier_for_asset(
     # B4/PB-E03: quant-backed facts from PharmaMetrics (materialized views).
     metric_facts = _metric_facts(db, subject_type, subject_id)
 
+    # RC4: the subject's own name, to suppress self-competition in the
+    # competitive domain (a dosing variant of the focal drug appearing as a rival).
+    subject_name = None
+    if subject_type == "drug":
+        try:
+            r = db.fetch_one("SELECT generic_name FROM drugs WHERE id::text = %s",
+                             [str(subject_id)])
+            subject_name = r.get("generic_name") if r else None
+        except Exception:
+            logger.debug("subject name lookup failed for %s", subject_id, exc_info=True)
+
     domains, coverage_score, fact_count = build_domains(
-        facts, signals, metric_facts, related)
+        facts, signals, metric_facts, related, subject_name=subject_name)
     return DossierSnapshot(
         engagement_id=None,
         focal_asset=asset,
