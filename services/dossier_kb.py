@@ -125,6 +125,9 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "clinical_trial":       "clinical_profile",
     "adverse_event_report": "clinical_profile",
     "label_indication":     "clinical_profile",
+    # DR-6 mechanism/target fact-emitter predicates (ChEMBL/MeSH-derived).
+    "mechanism_of_action":  "clinical_profile",
+    "target_activity":      "clinical_profile",
     "fda_approval_date":    "pipeline_and_macro",
     "regulatory_approval":  "pipeline_and_macro",
     "regulatory_setback":   "pipeline_and_macro",
@@ -155,6 +158,7 @@ _PREDICATE_PREFIX_DOMAIN: tuple[tuple[str, str], ...] = (
     ("efficacy", "clinical_profile"),
     ("safety", "clinical_profile"),
     ("adverse", "clinical_profile"),
+    ("mechanism", "clinical_profile"),
     ("regulat", "pipeline_and_macro"),
     ("approval", "pipeline_and_macro"),
     ("patent", "pipeline_and_macro"),
