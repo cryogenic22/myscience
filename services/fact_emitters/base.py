@@ -242,9 +242,15 @@ def run_emitter(db, emitter: FactEmitter, *, drug_id: Optional[str] = None,
 
 def get_emitters() -> dict[str, FactEmitter]:
     """Registry of available emitters. Imported lazily to avoid import cycles."""
+    from services.fact_emitters.adverse_events import AdverseEventEmitter
     from services.fact_emitters.clinical_trials import ClinicalTrialEmitter
+    from services.fact_emitters.drug_labels import DrugLabelEmitter
 
-    emitters: tuple[FactEmitter, ...] = (ClinicalTrialEmitter(),)
+    emitters: tuple[FactEmitter, ...] = (
+        ClinicalTrialEmitter(),
+        AdverseEventEmitter(),
+        DrugLabelEmitter(),
+    )
     return {e.name: e for e in emitters}
 
 

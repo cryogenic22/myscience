@@ -1935,14 +1935,23 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 > the dossier as `signal` — now corrected. **Real-DB gate (semaglutide):** 174
 > trial facts asserted, re-run idempotent, evidence_records 1→174, clinical_profile
 > went gap→complete (readiness 1.0), overall readiness 0.36→0.47.
+> **DR-3 + DR-4 SHIPPED (2 Jun):** **DR-3** `AdverseEventEmitter` — AGGREGATES
+> adverse_events per (drug, reaction) into `adverse_event` signal-class safety
+> facts (individual FAERS case reports would be noise; singletons dropped, count +
+> serious/fatal carried). **DR-4** `DrugLabelEmitter` — one `label_indication`
+> (corporate) fact + one `safety_signal` boxed-warning fact per SPL label. Both
+> routed to `clinical_profile`. Real-DB gate (semaglutide): +14 AE facts, +10 label
+> facts, idempotent, evidence_records 174→196; clinical_profile is now genuinely
+> multi-source (128 trials + 14 AE signals + 5 boxed warnings + 5 indications +
+> metrics), not trial-only.
 > **DR-2 (pricing) is BLOCKED:** `drug_pricing` is empty (0 rows) and there is no
 > `nadac_prices` table — no source data to lift; needs a NADAC ingest first
-> (E17/pricing backlog), so it is deferred, not skipped. **Still open:** DR-3
-> (FAERS/adverse_events, 1,992 drug-linked rows ready), DR-4 (SPL labels, 175
-> ready), DR-8 (scheduler wiring + full cross-drug backfill — emitters currently
-> run per-drug on demand). Minor: the 174 demo facts carry pre-fix claim wording
-> ("Clinical trial: Trial NCT…"); future emits use the cleaned format (append-only,
-> so existing rows weren't rewritten).
+> (E17/pricing backlog), so it is deferred, not skipped. **Still open:** DR-8
+> (scheduler wiring + full cross-drug backfill — emitters currently run per-drug
+> on demand), DR-6 (mechanism/target), DR-7 (literature/epidemiology). Minor: the
+> demo's pre-fix clinical-trial facts carry "Clinical trial: Trial NCT…" wording;
+> future emits use the cleaned format (append-only, so existing rows weren't
+> rewritten).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
