@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Market Zero · Integrated CI Experience (prototype)</title>
+<style>
+  :root{
+    --ink:#1b1a18;--ink2:#3d3a36;--ink3:#6b6760;--ink4:#9c968c;
+    --bg:#faf8f4;--surface:#ffffff;--surface2:#f3efe8;--surface3:#ece7dd;
+    --line:#e5dfd4;--line2:#d4cdbf;
+    --accent:#b5642f;--accent-soft:rgba(181,100,47,.09);
+    --sense:#2f6f8f;--sense-soft:rgba(47,111,143,.10);
+    --engage:#b5642f;--engage-soft:rgba(181,100,47,.10);
+    --decide:#7a5ea8;--decide-soft:rgba(122,94,168,.10);
+    --learn:#3f7d4e;--learn-soft:rgba(63,125,78,.10);
+    --amber:#b4791f;--red:#b03a2e;
+    --serif:"Fraunces",Georgia,serif;--body:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink2);font-family:var(--body);font-size:14.5px;line-height:1.55}
+  .wrap{max-width:1180px;margin:0 auto;padding:44px 26px 90px}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+  h1{font-family:var(--serif);font-weight:430;font-size:40px;line-height:1.08;letter-spacing:-.02em;color:var(--ink);margin:12px 0 10px}
+  h2{font-family:var(--serif);font-weight:450;font-size:24px;color:var(--ink);margin:8px 0}
+  .sub{font-size:16px;color:var(--ink3);max-width:74ch}
+  .rule{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);border-bottom:1px solid var(--line);padding-bottom:7px;margin:54px 0 20px}
+
+  /* flywheel */
+  .flywheel{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 8px}
+  .fw{flex:1 1 200px;border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--surface);position:relative}
+  .fw .tag{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .fw h3{font-family:var(--serif);font-size:18px;color:var(--ink);margin:6px 0 4px;font-weight:500}
+  .fw p{margin:0;font-size:12.5px;color:var(--ink3)}
+  .fw.sense{border-top:3px solid var(--sense)} .fw.sense .tag{color:var(--sense)}
+  .fw.engage{border-top:3px solid var(--engage)} .fw.engage .tag{color:var(--engage)}
+  .fw.decide{border-top:3px solid var(--decide)} .fw.decide .tag{color:var(--decide)}
+  .fw.learn{border-top:3px solid var(--learn)} .fw.learn .tag{color:var(--learn)}
+  .fw .arrow{position:absolute;right:-14px;top:50%;transform:translateY(-50%);color:var(--ink4);font-size:18px;z-index:2}
+  .loopback{font-family:var(--mono);font-size:11px;color:var(--learn);text-align:center;margin:6px 0 0}
+
+  /* app mock */
+  .app{display:grid;grid-template-columns:230px 1fr;border:1px solid var(--line2);border-radius:14px;overflow:hidden;box-shadow:0 14px 40px rgba(40,30,20,.07);background:var(--surface);margin:8px 0}
+  .nav{background:var(--surface2);border-right:1px solid var(--line);padding:18px 12px;min-height:560px}
+  .brand{font-family:var(--serif);font-size:17px;color:var(--ink);padding:4px 10px 16px;font-weight:500}
+  .navgroup{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink4);margin:16px 10px 6px}
+  .navitem{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:8px;cursor:pointer;color:var(--ink2);font-size:13.5px;margin:1px 0;border-left:3px solid transparent}
+  .navitem:hover{background:var(--surface3)}
+  .navitem.active{background:var(--surface);font-weight:600;color:var(--ink)}
+  .navitem.sense.active{border-left-color:var(--sense)} .navitem.engage.active{border-left-color:var(--engage)}
+  .navitem.decide.active{border-left-color:var(--decide)} .navitem.learn.active{border-left-color:var(--learn)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.sense{background:var(--sense)} .dot.engage{background:var(--engage)} .dot.decide{background:var(--decide)} .dot.learn{background:var(--learn)}
+  .navfoot{margin-top:24px;border-top:1px solid var(--line);padding-top:12px}
+  .navfoot .navitem{color:var(--ink3);font-size:12.5px}
+
+  .main{padding:22px 26px;min-height:560px}
+  .crumb{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink3);text-transform:uppercase}
+  .panel{display:none} .panel.active{display:block}
+  .panel h2{margin-top:6px}
+  .panel .lede{font-size:13.5px;color:var(--ink3);margin:2px 0 16px;max-width:70ch}
+
+  /* view toggle */
+  .toggle{display:inline-flex;gap:2px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:3px;margin-bottom:14px}
+  .toggle button{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:none;background:transparent;color:var(--ink3);padding:5px 13px;border-radius:999px;cursor:pointer}
+  .toggle button.on{background:var(--sense);color:#fff}
+  .lens{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .lens .chip{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:999px;padding:3px 10px;color:var(--ink3);cursor:pointer;background:var(--surface)}
+  .lens .chip.on{border-color:var(--sense);color:var(--sense);background:var(--sense-soft)}
+
+  /* signal card with the BRIDGE */
+  .sig{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:13px 15px;margin:10px 0;background:var(--surface)}
+  .sig .meta{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ink3);display:flex;gap:10px;align-items:center;margin-bottom:5px}
+  .sig .tier{color:var(--amber);font-weight:600}
+  .sig .ttl{font-size:14px;color:var(--ink);line-height:1.35}
+  .sig .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;padding-top:10px;border-top:1px dashed var(--line2)}
+  .promote{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;border-radius:999px;padding:5px 11px;cursor:pointer;border:1px solid}
+  .promote.engage{color:var(--engage);border-color:var(--engage);background:var(--engage-soft)}
+  .promote.decide{color:var(--decide);border-color:var(--decide);background:var(--decide-soft)}
+  .promote.watch{color:var(--sense);border-color:var(--sense);background:var(--sense-soft)}
+  .promote.dismiss{color:var(--ink4);border-color:var(--line2);background:transparent}
+  .bridgehint{font-family:var(--mono);font-size:10.5px;color:var(--ink4);margin:2px 0 14px}
+
+  /* engagement stepper */
+  .stepper{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}
+  .step{flex:1 1 96px;border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--surface);border-top:3px solid var(--engage)}
+  .step.future{border-top-color:var(--line2);opacity:.6}
+  .step .n{font-family:var(--mono);font-size:9px;color:var(--ink4)} .step .nm{font-family:var(--serif);font-size:13.5px;color:var(--ink);margin-top:1px}
+  .step .ch{font-family:var(--mono);font-size:9px;color:var(--learn);text-transform:uppercase;margin-top:4px}
+  .seeded{background:var(--engage-soft);border:1px solid var(--engage);border-radius:8px;padding:11px 14px;font-size:13px;color:var(--ink2);margin:10px 0}
+  .seeded b{color:var(--engage)}
+
+  /* generic */
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .card{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--surface);margin:8px 0;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+  .mono{font-family:var(--mono);font-size:12px}
+  .arrow-i{color:var(--accent)}
+  code{font-family:var(--mono);font-size:.86em;background:var(--surface2);padding:1px 5px;border-radius:4px;color:var(--ink)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;padding:2px 8px;border-radius:999px;border:1px solid}
+  .new{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+  .keep{color:var(--learn);border-color:var(--learn);background:var(--learn-soft)}
+  .merge{color:var(--sense);border-color:var(--sense);background:var(--sense-soft)}
+  .foot{margin-top:60px;border-top:1px solid var(--line);padding-top:16px;font-family:var(--mono);font-size:11px;color:var(--ink4)}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--ink4);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Market Zero · Competitive Intelligence · Information-architecture prototype</div>
+  <h1>Bringing the experience together</h1>
+  <p class="sub">Today the cockpit has <b>nine flat tabs organised by artifact</b> (three feeds, a watchlist, engagements, war rooms, decisions, insights, reviewer). This prototype reorganises them around the <b>sense → decide → act → learn flywheel</b>, with two primary modes and one missing connector: the <b>promote bridge</b> that turns a signal into work. Click the nav and the view toggles to explore.</p>
+
+  <div class="rule">The flywheel — what each phase is, and which surfaces serve it</div>
+  <div class="flywheel">
+    <div class="fw sense"><div class="tag">① Sense</div><h3>Intelligence</h3><p>One surface, three fidelities: Digest (triaged) · Stream (raw) · Signals DB (queryable). Watchlist = a saved lens.</p><div class="arrow">→</div></div>
+    <div class="fw engage"><div class="tag">② Decide · scope</div><h3>Engagement</h3><p>The 7-stage workspace: brief → sources → dossier → synthesis → gaps → scenarios → workshop.</p><div class="arrow">→</div></div>
+    <div class="fw decide"><div class="tag">③ Act</div><h3>War room → Decision</h3><p>The workshop stage plays a war room; a committed round becomes a signed decision.</p><div class="arrow">→</div></div>
+    <div class="fw learn"><div class="tag">④ Learn</div><h3>Insights &amp; calibration</h3><p>Outcomes re-weight source trust + scenario priors — and feed back into what Sense surfaces.</p></div>
+  </div>
+  <div class="loopback">↩ the Learn loop closes back to Sense — calibration changes what rises to the top of the feed</div>
+
+  <div class="rule">The integrated cockpit — click around</div>
+  <div class="app">
+    <div class="nav">
+      <div class="brand">Market Zero</div>
+
+      <div class="navgroup">① Sense</div>
+      <div class="navitem sense active" data-panel="intel"><span class="dot sense"></span> Intelligence</div>
+      <div class="navitem sense" data-panel="intel"><span class="dot sense" style="opacity:.4"></span> Watchlist <span style="margin-left:auto;font-size:10px;color:var(--ink4)">(lens)</span></div>
+
+      <div class="navgroup">② Engage</div>
+      <div class="navitem engage" data-panel="engage"><span class="dot engage"></span> Engagements</div>
+
+      <div class="navgroup">③ Decide / Act</div>
+      <div class="navitem decide" data-panel="decide"><span class="dot decide"></span> Decisions</div>
+
+      <div class="navgroup">④ Learn</div>
+      <div class="navitem learn" data-panel="learn"><span class="dot learn"></span> Insights &amp; Calibration</div>
+
+      <div class="navfoot">
+        <div class="navgroup">Admin</div>
+        <div class="navitem" data-panel="admin"><span class="dot" style="background:var(--ink4)"></span> Connectors</div>
+        <div class="navitem" data-panel="admin"><span class="dot" style="background:var(--ink4)"></span> Reviewer / Curation</div>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- SENSE -->
+      <div class="panel active" id="intel">
+        <div class="crumb">Sense · Intelligence</div>
+        <h2>Intelligence</h2>
+        <p class="lede">One consolidated stream over the existing <code>intelligence_feed</code> + <code>signals</code> backend. The three old tabs become three <b>views</b> of the same data.</p>
+        <div class="toggle" id="intelToggle">
+          <button class="on" data-v="digest">Digest · triaged</button>
+          <button data-v="stream">Stream · raw</button>
+          <button data-v="db">Signals DB · queryable</button>
+        </div>
+        <div class="lens">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--ink4);align-self:center">Lens (was Watchlist):</span>
+          <span class="chip on">semaglutide</span><span class="chip">GLP-1 class</span><span class="chip">Novo Nordisk</span><span class="chip">+ add</span>
+        </div>
+
+        <div class="bridgehint">▼ the missing connector — every signal can become work in one click</div>
+
+        <div class="sig">
+          <div class="meta"><span class="tier">MEDIUM</span> · 19h ago · tier_3 · <span>Daraxonrasib · PDAC</span></div>
+          <div class="ttl">Daraxonrasib meets all primary &amp; key secondary efficacy endpoints in pretreated PDAC — OncLive</div>
+          <div class="acts">
+            <span class="promote engage">→ Open in engagement</span>
+            <span class="promote decide">→ War-game now</span>
+            <span class="promote watch">+ Watch entity</span>
+            <span class="promote dismiss">Dismiss</span>
+          </div>
+        </div>
+        <div class="sig" style="border-left-color:var(--red)">
+          <div class="meta"><span class="tier" style="color:var(--red)">HIGH</span> · 1d ago · tier_2 · <span>Apotex · generic Ozempic</span></div>
+          <div class="ttl">Apotex wins tentative FDA approval for generic Ozempic — drug makers await Health Canada</div>
+          <div class="acts">
+            <span class="promote engage">→ Open in engagement</span>
+            <span class="promote decide">→ War-game now</span>
+            <span class="promote watch">+ Watch entity</span>
+            <span class="promote dismiss">Dismiss</span>
+          </div>
+        </div>
+        <p class="hint">Backend exists: <code>signal_promoter.py</code> already promotes events→signals; this loop adds the missing <b>signal→engagement / signal→war-room</b> promotion (and "watch" just pins the entity to your lens).</p>
+      </div>
+
+      <!-- ENGAGE -->
+      <div class="panel" id="engage">
+        <div class="crumb">Engage · Engagements · Wegovy / Semaglutide</div>
+        <h2>Engagement workspace</h2>
+        <p class="lede">The 7-stage spine (all live today). A signal promoted from Sense lands here — pre-seeded into the brief.</p>
+        <div class="seeded">Seeded from signal <b>“Apotex generic Ozempic approval”</b> → focal asset <b>semaglutide</b>, situation <b>defense</b>. The trigger is already in the brief and a scenario candidate is queued.</div>
+        <div class="stepper">
+          <div class="step"><div class="n">01</div><div class="nm">Brief</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">02</div><div class="nm">Sources</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">03</div><div class="nm">Dossier</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">04</div><div class="nm">Synthesis</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">05</div><div class="nm">Gaps</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">06</div><div class="nm">Scenarios</div><div class="ch">live</div></div>
+          <div class="step"><div class="n">07</div><div class="nm">Workshop</div><div class="ch">live</div></div>
+        </div>
+        <p class="hint">War Rooms are no longer a separate tab — stage 07 <b>is</b> the war room (launched from a scenario). Each stage carries a discussion thread (generic EntityComments).</p>
+      </div>
+
+      <!-- DECIDE -->
+      <div class="panel" id="decide">
+        <div class="crumb">Act · Decisions</div>
+        <h2>Decisions ledger</h2>
+        <p class="lede">A cross-engagement view of committed decisions — but they're <b>created in the workshop</b> (a promoted war-room round), not authored here. This is the act-output, signed &amp; replayable.</p>
+        <div class="card"><b>Defend &amp; differentiate semaglutide</b> · from <span class="mono">Wegovy/Semaglutide</span> · war room “Competitive pressure: Dulaglutide” · <span class="pill keep">signed</span> · 1 Jun</div>
+        <div class="card" style="opacity:.7"><b>Segment &amp; defend the core</b> · draft · awaiting sign-off</div>
+        <p class="hint">Backend exists: <code>decisions.py:promote_round</code> already turns a war-room round into a decision. This view just lists them across engagements + links back to the room that produced each.</p>
+      </div>
+
+      <!-- LEARN -->
+      <div class="panel" id="learn">
+        <div class="crumb">Learn · Insights &amp; Calibration</div>
+        <h2>Insights &amp; calibration</h2>
+        <p class="lede">Where outcomes feed back. Decision outcomes re-weight source trust; observed signals re-calibrate scenario priors — and that changes what Sense surfaces first.</p>
+        <div class="card">◈ <b>Source calibration</b> — OncLive predicted 4/5 readout outcomes correctly → trust ↑ (it rises higher in Digest).</div>
+        <div class="card">✦ <b>Scenario prior shift</b> — “Competitive pressure: Dulaglutide” 0.38 → 0.46 after the Apotex signal. <span class="mono">(needs PB-H14)</span></div>
+        <div class="card">◇ <b>Cross-engagement memory</b> — “last time we analysed this market we concluded X; outcome was Y.” <span class="mono">(Data Hub E17)</span></div>
+        <p class="hint">Partly built (telemetry, EWMA source accuracy), partly deferred (the scenario-prior recalibration loop, PB-H14 → the highest-leverage gap).</p>
+      </div>
+
+      <!-- ADMIN -->
+      <div class="panel" id="admin">
+        <div class="crumb">Admin · Connectors &amp; Curation</div>
+        <h2>Connectors &amp; curation</h2>
+        <p class="lede">The plumbing — kept out of the analyst's flywheel. Connector health, source management, the HITL review queue (Reviewer). This is where the deferred Data Hub (E17) surfaces live.</p>
+        <div class="card">15 active connectors · source FAIR health · HITL review queue · document upload (E17).</div>
+      </div>
+    </div>
+  </div>
+  <p class="hint">Prototype: nav switches panels; the Intelligence toggle is illustrative. Data shown is representative of the live semaglutide engagement.</p>
+
+  <div class="rule">What consolidates into what</div>
+  <table>
+    <thead><tr><th>Today (9 tabs)</th><th>Becomes</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>Sensing Feed + Daily Digest + Signals DB</td><td>① <b>Intelligence</b> (3 view modes)</td><td>Same backend, three fidelities — a view toggle, not three destinations</td><td><span class="pill merge">merge</span></td></tr>
+      <tr><td>Watchlist</td><td>A <b>lens</b> inside Intelligence</td><td>"Follow entities" is a saved filter + alert, not a place</td><td><span class="pill merge">merge</span></td></tr>
+      <tr><td>Engagements</td><td>② <b>Engagement</b> workspace</td><td>The episodic work surface — unchanged, now the clear centre of gravity</td><td><span class="pill keep">keep</span></td></tr>
+      <tr><td>War Rooms</td><td>Stage 07 <b>inside</b> an engagement</td><td>A war room is launched from a scenario — it's the workshop stage</td><td><span class="pill merge">fold in</span></td></tr>
+      <tr><td>Decisions</td><td>③ <b>Decisions</b> ledger (Act)</td><td>Kept as a cross-engagement list, but created in the workshop</td><td><span class="pill keep">reframe</span></td></tr>
+      <tr><td>Insights</td><td>④ <b>Learn</b> surface</td><td>Calibration + cross-engagement memory; closes back to Sense</td><td><span class="pill keep">reframe</span></td></tr>
+      <tr><td>Reviewer</td><td>Admin · Curation</td><td>HITL/QA plumbing — out of the analyst flywheel</td><td><span class="pill keep">reframe</span></td></tr>
+      <tr><td>—</td><td><b>Promote bridge</b> on every signal</td><td>The missing connector: signal → engagement / war-game / watch</td><td><span class="pill new">new</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="rule">Proposed implementation loops</div>
+  <table>
+    <thead><tr><th>#</th><th>Loop</th><th>Scope</th><th>Risk</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">IX-1</td><td><b>Promote bridge</b> (highest value)</td><td>Signal action menu → create/seed an engagement (or war room) from a signal; backend seed endpoint. Wires the two islands together.</td><td>med</td></tr>
+      <tr><td class="mono">IX-2</td><td><b>Consolidate the 3 feeds</b></td><td>One Intelligence surface + view toggle (Digest/Stream/Signals DB) over the existing APIs; retire the duplicate tabs.</td><td>low</td></tr>
+      <tr><td class="mono">IX-3</td><td><b>Watchlist → lens</b></td><td>Entity-follow becomes a saved filter chip-rail on Intelligence; keep alerting.</td><td>low</td></tr>
+      <tr><td class="mono">IX-4</td><td><b>Re-group the nav</b> (Sense/Engage/Decide/Learn)</td><td>Fold War Rooms into the workshop stage; reframe Decisions/Insights; move Reviewer/Connectors to Admin.</td><td>low</td></tr>
+      <tr><td class="mono">IX-5</td><td><b>Learn loop</b> (PB-H14)</td><td>Scenario priors recalibrate from signals/outcomes; surfaced in the Learn panel + reflected back in Digest ordering.</td><td>high</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">Prototype for review · grounded in the live cockpit (CIPage tabs) + existing backend (intelligence_feed, signals, signal_promoter, decisions.promote_round) · proposes IA only — no code changed.</div>
+
+</div>
+
+<script>
+  document.querySelectorAll('.navitem[data-panel]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var p = el.getAttribute('data-panel');
+      document.querySelectorAll('.navitem').forEach(function(n){ n.classList.remove('active'); });
+      el.classList.add('active');
+      document.querySelectorAll('.panel').forEach(function(pn){ pn.classList.toggle('active', pn.id===p); });
+    });
+  });
+  var t = document.getElementById('intelToggle');
+  if(t){ t.querySelectorAll('button').forEach(function(b){ b.addEventListener('click', function(){
+    t.querySelectorAll('button').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
+  });});}
+</script>
+</body>
+</html>
