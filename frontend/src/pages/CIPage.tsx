@@ -59,23 +59,29 @@ const ALL_TABS: Array<{
   icon: any;
   enterprise?: boolean;
 }> = [
-  // IX-2 — the three former feed tabs (Sensing Feed / Daily Digest / Signals DB)
-  // are now one Intelligence surface with a view toggle. 'digest' is the
-  // canonical key (assessed/triaged is the natural landing); 'inbox'/'signals'
-  // still route here for deep-link back-compat (see viewFromTab).
+  // IX-2 — three former feed tabs → one Intelligence surface ('digest' is the
+  // canonical key; 'inbox'/'signals' still route here via viewFromTab).
   { key: 'digest',      label: 'Intelligence', icon: Activity },
   { key: 'watchlist',   label: 'Watchlist', icon: Target },
-  // Loop B — v7 engagement spine surfaced inside /ci. Sits between the
-  // sensing surfaces and the war-room/decision surfaces so the IA
-  // mirrors the workflow: sense → scope (engagement) → war-game → commit.
-  // IX-3 — Dossier as a standalone "build a KB on any asset" surface (the
-  // light path), alongside the full Engagement flow.
+  // IX-3/IX-5 — Dossier (light path) + War Game (its own section) + the full
+  // Engagement flow are the "Engage" building blocks.
   { key: 'dossier',     label: 'Dossier', icon: BookOpen },
+  { key: 'rooms',       label: 'War Game', icon: ShieldAlert },
   { key: 'engagements', label: 'Engagements', icon: Briefcase },
-  { key: 'rooms',       label: 'War Rooms', icon: ShieldAlert },
   { key: 'decisions',   label: 'Decisions', icon: CheckSquare },
   { key: 'insights',    label: 'Insights', icon: LineChart },
   { key: 'reviewer',    label: 'Reviewer', icon: BrainCircuit, enterprise: true },
+];
+
+// IX-5 — group the nav around the flywheel (sense → engage → act → learn),
+// instead of nine flat artifact tabs. Each group renders a label + its
+// available items; an empty group (e.g. Admin when not enterprise) is skipped.
+const NAV_GROUPS: Array<{ label: string; keys: TabKey[] }> = [
+  { label: 'Sense',  keys: ['digest', 'watchlist'] },
+  { label: 'Engage', keys: ['dossier', 'rooms', 'engagements'] },
+  { label: 'Act',    keys: ['decisions'] },
+  { label: 'Learn',  keys: ['insights'] },
+  { label: 'Admin',  keys: ['reviewer'] },
 ];
 
 function getRole(): string | null {
@@ -223,15 +229,34 @@ export default function CIPage() {
     <CockpitShell
       nav={
         <NavRail header={navHeader} footer={navFooter}>
-          {tabs.map((t) => (
-            <NavRailItem
-              key={t.key}
-              label={t.label}
-              icon={t.icon}
-              active={tab === t.key}
-              onClick={() => setTab(t.key)}
-            />
-          ))}
+          {NAV_GROUPS.map((group) => {
+            const items = group.keys
+              .map((k) => tabs.find((t) => t.key === k))
+              .filter((t): t is (typeof tabs)[number] => Boolean(t));
+            if (items.length === 0) return null;
+            return (
+              <div key={group.label} data-nav-group={group.label}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: 9.5, letterSpacing: '0.16em',
+                    textTransform: 'uppercase', color: 'var(--color-ink-4)',
+                    padding: '12px 11px 5px',
+                  }}
+                >
+                  {group.label}
+                </div>
+                {items.map((t) => (
+                  <NavRailItem
+                    key={t.key}
+                    label={t.label}
+                    icon={t.icon}
+                    active={tab === t.key}
+                    onClick={() => setTab(t.key)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </NavRail>
       }
       mobileNav={
