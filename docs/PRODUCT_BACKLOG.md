@@ -1239,15 +1239,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H11] Move catalog with per-team impact vectors (guided wargaming)
 - **Type**: feature
-- **Status**: in-progress
+- **Status**: shipped
 - **Priority**: low
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H09
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark MOVE_CATALOG = per-team (novo/lilly/payer/hcp) moves, each with category, label, detail, stance, and an impact vector ({novo:+0.7, lilly:-0.2, payer:-0.4}) for guided play. **PARTIAL SHIPPED (PR #142)**: every scenario now carries 3 rational-interest team moves (competitive: rival/focal/payers; signal: market-mover/focal/regulators&payers), each move+rationale named to the specific rival & focal asset. Validated on live semaglutide. **REMAINING**: per-team quantitative impact vectors for guided play (reuse `move_suggester.py` / `war_game_engine.py`). Acceptance (remaining): a guided war-game offers team moves each scored against all teams.
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED. Team moves (PR #142) + per-team impact vectors (PR #150): every move now carries an illustrative directional impact per team in [-1,1] (acting team positive; others per strategic logic), rendered as +/- chips with a "structural estimate, not a forecast" tooltip. Real-DB red-team (semaglutide): coherent vectors (Dulaglutide +0.6 / semaglutide -0.4 / Payers +0.1). NOTE: this is a transparent structural estimate, NOT the benchmark's quantitative payoff model; a real value model is PB-H10's deferred NPV half.
 
 #### [PB-H10c] Scenario blocking is too coarse (all scenarios always blocked)
 - **Type**: bug
@@ -1384,15 +1384,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX02] Generic EntityComments component (Foundation P1.2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Generalise the war-room `CommentsPanel` to any entity (fact/insight/scenario/gap/decision) via `target_type`+`target_id`. Backend: extend the comments table with those columns (currently hardcoded war_room_round). Frontend: reusable `EntityComments` + count badge + @mention parse. The collaboration primitive every stage inherits. Comment-based only — NO CRDT/real-time (scope discipline).
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED (PR #152). migration 076 entity_comments (target_type+target_id, applied to prod) + services/entity_comments.py (add/list + @mention parse) + new /comments router + reusable EntityComments component (count badge, @mention highlight, post). Comment-based only (no CRDT). Mounted on the brief stage (PB-UX08); mountable on any entity. Real-DB red-team round-trips.
 
 #### [PB-UX03] Provenance side panel (Foundation P1.3)
 - **Type**: feature
@@ -1432,15 +1432,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX05b] Persist gap remediation choices
 - **Type**: enhancement
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-UX05
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: UX05 ships gap remediation (primary_research/accept/descope) as CLIENT-SIDE state — it drives the readiness banner + complete gate in-session but doesn't survive reload, and doesn't feed the scenario blocking (PB-H10c). Add a gap_remediations table (engagement_id, gap_domain, remediation, note, by, at) + GET/PUT endpoints; GapsContainer reads/writes them. Acceptance: a remediation choice persists across reloads and a resolved critical gap unblocks the relevant scenarios.
+- **Last touched**: 2026-06-02
+- **Notes**: SHIPPED (PR #151). migration 075 gap_remediations (upsert on engagement+domain, applied to prod) + services/gap_remediation.py + GET/PUT endpoints + GapsContainer loads on mount (seeds readiness banner) and PUTs on change. Real-DB red-team round-trips. NOTE: feeding the scenario blocking from persisted remediation (vs derived gaps) is a future tie-in (PB-H10c decoupled blocking to own-domain gaps independently).
 
 #### [PB-UX06] Synthesis stage — SynthesisContainer (Stage wiring P2.3)
 - **Type**: feature
@@ -1468,15 +1468,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX08] Brief persistence + comments (Stage wiring P2.5)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: in-progress
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-UX02
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Wire `useBriefAutosave` to the real backend (`/engagements/{eid}/brief`, currently console-only stub). Add EntityComments on the brief — it's the engagement's contract, everyone agrees on it. EL/KC author; all review.
+- **Last touched**: 2026-06-02
+- **Notes**: COMMENTS SHIPPED (PR #153): EntityComments mounted on the brief stage (target_type='brief'). REMAINING: in-app BCB authoring/editing — wire `useBriefAutosave` to a real update endpoint (`PUT /engagements/{eid}/brief`, currently the create-only path) + an edit form. Larger authoring surface; deferred. EL/KC author; all review.
 
 #### [PB-UX09] Dossier curation surface (Stage wiring P2.6)
 - **Type**: feature

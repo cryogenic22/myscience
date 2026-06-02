@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Market Zero · CI/UX Delivery Review (for lead dev)</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --ink2:#3d3d3d; --ink3:#6b6b6b; --ink4:#9a9a9a;
+    --bg:#faf8f5; --surface:#ffffff; --surface2:#f2efe9; --line:#e4dfd6; --line2:#d3cdc1;
+    --accent:#b5642f; --accent-soft:rgba(181,100,47,0.08);
+    --green:#3f7d4e; --green-soft:rgba(63,125,78,0.09);
+    --amber:#b4791f; --red:#b03a2e;
+    --serif:"Fraunces",Georgia,serif; --body:"DM Sans",-apple-system,system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink2);font-family:var(--body);line-height:1.6;font-size:15px}
+  .wrap{max-width:960px;margin:0 auto;padding:56px 28px 96px}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:40px}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font-family:var(--serif);font-weight:430;font-size:42px;line-height:1.1;letter-spacing:-.02em;color:var(--ink);margin:0 0 14px}
+  h2{font-family:var(--serif);font-weight:450;font-size:26px;letter-spacing:-.01em;color:var(--ink);margin:52px 0 6px}
+  h3{font-family:var(--serif);font-weight:500;font-size:18px;color:var(--ink);margin:28px 0 8px}
+  .sub{font-size:16px;color:var(--ink3);max-width:70ch}
+  .meta{font-family:var(--mono);font-size:12px;color:var(--ink4);margin-top:18px}
+  p{margin:10px 0;max-width:74ch}
+  .lead{font-size:17px;color:var(--ink2)}
+  .rule{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);border-bottom:1px solid var(--line);padding-bottom:6px;margin-top:46px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:22px 0}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .stat .n{font-family:var(--serif);font-size:30px;color:var(--ink);line-height:1}
+  .stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-top:8px}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+  td.mono,.mono{font-family:var(--mono);font-size:12px}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .done{color:var(--green);background:var(--green-soft);border-color:var(--green)}
+  .partial{color:var(--amber);background:rgba(180,121,31,.08);border-color:var(--amber)}
+  .defer{color:var(--ink3);background:var(--surface2);border-color:var(--line2)}
+  .stage{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
+  .stage .s{flex:1 1 120px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--green);border-radius:8px;padding:11px 13px}
+  .stage .s .num{font-family:var(--mono);font-size:9.5px;color:var(--ink4);letter-spacing:.08em}
+  .stage .s .nm{font-family:var(--serif);font-size:15px;color:var(--ink);margin-top:2px}
+  .stage .s .st{font-family:var(--mono);font-size:9.5px;color:var(--green);text-transform:uppercase;letter-spacing:.08em;margin-top:5px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .card.warn{border-left:3px solid var(--amber)}
+  .card.accent{border-left:3px solid var(--accent)}
+  ul.tight{margin:8px 0;padding-left:20px}
+  ul.tight li{margin:5px 0}
+  code{font-family:var(--mono);font-size:.86em;background:var(--surface2);padding:1px 5px;border-radius:4px;color:var(--ink)}
+  .glyph{font-family:var(--mono);font-weight:600}
+  .foot{margin-top:64px;border-top:1px solid var(--line);padding-top:18px;font-family:var(--mono);font-size:11px;color:var(--ink4)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="kicker">Market Zero · Competitive Intelligence</div>
+    <h1>CI / UX delivery review</h1>
+    <p class="sub">An honest scan of what was delivered across the engagement-experience build arc — measured against the plan (SPEC-002 + the personas analysis) and the vision (the Helix v8 benchmark and the horizontal-substrate direction). Prepared for lead-dev review.</p>
+    <div class="meta">2 Jun 2026 · 15 PRs (#139&ndash;#153) · all merged to <code>main</code> · validated on live Railway data (semaglutide demo engagement)</div>
+  </header>
+
+  <p class="lead">The arc started from one piece of feedback: <em>&ldquo;I see no UI update for CI/intelligence features.&rdquo;</em> Diagnosis: the code was shipped and deployed, but the engagement walkthrough was buried under <code>/ci</code> and only 1 of 7 stages was wired. This arc closed that gap end-to-end.</p>
+
+  <div class="grid">
+    <div class="stat"><div class="n">7/7</div><div class="l">Engagement stages live</div></div>
+    <div class="stat"><div class="n">15</div><div class="l">PRs merged this arc</div></div>
+    <div class="stat"><div class="n">906</div><div class="l">Frontend tests passing</div></div>
+    <div class="stat"><div class="n">5</div><div class="l">Prod migrations (072&ndash;076)</div></div>
+    <div class="stat"><div class="n">100%</div><div class="l">Real-DB gated loops</div></div>
+  </div>
+
+  <h2>1 · The headline</h2>
+  <p>The full 7-stage engagement lifecycle is now <strong>live, navigable, fact-grounded, and discoverable</strong> &mdash; reachable at <code>/ci &rarr; Engagements &rarr; open an engagement &rarr; walk the stepper</code>, and surfaced from both the landing page and the workspace top bar.</p>
+  <div class="stage">
+    <div class="s"><div class="num">01</div><div class="nm">Brief</div><div class="st">live</div></div>
+    <div class="s"><div class="num">02</div><div class="nm">Sources</div><div class="st">live</div></div>
+    <div class="s"><div class="num">03</div><div class="nm">Dossier</div><div class="st">live</div></div>
+    <div class="s"><div class="num">04</div><div class="nm">Synthesis</div><div class="st">live</div></div>
+    <div class="s"><div class="num">05</div><div class="nm">Gaps</div><div class="st">live</div></div>
+    <div class="s"><div class="num">06</div><div class="nm">Scenarios</div><div class="st">live</div></div>
+    <div class="s"><div class="num">07</div><div class="nm">Workshop</div><div class="st">live</div></div>
+  </div>
+  <p>Every stage reads real, provenance-traced data from the spine (<span class="mono">signal &rarr; fact &rarr; insight &rarr; scenario &rarr; decision</span>). Every claim traces to its source; every scenario cites the facts it springs from.</p>
+
+  <h2>2 · Delivery ledger</h2>
+  <p>Each row is one loop: SPEC &rarr; reuse-first design &rarr; TDD &rarr; red-team against the live DB &rarr; PR &rarr; merge.</p>
+  <table>
+    <thead><tr><th>PR</th><th>Loop</th><th>What shipped</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">#139</td><td>UX01 · Persona foundation</td><td><code>usePersona</code> hook + picker + persona-default stage landing (KC/SA/DM/EL)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#140</td><td>UX03 · Provenance</td><td>Shared <code>ProvenancePanel</code> (click a fact &rarr; source drill-through) + dossier readiness everywhere</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#141</td><td>UX04 · Scenarios stage</td><td>Wired scenarios/war-gaming stage end-to-end (container pattern, reuses ProvenancePanel)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#142</td><td>H10/H11 · Moves + options</td><td>Per-scenario team moves (rational-interest) + mutually-exclusive decision options, one recommended</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#143</td><td>UX05 · Gaps stage</td><td>Live collection gaps (importance-ranked, fill methods, workshop-blocking)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#144</td><td>UX06 · Synthesis stage</td><td><strong>Built</strong> the insight derivation (engagement-scoped, synthesis-test gated) + endpoint + container</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#145</td><td>H10c · Playable scenarios</td><td>Blocking scoped to own-domain gaps (no more dead-end) + self-competitor suppression</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#146</td><td>UX07 · Sources stage</td><td>Per-engagement source coverage (counts, domains, confidence-class mix)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#147</td><td>UX-Brief · Brief stage</td><td>Renders the Business Context Brief (situation, decisions, competitive set, sign-off)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#148</td><td>UX-Workshop · War Room</td><td>Launch a war room seeded from a scenario &rarr; play inline; resume existing rooms</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#149</td><td>Discoverability</td><td>&ldquo;CI Cockpit&rdquo; entry in the workspace top bar (landing already had one)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#150</td><td>H11 · Impact vectors</td><td>Per-team directional impact on each move (structural estimate, +/- chips)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#151</td><td>UX05b · Gap remediation</td><td>Persist remediation choices (migration 075 + endpoints; survives reload)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#152</td><td>UX02 · EntityComments</td><td>Generic, reusable comment thread for any entity (migration 076 + @mention parse)</td><td><span class="pill done">shipped</span></td></tr>
+      <tr><td class="mono">#153</td><td>UX08 · Brief comments</td><td>EntityComments mounted on the brief stage</td><td><span class="pill partial">comments shipped</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>3 · Delivered vs the plan</h2>
+  <p>The plan = SPEC-002 (frontend UX revamp) + the personas/collaboration analysis (backlog Epic E16, the &ldquo;visible intelligence first&rdquo; sequence).</p>
+  <table>
+    <thead><tr><th>Plan area</th><th>Delivered</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Persona model (KC/SA/DM/EL) &amp; default landing</td><td>UX01 hook + picker; stage depth per persona</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Provenance-forward, confidence-tiered aesthetic</td><td>Fact-class glyphs, ProvenancePanel, readiness bars</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>7-stage engagement stepper wired to live data</td><td>All 7 containers (brief&hellip;workshop)</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Collaboration primitive (comments) across entities</td><td>Generic EntityComments; mounted on brief</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Agentic operating model (derive &rarr; checkpoint &rarr; advance)</td><td>Assemble/derive CTAs + mark-complete gates per stage</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>In-app brief authoring/editing</td><td>Read + discuss only</td><td><span class="pill partial">partial</span></td></tr>
+      <tr><td>Deliverables / export, activity timeline, war-room depth</td><td>&mdash;</td><td><span class="pill defer">backlog</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>4 · Delivered vs the vision</h2>
+  <h3>The Helix v8 benchmark (the CI-output gold standard)</h3>
+  <p>The benchmark's chain &mdash; <span class="mono">trigger &rarr; team moves &rarr; decision options &rarr; decision output</span>, probability-tiered, evidence-cited &mdash; is now produced by the system for a live asset, deterministically and fact-grounded.</p>
+  <table>
+    <thead><tr><th>Benchmark element</th><th>Our delivery</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Event-triggered scenarios w/ priors + evidence</td><td>PB-H09 first-class scenarios; cite dossier facts</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Typed insights (risk/opp/assumption/trigger) w/ citations</td><td>Synthesis derivation + synthesis-test gate</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Per-team moves + impact vectors</td><td>Rational-interest moves + directional impact (structural)</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Decision options w/ recommendation</td><td>3 mutually-exclusive options, one recommended</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Quantitative NPV per option / Nash payoff matrix</td><td>Deliberately left blank (no value model yet)</td><td><span class="pill defer">deferred</span></td></tr>
+      <tr><td>Learn loop: re-calibrate scenario priors from outcomes</td><td>&mdash; (needs the signal&rarr;scenario link + H14)</td><td><span class="pill defer">deferred</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>The horizontal intelligence substrate</h3>
+  <p>Per the steer that the data + sense layer is a <em>reusable horizontal substrate</em> with pluggable orchestrating agents above it: the CI walkthrough is built as <strong>one consumer</strong> of a domain-neutral knowledge model. The Data Hub design is captured as deferred Epic E17 (PB-D01&ndash;D16), framed to keep the layer free of CI-specific coupling. No work was done that couples the data layer to CI.</p>
+
+  <h2>5 · Engineering posture</h2>
+  <div class="card accent">
+    <ul class="tight">
+      <li><strong>Real-DB gated.</strong> Every loop with backend impact was red-teamed against the live Railway DB on the semaglutide engagement &mdash; not mocks. This caught real issues (the all-scenarios-blocked dead-end, a self-referential competitor, recall-noise concentration).</li>
+      <li><strong>Additive prod writes only.</strong> Migrations 072&ndash;076 are additive + idempotent (<code>IF NOT EXISTS</code>); the facts ledger is append-only; no destructive cleanup ran. Throwaway red-team rows were cleaned up.</li>
+      <li><strong>Reuse-first.</strong> One container pattern (loading &rarr; not-derived &rarr; ready &rarr; error) reused across all 7 stages; ProvenancePanel and EntityComments are shared primitives, not per-stage copies.</li>
+      <li><strong>No fabrication.</strong> NPV was left blank rather than invent bn-DKK figures; the brief shows an honest empty state where no BCB exists; impact vectors are labelled &ldquo;structural estimate, not a forecast.&rdquo;</li>
+      <li><strong>Verification gate per loop:</strong> <code>vitest run</code> (906 passing) + <code>tsc --noEmit</code> + <code>vite build</code>, plus the relevant Python suites.</li>
+    </ul>
+  </div>
+
+  <h2>6 · Honest gaps &amp; what they need</h2>
+  <div class="card warn">
+    <ul class="tight">
+      <li><span class="glyph">◆</span> <strong>NPV value model (PB-H10 remaining).</strong> Decision options carry no NPV. Needs a defensible model (PharmaMetrics-driven or analyst-supplied) before showing figures.</li>
+      <li><span class="glyph">◆</span> <strong>In-app brief editing (PB-UX08 remaining).</strong> The brief is read + discussable; authoring/editing it outside the create flow needs a <code>PUT</code> endpoint + form.</li>
+      <li><span class="glyph">◆</span> <strong>Demo brief is empty.</strong> The semaglutide engagement has no BCB authored, so the brief stage shows the empty state &mdash; author one via the create flow for a full demo.</li>
+      <li><span class="glyph">◈</span> <strong>Learn loop (PB-H14).</strong> Scenario priors are structural heuristics; they don't yet re-calibrate from outcomes. Needs the signal&rarr;scenario link (PB-H01).</li>
+      <li><span class="glyph">◇</span> <strong>Data breadth (Epic E17).</strong> All sources are public today; licensed/internal/contributed tiers + transcript ingestion are the deferred data-hub track.</li>
+    </ul>
+  </div>
+
+  <h2>7 · Recommended next</h2>
+  <ol>
+    <li><strong>Author a BCB for the demo engagement</strong> so the brief stage shows real content (5-minute content task, not code).</li>
+    <li><strong>Learn loop (PB-H01 &rarr; H14)</strong> &mdash; the highest-leverage intelligence gap: make scenario probabilities move as signals arrive.</li>
+    <li><strong>Data Hub Phase 0 (E17 / PB-D01&ndash;D03)</strong> &mdash; activate the dormant document upload, register the quality-monitor hook, populate the evidence ledger on ingest. &ldquo;80% of the value for 20% of effort.&rdquo;</li>
+    <li><strong>NPV value model</strong> &mdash; only once there's a defensible basis; until then the structural impact vectors carry the war-gaming depth.</li>
+  </ol>
+
+  <div class="foot">
+    Generated for lead-dev review · grounded in PRODUCT_BACKLOG.md (Epics E15/E16/E17), SPEC-002, the personas analysis, and the Helix v8 benchmark · all claims trace to merged PRs #139&ndash;#153 on <code>main</code>.
+  </div>
+
+</div>
+</body>
+</html>
