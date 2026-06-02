@@ -88,12 +88,12 @@
 
   <h2>What's left — and the key missing loops</h2>
   <div class="card flag">
-    <b>The one that matters most: the Learn loop is open.</b> The flywheel is <span class="mono">sense → decide → act → <span class="hl">learn</span></span> — but today the loop never closes. Scenario priors are static structural heuristics; decision outcomes don't re-weight source trust; nothing feeds back into what Sense surfaces. <b>This is the single highest-leverage missing capability</b> (PB-H14 / PB-IX06). Until it closes, the system advises but does not get smarter.
+    <b>The one that matters most: the Learn loop doesn't close.</b> The flywheel is <span class="mono">sense → decide → act → <span class="hl">learn</span></span>. <b>Correction after code-review (the machinery is more built than first stated):</b> outcome detection is <i>wired and runs hourly</i> (<code>outcome_scheduler</code> registered in <code>api/app.py</code>), and the calibration primitives exist (<code>learning_service.ewma_update</code>, <code>outcome_detector</code>, <code>calibration_math</code>, <code>feedback_loops</code>). But it's effectively <b>dormant</b> — there are no committed decisions with observed outcomes yet to learn from (EWMA runs = 0) — and the two pieces that actually matter are <b>unbuilt</b>: (1) <b>scenario-prior recalibration</b> — the <code>scenarios.current_prob</code> / <code>calibration_note</code> columns exist but nothing writes them from arriving signals (PB-H14); (2) <b>feed re-ordering</b> from calibration (PB-IX06). So: the wiring is there, the loop is open. Highest-leverage gap once there's rich data + outcomes to learn from.
   </div>
   <table>
     <thead><tr><th>Missing loop</th><th>Why it matters</th><th>State</th></tr></thead>
     <tbody>
-      <tr><td><b>Learn loop</b> (PB-H14 → IX-6)</td><td>Closes the flywheel; priors recalibrate from outcomes &amp; re-order the feed</td><td><span class="pill gap">missing</span></td></tr>
+      <tr><td><b>Learn loop</b> (PB-H14 → IX-6)</td><td>Machinery built + scheduler runs; but scenario-prior recalibration + feed re-order are unbuilt → loop never closes</td><td><span class="pill partial">dormant</span></td></tr>
       <tr><td><b>Promote bridge</b> (PB-IX01)</td><td>signal → dossier/war-game/engagement; connects the islands</td><td><span class="pill gap">missing</span></td></tr>
       <tr><td><b>Data richness</b> (Part B)</td><td>The dossier domains starve — see below; <b>biggest quality lever</b></td><td><span class="pill gap">missing</span></td></tr>
       <tr><td>War-game depth (PB-H12/H13)</td><td>Game-theory Nash + autonomous simulation modes</td><td><span class="pill partial">partial</span></td></tr>
@@ -106,7 +106,7 @@
   <!-- ───────────────────────── PART B ───────────────────────── -->
   <div class="part">Part B · Data &amp; sense-layer richness</div>
   <h2>The diagnosis — measured, not guessed</h2>
-  <p class="lead">You're right that the data feels thin. But the cause is surprising: <b>it isn't that we lack sources — it's that the rich source data we already ingest never reaches the fact ledger the dossier reads.</b></p>
+  <p class="lead">You're right that the data feels thin. But the cause is surprising: <b>it isn't that we lack sources — it's that the rich structured data we already ingest never reaches the dossier as evidenced, domain-typed facts.</b> (Verified against the live DB + the dossier read-path code.)</p>
 
   <div class="card flag">
     <b>The smoking gun (live DB, 2 Jun):</b> the <code>facts</code> ledger — what every dossier, synthesis and scenario is built from — has <b>3,303 rows but only 2 distinct predicates</b>: <code>market_event</code> (3,302) and <code>wac_usd</code> (1). Meanwhile, sitting in entity tables, untouched by the ledger:
@@ -119,7 +119,7 @@
     </div>
   </div>
 
-  <p>So the dossier is effectively a <b>news-event monoculture</b>. 35,883 market events from RSS/news dominate; the structured clinical, safety, label and pricing data — already fetched and stored — is invisible to the dossier because <b>no step lifts it into typed domain facts</b>. That's why pricing/access shows a critical gap with a single price fact, why disease &amp; patient and HCP domains starve, and why scenarios lean on competitive-graph + news rather than evidence.</p>
+  <p><b>Precision after code-review (the first draft over-simplified this).</b> The dossier is <i>not</i> purely the facts ledger — <code>assemble_dossier</code> blends <b>four</b> feeds: the ledger (event facts) + <code>compose_dossier</code> recent signals + the competitive graph (related entities) + <code>PharmaMetrics</code> aggregate metric facts (e.g. "trial success rate 95%", "187 PubMed articles"). So it isn't barren — competitive and aggregate-clinical do get real content. <b>But the granular structured data — individual trial readouts/endpoints, specific safety signals, label indications, real prices — reaches none of those four paths as domain facts.</b> So the dossier has <i>aggregate metrics without the underlying evidence</i>: pricing/access shows a critical gap on a single WAC fact, safety has no FAERS-derived facts, and scenarios lean on the competitive graph + news rather than trial- and label-level evidence. The <b>facts ledger specifically</b> is the monoculture (2 predicates); the fix is to make the rich structured sources <i>emit into it</i>.</p>
 
   <div class="card win">
     <b>The good news:</b> this is a plumbing problem, not a sourcing problem. The connectors work, the data is in the building, the predicate→domain router already exists (<code>route_predicate_to_domain</code>), and the evidence-ledger schema is built. We need a thin <b>fact-emitter layer</b> that turns entity-table rows into domain facts (with evidence) — no new data sources required.
