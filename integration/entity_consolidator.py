@@ -71,10 +71,24 @@ COMPANY_FK_TABLES = [
 class EntityConsolidator:
     """Finds and merges duplicate drug and company entities."""
 
-    def __init__(self, db, domain_pack=None, dry_run: bool = False):
+    def __init__(self, db, domain_pack=None, dry_run: bool = False,
+                 rank_by_richness: bool = False, drug_name_normalizer=None):
         self.db = db
         self.domain_pack = domain_pack
         self.dry_run = dry_run
+        # rank_by_richness: pick the canonical row that owns the most data
+        # (facts + clinical_trials + entity_links) rather than by source
+        # authority. Keeps the survivor consistent with the dossier resolver,
+        # which richness-ranks duplicates (ci-data-quality-integration-audit).
+        self.rank_by_richness = rank_by_richness
+        # drug_name_normalizer: optional callable to group duplicates by a
+        # normalized name (e.g. strip salt forms / brand parentheticals) instead
+        # of exact LOWER(generic_name). Combo-safe normalizers keep multi-drug
+        # products in their own group.
+        self.drug_name_normalizer = drug_name_normalizer
+        # Restrict FK repointing to tables that actually exist with a drug_id
+        # column — a missing table would abort the whole per-group transaction.
+        self._drug_fk_tables = self._existing_drug_fk_tables()
 
         # Load company normalizer
         self._normalize_company = None
@@ -89,6 +103,42 @@ class EntityConsolidator:
             except ImportError:
                 self._normalize_company = lambda x: x.strip().lower()
 
+    def _existing_drug_fk_tables(self) -> list[str]:
+        """Subset of DRUG_FK_TABLES that exist with a drug_id column."""
+        try:
+            rows = self.db.fetch_all(
+                "SELECT table_name FROM information_schema.columns "
+                "WHERE column_name = 'drug_id' AND table_schema = 'public' "
+                "  AND table_name = ANY(%s)",
+                [list(DRUG_FK_TABLES)],
+            )
+            present = {r["table_name"] for r in rows}
+            return [t for t in DRUG_FK_TABLES if t in present]
+        except Exception:
+            logger.warning("could not introspect drug FK tables; using full list",
+                           exc_info=True)
+            return list(DRUG_FK_TABLES)
+
+    def _drug_richness(self, drug_id: str) -> int:
+        """How much data a drug row owns: facts + clinical_trials +
+        entity_links. Used to pick the canonical survivor."""
+        try:
+            row = self.db.fetch_one(
+                "SELECT "
+                " (SELECT count(*) FROM facts f "
+                "    WHERE f.subject_entity_type='drug' "
+                "      AND f.subject_entity_id = %s AND f.superseded_by IS NULL) "
+                " + (SELECT count(*) FROM clinical_trials ct WHERE ct.drug_id = %s) "
+                " + (SELECT count(*) FROM entity_links el "
+                "      WHERE el.source_entity_id = %s OR el.target_entity_id = %s) "
+                " AS richness",
+                [str(drug_id), str(drug_id), str(drug_id), str(drug_id)],
+            )
+            return int(row["richness"]) if row and row.get("richness") is not None else 0
+        except Exception:
+            logger.debug("richness lookup failed for %s", drug_id, exc_info=True)
+            return 0
+
     def run(self) -> dict:
         """Run full consolidation: drugs then companies."""
         results = {}
@@ -102,41 +152,43 @@ class EntityConsolidator:
 
     def consolidate_drugs(self) -> dict:
         """Find and merge duplicate drug records."""
-        stats = {"groups_found": 0, "records_merged": 0, "skipped": 0}
+        stats = {"groups_found": 0, "records_merged": 0, "skipped": 0,
+                 "plan": []}
 
-        # Find duplicate groups by normalized generic_name
-        groups = self.db.fetch_all(
-            """
-            SELECT LOWER(generic_name) AS norm_name, array_agg(id) AS ids, count(*) AS cnt
-            FROM drugs
-            WHERE record_status != 'superseded' AND generic_name IS NOT NULL
-            GROUP BY LOWER(generic_name)
-            HAVING count(*) > 1
-            ORDER BY count(*) DESC
-            """
-        )
-
+        groups = self._drug_duplicate_groups()
         stats["groups_found"] = len(groups)
         logger.info("Drug dedup: found %d duplicate groups", len(groups))
 
-        for group in groups:
-            norm_name = group["norm_name"]
-            drug_ids = group["ids"]
-
-            # Fetch full records for scoring
+        for norm_name, drug_ids in groups:
+            # Fetch full records for scoring (cast: ids may be uuid or str)
             drugs = self.db.fetch_all(
-                "SELECT * FROM drugs WHERE id = ANY(%s)",
-                [drug_ids],
+                "SELECT * FROM drugs WHERE id::text = ANY(%s)",
+                [[str(x) for x in drug_ids]],
             )
             if len(drugs) < 2:
                 stats["skipped"] += 1
                 continue
 
-            # Score and pick canonical
-            scored = [(self._score_drug(d), d) for d in drugs]
-            scored.sort(key=lambda x: (-x[0], x[1].get("created_at")))
+            # Pick canonical: by data richness (consistent with the dossier
+            # resolver) or by source authority + completeness.
+            if self.rank_by_richness:
+                scored = [(self._drug_richness(d["id"]), d) for d in drugs]
+            else:
+                scored = [(self._score_drug(d), d) for d in drugs]
+            scored.sort(key=lambda x: (-x[0], str(x[1].get("created_at") or "")))
             canonical = scored[0][1]
             duplicates = [s[1] for s in scored[1:]]
+
+            stats["plan"].append({
+                "name": norm_name,
+                "canonical": str(canonical["id"]),
+                "canonical_name": canonical.get("generic_name"),
+                "score": scored[0][0],
+                "merge": [
+                    {"id": str(d["id"]), "name": d.get("generic_name")}
+                    for d in duplicates
+                ],
+            })
 
             if self.dry_run:
                 logger.info(
@@ -156,6 +208,41 @@ class EntityConsolidator:
             )
 
         return stats
+
+    def _drug_duplicate_groups(self) -> list[tuple[str, list]]:
+        """Return [(norm_name, [drug_ids])] for groups with >1 active row.
+
+        Uses ``drug_name_normalizer`` when provided (e.g. strip salt forms /
+        brand parentheticals — combo-safe), else exact LOWER(generic_name).
+        Excludes already-merged/superseded rows."""
+        active = (
+            "(record_status IS DISTINCT FROM 'superseded' "
+            " AND record_status IS DISTINCT FROM 'merged')"
+        )
+        if self.drug_name_normalizer is None:
+            rows = self.db.fetch_all(
+                f"""
+                SELECT LOWER(generic_name) AS norm_name, array_agg(id) AS ids
+                  FROM drugs
+                 WHERE {active} AND generic_name IS NOT NULL
+                 GROUP BY LOWER(generic_name)
+                HAVING count(*) > 1
+                ORDER BY count(*) DESC
+                """
+            )
+            return [(r["norm_name"], r["ids"]) for r in rows]
+
+        rows = self.db.fetch_all(
+            f"SELECT id, generic_name FROM drugs "
+            f"WHERE {active} AND generic_name IS NOT NULL AND generic_name != ''"
+        )
+        buckets: dict[str, list] = {}
+        for r in rows:
+            norm = self.drug_name_normalizer(r["generic_name"])
+            if not norm or len(norm) < 2:
+                continue
+            buckets.setdefault(norm, []).append(r["id"])
+        return [(n, ids) for n, ids in buckets.items() if len(ids) > 1]
 
     def _score_drug(self, drug: dict) -> int:
         """Score a drug record for canonical selection."""
@@ -187,12 +274,28 @@ class EntityConsolidator:
                     params,
                 )
 
-            # 2. Repoint FK references in related tables
-            for table in DRUG_FK_TABLES:
-                self.db.execute(
-                    f"UPDATE {table} SET drug_id = %s WHERE drug_id = %s",
-                    [can_id, dup_id],
-                )
+            # 2. Repoint FK references in related tables (existing ones only).
+            # Conflict-safe: some tables have a unique constraint that includes
+            # drug_id (e.g. regulatory_milestones on
+            # drug_id+submission_type+submission_number). A blunt UPDATE would
+            # collide when the canonical already has the equivalent row. Use a
+            # savepoint and, on conflict, drop the duplicate's copies (the
+            # canonical already carries them — these are the SAME real drug).
+            for table in self._drug_fk_tables:
+                self._repoint_drug_fk(table, can_id, dup_id)
+
+            # 2b. Repoint text-keyed spine references (NOT real FKs, so the
+            # generic loop above misses them). Without this, facts/signals
+            # asserted against a merged duplicate would be orphaned — the
+            # dossier resolves to the canonical id and would lose that evidence.
+            # facts has no unique constraint on the subject, so a plain UPDATE
+            # is safe (and facts is append-only — never delete here).
+            self.db.execute(
+                "UPDATE facts SET subject_entity_id = %s "
+                "WHERE subject_entity_type = 'drug' AND subject_entity_id = %s",
+                [can_id, dup_id],
+            )
+            self._repoint_signals(can_id, dup_id)
 
             # 3. Repoint entity_links (both source and target)
             self._repoint_entity_links(can_id, dup_id, "drug")
@@ -422,46 +525,91 @@ class EntityConsolidator:
     # Entity links repointing (shared by drug and company merges)
     # ============================================================
 
+    def _repoint_drug_fk(self, table: str, can_id: str, dup_id: str) -> None:
+        """Repoint one FK table's drug_id dup→canonical, conflict-safe.
+
+        Uses a SQL savepoint so a unique-constraint collision doesn't abort the
+        whole per-group transaction. On conflict the duplicate's rows for that
+        table are dropped (the canonical — chosen as the richest, same real
+        drug — already holds the equivalents). `table` comes from the vetted
+        DRUG_FK_TABLES constant, so the f-string is safe."""
+        sp = f"sp_{table}"
+        self.db.execute(f"SAVEPOINT {sp}")
+        try:
+            self.db.execute(
+                f"UPDATE {table} SET drug_id = %s WHERE drug_id = %s",
+                [can_id, dup_id],
+            )
+            self.db.execute(f"RELEASE SAVEPOINT {sp}")
+        except Exception:
+            self.db.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+            self.db.execute(f"DELETE FROM {table} WHERE drug_id = %s", [dup_id])
+            self.db.execute(f"RELEASE SAVEPOINT {sp}")
+            logger.info("repoint %s: dropped duplicate rows for %s (conflict)",
+                        table, dup_id)
+
+    def _repoint_signals(self, can_id: str, dup_id: str) -> None:
+        """Repoint signals.primary_entity_id dup→canonical, conflict-safe.
+        Signals are never deleted here; on conflict the dup's signals are left
+        (rare; avoids destroying signal history)."""
+        self.db.execute("SAVEPOINT sp_signals")
+        try:
+            self.db.execute(
+                "UPDATE signals SET primary_entity_id = %s "
+                "WHERE primary_entity_type = 'drug' AND primary_entity_id = %s",
+                [can_id, dup_id],
+            )
+            self.db.execute("RELEASE SAVEPOINT sp_signals")
+        except Exception:
+            self.db.execute("ROLLBACK TO SAVEPOINT sp_signals")
+            self.db.execute("RELEASE SAVEPOINT sp_signals")
+            logger.info("repoint signals: left dup signals for %s (conflict)", dup_id)
+
     def _repoint_entity_links(self, canonical_id: str, duplicate_id: str, entity_type: str) -> None:
         """
         Repoint entity_links from duplicate to canonical, handling unique
         constraint conflicts on (source_entity_id, target_entity_id, link_type).
-        """
-        # Repoint source_entity_id
-        source_links = self.db.fetch_all(
-            "SELECT id, target_entity_id, link_type FROM entity_links WHERE source_entity_id = %s AND source_entity_type = %s",
-            [duplicate_id, entity_type],
-        )
-        for link in source_links:
-            # Check if canonical already has this link
-            existing = self.db.fetch_one(
-                "SELECT id FROM entity_links WHERE source_entity_id = %s AND target_entity_id = %s AND link_type = %s",
-                [canonical_id, link["target_entity_id"], link["link_type"]],
-            )
-            if existing:
-                # Canonical already covers this — delete the duplicate's link
-                self.db.execute("DELETE FROM entity_links WHERE id = %s", [link["id"]])
-            else:
-                # Safe to repoint
-                self.db.execute(
-                    "UPDATE entity_links SET source_entity_id = %s WHERE id = %s",
-                    [canonical_id, link["id"]],
-                )
 
-        # Repoint target_entity_id
-        target_links = self.db.fetch_all(
-            "SELECT id, source_entity_id, link_type FROM entity_links WHERE target_entity_id = %s AND target_entity_type = %s",
-            [duplicate_id, entity_type],
-        )
-        for link in target_links:
-            existing = self.db.fetch_one(
-                "SELECT id FROM entity_links WHERE source_entity_id = %s AND target_entity_id = %s AND link_type = %s",
-                [link["source_entity_id"], canonical_id, link["link_type"]],
-            )
-            if existing:
-                self.db.execute("DELETE FROM entity_links WHERE id = %s", [link["id"]])
-            else:
+        Set-based (4 statements) rather than per-link: high-degree nodes (e.g.
+        'placebo' touches every trial) have tens of thousands of links, and a
+        Python loop with a round-trip per link is pathologically slow on a
+        remote DB. First delete the duplicate's links the canonical already
+        has, then bulk-repoint the rest. A savepoint guards the rare residual
+        conflict (two duplicate links to the same target).
+        """
+        for side, other in (("source", "target"), ("target", "source")):
+            sp = f"sp_links_{side}"
+            self.db.execute(f"SAVEPOINT {sp}")
+            try:
+                # Drop duplicate's links that canonical already carries.
                 self.db.execute(
-                    "UPDATE entity_links SET target_entity_id = %s WHERE id = %s",
-                    [canonical_id, link["id"]],
+                    f"""
+                    DELETE FROM entity_links el
+                     WHERE el.{side}_entity_id = %s
+                       AND el.{side}_entity_type = %s
+                       AND EXISTS (
+                           SELECT 1 FROM entity_links c
+                            WHERE c.{side}_entity_id = %s
+                              AND c.{other}_entity_id = el.{other}_entity_id
+                              AND c.link_type = el.link_type)
+                    """,
+                    [duplicate_id, entity_type, canonical_id],
                 )
+                # Bulk-repoint the remainder.
+                self.db.execute(
+                    f"UPDATE entity_links SET {side}_entity_id = %s "
+                    f"WHERE {side}_entity_id = %s AND {side}_entity_type = %s",
+                    [canonical_id, duplicate_id, entity_type],
+                )
+                self.db.execute(f"RELEASE SAVEPOINT {sp}")
+            except Exception:
+                # Residual conflict (intra-duplicate dupes): drop the rest.
+                self.db.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                self.db.execute(
+                    f"DELETE FROM entity_links "
+                    f"WHERE {side}_entity_id = %s AND {side}_entity_type = %s",
+                    [duplicate_id, entity_type],
+                )
+                self.db.execute(f"RELEASE SAVEPOINT {sp}")
+                logger.info("repoint entity_links(%s): dropped residual for %s",
+                            side, duplicate_id)

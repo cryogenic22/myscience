@@ -4,7 +4,30 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.consolidate_drugs import _normalize_drug_name, _pick_canonical
+from scripts.consolidate_drugs import (
+    _normalize_drug_name,
+    _pick_canonical,
+    combo_safe_normalize,
+)
+
+
+class TestComboSafeNormalize:
+    def test_additive_combo_not_collapsed_to_mono(self):
+        # Hyzaar must NOT normalize to "losartan" (the monotherapy).
+        out = combo_safe_normalize("losartan potassium (+ hydrochlorothiazide)")
+        assert out != "losartan"
+        assert out == "losartan potassium (+ hydrochlorothiazide)"
+
+    def test_plain_variant_still_normalizes(self):
+        assert combo_safe_normalize("Semaglutide Oral Tablet") == "semaglutide"
+        assert combo_safe_normalize("sitagliptin phosphate") == "sitagliptin"
+
+    def test_and_combo_still_groups_identically(self):
+        # "X AND Y" combos (no additive '+') group by their shared normalized
+        # form so identical duplicate rows still merge.
+        a = combo_safe_normalize("VALSARTAN AND HYDROCHLOROTHIAZIDE")
+        b = combo_safe_normalize("valsartan and hydrochlorothiazide")
+        assert a == b
 
 
 class TestNormalizeDrugName:
