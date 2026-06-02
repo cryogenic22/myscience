@@ -17,18 +17,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Activity, LayoutGrid, Database, Target,
+  ArrowLeft, Activity, Target,
   ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase,
 } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
-import DigestTab from '../components/ci/DigestTab';
-import SignalsTab from '../components/ci/SignalsTab';
+import IntelligenceTab, { type IntelView } from '../components/ci/IntelligenceTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
 import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import BriefsTab from '../components/ci/decisions/BriefsTab';
-import InboxTab from '../components/ci/InboxTab';
 import InsightsTab from '../components/ci/InsightsTab';
 import EngagementsTab from '../components/ci/EngagementsTab';
 import EngagementDetailContainer from '../components/ci/EngagementDetailContainer';
@@ -47,15 +45,24 @@ type TabKey =
   | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'engagements'
   | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
+// IX-2 — map a legacy feed tab key to the consolidated Intelligence view.
+function viewFromTab(tab: TabKey): IntelView {
+  if (tab === 'inbox') return 'stream';
+  if (tab === 'signals') return 'signals';
+  return 'digest';
+}
+
 const ALL_TABS: Array<{
   key: TabKey;
   label: string;
   icon: any;
   enterprise?: boolean;
 }> = [
-  { key: 'inbox',       label: 'Sensing Feed', icon: Activity },
-  { key: 'digest',      label: 'Daily Digest', icon: LayoutGrid },
-  { key: 'signals',     label: 'Signals DB', icon: Database },
+  // IX-2 — the three former feed tabs (Sensing Feed / Daily Digest / Signals DB)
+  // are now one Intelligence surface with a view toggle. 'digest' is the
+  // canonical key (assessed/triaged is the natural landing); 'inbox'/'signals'
+  // still route here for deep-link back-compat (see viewFromTab).
+  { key: 'digest',      label: 'Intelligence', icon: Activity },
   { key: 'watchlist',   label: 'Watchlist', icon: Target },
   // Loop B — v7 engagement spine surfaced inside /ci. Sits between the
   // sensing surfaces and the war-room/decision surfaces so the IA
@@ -236,16 +243,14 @@ export default function CIPage() {
       }
     >
       <ContentRegion>
-        {tab === 'inbox' && (
-          <InboxTab
+        {(tab === 'digest' || tab === 'inbox' || tab === 'signals') && (
+          <IntelligenceTab
+            initialView={viewFromTab(tab)}
             onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)}
             onOpenWarRoom={openWarRoom}
-            onOpenSignals={() => setTab('signals')}
             onOpenInsights={() => setTab('insights')}
           />
         )}
-        {tab === 'digest' && <DigestTab />}
-        {tab === 'signals' && <SignalsTab onOpenWarRoom={openWarRoom} />}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
         {tab === 'engagements' && (
           activeEngagement
