@@ -632,6 +632,16 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
       3. entity_aliases exact match
       4. unresolved → fall back to the raw slug (caller still gets a valid,
          if empty, dossier — graceful degradation, never a crash)
+
+    DUPLICATE HANDLING (ci-data-quality-integration-audit, 2 Jun): the drugs
+    table holds many duplicate rows per generic (semaglutide ×17, tirzepatide
+    ×2, valsartan ×23). A plain ``LIMIT 1`` picked a winner by table order, so
+    'tirzepatide' could land on a 0-fact/0-trial duplicate while 'semaglutide'
+    landed on the rich one — different drugs collapsing into empty/look-alike
+    dossiers. We now rank candidate drug rows by data richness (facts +
+    clinical trials) and pick the richest, so the resolved id is the one that
+    actually carries the dossier's evidence. Non-destructive; the proper fix is
+    drug-entity consolidation (A6, supervised).
     """
     subject_type, ident = parse_asset_ref(asset)
     if not ident:
@@ -647,10 +657,21 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
     # Exact name match. Drugs also match brand_name (the demo case: 'wegovy').
     try:
         if subject_type == "drug":
+            # Rank duplicate matches by data richness so the id that owns the
+            # facts/trials wins, not whichever row the table returns first.
             row = db.fetch_one(
-                "SELECT id::text AS id FROM drugs "
-                "WHERE LOWER(generic_name) = LOWER(%s) "
-                "   OR LOWER(brand_name)  = LOWER(%s) LIMIT 1",
+                "SELECT d.id::text AS id, "
+                "  (SELECT count(*) FROM facts f "
+                "     WHERE f.subject_entity_type = 'drug' "
+                "       AND f.subject_entity_id = d.id::text "
+                "       AND f.superseded_by IS NULL) "
+                "  + (SELECT count(*) FROM clinical_trials ct "
+                "       WHERE ct.drug_id = d.id) AS richness "
+                "FROM drugs d "
+                "WHERE LOWER(d.generic_name) = LOWER(%s) "
+                "   OR LOWER(d.brand_name)  = LOWER(%s) "
+                "ORDER BY richness DESC, d.id "
+                "LIMIT 1",
                 [ident, ident],
             )
         else:

@@ -146,6 +146,30 @@ def test_resolve_unresolved_falls_back_to_raw_slug():
     assert kb.resolve_asset_to_subject(db, "drug:nonexistent") == ("drug", "nonexistent")
 
 
+def test_resolve_ranks_duplicate_drug_rows_by_richness():
+    """Audit RC1: duplicate drug rows (semaglutide ×17, tirzepatide ×2) were
+    resolved by table order, so a name could land on a 0-fact/0-trial dup. The
+    drugs query must rank candidates by data richness so the row that owns the
+    evidence wins. Pin the SQL so the ranking can't be silently dropped."""
+
+    class _CapturingDB:
+        def __init__(self):
+            self.sql = None
+
+        def fetch_one(self, sql, params=None):
+            if "from drugs" in (sql or "").lower():
+                self.sql = sql
+                return {"id": "rich-dup", "richness": 174}
+            return None
+
+    db = _CapturingDB()
+    assert kb.resolve_asset_to_subject(db, "drug:tirzepatide") == ("drug", "rich-dup")
+    s = db.sql.lower()
+    assert "richness" in s
+    assert "order by richness desc" in s
+    assert "clinical_trials" in s and "facts" in s
+
+
 # ── Pure: build_domains ────────────────────────────────────────────
 
 
