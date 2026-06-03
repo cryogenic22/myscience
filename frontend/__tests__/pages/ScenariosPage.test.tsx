@@ -25,6 +25,7 @@ const SCENARIOS = [
     },
     probability: 0.55,
     probabilityCurrent: 0.62,
+    calibrationNote: '3 signals on cagrisema since derivation re-weighted this scenario (prior 0.55 -> 0.62). Latest: "Lilly readout positive" (confirmed, 2026-05-20).',
     teamMoves: [
       { team: 'Lilly',  move: 'Aggressive WAC parity + premium specialist rebates',
         rationale: 'Maximises early-market lock-in given orforglipron oral advantage',
@@ -125,6 +126,21 @@ describe('ScenariosPage — scenario cards', () => {
     const { container } = setup();
     const card = container.querySelector('[data-scenario-id="scn-B"]') as HTMLElement;
     expect(within(card).getByText(/30%/)).toBeInTheDocument();
+  });
+
+  it('shows the calibration note when current_prob was re-weighted (PB-H14)', () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-scenario-id="scn-A"]') as HTMLElement;
+    const note = within(card).getByTestId('scenario-calibration-note');
+    expect(note).toBeInTheDocument();
+    expect(note.textContent).toMatch(/re-weighted this scenario/i);
+    expect(note.textContent).toMatch(/Lilly readout positive/);
+  });
+
+  it('shows no calibration note for an uncalibrated scenario', () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-scenario-id="scn-B"]') as HTMLElement;
+    expect(within(card).queryByTestId('scenario-calibration-note')).not.toBeInTheDocument();
   });
 
   it('clicking a card header fires onSelectScenario', () => {

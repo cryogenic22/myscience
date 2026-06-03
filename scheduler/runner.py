@@ -242,7 +242,34 @@ class DataPipelineScheduler:
             logger.exception("Post-task fact_emitters failed")
             results["fact_emitters"] = f"ERROR: {e}"
 
+        # 11. Scenario calibration (signals → scenario current_prob) — PB-H14.
+        # The Learn-loop vertebra: re-weights each live scenario's structural
+        # prior into a current probability from fresh signals about its focal
+        # entity, recording a calibration_note. Idempotent (recomputes from
+        # prior each cycle). Own connection.
+        try:
+            t0 = time.time()
+            results["scenario_calibration"] = (
+                self._run_scenario_calibration() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: scenario_calibration — %s", results["scenario_calibration"])
+        except Exception as e:
+            logger.exception("Post-task scenario_calibration failed")
+            results["scenario_calibration"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_scenario_calibration(self) -> str:
+        """Re-weight live scenarios from new signals (PB-H14). Own connection."""
+        from services.scenario_calibration import calibrate_all_engagements
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = calibrate_all_engagements(db, limit=200)
+            return f"OK: {stats['scenarios_updated']} updated across {stats['engagements']} engagements"
+        finally:
+            db.close()
 
     def _run_fact_emitters(self, limit: int = 200) -> str:
         """Converge recent entity rows into the facts ledger (DR-8). Mirrors
