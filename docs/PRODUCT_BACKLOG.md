@@ -25,13 +25,13 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 8     |
-| triaged       | 115   |
+| in-progress   | 7     |
+| triaged       | 114   |
 | blocked       | 0     |
 | proposed      | 1     |
-| shipped (90d) | 25    |
+| shipped (90d) | 28    |
 
-## Currently in flight (8)
+## Currently in flight (7)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
@@ -40,7 +40,6 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
-- [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -2035,15 +2034,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL06] Wire emit_document_facts into the upload route (S1.3)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
-- **Blocked by**: PB-SL03
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: After a deck/PDF upload, run emit_document_facts so trial-readout facts land in the ledger automatically (closes the DR-9 loop end-to-end). Needs the real StructuredCall (OpenAI/Anthropic adapter) + a live run on a real deck. Auto-emit + surface the new facts in the agent activity feed.
+- **Notes**: SHIPPED (commit 419b4a7). `default_structured_call()` builds an OpenAI StructuredCall from OPENAI_API_KEY (model MZ_EXTRACTION_MODEL, default gpt-4o-mini), None if unconfigured. Upload route → emit_document_facts → mint_signals_from_facts; response gains facts_emitted + signals_minted; best-effort (LLM error never breaks upload). LIVE GATE (real OpenAI + prod DB): a REDEFINE 4 readout deck → 1 trial_result fact ("Phase 3, primary endpoint not met, in obesity (REDEFINE 4)", corporate) → 1 high-impact signal via signal_facts. Full deck→facts→signals loop closed. +1 test; backend 32.
 
 #### [PB-SL07] Emit signals from high-impact fact deltas — unify the two stores (S2.1)
 - **Type**: feature
@@ -2056,27 +2054,38 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-06-03
 - **Notes**: SHIPPED (commit 409ed8b + migration 078). `services/fact_signals.py mint_signals_from_facts` — selective (SIGNAL_WORTHY predicates only), evidence-required (fact.source_doc_id → signal evidence), idempotent (skips facts already in signal_facts). fact_class→confidence_tier, predicate→impact+KBQ; minted as 'candidate'. Live: 65 signals from DR-4 boxed warnings, idempotent, provenance chain signal→fact→evidence intact. Carried the signal_facts edge + event_id-nullable (the schema half of SL05). +8 tests; backend 49 pass.
 
-#### [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2)
+#### [PB-SL08] Signals DB filter set: status + confidence + date (S2.2)
 - **Type**: enhancement
-- **Status**: in-progress
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: PARTIAL (commit e6dc621): shipped the **status filter** (Live / All statuses / Candidate / Reviewed / Shipped — `status=all` reveals the SL07 auto-minted candidates) + **confidence-tier filter** in the Signals DB; API gained `confidence` + `status=all`. +4 tests, gate green. REMAINING: date-range filter; make kbq_views the primary "curated for CI / query" entry point (ask a business question → get the classed, sourced facts that answer it) — kbq_views backend + /entities/{type}/{id}/kbq already exist and already include candidate signals, so this is a UI surface.
+- **Notes**: SHIPPED (commits e6dc621 + 95ce06f). Signals DB filter set complete: **status** (Live / All statuses / Candidate / Reviewed / Shipped — `status=all` reveals SL07 candidates) + **confidence-tier** + **date-range** (since_days 7/30/90), alongside existing search / impact / KBQ. API gained `confidence`, `status=all`, `since_days`. +6 tests; signals API 26, tsc/build, full vitest 923. The "KBQ as primary query surface" half is carved to PB-SL10 (separate UI, backed by the existing /entities/{type}/{id}/kbq endpoint).
+
+#### [PB-SL10] KBQ-as-primary-query-surface UI (curated-for-CI entry point)
+- **Type**: feature
+- **Status**: proposed
+- **Priority**: medium
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Carved from SL08. Make the 8 KBQs the primary "ask a business question → get the classed, sourced facts/signals that answer it" entry point. Backend exists (`services/kbq_views.build_entity_kbqs` + `GET /entities/{type}/{id}/kbq`, already includes candidate signals); this is the UI surface (entity picker → 8 KBQ cards with fact-class glyphs + provenance), reusing FactClassGlyph + the SL05 linked-facts pattern.
 
 #### [PB-SL09] market_events ingest-dedup + connector scheduling cadence (S3.1)
 - **Type**: bug
-- **Status**: proposed
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: Fix the recall re-insert at source (the read-time dedup in SL01 is a symptom fix): a dedup key/unique constraint on market_events so the recall connector stops inserting the same event thousands of times. Pairs with connector fetch-cadence (overlaps E17 PB-D08).
+- **Notes**: SHIPPED (commit 6d316ac). Root cause: `_store_event` never populated `event_hash` (all 36,463 rows NULL → the existing partial unique idx_events_hash never fired) and had no ON CONFLICT. Now computes a stable `_event_hash` (case/whitespace-normalised) + `ON CONFLICT (event_hash) WHERE event_hash IS NOT NULL DO NOTHING`, returning the existing id on conflict. Live gate: 2nd insert of same hash skipped. +4 tests. STOPS NEW dups; existing 36k NULL rows still collapsed at read time (SL01) — backfilling event_hash needs the 211 dup groups removed first (supervised destructive cleanup, deferred like A6). Connector fetch-cadence overlaps E17 PB-D08 (separate).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
