@@ -40,6 +40,13 @@ describe('StandaloneDossierTab', () => {
     expect(screen.getByTestId('dossier-page')).toHaveTextContent('drug:semaglutide');
   });
 
+  it('PB-IX01: auto-builds when seeded with an initialAsset (signal promote)', async () => {
+    (dossierPreviewApi.get as any).mockResolvedValue(snap('drug:tirzepatide'));
+    render(<StandaloneDossierTab initialAsset="drug:tirzepatide" />);
+    await waitFor(() => expect(screen.getByTestId('dossier-preview-ready')).toBeInTheDocument());
+    expect(dossierPreviewApi.get).toHaveBeenCalledWith('drug:tirzepatide');
+  });
+
   it('shows an error when the preview fails', async () => {
     (dossierPreviewApi.get as any).mockRejectedValue(new Error('500: boom'));
     render(<StandaloneDossierTab />);

@@ -15,13 +15,17 @@
  * Submit → POST /engagements → caller receives the new engagement for
  * navigation.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { engagementsApi, type EngagementDTO } from '../../api';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: (engagement: EngagementDTO) => void;
+  /** PB-IX01 — seed the form when promoting from a signal. */
+  initialAsset?: string;
+  initialName?: string;
+  initialContext?: string;
 }
 
 type Situation = 'launch' | 'defense' | 'lcm';
@@ -32,7 +36,9 @@ const SITUATIONS: { value: Situation; label: string; blurb: string }[] = [
   { value: 'lcm', label: 'LCM', blurb: 'Life-cycle management of a mature asset' },
 ];
 
-export default function NewEngagementModal({ open, onClose, onCreated }: Props) {
+export default function NewEngagementModal({
+  open, onClose, onCreated, initialAsset, initialName, initialContext,
+}: Props) {
   const [name, setName] = useState('');
   const [asset, setAsset] = useState('');
   const [situation, setSituation] = useState<Situation>('launch');
@@ -41,6 +47,16 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
   const [sponsor, setSponsor] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // PB-IX01 — when promoting a signal, the modal opens pre-filled. Seed on
+  // each open transition so a fresh promote always reflects the latest signal.
+  useEffect(() => {
+    if (!open) return;
+    if (initialAsset) setAsset(initialAsset);
+    if (initialName) setName(initialName);
+    if (initialContext) setContext(initialContext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 

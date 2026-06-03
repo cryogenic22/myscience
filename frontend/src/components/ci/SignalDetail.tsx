@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Swords } from 'lucide-react';
+import { Swords, BookOpen, Briefcase } from 'lucide-react';
 import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
@@ -86,6 +86,26 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
       setBusy(null);
     }
   };
+
+  // PB-IX01 — promote bridge: seed downstream work from this signal. War-room
+  // (Simulate) + Decision (Frame) already exist above; these complete the set
+  // with a standalone dossier and a full engagement, URL-driven like the
+  // existing "View dossier" link so no extra prop threading is needed.
+  const entityRef =
+    signal.primary_entity_type && signal.primary_entity_id && signal.primary_entity_id !== 'market'
+      ? `${signal.primary_entity_type}:${signal.primary_entity_id}`
+      : null;
+  const seedName = signal.primary_entity_name
+    ? `${signal.primary_entity_name} — signal response`
+    : signal.headline.slice(0, 80);
+  const seedContext = signal.summary || signal.headline;
+  const dossierHref = entityRef
+    ? `/ci?tab=dossier&asset=${encodeURIComponent(entityRef)}`
+    : null;
+  const engagementHref = entityRef
+    ? `/ci?tab=engagements&new=1&asset=${encodeURIComponent(entityRef)}` +
+      `&seedName=${encodeURIComponent(seedName)}&seedContext=${encodeURIComponent(seedContext)}`
+    : null;
 
   const created = signal.created_at ? new Date(signal.created_at).toLocaleString() : '—';
   const reviewed = signal.reviewed_at ? new Date(signal.reviewed_at).toLocaleString() : null;
@@ -192,6 +212,42 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
           >
             View {signal.primary_entity_name || 'entity'} dossier →
           </a>
+        )}
+
+        {/* PB-IX01 — promote bridge: seed a dossier or an engagement from this signal. */}
+        {entityRef && (
+          <div data-testid="signal-promote" className="flex items-center gap-2 flex-wrap mt-3">
+            <span
+              className="text-[10px] uppercase font-medium"
+              style={{ color: 'var(--color-ink-4)', letterSpacing: '0.08em' }}
+            >
+              Promote
+            </span>
+            <a
+              data-testid="promote-dossier"
+              href={dossierHref!}
+              className="text-[11px] font-medium inline-flex items-center gap-1.5"
+              style={{
+                padding: '5px 12px', borderRadius: '6px', textDecoration: 'none',
+                border: '1px solid var(--color-line)', color: 'var(--color-ink)',
+              }}
+              title="Build a standalone 8-domain dossier for this asset, seeded from the signal."
+            >
+              <BookOpen size={12} /> Build dossier
+            </a>
+            <a
+              data-testid="promote-engagement"
+              href={engagementHref!}
+              className="text-[11px] font-medium inline-flex items-center gap-1.5"
+              style={{
+                padding: '5px 12px', borderRadius: '6px', textDecoration: 'none',
+                border: '1px solid var(--color-line)', color: 'var(--color-ink)',
+              }}
+              title="Start a full CI engagement on this asset, pre-briefed with the signal."
+            >
+              <Briefcase size={12} /> Start engagement
+            </a>
+          </div>
         )}
       </div>
 

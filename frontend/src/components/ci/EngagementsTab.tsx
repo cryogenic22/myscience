@@ -75,13 +75,36 @@ function deriveStats(items: EngagementDTO[]): PortfolioStats {
 
 interface Props {
   onEngagementOpen?: (id: string) => void;
+  /** PB-IX01 — promote bridge: open the create modal pre-seeded from a signal. */
+  autoNew?: boolean;
+  seedAsset?: string;
+  seedName?: string;
+  seedContext?: string;
+  /** Called once the seed has been consumed so the URL params can be cleared. */
+  onSeedConsumed?: () => void;
 }
 
-export default function EngagementsTab({ onEngagementOpen }: Props) {
+export default function EngagementsTab({
+  onEngagementOpen, autoNew, seedAsset, seedName, seedContext, onSeedConsumed,
+}: Props) {
   const [items, setItems] = useState<EngagementDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  // Capture the promote seed into local state so it survives the URL-param
+  // clear (onSeedConsumed) that fires in the same tick.
+  const [seed, setSeed] = useState<{ asset?: string; name?: string; context?: string } | null>(null);
+
+  // PB-IX01 — auto-open the create modal when arriving via a signal promote
+  // (?new=1). Fire once; clear the URL seed so closing the modal stays closed.
+  useEffect(() => {
+    if (autoNew) {
+      setSeed({ asset: seedAsset, name: seedName, context: seedContext });
+      setModalOpen(true);
+      onSeedConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoNew]);
 
   const load = () => {
     setLoading(true);
@@ -128,7 +151,7 @@ export default function EngagementsTab({ onEngagementOpen }: Props) {
       <button
         type="button"
         data-testid="engagements-new-button"
-        onClick={() => setModalOpen(true)}
+        onClick={() => { setSeed(null); setModalOpen(true); }}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -221,6 +244,9 @@ export default function EngagementsTab({ onEngagementOpen }: Props) {
       {Body}
       <NewEngagementModal
         open={modalOpen}
+        initialAsset={seed?.asset}
+        initialName={seed?.name}
+        initialContext={seed?.context}
         onClose={() => setModalOpen(false)}
         onCreated={(eng) => {
           setModalOpen(false);

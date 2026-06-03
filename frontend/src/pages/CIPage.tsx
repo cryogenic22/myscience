@@ -288,9 +288,14 @@ export default function CIPage() {
         {tab === 'kbq' && <KbqQueryTab />}
         {tab === 'dossier' && (
           <StandaloneDossierTab
-            onPromote={() => {
+            initialAsset={params.get('asset') ?? undefined}
+            onPromote={(asset) => {
+              // PB-IX01 — carry the asset into the engagement create flow.
               const next = new URLSearchParams(params);
               next.set('tab', 'engagements');
+              next.set('new', '1');
+              if (asset) next.set('asset', asset);
+              next.delete('stage');
               setParams(next, { replace: false });
             }}
           />
@@ -315,6 +320,20 @@ export default function CIPage() {
                 }}
               />
             : <EngagementsTab
+                autoNew={params.get('new') === '1'}
+                seedAsset={params.get('asset') ?? undefined}
+                seedName={params.get('seedName') ?? undefined}
+                seedContext={params.get('seedContext') ?? undefined}
+                onSeedConsumed={() => {
+                  // PB-IX01 — clear the promote seed so closing the modal stays
+                  // closed (and a refresh doesn't reopen it).
+                  const next = new URLSearchParams(params);
+                  next.delete('new');
+                  next.delete('asset');
+                  next.delete('seedName');
+                  next.delete('seedContext');
+                  setParams(next, { replace: true });
+                }}
                 onEngagementOpen={(id) => {
                   const next = new URLSearchParams(params);
                   next.set('tab', 'engagements');

@@ -63,6 +63,24 @@ describe('NewEngagementModal', () => {
     });
   });
 
+  it('PB-IX01: pre-fills asset/name/context when seeded from a signal promote', () => {
+    render(
+      <NewEngagementModal
+        open={true}
+        onClose={() => {}}
+        onCreated={() => {}}
+        initialAsset="drug:semaglutide"
+        initialName="Semaglutide — signal response"
+        initialContext="FDA expands the obesity label."
+      />,
+    );
+    expect((screen.getByTestId('ne-asset') as HTMLInputElement).value).toBe('drug:semaglutide');
+    expect((screen.getByTestId('ne-name') as HTMLInputElement).value).toBe('Semaglutide — signal response');
+    expect((screen.getByTestId('ne-context') as HTMLTextAreaElement).value).toBe('FDA expands the obesity label.');
+    // Seeded form is immediately submittable (name + asset present).
+    expect((screen.getByTestId('ne-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('renders the agent-context fields (context + key questions)', () => {
     render(<NewEngagementModal open={true} onClose={() => {}} onCreated={() => {}} />);
     expect(screen.getByTestId('ne-context')).toBeInTheDocument();

@@ -6,7 +6,7 @@
  * (via /dossier-preview) and the same EngagementDossierPage + ProvenancePanel
  * surfaces. Promote to a full engagement when the work warrants it.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { dossierPreviewApi, type DossierSnapshotDTO } from '../../api';
 import {
   EngagementDossierPage,
@@ -19,6 +19,8 @@ import ProvenancePanel from './ProvenancePanel';
 interface Props {
   /** Promote the current asset to a full engagement (e.g. open the create flow). */
   onPromote?: (asset: string) => void;
+  /** PB-IX01 — seed the asset (e.g. from a signal promote) and auto-build. */
+  initialAsset?: string;
 }
 
 function toDomainViews(snapshot: DossierSnapshotDTO): DomainView[] {
@@ -34,12 +36,22 @@ function toDomainViews(snapshot: DossierSnapshotDTO): DomainView[] {
   }));
 }
 
-export default function StandaloneDossierTab({ onPromote }: Props) {
-  const [asset, setAsset] = useState('semaglutide');
+export default function StandaloneDossierTab({ onPromote, initialAsset }: Props) {
+  const [asset, setAsset] = useState(initialAsset || 'semaglutide');
   const [snapshot, setSnapshot] = useState<DossierSnapshotDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openFact, setOpenFact] = useState<Fact | null>(null);
+
+  // PB-IX01 — when seeded from a signal promote, build immediately so the user
+  // lands on the dossier, not an empty form.
+  useEffect(() => {
+    if (initialAsset && initialAsset.trim()) {
+      setAsset(initialAsset);
+      build(initialAsset);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAsset]);
 
   const build = async (a: string) => {
     const target = a.trim();
