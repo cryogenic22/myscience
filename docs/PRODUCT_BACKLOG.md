@@ -25,13 +25,13 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 7     |
+| in-progress   | 8     |
 | triaged       | 115   |
 | blocked       | 0     |
-| proposed      | 2     |
+| proposed      | 1     |
 | shipped (90d) | 25    |
 
-## Currently in flight (7)
+## Currently in flight (8)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
@@ -40,6 +40,7 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
+- [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -2057,14 +2058,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2)
 - **Type**: enhancement
-- **Status**: proposed
+- **Status**: in-progress
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: Make kbq_views the primary "curated for CI / query" entry point (ask a business question → get the classed, sourced facts that answer it). Add confidence-tier + date-range filters to the Signals DB to complete the filter set (search + KBQ + impact shipped in SL02).
+- **Notes**: PARTIAL (commit e6dc621): shipped the **status filter** (Live / All statuses / Candidate / Reviewed / Shipped — `status=all` reveals the SL07 auto-minted candidates) + **confidence-tier filter** in the Signals DB; API gained `confidence` + `status=all`. +4 tests, gate green. REMAINING: date-range filter; make kbq_views the primary "curated for CI / query" entry point (ask a business question → get the classed, sourced facts that answer it) — kbq_views backend + /entities/{type}/{id}/kbq already exist and already include candidate signals, so this is a UI surface.
 
 #### [PB-SL09] market_events ingest-dedup + connector scheduling cadence (S3.1)
 - **Type**: bug
