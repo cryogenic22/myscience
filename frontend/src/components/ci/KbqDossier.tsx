@@ -43,15 +43,18 @@ function ItemRow({
   last: boolean;
   onOpen?: (signalId: string) => void;
 }) {
-  const clickable = Boolean(onOpen && item.signal_id);
+  // Signal items open the provenance drawer (signal → fact → evidence). Fact
+  // items are already the ledger leaf — they show their source link inline.
+  const isFact = item.source === 'fact';
+  const clickable = Boolean(onOpen && item.signal_id && !isFact);
   return (
-    <button
-      type="button"
+    <div
       data-kbq-item
-      onClick={clickable ? () => onOpen!(item.signal_id) : undefined}
-      disabled={!clickable}
+      data-kbq-source={item.source ?? 'signal'}
+      onClick={clickable ? () => onOpen!(item.signal_id as string) : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
       style={{
-        all: 'unset',
         display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 0',
         width: '100%', boxSizing: 'border-box',
         borderBottom: last ? 'none' : '1px solid var(--color-line)',
@@ -68,7 +71,12 @@ function ItemRow({
           {item.claim}
         </p>
         <div style={{ marginTop: 5, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
-          <FactClassGlyph confidence_tier={item.confidence_tier} size={13} />
+          {/* Fact items glyph from their explicit class; signals derive it. */}
+          <FactClassGlyph
+            factClass={isFact ? ((item.fact_class as any) ?? undefined) : undefined}
+            confidence_tier={item.confidence_tier}
+            size={13}
+          />
           {item.confidence_tier && (
             <span style={{ fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-ink-3)' }}>
               {item.confidence_tier}
@@ -79,12 +87,23 @@ function ItemRow({
               {item.evidence_ids.length} EVIDENCE
             </span>
           )}
+          {isFact && item.source_url && (
+            <a
+              href={item.source_url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: 9.5, color: 'var(--color-accent)' }}
+            >
+              {item.source_label || 'source'} ↗
+            </a>
+          )}
           {fmtDate(item.date) && (
             <span style={{ fontSize: 9.5, color: 'var(--color-ink-4)' }}>{fmtDate(item.date)}</span>
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -123,7 +142,7 @@ function KbqCard({ view, onOpenSignal }: { view: KbqView; onOpenSignal?: (id: st
         <div>
           {view.items.map((it, i) => (
             <ItemRow
-              key={it.signal_id + i}
+              key={(it.signal_id || it.fact_id || 'item') + i}
               item={it}
               last={i === view.items.length - 1}
               onOpen={onOpenSignal}

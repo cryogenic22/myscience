@@ -1117,11 +1117,20 @@ export const bridgeApi = {
 
 export interface KbqItem {
   claim: string;
-  signal_id: string;
+  /** PB-SL11 — 'signal' (curated) or 'fact' (the underlying ledger). */
+  source?: 'signal' | 'fact';
+  /** null for fact items (they carry fact_id instead). */
+  signal_id: string | null;
+  fact_id?: string | null;
+  /** PB-SL11 — fact_class for the glyph on fact items. */
+  fact_class?: string | null;
   evidence_ids: string[];
   impact_tier: 'high' | 'medium' | 'low' | null;
   confidence_tier: string | null;
   date: string | null;
+  /** PB-SL11 — provenance for fact items (source registry id + URL). */
+  source_label?: string | null;
+  source_url?: string | null;
 }
 export interface KbqView {
   kbq: number;

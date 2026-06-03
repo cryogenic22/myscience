@@ -19,10 +19,31 @@ pricing_access, ai_digital, esg_supply).
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict, defaultdict
 
 logger = logging.getLogger(__name__)
 
 _MAX_ITEMS_PER_KBQ = 10
+_MAX_FACTS_FETCH = 400  # bound the ledger pull before per-KBQ capping
+
+# PB-SL11 — route the FACT LEDGER into the KBQ surface so it is a true lens over
+# the knowledge store, not just the (thin) curated signals table. Each known
+# predicate maps to the KBQ it answers; unmapped predicates (e.g. the noisy
+# market_event bulk — recalls/shortages) are deliberately skipped so they don't
+# flood a KBQ. Facts complement signals: signals are the scored/curated subset,
+# facts are the underlying evidence the dossier is built from.
+_PREDICATE_KBQ: dict[str, int] = {
+    "label_indication": 1,      # Indications
+    "disease_evidence": 1,      # epidemiology / disease context
+    "clinical_trial": 3,        # Clinical
+    "trial_result": 3,
+    "adverse_event": 3,         # safety
+    "safety_signal": 3,
+    "key_publication": 3,
+    "mechanism_of_action": 3,
+    "wac_usd": 7,               # Pricing
+    "drug_pricing": 7,          # future-proof (no rows yet)
+}
 
 # The 8 KBQs, each mapped to the signal tags that feed it. SWOT (6) is a
 # synthesis over the others rather than a tag, so it has no direct tags in v1.
@@ -47,12 +68,52 @@ def kbq_tags_for(kbq: int) -> list[str]:
 def _item_from_signal(sig: dict) -> dict:
     return {
         "claim": sig.get("headline") or "",
+        "source": "signal",
         "signal_id": str(sig.get("id")),
+        "fact_id": None,
+        "fact_class": None,  # frontend derives the glyph from confidence_tier
         "evidence_ids": [str(e) for e in (sig.get("evidence_document_ids") or [])],
         "impact_tier": sig.get("impact_tier"),
         "confidence_tier": sig.get("confidence_tier"),
         "date": sig.get("created_at"),
+        "source_label": None,
+        "source_url": None,
     }
+
+
+def _item_from_fact(f: dict) -> dict:
+    """A KBQ item drawn from the fact ledger (PB-SL11). Carries its fact_class
+    (for the glyph) + source link (provenance) rather than a signal id."""
+    date = f.get("valid_from")
+    return {
+        "claim": (f.get("claim") or f.get("predicate") or "").strip(),
+        "source": "fact",
+        "signal_id": None,
+        "fact_id": str(f.get("id")),
+        "fact_class": f.get("fact_class"),
+        "evidence_ids": [],
+        "impact_tier": None,
+        "confidence_tier": None,  # facts carry numeric confidence, not a tier
+        "date": date.isoformat() if hasattr(date, "isoformat") else (str(date) if date else None),
+        "source_label": f.get("source_id"),
+        "source_url": f.get("source_url"),
+    }
+
+
+def _diversify_by_predicate(facts: list[dict]) -> list[dict]:
+    """Round-robin facts by predicate so a KBQ shows a MIX (a trial, an adverse
+    event, a label, a publication) rather than 10 near-identical trial rows.
+    Preserves the within-predicate order (confidence DESC) the query produced."""
+    groups: "OrderedDict[str, list]" = OrderedDict()
+    for f in facts:
+        groups.setdefault(f.get("predicate") or "", []).append(f)
+    out: list[dict] = []
+    while any(groups.values()):
+        for q in list(groups.keys()):
+            bucket = groups[q]
+            if bucket:
+                out.append(bucket.pop(0))
+    return out
 
 
 def _fetch_entity_signals(db, entity_type: str, entity_id: str) -> list[dict]:
@@ -73,14 +134,49 @@ def _fetch_entity_signals(db, entity_type: str, entity_id: str) -> list[dict]:
         return []
 
 
+def _fetch_entity_facts(db, entity_type: str, entity_id: str) -> list[dict]:
+    """Pull the entity's ledger facts for the KBQ-mapped predicates (PB-SL11).
+    Joins evidence_records for the source link (provenance)."""
+    sql = """
+        SELECT f.id::text AS id, f.predicate, f.fact_class,
+               f.object_value->>'description' AS claim,
+               f.confidence, f.valid_from,
+               e.source_id, e.source_url
+          FROM facts f
+          LEFT JOIN evidence_records e ON e.evidence_id = f.source_doc_id
+         WHERE f.subject_entity_type = %s
+           AND f.subject_entity_id = %s
+           AND f.superseded_by IS NULL
+           AND f.predicate = ANY(%s)
+         ORDER BY f.confidence DESC NULLS LAST, f.valid_from DESC
+         LIMIT %s
+    """
+    try:
+        return db.fetch_all(
+            sql, [entity_type, entity_id, list(_PREDICATE_KBQ.keys()), _MAX_FACTS_FETCH],
+        )
+    except Exception:
+        logger.exception("kbq_views: fact query failed for %s:%s", entity_type, entity_id)
+        return []
+
+
 def build_entity_kbqs(db, entity_type: str, entity_id: str) -> dict:
     """Return the 8 KBQ views for one entity, with parity + completeness.
 
-    Each KBQ collects the entity's signals whose kbq_tags overlap the KBQ's
-    mapped tags. KBQ-6 (SWOT) is synthesized: in v1 it surfaces the highest-
-    impact items across the other KBQs as a starting point.
+    Each KBQ collects (a) the entity's signals whose kbq_tags overlap the KBQ's
+    mapped tags — the curated, scored layer — and (b) the entity's ledger facts
+    whose predicate maps to the KBQ (PB-SL11) — the underlying knowledge store.
+    Signals lead (curated first), facts fill, deduped by claim. KBQ-6 (SWOT) is
+    synthesized from the top signals as a starting point.
     """
     signals = _fetch_entity_signals(db, entity_type, entity_id)
+    facts = _fetch_entity_facts(db, entity_type, entity_id)
+
+    facts_by_kbq: dict[int, list[dict]] = defaultdict(list)
+    for f in facts:
+        kbq = _PREDICATE_KBQ.get(f.get("predicate") or "")
+        if kbq:
+            facts_by_kbq[kbq].append(f)
 
     views: list[dict] = []
     for spec in KBQ_CATALOG:
@@ -89,13 +185,23 @@ def build_entity_kbqs(db, entity_type: str, entity_id: str) -> dict:
         if tags:
             matched = [s for s in signals if tags & set(s.get("kbq_tags") or [])]
         elif kbq == 6:
-            # SWOT synthesis v1 — top signals overall (signals already sorted
-            # by impact desc). A real synthesis lands once decisions exist.
+            # SWOT synthesis v1 — top signals overall (already impact-sorted).
             matched = signals
         else:
             matched = []
 
-        items = [_item_from_signal(s) for s in matched[:_MAX_ITEMS_PER_KBQ]]
+        sig_items = [_item_from_signal(s) for s in matched]
+        # Dedup facts already surfaced as signals (a fact minted into a signal via
+        # SL07 would otherwise appear twice) — match on normalized claim text.
+        seen_claims = {(it["claim"] or "").strip().lower() for it in sig_items}
+        fact_items = [
+            _item_from_fact(f)
+            for f in _diversify_by_predicate(facts_by_kbq.get(kbq, []))
+            if ((f.get("claim") or "").strip().lower() not in seen_claims)
+        ]
+
+        # Signals first (curated/scored), then facts to fill, capped.
+        items = (sig_items + fact_items)[:_MAX_ITEMS_PER_KBQ]
         views.append({
             "kbq": kbq,
             "title": spec["title"],

@@ -2,8 +2,8 @@
  * Polish loop — KBQ Dossier (presentational) tests.
  * Sleek, borderless per-competitor KBQ profile.
  */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import KbqDossier from '../../src/components/ci/KbqDossier';
 import type { EntityKbqs } from '../../src/api';
 
@@ -68,5 +68,37 @@ describe('KbqDossier (polish loop)', () => {
     const { container } = renderDossier();
     // KBQ cards use the design-system class, not boxed borders
     expect(container.querySelectorAll('.ds-card, .ds-panel').length).toBeGreaterThan(0);
+  });
+
+  it('PB-SL11: renders fact-backed items with a source link, not the signal drawer', () => {
+    const onOpenSignal = vi.fn();
+    const data: EntityKbqs = {
+      entity: { type: 'drug', id: 'd1', name: 'Semaglutide' },
+      completeness: 0.125,
+      kbqs: [
+        { kbq: 1, title: 'Indications', status: 'fresh', items: [] },
+        { kbq: 2, title: 'Competitors', status: 'insufficient', items: [] },
+        { kbq: 3, title: 'Clinical', status: 'fresh', items: [
+          { claim: 'STEP 1 trial — 68 weeks', source: 'fact', signal_id: null,
+            fact_id: 'f1', fact_class: 'corporate', evidence_ids: [], impact_tier: null,
+            confidence_tier: null, date: '2026-05-01', source_label: 'ctgov',
+            source_url: 'https://clinicaltrials.gov/x' },
+        ]},
+        { kbq: 4, title: 'Positioning', status: 'insufficient', items: [] },
+        { kbq: 5, title: 'Sales & Sentiment', status: 'insufficient', items: [] },
+        { kbq: 6, title: 'SWOT', status: 'insufficient', items: [] },
+        { kbq: 7, title: 'Pricing', status: 'insufficient', items: [] },
+        { kbq: 8, title: 'Access', status: 'insufficient', items: [] },
+      ],
+    };
+    render(<KbqDossier data={data} entityName="Semaglutide" onOpenSignal={onOpenSignal} />);
+    // fact item renders its claim + a source link
+    const claim = screen.getByText(/STEP 1 trial/i);
+    expect(claim).toBeInTheDocument();
+    const sourceLink = screen.getByText(/ctgov/i).closest('a') as HTMLAnchorElement;
+    expect(sourceLink.getAttribute('href')).toBe('https://clinicaltrials.gov/x');
+    // clicking a fact item must NOT open the signal provenance drawer
+    fireEvent.click(claim);
+    expect(onOpenSignal).not.toHaveBeenCalled();
   });
 });
