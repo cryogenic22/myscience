@@ -484,8 +484,24 @@ class KnowledgeStore:
             )
             return nct_id, True
 
+    @staticmethod
+    def _event_hash(drug_id, event_type, description, event_date) -> str:
+        """Stable dedup identity for a market event (PB-SL09). The same recall
+        re-fetched on every connector run must hash identically so the
+        idx_events_hash unique index collapses it instead of inserting a
+        thousandth copy."""
+        import hashlib
+        key = "|".join([
+            str(drug_id or ""),
+            str(event_type or ""),
+            (str(description or "")).strip().lower(),
+            str(event_date or ""),
+        ])
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
     def _store_event(self, record: EmbeddedRecord, etl_run_id: str) -> tuple[str, bool]:
-        """Store a market event (shortage, guidance, etc.)."""
+        """Store a market event (shortage, guidance, etc.). Idempotent on
+        event_hash — re-ingesting the same event is a no-op (PB-SL09)."""
         data = record.resolved.normalized.canonical_data
         prov = record.resolved.normalized.raw.provenance
         links = record.resolved.resolved_links
@@ -496,14 +512,19 @@ class KnowledgeStore:
         # event_date is NOT NULL — use retrieved_at as fallback
         event_date = data.get("event_date") or prov.retrieved_at.strftime("%Y-%m-%d")
         content_hash = self.compute_content_hash(data)
+        event_hash = self._event_hash(
+            drug_id, data.get("event_type"), data.get("description"), event_date,
+        )
 
         new_row = self.db.fetch_one(
             """
             INSERT INTO market_events
                 (drug_id, event_type, event_date, description, impact_score,
-                 content_hash, last_verified_at,
+                 content_hash, event_hash, last_verified_at,
                  source_api, source_url, etl_run_id, retrieved_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+            ON CONFLICT (event_hash) WHERE event_hash IS NOT NULL
+                DO NOTHING
             RETURNING id
             """,
             [
@@ -513,13 +534,21 @@ class KnowledgeStore:
                 data.get("description"),
                 data.get("impact_score"),
                 content_hash,
+                event_hash,
                 prov.source_type.value,
                 prov.api_endpoint,
                 etl_run_id,
                 prov.retrieved_at,
             ],
         )
-        return str(new_row["id"]), True
+        if new_row:
+            return str(new_row["id"]), True
+        # Conflict → the event already exists; return its id, not newly inserted.
+        existing = self.db.fetch_one(
+            "SELECT id FROM market_events WHERE event_hash = %s LIMIT 1",
+            [event_hash],
+        )
+        return (str(existing["id"]) if existing else ""), False
 
     @staticmethod
     def _to_pg_array(val):
