@@ -1144,9 +1144,11 @@ export const kbqApi = {
         if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
         return r.json();
       }),
-  /** PB-SL10 — resolve a typed asset → 8 KBQs (the query surface). */
+  /** PB-SL10 — resolve a typed asset → 8 KBQs (the query surface).
+   *  Mounted at /kbq (NOT /entities/kbq, which the /entities/{entity_type}
+   *  route would shadow). */
   byAsset: (asset: string): Promise<EntityKbqs> =>
-    fetch(`${BASE}/entities/kbq?asset=${encodeURIComponent(asset)}`)
+    fetch(`${BASE}/kbq?asset=${encodeURIComponent(asset)}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
         return r.json();

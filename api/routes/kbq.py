@@ -19,8 +19,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/entities", tags=["kbq"])
 
+# PB-SL10 — the by-asset query surface lives on its OWN mount, NOT under
+# /entities. The entities router defines GET /entities/{entity_type}, which would
+# SHADOW a 2-segment /entities/kbq (capturing entity_type="kbq"). A dedicated
+# /kbq mount is unambiguous regardless of router registration order.
+asset_router = APIRouter(prefix="/kbq", tags=["kbq"])
 
-@router.get("/kbq")
+
+@asset_router.get("")
 def get_kbqs_by_asset(
     asset: str = Query(..., description="asset slug, e.g. 'semaglutide' or 'drug:wegovy'"),
     db: Database = Depends(get_db),

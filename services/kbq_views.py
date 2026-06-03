@@ -123,6 +123,17 @@ def build_entity_kbqs_for_asset(db, asset: str) -> dict:
     """
     entity_type, entity_id = resolve_asset_to_subject(db, asset)
     out = build_entity_kbqs(db, entity_type, entity_id)
+
+    # parse_asset_ref defaults a bare name to a DRUG. But the KBQ surface is
+    # competitor intelligence, which is company-centric ("Novo Nordisk"), so if a
+    # bare name found no drug evidence, try it as a company before giving up.
+    if ":" not in asset and out["completeness"] == 0.0:
+        c_type, c_id = resolve_asset_to_subject(db, f"company:{asset}")
+        if c_id and c_id != asset:  # resolved to a real company row
+            c_out = build_entity_kbqs(db, c_type, c_id)
+            if c_out["completeness"] > 0.0 or _entity_display_name(db, c_type, c_id):
+                out, entity_type, entity_id = c_out, c_type, c_id
+
     out["asset"] = asset
     # Fall back to the typed asset as a label when no signal carried a name.
     if not out["entity"].get("name"):
@@ -138,7 +149,8 @@ from services.dossier_kb import resolve_asset_to_subject  # noqa: E402
 _NAME_TABLE = {
     "drug": ("drugs", "COALESCE(brand_name, generic_name)"),
     "company": ("companies", "name"),
-    "trial": ("clinical_trials", "title"),
+    # clinical_trials has official_title (NOT title) — 006_schema_expansion.
+    "trial": ("clinical_trials", "COALESCE(official_title, 'Trial ' || id::text)"),
 }
 
 

@@ -144,6 +144,37 @@ class TestBuildForAsset:
         clinical = next(v for v in out["kbqs"] if v["kbq"] == 3)
         assert any(it["signal_id"] == "s1" for it in clinical["items"])
 
+    def test_bare_company_name_falls_back_to_company(self, monkeypatch):
+        # 'Novo Nordisk' is a company; parse_asset_ref would default it to a
+        # drug. The bare-name fallback must retry it as a company and use the
+        # company's signal-bearing entity.
+        import services.kbq_views as kv
+
+        def resolve(db, asset):
+            if asset.startswith("company:"):
+                return ("company", "co-novo")
+            return ("drug", "novo nordisk")  # unresolved drug (raw slug)
+        monkeypatch.setattr(kv, "resolve_asset_to_subject", resolve)
+
+        # Entity-aware mock: signals exist only for the company id, so the drug
+        # path is empty (completeness 0) and the company fallback must fire.
+        sig = _sig("s1", ["clinical"], "Novo pipeline readout")
+        sig["primary_entity_id"] = "co-novo"
+        sig["primary_entity_name"] = "Novo Nordisk"
+
+        db = MagicMock()
+        def fetch_all(sql, params=None):
+            if "from signals" in (sql or "").lower():
+                return [sig] if params and "co-novo" in params else []
+            return []
+        db.fetch_all = MagicMock(side_effect=fetch_all)
+        db.fetch_one = MagicMock(return_value=None)
+
+        out = build_entity_kbqs_for_asset(db, "Novo Nordisk")
+        assert out["entity"]["type"] == "company"
+        assert out["entity"]["id"] == "co-novo"
+        assert out["completeness"] > 0.0
+
     def test_unresolved_asset_returns_parity_skeleton(self, monkeypatch):
         import services.kbq_views as kv
 
