@@ -26,10 +26,10 @@
 | Status        | Count |
 |---------------|-------|
 | in-progress   | 7     |
-| triaged       | 117   |
+| triaged       | 116   |
 | blocked       | 0     |
 | proposed      | 3     |
-| shipped (90d) | 22    |
+| shipped (90d) | 23    |
 
 ## Currently in flight (7)
 
@@ -2012,14 +2012,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL04] fact_class colour system across Digest / Stream / Signals DB (S1.1)
 - **Type**: enhancement
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: frontend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: Adopt the Helix v8 fact_class palette + glyph (R/C/S/I/X: reference indigo, corporate orange, signal teal, inferred purple, internal brown) consistently across EventCard (digest), SensingFeed (stream), and SignalCard/SignalDetail. Legibility from meaning, not just severity. Build first — small, high-impact, completes PB-SL02.
+- **Notes**: SHIPPED (commit cbccdf3). FACT_CLASS palette + deriveFactClass() in lib/helix.ts, --fc-* vars (light+dark) in index.css, shared FactClassGlyph applied in SignalCard / SignalDetail / EventCard. R/C/S/I/X coloured by provenance. deriveFactClass is a heuristic over confidence_tier/source_tier today; PB-SL07 replaces it with the real fact_class via signal_facts. Gate: +7 tests, touched 25 pass, tsc/build clean, full vitest 923 pass.
 
 #### [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2)
 - **Type**: feature
