@@ -153,6 +153,11 @@ def _make_db(signals: list = None):
                 param_idx += 1
                 out = [r for r in out if r["confidence_tier"] == conf]
 
+            if "created_at >" in s:
+                # date filter — consume the param to keep alignment; the fake
+                # rows are all recent so it doesn't drop them.
+                param_idx += 1
+
             if "kbq_tags && " in s:
                 tags = params_list[param_idx]
                 param_idx += 1
@@ -301,6 +306,19 @@ def test_list_endpoint_filters_by_confidence():
 def test_list_endpoint_rejects_bad_confidence():
     db, _ = _make_db()
     assert _client(db).get("/signals?confidence=bogus").status_code == 400
+
+
+def test_list_endpoint_accepts_since_days():
+    db, _ = _make_db([_make_signal_row(signal_id="s1")])
+    r = _client(db).get("/signals?since_days=30")
+    assert r.status_code == 200
+    assert {s["id"] for s in r.json()["signals"]} == {"s1"}
+
+
+def test_list_endpoint_rejects_bad_since_days():
+    db, _ = _make_db()
+    # ge=1 / le=3650 validation → 422
+    assert _client(db).get("/signals?since_days=0").status_code == 422
 
 
 def test_list_endpoint_filters_by_impact():

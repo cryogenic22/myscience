@@ -1062,6 +1062,8 @@ export interface SignalsListParams {
   status?: SignalStatus | 'all';
   impact?: ImpactTier;
   confidence?: ConfidenceTier;
+  /** PB-SL08 — only signals created within the last N days. */
+  since_days?: number;
   /** PB-104 — pass multiple values; serialized to `kbq=a,b,c` on the wire. */
   kbq?: string[];
   entity_type?: string;

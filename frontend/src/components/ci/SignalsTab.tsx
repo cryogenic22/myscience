@@ -38,6 +38,13 @@ const CONFIDENCE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'disputed', label: 'Disputed' },
 ];
 
+const SINCE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'all', label: 'Any time' },
+  { key: '7', label: 'Last 7 days' },
+  { key: '30', label: 'Last 30 days' },
+  { key: '90', label: 'Last 90 days' },
+];
+
 export default function SignalsTab({
   reviewerMode = false,
   initialStatus,
@@ -52,6 +59,7 @@ export default function SignalsTab({
   const [impact, setImpact] = useState<ImpactTier | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('default');
   const [confidence, setConfidence] = useState<string>('all');
+  const [since, setSince] = useState<string>('all');
   const [query, setQuery] = useState('');
 
   // PB-104 — kbq is multi-select, mirrored to `?kbq=financial,clinical` in the URL
@@ -88,6 +96,7 @@ export default function SignalsTab({
       else if (statusFilter !== 'default') params.status = statusFilter;
       if (impact !== 'all') params.impact = impact;
       if (confidence !== 'all') params.confidence = confidence as typeof params.confidence;
+      if (since !== 'all') params.since_days = Number(since);
       if (kbq.length > 0) params.kbq = kbq;
       const r = await signalsApi.list(params);
       setSignals(r.signals);
@@ -109,7 +118,7 @@ export default function SignalsTab({
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impact, statusFilter, confidence, kbqKey, initialStatus]);
+  }, [impact, statusFilter, confidence, since, kbqKey, initialStatus]);
 
   // Load detail when selection changes
   useEffect(() => {
@@ -221,6 +230,20 @@ export default function SignalsTab({
           }}
         >
           {CONFIDENCE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+        <select
+          value={since}
+          onChange={(e) => setSince(e.target.value)}
+          className="text-[12px]"
+          style={{
+            padding: '4px 8px', borderRadius: '6px',
+            border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+            color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          }}
+        >
+          {SINCE_OPTIONS.map((o) => (
             <option key={o.key} value={o.key}>{o.label}</option>
           ))}
         </select>

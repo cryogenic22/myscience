@@ -92,6 +92,7 @@ def list_signals(
     status: Optional[str] = Query(None, description="one status, or 'all' for every status (incl. candidate)"),
     impact: Optional[str] = Query(None, description="high|medium|low"),
     confidence: Optional[str] = Query(None, description="confirmed|reported|inferred|disputed"),
+    since_days: Optional[int] = Query(None, ge=1, le=3650, description="only signals created within the last N days"),
     kbq: Optional[str] = Query(
         None,
         description="comma-separated kbq tags — signal matches if it has ANY of them (e.g. `financial,clinical`)",
@@ -128,6 +129,10 @@ def list_signals(
             raise HTTPException(400, f"invalid confidence: {confidence}")
         where_clauses.append("confidence_tier = %s")
         params.append(confidence)
+
+    if since_days:
+        where_clauses.append("created_at > NOW() - make_interval(days => %s)")
+        params.append(since_days)
 
     if kbq:
         # PB-104 — CSV of any-of tags. Dedup, strip whitespace, drop empties.
