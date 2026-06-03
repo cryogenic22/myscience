@@ -26,62 +26,75 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from services.learning_service import ewma_update
-
 logger = logging.getLogger(__name__)
 
 # Per-signal support level the scenario's probability is pulled toward, by the
 # signal's confidence tier. A confirmed development is strong corroboration; a
-# disputed one barely moves the needle. These are the EWMA observations.
-OBSERVATION_BY_CONFIDENCE: dict[str, float] = {
-    "confirmed": 0.90,
-    "reported": 0.72,
-    "inferred": 0.58,
-    "disputed": 0.45,
+# How much each signal corroborates the scenario, by confidence tier. This is a
+# SUPPORT weight, not a probability anchor: a disputed signal contributes nothing
+# (we do not let unconfirmed/contested news inflate a scenario's probability),
+# a confirmed one fully. Honesty: we model evidence ACCUMULATION only — fresh
+# corroboration raises the probability monotonically toward a ceiling; we do NOT
+# yet model refutation (a signal that should LOWER a scenario), so the loop never
+# moves current_prob below the structural prior. Downward calibration needs
+# scenario-relative stance detection — an explicit follow-up.
+CORROBORATION_WEIGHT: dict[str, float] = {
+    "confirmed": 1.0,
+    "reported": 0.65,
+    "inferred": 0.35,
+    "disputed": 0.0,
 }
-_DEFAULT_OBS = 0.58
+_DEFAULT_WEIGHT = 0.35
 
-# How hard each signal pulls the running probability. Modest so a single signal
-# never swings a scenario wildly; evidence accumulates over many.
-_ALPHA = 0.25
+# How hard a fully-corroborating signal pulls toward the ceiling. Modest, so a
+# single signal never swings a scenario wildly; evidence accumulates over many.
+_ALPHA = 0.30
 
-_FLOOR, _CEIL = 0.05, 0.95
+_CEIL = 0.95
 _MAX_SIGNALS = 50  # bound the per-scenario evidence window
 
+# Backwards-compatible alias for any external reader of the old name.
+OBSERVATION_BY_CONFIDENCE = CORROBORATION_WEIGHT
 
-def _obs(confidence_tier: Optional[str]) -> float:
-    return OBSERVATION_BY_CONFIDENCE.get((confidence_tier or "").lower(), _DEFAULT_OBS)
+
+def _weight(confidence_tier: Optional[str]) -> float:
+    return CORROBORATION_WEIGHT.get((confidence_tier or "").lower(), _DEFAULT_WEIGHT)
 
 
 def calibrate_scenario_prob(
     *, prior: float, signals: list[dict], entity_label: str,
 ) -> tuple[Optional[float], Optional[str]]:
     """Pure: re-weight a scenario's prior into a current probability from the
-    corroborating signals. Returns (current_prob, calibration_note), or
-    (None, None) when there is no new evidence (scenario stays uncalibrated).
+    CORROBORATING signals about its target entity. Returns (current_prob,
+    calibration_note), or (None, None) when there is no corroborating evidence
+    (scenario stays uncalibrated — honest about "no news yet").
 
-    `signals` are dicts with confidence_tier / headline / created_at, expected
-    pre-filtered to those that arrived AFTER the scenario was derived, newest
-    last (the last one is cited as the latest mover).
+    Each corroborating signal nudges the running probability toward the ceiling
+    proportionally to its confidence weight (confirmed fully, disputed not at
+    all). The result is monotonically ≥ prior: this loop measures evidence
+    accumulation, never refutation (see CORROBORATION_WEIGHT note). `signals`
+    are expected pre-filtered to those that arrived AFTER derivation, oldest
+    first; the last corroborating one is cited as the latest mover.
     """
-    if not signals:
+    corroborating = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
+    if not corroborating:
         return None, None
 
-    current: Optional[float] = prior
-    for sig in signals[:_MAX_SIGNALS]:
-        current = ewma_update(prior=current, observation=_obs(sig.get("confidence_tier")), alpha=_ALPHA)
+    current = float(prior)
+    for sig in corroborating[:_MAX_SIGNALS]:
+        w = _weight(sig.get("confidence_tier"))
+        current = current + w * _ALPHA * (_CEIL - current)  # monotonic toward ceiling
 
-    current = round(max(_FLOOR, min(_CEIL, float(current))), 3)
+    current = round(min(_CEIL, max(float(prior), current)), 3)
 
-    latest = signals[-1]
-    n = len(signals)
+    latest = corroborating[-1]
+    n = len(corroborating)
     headline = (latest.get("headline") or "").strip()
     conf = (latest.get("confidence_tier") or "unrated")
-    date = (latest.get("created_at") or "")
-    date_s = str(date)[:10]
+    date_s = str(latest.get("created_at") or "")[:10]
     note = (
-        f"{n} signal{'s' if n != 1 else ''} on {entity_label} since derivation "
-        f"re-weighted this scenario (prior {round(prior, 2)} → {current}). "
+        f"{n} corroborating signal{'s' if n != 1 else ''} on {entity_label} since "
+        f"derivation raised this scenario from {round(prior, 2)} to {current}. "
         f"Latest: \"{headline}\" ({conf}{f', {date_s}' if date_s else ''})."
     )
     return current, note
@@ -116,19 +129,43 @@ _UPDATE_SQL = """
 """
 
 
+# A competitive-pressure scenario is about a RIVAL ("Competitive pressure:
+# tirzepatide"); its probability is corroborated by signals about that rival, NOT
+# the focal asset. Other scenarios (signal-driven) are about the focal asset.
+_COMPETITIVE_PREFIX = "Competitive pressure:"
+
+
+def _scenario_target(db, name: str, focal: tuple[str, str], focal_label: str):
+    """Resolve the entity whose signals corroborate this scenario.
+    Returns (entity_type, entity_id, label) — the rival for competitive-pressure
+    scenarios, else the focal asset. Falls back to focal if the rival can't be
+    resolved to a distinct entity."""
+    nm = (name or "").strip()
+    if nm.startswith(_COMPETITIVE_PREFIX):
+        rival = nm[len(_COMPETITIVE_PREFIX):].strip()
+        if rival:
+            rtype, rid = resolve_asset_to_subject(db, rival)
+            # Only target the rival if it resolved to a real, distinct entity
+            # (resolve returns the raw slug when unmatched).
+            if rid and rid != rival and rid != focal[1]:
+                return rtype, rid, rival
+    return focal[0], focal[1], focal_label
+
+
 def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
-    """Re-weight every live scenario of an engagement from signals about its
-    focal entity. Returns the number of scenarios updated. Idempotent: re-running
-    with the same evidence yields the same current_prob/note (it recomputes from
-    prior each time, not incrementally)."""
+    """Re-weight every live scenario of an engagement from CORROBORATING signals
+    about its target entity (the rival for competitive-pressure scenarios, the
+    focal asset otherwise). Returns the number of scenarios updated. Idempotent:
+    re-running with the same evidence yields the same current_prob/note (it
+    recomputes from prior each time, not incrementally)."""
     row = db.fetch_one(_ENGAGEMENT_SQL, [str(engagement_id)])
     if not row or not row.get("asset"):
         return 0
     asset = row["asset"]
-    entity_type, entity_id = resolve_asset_to_subject(db, asset)
-    if not entity_id:
+    focal_type, focal_id = resolve_asset_to_subject(db, asset)
+    if not focal_id:
         return 0
-    entity_label = asset.split(":")[-1].strip() or asset
+    focal_label = asset.split(":")[-1].strip() or asset
 
     try:
         scenarios = db.fetch_all(_SCENARIOS_SQL, [str(engagement_id)]) or []
@@ -138,10 +175,13 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
 
     updated = 0
     for scn in scenarios:
+        t_type, t_id, t_label = _scenario_target(
+            db, scn.get("name", ""), (focal_type, focal_id), focal_label,
+        )
         try:
             signals = db.fetch_all(
                 _SIGNALS_SQL,
-                [entity_type, entity_id, scn.get("created_at"), _MAX_SIGNALS],
+                [t_type, t_id, scn.get("created_at"), _MAX_SIGNALS],
             ) or []
         except Exception:
             logger.exception("calibrate: signal fetch failed for scenario %s", scn.get("id"))
@@ -149,9 +189,18 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
         current, note = calibrate_scenario_prob(
             prior=float(scn.get("prior_prob") or 0.0),
             signals=list(signals),
-            entity_label=entity_label,
+            entity_label=t_label,
         )
         if current is None:
+            # No corroborating evidence now. If the scenario carries a stale
+            # current_prob from a prior run, clear it back to uncalibrated so the
+            # loop stays fully idempotent (reflects today's evidence, not history).
+            if scn.get("current_prob") is not None:
+                try:
+                    db.execute(_UPDATE_SQL, [None, None, str(scn["id"])])
+                    updated += 1
+                except Exception:
+                    logger.exception("calibrate: clear failed for scenario %s", scn.get("id"))
             continue
         try:
             db.execute(_UPDATE_SQL, [current, note, str(scn["id"])])
