@@ -80,12 +80,13 @@ interface Props {
   seedAsset?: string;
   seedName?: string;
   seedContext?: string;
+  seedSignalId?: string;
   /** Called once the seed has been consumed so the URL params can be cleared. */
   onSeedConsumed?: () => void;
 }
 
 export default function EngagementsTab({
-  onEngagementOpen, autoNew, seedAsset, seedName, seedContext, onSeedConsumed,
+  onEngagementOpen, autoNew, seedAsset, seedName, seedContext, seedSignalId, onSeedConsumed,
 }: Props) {
   const [items, setItems] = useState<EngagementDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,13 +94,15 @@ export default function EngagementsTab({
   const [modalOpen, setModalOpen] = useState(false);
   // Capture the promote seed into local state so it survives the URL-param
   // clear (onSeedConsumed) that fires in the same tick.
-  const [seed, setSeed] = useState<{ asset?: string; name?: string; context?: string } | null>(null);
+  const [seed, setSeed] = useState<
+    { asset?: string; name?: string; context?: string; signalId?: string } | null
+  >(null);
 
   // PB-IX01 — auto-open the create modal when arriving via a signal promote
   // (?new=1). Fire once; clear the URL seed so closing the modal stays closed.
   useEffect(() => {
     if (autoNew) {
-      setSeed({ asset: seedAsset, name: seedName, context: seedContext });
+      setSeed({ asset: seedAsset, name: seedName, context: seedContext, signalId: seedSignalId });
       setModalOpen(true);
       onSeedConsumed?.();
     }
@@ -247,6 +250,7 @@ export default function EngagementsTab({
         initialAsset={seed?.asset}
         initialName={seed?.name}
         initialContext={seed?.context}
+        initialSignalId={seed?.signalId}
         onClose={() => setModalOpen(false)}
         onCreated={(eng) => {
           setModalOpen(false);

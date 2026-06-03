@@ -26,6 +26,8 @@ interface Props {
   initialAsset?: string;
   initialName?: string;
   initialContext?: string;
+  /** PB-IX01 — the signal this engagement was promoted from (provenance). */
+  initialSignalId?: string;
 }
 
 type Situation = 'launch' | 'defense' | 'lcm';
@@ -37,7 +39,7 @@ const SITUATIONS: { value: Situation; label: string; blurb: string }[] = [
 ];
 
 export default function NewEngagementModal({
-  open, onClose, onCreated, initialAsset, initialName, initialContext,
+  open, onClose, onCreated, initialAsset, initialName, initialContext, initialSignalId,
 }: Props) {
   const [name, setName] = useState('');
   const [asset, setAsset] = useState('');
@@ -84,6 +86,10 @@ export default function NewEngagementModal({
       const scope: Record<string, unknown> = {};
       if (context.trim()) scope.context = context.trim();
       if (keyQuestions.length) scope.key_questions = keyQuestions;
+      // PB-IX01 — keep the provenance link back to the originating signal, so
+      // the engagement records where it came from (parity with the war-room
+      // seed, which persists source_signal_id).
+      if (initialSignalId) scope.source_signal_id = initialSignalId;
 
       const body: {
         name: string; asset: string; situation: Situation;

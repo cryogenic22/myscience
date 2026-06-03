@@ -56,6 +56,8 @@ describe('SignalDetail — promote bridge (PB-IX01)', () => {
     expect(href).toContain('asset=drug%3Adrug-uuid-1');
     expect(href).toContain('seedName=');
     expect(href).toContain('seedContext=');
+    // PB-IX01 provenance — the engagement promote carries the originating signal id.
+    expect(href).toContain('seedSignalId=sig-1');
   });
 
   it('hides the promote bridge for market-wide signals (no entity)', () => {

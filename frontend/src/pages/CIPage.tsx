@@ -324,6 +324,7 @@ export default function CIPage() {
                 seedAsset={params.get('asset') ?? undefined}
                 seedName={params.get('seedName') ?? undefined}
                 seedContext={params.get('seedContext') ?? undefined}
+                seedSignalId={params.get('seedSignalId') ?? undefined}
                 onSeedConsumed={() => {
                   // PB-IX01 — clear the promote seed so closing the modal stays
                   // closed (and a refresh doesn't reopen it).
@@ -332,6 +333,7 @@ export default function CIPage() {
                   next.delete('asset');
                   next.delete('seedName');
                   next.delete('seedContext');
+                  next.delete('seedSignalId');
                   setParams(next, { replace: true });
                 }}
                 onEngagementOpen={(id) => {

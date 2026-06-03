@@ -104,7 +104,8 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
     : null;
   const engagementHref = entityRef
     ? `/ci?tab=engagements&new=1&asset=${encodeURIComponent(entityRef)}` +
-      `&seedName=${encodeURIComponent(seedName)}&seedContext=${encodeURIComponent(seedContext)}`
+      `&seedName=${encodeURIComponent(seedName)}&seedContext=${encodeURIComponent(seedContext)}` +
+      `&seedSignalId=${encodeURIComponent(signal.id)}`
     : null;
 
   const created = signal.created_at ? new Date(signal.created_at).toLocaleString() : '—';
