@@ -47,6 +47,30 @@ _SYSTEM_PROMPT = (
 DrugResolver = Callable[[str], Optional[tuple[str, str]]]
 
 
+def default_structured_call(config=None) -> Optional[StructuredCall]:
+    """Build a provider-backed StructuredCall from config/env, or None if no key
+    is configured (so callers degrade gracefully — no LLM → no doc facts).
+    Prefers OpenAI (OPENAI_API_KEY); model via MZ_EXTRACTION_MODEL."""
+    import os
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        from services.extraction_llm import make_openai_structured_call
+    except ImportError:
+        logger.warning("openai SDK not installed — document fact extraction off")
+        return None
+    model = os.getenv("MZ_EXTRACTION_MODEL", "gpt-4o-mini")
+    try:
+        client = OpenAI(api_key=api_key)
+        return make_openai_structured_call(client=client, model=model)
+    except Exception:
+        logger.exception("failed to build OpenAI structured call")
+        return None
+
+
 def _default_resolver(db) -> DrugResolver:
     from services.dossier_kb import resolve_asset_to_subject
 

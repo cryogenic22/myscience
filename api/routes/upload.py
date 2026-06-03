@@ -17,12 +17,18 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from api.deps import (
+    get_db,
     get_integration_pipeline,
     get_llm,
     require_role,
 )
 from connectors.user_document import UserDocumentConnector
-from services.document_extractor import UnsupportedFormatError
+from services.document_extractor import UnsupportedFormatError, extract_text
+from services.fact_emitters.document_facts import (
+    default_structured_call,
+    emit_document_facts,
+)
+from services.fact_signals import mint_signals_from_facts
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,7 @@ async def upload_document(
     file: UploadFile = File(...),
     llm = Depends(get_llm),
     pipeline = Depends(get_integration_pipeline),
+    db = Depends(get_db),
 ):
     """Upload a document for ingestion into the knowledge graph.
 
@@ -91,11 +98,35 @@ async def upload_document(
 
     summary = result.summary() if hasattr(result, "summary") else {}
 
+    # DR-9 Phase 2 (PB-SL06) — lift structured facts from the document, then
+    # mint signals from the new facts so the deck → facts → signals loop closes
+    # on upload. Best-effort: a missing LLM key or extraction failure must never
+    # break the upload itself.
+    facts_emitted = 0
+    signals_minted = 0
+    try:
+        structured_call = default_structured_call()
+        if structured_call is not None:
+            doc = extract_text(payload, filename=file.filename)
+            fstats = emit_document_facts(
+                db, doc.full_text,
+                structured_call=structured_call,
+                source_url=f"upload://{file.filename}",
+            )
+            facts_emitted = fstats.asserted
+            if facts_emitted:
+                mint = mint_signals_from_facts(db, limit=facts_emitted)
+                signals_minted = mint.minted
+    except Exception:
+        logger.exception("document fact extraction failed for %s", file.filename)
+
     return {
         "filename": file.filename,
         "format": fmt,
         "doc_hash": doc_hash,
         "entity_mentions_total": entity_mentions_total,
+        "facts_emitted": facts_emitted,
+        "signals_minted": signals_minted,
         # Pipeline result fields
         "etl_run_id": summary.get("etl_run_id"),
         "records_processed": summary.get("processed", len(preview_records)),

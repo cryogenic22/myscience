@@ -121,3 +121,11 @@ def test_extract_is_exception_safe_on_bad_llm_payload():
         resolver=_resolver_ok,
     )
     assert facts == []
+
+
+def test_default_structured_call_none_without_key(monkeypatch):
+    """PB-SL06 — no OPENAI_API_KEY → None so the upload route degrades to
+    facts_emitted=0 instead of erroring."""
+    from services.fact_emitters.document_facts import default_structured_call
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert default_structured_call() is None
