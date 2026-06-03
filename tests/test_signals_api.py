@@ -148,6 +148,11 @@ def _make_db(signals: list = None):
                 param_idx += 1
                 out = [r for r in out if r["impact_tier"] == tier]
 
+            if "confidence_tier =" in s:
+                conf = params_list[param_idx]
+                param_idx += 1
+                out = [r for r in out if r["confidence_tier"] == conf]
+
             if "kbq_tags && " in s:
                 tags = params_list[param_idx]
                 param_idx += 1
@@ -268,6 +273,34 @@ def test_list_endpoint_filters_by_status():
     body = _client(db).get("/signals?status=candidate").json()
     ids = {s["id"] for s in body["signals"]}
     assert ids == {"s2"}
+
+
+def test_list_endpoint_status_all_reveals_candidates():
+    """PB-SL08 — status=all drops the default reviewed/shipped filter so the
+    auto-minted candidate fact-signals become visible."""
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", status="shipped"),
+        _make_signal_row(signal_id="s2", status="candidate"),
+        _make_signal_row(signal_id="s3", status="reviewed"),
+    ])
+    default_ids = {s["id"] for s in _client(db).get("/signals").json()["signals"]}
+    assert "s2" not in default_ids                    # candidate hidden by default
+    all_ids = {s["id"] for s in _client(db).get("/signals?status=all").json()["signals"]}
+    assert {"s1", "s2", "s3"} <= all_ids              # status=all reveals it
+
+
+def test_list_endpoint_filters_by_confidence():
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", confidence_tier="confirmed"),
+        _make_signal_row(signal_id="s2", confidence_tier="reported"),
+    ])
+    body = _client(db).get("/signals?status=all&confidence=reported").json()
+    assert {s["id"] for s in body["signals"]} == {"s2"}
+
+
+def test_list_endpoint_rejects_bad_confidence():
+    db, _ = _make_db()
+    assert _client(db).get("/signals?confidence=bogus").status_code == 400
 
 
 def test_list_endpoint_filters_by_impact():

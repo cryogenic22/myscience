@@ -29,6 +29,7 @@ _DEFAULT_STATUSES = ("reviewed", "shipped")
 _VALID_STATUSES = ("candidate", "reviewed", "shipped", "superseded", "retracted")
 _REVIEWABLE_STATUSES = ("reviewed", "shipped", "retracted")
 _VALID_IMPACTS = ("high", "medium", "low")
+_VALID_CONFIDENCE = ("confirmed", "reported", "inferred", "disputed")
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -88,8 +89,9 @@ def _row_to_dict(row: dict) -> dict:
 
 @router.get("")
 def list_signals(
-    status: Optional[str] = Query(None, description="Filter to one status"),
+    status: Optional[str] = Query(None, description="one status, or 'all' for every status (incl. candidate)"),
     impact: Optional[str] = Query(None, description="high|medium|low"),
+    confidence: Optional[str] = Query(None, description="confirmed|reported|inferred|disputed"),
     kbq: Optional[str] = Query(
         None,
         description="comma-separated kbq tags — signal matches if it has ANY of them (e.g. `financial,clinical`)",
@@ -104,7 +106,9 @@ def list_signals(
     where_clauses = []
     params: list = []
 
-    if status:
+    if status == "all":
+        pass  # no status filter — reveal candidates (incl. auto-minted fact-signals)
+    elif status:
         if status not in _VALID_STATUSES:
             raise HTTPException(400, f"invalid status: {status}")
         where_clauses.append("status = %s")
@@ -118,6 +122,12 @@ def list_signals(
             raise HTTPException(400, f"invalid impact: {impact}")
         where_clauses.append("impact_tier = %s")
         params.append(impact)
+
+    if confidence:
+        if confidence not in _VALID_CONFIDENCE:
+            raise HTTPException(400, f"invalid confidence: {confidence}")
+        where_clauses.append("confidence_tier = %s")
+        params.append(confidence)
 
     if kbq:
         # PB-104 — CSV of any-of tags. Dedup, strip whitespace, drop empties.

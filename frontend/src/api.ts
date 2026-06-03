@@ -1057,8 +1057,11 @@ export interface SignalLinkedFact {
 }
 
 export interface SignalsListParams {
-  status?: SignalStatus;
+  /** A single status, or 'all' to drop the default reviewed/shipped filter
+      (reveals auto-minted candidate fact-signals). PB-SL08. */
+  status?: SignalStatus | 'all';
   impact?: ImpactTier;
+  confidence?: ConfidenceTier;
   /** PB-104 — pass multiple values; serialized to `kbq=a,b,c` on the wire. */
   kbq?: string[];
   entity_type?: string;

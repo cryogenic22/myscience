@@ -19,6 +19,25 @@ const IMPACT_OPTIONS: Array<{ key: ImpactTier | 'all'; label: string }> = [
   { key: 'low', label: 'Low' },
 ];
 
+// PB-SL08 — 'default' keeps the reviewed+shipped view; 'all' reveals the
+// auto-minted candidate fact-signals; the rest pin one status.
+type StatusFilter = 'default' | 'all' | 'candidate' | 'reviewed' | 'shipped';
+const STATUS_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
+  { key: 'default', label: 'Live (reviewed)' },
+  { key: 'all', label: 'All statuses' },
+  { key: 'candidate', label: 'Candidate' },
+  { key: 'reviewed', label: 'Reviewed' },
+  { key: 'shipped', label: 'Shipped' },
+];
+
+const CONFIDENCE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'all', label: 'All confidence' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'reported', label: 'Reported' },
+  { key: 'inferred', label: 'Inferred' },
+  { key: 'disputed', label: 'Disputed' },
+];
+
 export default function SignalsTab({
   reviewerMode = false,
   initialStatus,
@@ -31,6 +50,8 @@ export default function SignalsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<ImpactTier | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('default');
+  const [confidence, setConfidence] = useState<string>('all');
   const [query, setQuery] = useState('');
 
   // PB-104 — kbq is multi-select, mirrored to `?kbq=financial,clinical` in the URL
@@ -61,8 +82,12 @@ export default function SignalsTab({
     setError(null);
     try {
       const params: Parameters<typeof signalsApi.list>[0] = { limit: 100 };
+      // Reviewer mode pins status; otherwise the user-facing status filter
+      // drives it ('default' = reviewed+shipped, omit the param).
       if (initialStatus) params.status = initialStatus;
+      else if (statusFilter !== 'default') params.status = statusFilter;
       if (impact !== 'all') params.impact = impact;
+      if (confidence !== 'all') params.confidence = confidence as typeof params.confidence;
       if (kbq.length > 0) params.kbq = kbq;
       const r = await signalsApi.list(params);
       setSignals(r.signals);
@@ -84,7 +109,7 @@ export default function SignalsTab({
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impact, kbqKey, initialStatus]);
+  }, [impact, statusFilter, confidence, kbqKey, initialStatus]);
 
   // Load detail when selection changes
   useEffect(() => {
@@ -185,6 +210,37 @@ export default function SignalsTab({
             <option key={o.key} value={o.key}>{o.label}</option>
           ))}
         </select>
+        <select
+          value={confidence}
+          onChange={(e) => setConfidence(e.target.value)}
+          className="text-[12px]"
+          style={{
+            padding: '4px 8px', borderRadius: '6px',
+            border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+            color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          }}
+        >
+          {CONFIDENCE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+        {!initialStatus && (
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="text-[12px]"
+            title="Candidate = auto-minted signals awaiting review"
+            style={{
+              padding: '4px 8px', borderRadius: '6px',
+              border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+              color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            }}
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        )}
         <KBQFilter selected={kbq} onSelect={setKbq} />
         <span className="ml-auto" style={{ color: 'var(--color-ink-3)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
           {loading ? 'LOADING…' : `${filtered.length} SIGNAL${filtered.length === 1 ? '' : 'S'}`}
