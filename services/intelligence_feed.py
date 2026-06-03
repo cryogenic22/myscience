@@ -90,8 +90,26 @@ class IntelligenceFeedService:
 
             where = " AND ".join(conditions)
 
+            # Dedup at read time: market_events holds thousands of identical
+            # rows (e.g. the same FDA recall re-ingested 2,000+ times), which
+            # otherwise flood the digest. DISTINCT ON collapses each
+            # (entity, type, description) group to its highest-trust / newest
+            # copy. Non-destructive — the underlying rows are untouched.
             rows = self.db.fetch_all(
                 f"""
+                WITH deduped AS (
+                    SELECT DISTINCT ON (
+                        me.primary_entity_id, me.event_type, me.description
+                    )
+                        me.id, me.event_type, me.event_date, me.description,
+                        me.source_url, me.source_tier, me.trust_score,
+                        me.primary_entity_name, me.primary_entity_type,
+                        me.status, me.created_at
+                    FROM market_events me
+                    WHERE {where}
+                    ORDER BY me.primary_entity_id, me.event_type, me.description,
+                             me.trust_score DESC NULLS LAST, me.created_at DESC
+                )
                 SELECT
                     me.id::text AS event_id,
                     me.event_type,
@@ -106,7 +124,7 @@ class IntelligenceFeedService:
                     COALESCE(ic.max_impact, 0) AS max_impact_magnitude,
                     COALESCE(me.status, 'new') AS status,
                     me.created_at::text AS created_at
-                FROM market_events me
+                FROM deduped me
                 LEFT JOIN LATERAL (
                     SELECT
                         COUNT(*) AS impact_count,
@@ -114,7 +132,6 @@ class IntelligenceFeedService:
                     FROM impact_assessments ia
                     WHERE ia.event_id = me.id
                 ) ic ON true
-                WHERE {where}
                 ORDER BY me.trust_score DESC NULLS LAST, me.created_at DESC
                 LIMIT %s OFFSET %s
                 """,
@@ -136,17 +153,26 @@ class IntelligenceFeedService:
         try:
             rows = self.db.fetch_all(
                 """
+                WITH deduped AS (
+                    SELECT DISTINCT ON (
+                        me.primary_entity_id, me.event_type, me.description
+                    )
+                        me.id, me.trust_score
+                    FROM market_events me
+                    WHERE COALESCE(me.status, 'new') != 'dismissed'
+                      AND me.created_at > NOW() - make_interval(hours := %s)
+                    ORDER BY me.primary_entity_id, me.event_type, me.description,
+                             me.trust_score DESC NULLS LAST, me.created_at DESC
+                )
                 SELECT
                     COALESCE(me.trust_score, 0.5) AS trust_score,
                     COALESCE(ic.max_impact, 0) AS max_impact_magnitude
-                FROM market_events me
+                FROM deduped me
                 LEFT JOIN LATERAL (
                     SELECT MAX(ia.impact_magnitude) AS max_impact
                     FROM impact_assessments ia
                     WHERE ia.event_id = me.id
                 ) ic ON true
-                WHERE COALESCE(me.status, 'new') != 'dismissed'
-                  AND me.created_at > NOW() - make_interval(hours := %s)
                 """,
                 [since_hours],
             )

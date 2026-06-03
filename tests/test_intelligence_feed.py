@@ -398,3 +398,36 @@ class TestSeverityDerivation:
 
         assert derive_severity(0.4, 0.0) == "medium"
         assert derive_severity(0.39, 0.0) == "low"
+
+
+# ── Dedup regression (market_events flood: same recall re-ingested 1000s of times) ──
+
+def test_get_feed_query_dedups_by_entity_type_description():
+    """The feed must DISTINCT ON (entity, type, description) so duplicate
+    market_events (e.g. the same FDA recall ingested thousands of times) don't
+    flood the digest. Regression for the duplication complaint."""
+    db = MagicMock()
+    captured = {}
+
+    def _fetch_all(query, params=None):
+        captured["sql"] = query
+        return []
+    db.fetch_all = MagicMock(side_effect=_fetch_all)
+
+    from services.intelligence_feed import IntelligenceFeedService
+    IntelligenceFeedService(db).get_feed(limit=10)
+
+    sql = captured["sql"].upper()
+    assert "DISTINCT ON" in sql
+    assert "PRIMARY_ENTITY_ID" in sql and "EVENT_TYPE" in sql and "DESCRIPTION" in sql
+    # keeps the strongest copy of each group
+    assert "TRUST_SCORE DESC" in sql
+
+
+def test_get_feed_summary_dedups_too():
+    db = MagicMock()
+    captured = {}
+    db.fetch_all = MagicMock(side_effect=lambda q, p=None: captured.update(sql=q) or [])
+    from services.intelligence_feed import IntelligenceFeedService
+    IntelligenceFeedService(db).get_feed_summary()
+    assert "DISTINCT ON" in captured["sql"].upper()
