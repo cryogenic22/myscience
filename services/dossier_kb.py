@@ -128,6 +128,9 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     # DR-6 mechanism/target fact-emitter predicates (ChEMBL/MeSH-derived).
     "mechanism_of_action":  "clinical_profile",
     "target_activity":      "clinical_profile",
+    # DR-7 literature fact-emitter predicates (PubMed-derived).
+    "key_publication":      "clinical_profile",
+    "disease_evidence":     "disease_and_patient",
     "fda_approval_date":    "pipeline_and_macro",
     "regulatory_approval":  "pipeline_and_macro",
     "regulatory_setback":   "pipeline_and_macro",
