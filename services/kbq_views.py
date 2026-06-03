@@ -110,3 +110,50 @@ def build_entity_kbqs(db, entity_type: str, entity_id: str) -> dict:
         "kbqs": views,
         "completeness": round(filled / len(KBQ_CATALOG), 4),
     }
+
+
+def build_entity_kbqs_for_asset(db, asset: str) -> dict:
+    """PB-SL10 — KBQ-as-query-surface.
+
+    The query surface lets a user type an asset ('semaglutide', 'drug:wegovy')
+    and get the 8 KBQs answered. Signals are keyed by the canonical entity id
+    (a UUID), not the slug, so resolve the asset first — reusing the same
+    richness-ranked resolver the dossier uses — then build the parity view.
+    The raw `asset` string is echoed back so the UI can label the surface.
+    """
+    entity_type, entity_id = resolve_asset_to_subject(db, asset)
+    out = build_entity_kbqs(db, entity_type, entity_id)
+    out["asset"] = asset
+    # Fall back to the typed asset as a label when no signal carried a name.
+    if not out["entity"].get("name"):
+        out["entity"]["name"] = _entity_display_name(db, entity_type, entity_id) or asset
+    return out
+
+
+# Resolve the asset slug → (type, id) and a display name. Imported lazily-ish
+# at module load; dossier_kb owns the canonical, richness-ranked resolver.
+from services.dossier_kb import resolve_asset_to_subject  # noqa: E402
+
+
+_NAME_TABLE = {
+    "drug": ("drugs", "COALESCE(brand_name, generic_name)"),
+    "company": ("companies", "name"),
+    "trial": ("clinical_trials", "title"),
+}
+
+
+def _entity_display_name(db, entity_type: str, entity_id: str) -> str | None:
+    """Best-effort human label for an entity that has no signals yet."""
+    info = _NAME_TABLE.get(entity_type)
+    if not info:
+        return None
+    table, name_expr = info
+    try:
+        row = db.fetch_one(
+            f"SELECT {name_expr} AS name FROM {table} WHERE id::text = %s LIMIT 1",
+            [entity_id],
+        )
+        return row.get("name") if row else None
+    except Exception:
+        logger.debug("kbq_views: name lookup failed for %s:%s", entity_type, entity_id, exc_info=True)
+        return None

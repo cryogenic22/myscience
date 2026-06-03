@@ -18,11 +18,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Activity, Target, BookOpen,
-  ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase,
+  ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase, HelpCircle,
 } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import IntelligenceTab, { type IntelView } from '../components/ci/IntelligenceTab';
 import StandaloneDossierTab from '../components/ci/StandaloneDossierTab';
+import KbqQueryTab from '../components/ci/KbqQueryTab';
+import SignalsTab from '../components/ci/SignalsTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
 import WarRoomsList from '../components/ci/war/WarRoomsList';
@@ -43,7 +45,7 @@ import { ContentRegion } from '../components/layout/ContentRegion';
 import { CockpitMobileNav } from '../components/layout/CockpitMobileNav';
 
 type TabKey =
-  | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'dossier' | 'engagements'
+  | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'kbq' | 'dossier' | 'engagements'
   | 'rooms' | 'decisions' | 'insights' | 'reviewer';
 
 // IX-2 — map a legacy feed tab key to the consolidated Intelligence view.
@@ -63,6 +65,8 @@ const ALL_TABS: Array<{
   // canonical key; 'inbox'/'signals' still route here via viewFromTab).
   { key: 'digest',      label: 'Intelligence', icon: Activity },
   { key: 'watchlist',   label: 'Watchlist', icon: Target },
+  // PB-SL10 — KBQ query surface: ask the 8 key business questions of any asset.
+  { key: 'kbq',         label: 'KBQ', icon: HelpCircle },
   // IX-3/IX-5 — Dossier (light path) + War Game (its own section) + the full
   // Engagement flow are the "Engage" building blocks.
   { key: 'dossier',     label: 'Dossier', icon: BookOpen },
@@ -77,7 +81,7 @@ const ALL_TABS: Array<{
 // instead of nine flat artifact tabs. Each group renders a label + its
 // available items; an empty group (e.g. Admin when not enterprise) is skipped.
 const NAV_GROUPS: Array<{ label: string; keys: TabKey[] }> = [
-  { label: 'Sense',  keys: ['digest', 'watchlist'] },
+  { label: 'Sense',  keys: ['digest', 'watchlist', 'kbq'] },
   { label: 'Engage', keys: ['dossier', 'rooms', 'engagements'] },
   { label: 'Act',    keys: ['decisions'] },
   { label: 'Learn',  keys: ['insights'] },
@@ -281,6 +285,7 @@ export default function CIPage() {
           />
         )}
         {tab === 'watchlist' && <WatchlistTab onOpenWarRoom={openWarRoom} />}
+        {tab === 'kbq' && <KbqQueryTab />}
         {tab === 'dossier' && (
           <StandaloneDossierTab
             onPromote={() => {

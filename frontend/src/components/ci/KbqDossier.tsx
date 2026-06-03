@@ -1,32 +1,30 @@
 /**
- * Polish loop — KBQ Dossier, in the Helix design language.
+ * KBQ Dossier (presentational) — PB-SL10.
  *
- * Adopts the bespoke Helix system (Downloads/helix-core.jsx): a locked dark
- * "war room" palette, OKLCH category hues, Instrument Serif display +
- * JetBrains Mono metadata, and — crucially — NO boxes around text. Each KBQ
- * is a panel separated by a 2px left accent-rail (its category colour) +
- * a subtle background tint, not a 1px outline. This is the fix for the
- * "constrained borders around text" complaint.
+ * The 8 Key Business Questions answered for one entity, with parity. Rewritten
+ * for the SL10 query surface to drop the locked-dark "war room" palette (the
+ * "everything is black" complaint) in favour of the design-token theme, so it
+ * honours light/dark and reads cleanly inside the cockpit. Each KBQ is a panel
+ * separated by a 2px left accent-rail (its category colour) + a tone-shifted
+ * surface, not a 1px outline. Every item carries a fact-class glyph and is
+ * clickable to open its signal → fact → evidence provenance (reuses SL05).
  */
-import { useEffect } from 'react';
 import type { EntityKbqs, KbqItem, KbqView } from '../../api';
+import FactClassGlyph from './FactClassGlyph';
 
-// ── Helix tokens (from helix-core.jsx) ──────────────────────────────
-const H = {
-  bg: '#0a0b0e', ink: '#e8eaed', ink2: '#c2c6cf', dim: '#8a8f99',
-  faint: '#5a5f69', panel: '#12141a', panel2: '#181b22', line: '#23262d',
-  accent: '#5eead4', ok: '#34d399', warn: '#fbbf24', bad: '#f87171',
-  serif: "'Instrument Serif', 'Fraunces', Georgia, serif",
-  mono: "'JetBrains Mono', 'DM Mono', ui-monospace, monospace",
-};
-// Category hue per KBQ (OKLCH, fixed L/C, hue only — Helix convention).
+// Category accent hue per KBQ (OKLCH, fixed L/C, hue only). Mid-lightness so it
+// works as an accent rail on either a light or dark surface.
 const KBQ_HUE: Record<number, number> = {
   1: 45, 2: 270, 3: 170, 4: 25, 5: 220, 6: 270, 7: 145, 8: 145,
 };
-const hue = (k: number) => `oklch(0.72 0.16 ${KBQ_HUE[k] ?? 200})`;
-const hueSoft = (k: number, a = 0.1) => `oklch(0.72 0.16 ${KBQ_HUE[k] ?? 200} / ${a})`;
+const hue = (k: number) => `oklch(0.62 0.16 ${KBQ_HUE[k] ?? 200})`;
+const hueSoft = (k: number, a = 0.08) => `oklch(0.62 0.16 ${KBQ_HUE[k] ?? 200} / ${a})`;
 
-const IMPACT_TONE: Record<string, string> = { high: H.bad, medium: H.warn, low: H.faint };
+const IMPACT_TONE: Record<string, string> = {
+  high: 'var(--color-red, #dc2626)',
+  medium: 'var(--color-amber, #d97706)',
+  low: 'var(--color-ink-4)',
+};
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '';
@@ -36,38 +34,61 @@ function fmtDate(iso: string | null): string {
     : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function ItemRow({ item, last }: { item: KbqItem; last: boolean }) {
+function ItemRow({
+  item,
+  last,
+  onOpen,
+}: {
+  item: KbqItem;
+  last: boolean;
+  onOpen?: (signalId: string) => void;
+}) {
+  const clickable = Boolean(onOpen && item.signal_id);
   return (
-    <div
+    <button
+      type="button"
       data-kbq-item
+      onClick={clickable ? () => onOpen!(item.signal_id) : undefined}
+      disabled={!clickable}
       style={{
+        all: 'unset',
         display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 0',
-        borderBottom: last ? 'none' : `1px solid ${H.line}`,
+        width: '100%', boxSizing: 'border-box',
+        borderBottom: last ? 'none' : '1px solid var(--color-line)',
+        cursor: clickable ? 'pointer' : 'default',
       }}
+      title={clickable ? 'View provenance — signal → fact → evidence' : undefined}
     >
       <span aria-hidden style={{
         width: 6, height: 6, borderRadius: 999, marginTop: 7, flexShrink: 0,
-        background: IMPACT_TONE[item.impact_tier ?? 'low'] ?? H.faint,
+        background: IMPACT_TONE[item.impact_tier ?? 'low'] ?? 'var(--color-ink-4)',
       }} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: H.ink }}>{item.claim}</p>
-        <div style={{ marginTop: 5, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontFamily: H.mono }}>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--color-ink)' }}>
+          {item.claim}
+        </p>
+        <div style={{ marginTop: 5, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontFamily: 'var(--font-mono)' }}>
+          <FactClassGlyph confidence_tier={item.confidence_tier} size={13} />
           {item.confidence_tier && (
-            <span style={{ fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: H.dim }}>
+            <span style={{ fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-ink-3)' }}>
               {item.confidence_tier}
             </span>
           )}
           {item.evidence_ids.length > 0 && (
-            <span style={{ fontSize: 9.5, color: H.faint }}>{item.evidence_ids.length} EVIDENCE</span>
+            <span style={{ fontSize: 9.5, color: 'var(--color-ink-4)' }}>
+              {item.evidence_ids.length} EVIDENCE
+            </span>
           )}
-          {fmtDate(item.date) && <span style={{ fontSize: 9.5, color: H.faint }}>{fmtDate(item.date)}</span>}
+          {fmtDate(item.date) && (
+            <span style={{ fontSize: 9.5, color: 'var(--color-ink-4)' }}>{fmtDate(item.date)}</span>
+          )}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
-function KbqCard({ view }: { view: KbqView }) {
+function KbqCard({ view, onOpenSignal }: { view: KbqView; onOpenSignal?: (id: string) => void }) {
   const c = hue(view.kbq);
   const empty = view.status === 'insufficient' || view.items.length === 0;
   return (
@@ -76,8 +97,10 @@ function KbqCard({ view }: { view: KbqView }) {
       data-kbq-status={view.status}
       className="ds-card"
       style={{
-        background: empty ? H.panel : `linear-gradient(${hueSoft(view.kbq, 0.05)}, ${hueSoft(view.kbq, 0.02)}), ${H.panel}`,
-        borderLeft: `2px solid ${empty ? H.line : c}`,
+        background: empty
+          ? 'var(--color-surface)'
+          : `linear-gradient(${hueSoft(view.kbq, 0.06)}, ${hueSoft(view.kbq, 0.02)}), var(--color-surface)`,
+        borderLeft: `2px solid ${empty ? 'var(--color-line)' : c}`,
         borderRadius: '0 10px 10px 0',
         boxShadow: 'none',
         padding: '16px 18px',
@@ -85,21 +108,26 @@ function KbqCard({ view }: { view: KbqView }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h3 style={{ margin: 0, fontFamily: H.serif, fontSize: 21, letterSpacing: '-0.01em', color: H.ink }}>
+        <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 21, letterSpacing: '-0.01em', color: 'var(--color-ink)' }}>
           {view.title}
         </h3>
-        <span style={{ fontFamily: H.mono, fontSize: 10, letterSpacing: '0.1em', color: empty ? H.faint : c }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', color: empty ? 'var(--color-ink-4)' : c }}>
           KBQ-{view.kbq}
         </span>
       </div>
       {empty ? (
-        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: H.dim, fontStyle: 'italic', fontFamily: H.serif }}>
+        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--color-ink-3)', fontStyle: 'italic', fontFamily: 'var(--font-display)' }}>
           Insufficient evidence — no signals yet for this question.
         </p>
       ) : (
         <div>
           {view.items.map((it, i) => (
-            <ItemRow key={it.signal_id + i} item={it} last={i === view.items.length - 1} />
+            <ItemRow
+              key={it.signal_id + i}
+              item={it}
+              last={i === view.items.length - 1}
+              onOpen={onOpenSignal}
+            />
           ))}
         </div>
       )}
@@ -110,48 +138,58 @@ function KbqCard({ view }: { view: KbqView }) {
 interface Props {
   data: EntityKbqs;
   entityName: string;
+  /** Open the provenance drawer for a KBQ item's underlying signal (SL05). */
+  onOpenSignal?: (signalId: string) => void;
+  /** When true, render without the full-page header/shell (embedded in a tab). */
+  embedded?: boolean;
 }
 
-export default function KbqDossier({ data, entityName }: Props) {
+export default function KbqDossier({ data, entityName, onOpenSignal, embedded }: Props) {
   const pct = Math.round((data.completeness ?? 0) * 100);
 
-  // Inject the Helix display/mono fonts once (graceful fallback if blocked).
-  useEffect(() => {
-    const id = 'helix-fonts';
-    if (typeof document === 'undefined' || document.getElementById(id)) return;
-    const l = document.createElement('link');
-    l.id = id; l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap';
-    document.head.appendChild(l);
-  }, []);
+  const grid = (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+      gap: 14, alignItems: 'start',
+    }}>
+      {data.kbqs.map((v) => <KbqCard key={v.kbq} view={v} onOpenSignal={onOpenSignal} />)}
+    </div>
+  );
+
+  const header = (
+    <header style={{ marginBottom: 30 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--color-ink-3)' }}>
+        {data.entity.type} dossier
+      </div>
+      <h1 style={{ margin: '8px 0 0', fontFamily: 'var(--font-display)', fontSize: 46, lineHeight: 1.05, letterSpacing: '-0.025em', color: 'var(--color-ink)' }}>
+        {entityName}
+      </h1>
+      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, maxWidth: 300, height: 4, borderRadius: 2, background: 'var(--color-line)', overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: 'var(--color-accent)', transition: 'width 300ms cubic-bezier(0.16,1,0.3,1)' }} />
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-ink-3)' }}>
+          <span style={{ color: 'var(--color-ink)' }}>{pct}%</span> KBQ COVERAGE
+        </span>
+      </div>
+    </header>
+  );
+
+  if (embedded) {
+    return (
+      <div data-helix-dossier>
+        {header}
+        {grid}
+      </div>
+    );
+  }
 
   return (
-    <div data-helix-dossier style={{ background: H.bg, color: H.ink, minHeight: '100vh' }}>
+    <div data-helix-dossier style={{ background: 'var(--color-bg)', color: 'var(--color-ink)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1120, margin: '0 auto', padding: '36px 28px 96px' }}>
-        <header style={{ marginBottom: 30 }}>
-          <div style={{ fontFamily: H.mono, fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: H.dim }}>
-            {data.entity.type} dossier
-          </div>
-          <h1 style={{ margin: '8px 0 0', fontFamily: H.serif, fontSize: 46, lineHeight: 1.05, letterSpacing: '-0.025em', color: H.ink }}>
-            {entityName}
-          </h1>
-          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, maxWidth: 300, height: 4, borderRadius: 2, background: H.line, overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: H.accent, transition: 'width 300ms cubic-bezier(0.16,1,0.3,1)' }} />
-            </div>
-            <span style={{ fontFamily: H.mono, fontSize: 11, color: H.dim }}>
-              <span style={{ color: H.ink }}>{pct}%</span> KBQ COVERAGE
-            </span>
-          </div>
-        </header>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 14, alignItems: 'start',
-        }}>
-          {data.kbqs.map((v) => <KbqCard key={v.kbq} view={v} />)}
-        </div>
+        {header}
+        {grid}
       </div>
     </div>
   );

@@ -1133,11 +1133,20 @@ export interface EntityKbqs {
   entity: { type: string; id: string; name?: string | null };
   kbqs: KbqView[];
   completeness: number;
+  /** PB-SL10 — echoed back when fetched via the by-asset query surface. */
+  asset?: string;
 }
 
 export const kbqApi = {
   forEntity: (entityType: string, entityId: string): Promise<EntityKbqs> =>
     fetch(`${BASE}/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}/kbq`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+        return r.json();
+      }),
+  /** PB-SL10 — resolve a typed asset → 8 KBQs (the query surface). */
+  byAsset: (asset: string): Promise<EntityKbqs> =>
+    fetch(`${BASE}/entities/kbq?asset=${encodeURIComponent(asset)}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
         return r.json();

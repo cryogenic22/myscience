@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from services.kbq_views import build_entity_kbqs, KBQ_CATALOG, kbq_tags_for
+from services.kbq_views import (
+    build_entity_kbqs,
+    build_entity_kbqs_for_asset,
+    KBQ_CATALOG,
+    kbq_tags_for,
+)
 
 
 def _sig(sid, tags, headline, impact="high", conf="confirmed"):
@@ -114,3 +119,39 @@ class TestBuildEntityKbqs:
         out = build_entity_kbqs(_make_db(signals), "company", "co-lilly")
         clinical = next(v for v in out["kbqs"] if v["kbq"] == 3)
         assert len(clinical["items"]) <= 10
+
+
+class TestBuildForAsset:
+    """PB-SL10 — KBQ-as-query-surface: resolve a typed asset → 8 KBQs."""
+
+    def test_resolves_asset_then_builds(self, monkeypatch):
+        # 'semaglutide' resolves to (drug, <uuid>) then the KBQ view is built
+        # against the resolved id (the one the signals are keyed by).
+        import services.kbq_views as kv
+
+        monkeypatch.setattr(
+            kv, "resolve_asset_to_subject",
+            lambda db, asset: ("drug", "drug-uuid-123"),
+        )
+        signals = [_sig("s1", ["clinical"], "Phase 3 readout positive")]
+        # signals carry the resolved id as primary_entity_id
+        for s in signals:
+            s["primary_entity_id"] = "drug-uuid-123"
+        out = build_entity_kbqs_for_asset(_make_db(signals), "semaglutide")
+        assert out["entity"]["type"] == "drug"
+        assert out["entity"]["id"] == "drug-uuid-123"
+        assert out["asset"] == "semaglutide"
+        clinical = next(v for v in out["kbqs"] if v["kbq"] == 3)
+        assert any(it["signal_id"] == "s1" for it in clinical["items"])
+
+    def test_unresolved_asset_returns_parity_skeleton(self, monkeypatch):
+        import services.kbq_views as kv
+
+        monkeypatch.setattr(
+            kv, "resolve_asset_to_subject",
+            lambda db, asset: ("drug", "unknown-slug"),
+        )
+        out = build_entity_kbqs_for_asset(_make_db([]), "nonexistent-drug")
+        assert len(out["kbqs"]) == 8
+        assert out["completeness"] == 0.0
+        assert out["asset"] == "nonexistent-drug"
