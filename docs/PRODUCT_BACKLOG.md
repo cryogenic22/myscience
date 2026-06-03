@@ -21,23 +21,25 @@
 > **Status taxonomy:** `proposed | triaged | blocked | in-progress | shipped | archived | wontfix`.
 > See [SPEC-042 §4.2](../specs/SPEC_042_centralized_product_backlog.md).
 
-## Dashboard (regenerated 2026-06-01)
+## Dashboard (regenerated 2026-06-03)
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 5     |
-| triaged       | 103   |
+| in-progress   | 7     |
+| triaged       | 117   |
 | blocked       | 0     |
-| proposed      | 0     |
-| shipped (90d) | 8     |
+| proposed      | 3     |
+| shipped (90d) | 22    |
 
-## Currently in flight (5)
+## Currently in flight (7)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
 - [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass) — frontend-claude / n/a
 - [PB-E05] Evidence drill-through — claims to source records — shared / adhoc
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
+- [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
+- [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -1952,6 +1954,130 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 > demo's pre-fix clinical-trial facts carry "Clinical trial: Trial NCT…" wording;
 > future emits use the cleaned format (append-only, so existing rows weren't
 > rewritten).
+>
+> **SHIPPED (3 Jun):** **DR-8** scheduler wiring (`_run_fact_emitters`) + full
+> cross-drug backfill (`scripts/backfill_fact_emitters.py`) — ledger broke the
+> monoculture (3,303→9,679 facts, 2→9 predicates, evidence 1→5,709; clinical_trial
+> facts now span 1,427 drugs). **DR-6** mechanism (`MechanismEmitter`:
+> drugs.mechanism_id→`mechanism_of_action` reference facts, 621 drugs;
+> `BioactivityEmitter` built-but-dormant — bioactivities.drug_id all NULL).
+> **DR-7** literature (`LiteratureEmitter`: pubmed_articles→`key_publication`
+> clinical / `disease_evidence` epidemiology, 1,118 facts). **A6** drug-dup
+> consolidation (56 rows merged, 0 orphans) + resolver richness-ranking fixed the
+> Mounjaro-vs-semaglutide sameness. **DR-2 still blocked** (no NADAC source data).
+
+### E20 — Sensing layer as a curated abstraction over the knowledge store
+
+> From `docs/sensing-layer-knowledge-abstraction-spec.html` (3 Jun, user-approved).
+> **Thesis:** a signal is not a separate store — it is a scored/timed/grouped
+> *lens* over the facts ledger. Today `signals` (037) and `facts` (065) are
+> parallel and unlinked. Unify them via one edge (`signal_facts` = Helix v8
+> `feeds_fact_ids`), colour everything by `fact_class`, and let every uploaded
+> document deepen the one graph. Build plan S0 (done) → S1 (legibility/provenance/
+> upload-wire) → S2 (unify stores + KBQ query surface) → S3 (ingest-dedup +
+> scheduling). Delivered loop-by-loop with TDD + verify gates.
+
+#### [PB-SL01] Digest dedup + signals.event_id unique constraint (S0.1)
+- **Type**: bug
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Digest read market_events with no dedup; table held the same FDA recall 2,688×. `get_feed`/`get_feed_summary` now DISTINCT ON (entity,type,description) keeping highest-trust/newest (36,463→1,518 in 5yr window). + UNIQUE(signals.event_id) migration 077 (applied to prod). +2 tests. Commit 7f81b7f.
+
+#### [PB-SL02] Signals DB legibility (theme vars) + free-text search (S0.2)
+- **Type**: bug
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SignalsTab/SignalsListPanel hardcoded #0a0b0e (the "all black" report) → theme vars; added headline/summary/entity search. tsc/build clean, vitest 18. Commit dda5ab7.
+
+#### [PB-SL03] DR-9: deck/PDF text+tables → trial_result facts (S0.3)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Phase 1 — PPTX + PDF-table extraction in document_extractor (475ec24). Phase 2 — document_facts.py runs extract_structured/TrialReadoutExtraction → trial_result EmittedFact, idempotent emit (c1bb56c). +12 tests. Wiring into the upload route is PB-SL06.
+
+#### [PB-SL04] fact_class colour system across Digest / Stream / Signals DB (S1.1)
+- **Type**: enhancement
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Adopt the Helix v8 fact_class palette + glyph (R/C/S/I/X: reference indigo, corporate orange, signal teal, inferred purple, internal brown) consistently across EventCard (digest), SensingFeed (stream), and SignalCard/SignalDetail. Legibility from meaning, not just severity. Build first — small, high-impact, completes PB-SL02.
+
+#### [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-SL04
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: New `signal_facts (signal_id, fact_id, role)` join (= v8 feeds_fact_ids). Wire the existing ProvenancePanel into the signals UI: forward (signal→facts→evidence→source) + backward (fact→signals/insights/scenarios). The bidirectional provenance from the spec.
+
+#### [PB-SL06] Wire emit_document_facts into the upload route (S1.3)
+- **Type**: feature
+- **Status**: triaged
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-SL03
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: After a deck/PDF upload, run emit_document_facts so trial-readout facts land in the ledger automatically (closes the DR-9 loop end-to-end). Needs the real StructuredCall (OpenAI/Anthropic adapter) + a live run on a real deck. Auto-emit + surface the new facts in the agent activity feed.
+
+#### [PB-SL07] Emit signals from high-impact fact deltas — unify the two stores (S2.1)
+- **Type**: feature
+- **Status**: proposed
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Blocked by**: PB-SL05
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: When a DR emitter asserts a high-impact fact (phase-3 readout, boxed warning, price change), mint a signal with role=produces. Signals stop being market_events-only; the signal lens reads the unified fact graph. The structural payoff of the spec.
+
+#### [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2)
+- **Type**: enhancement
+- **Status**: proposed
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Make kbq_views the primary "curated for CI / query" entry point (ask a business question → get the classed, sourced facts that answer it). Add confidence-tier + date-range filters to the Signals DB to complete the filter set (search + KBQ + impact shipped in SL02).
+
+#### [PB-SL09] market_events ingest-dedup + connector scheduling cadence (S3.1)
+- **Type**: bug
+- **Status**: proposed
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Fix the recall re-insert at source (the read-time dedup in SL01 is a symptom fix): a dedup key/unique constraint on market_events so the recall connector stops inserting the same event thousands of times. Pairs with connector fetch-cadence (overlaps E17 PB-D08).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 
