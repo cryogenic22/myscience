@@ -2067,14 +2067,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL10] KBQ-as-primary-query-surface UI (curated-for-CI entry point)
 - **Type**: feature
-- **Status**: proposed
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: frontend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: Carved from SL08. Make the 8 KBQs the primary "ask a business question → get the classed, sourced facts/signals that answer it" entry point. Backend exists (`services/kbq_views.build_entity_kbqs` + `GET /entities/{type}/{id}/kbq`, already includes candidate signals); this is the UI surface (entity picker → 8 KBQ cards with fact-class glyphs + provenance), reusing FactClassGlyph + the SL05 linked-facts pattern.
+- **Notes**: SHIPPED (commit 1088567). KBQ query surface: type an asset → 8 KBQs answered, each item drillable to provenance (signal→fact→evidence). Backend: `build_entity_kbqs_for_asset` (richness-ranked resolver + name fallback) + `GET /entities/kbq?asset=`. Frontend: `KbqQueryTab` (asset picker + suggestions + provenance drawer) + `KbqDossier` rewritten to design-token theme (dropped the locked-dark `#0a0b0e` palette — the "everything is black" complaint) with FactClassGlyph per item; mounted under cockpit "Sense". +6 tests; kbq_views 14, full vitest 927 (no-file-parallelism), vite build clean. Live prod gate: semaglutide/Wegovy→semaglutide, tirzepatide distinct, unknown→graceful empty; SL07 candidate fact-signals flow in (3/8 filled). **E20 COMPLETE.**
 
 #### [PB-SL09] market_events ingest-dedup + connector scheduling cadence (S3.1)
 - **Type**: bug
