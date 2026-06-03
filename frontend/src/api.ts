@@ -1273,6 +1273,10 @@ export interface WarRoomRound {
   reactions: WarRoomReaction[];
 }
 
+// W1 / IX04a — the war room's scenario mode. Values match
+// services/scenario_state.py::ScenarioMode.
+export type WarRoomMode = 'guided' | 'autonomous' | 'game_theoretic';
+
 export interface WarRoom {
   id: string;
   title: string;
@@ -1284,6 +1288,8 @@ export interface WarRoom {
   source_signal_id: string | null;
   game_phase: GamePhase;
   status: 'draft' | 'active' | 'closed';
+  mode?: WarRoomMode;                             // IX04a — guided default
+  mode_changed_at?: string | null;
   archived_at: string | null;                     // Phase B
   created_at: string | null;
   updated_at: string | null;
@@ -1351,6 +1357,19 @@ export const warRoomApi = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  // IX04a — switch the room's scenario mode (owner-only, idempotent).
+  setMode: (id: string, mode: WarRoomMode): Promise<{
+    war_room_id: string; mode: WarRoomMode; round_count: number; mode_changed_at: string | null;
+  }> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/mode`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ mode }),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
