@@ -243,3 +243,77 @@ def test_corrupt_pdf_raises_descriptively():
     # Message should not be a generic "list index out of range" type error
     msg = str(excinfo.value).lower()
     assert any(word in msg for word in ("pdf", "parse", "invalid", "corrupt"))
+
+
+# ────────────────────────────────────────────────────────────────────
+# DR-9 — PPTX (conference decks) + table extraction
+# ────────────────────────────────────────────────────────────────────
+
+def _make_pptx_bytes() -> bytes:
+    """Build a small deck: a title+bullets slide, a table slide, and notes."""
+    from pptx import Presentation
+    from pptx.util import Inches
+    prs = Presentation()
+    # Slide 1 — title + body bullets
+    s1 = prs.slides.add_slide(prs.slide_layouts[1])
+    s1.shapes.title.text = "STEP UP — semaglutide 7.2 mg"
+    s1.placeholders[1].text = "20.7% mean weight loss at 72 weeks"
+    # speaker notes carry the quantitative detail
+    s1.notes_slide.notes_text_frame.text = "Early responders 27.7% (subgroup)."
+    # Slide 2 — a table
+    s2 = prs.slides.add_slide(prs.slide_layouts[5])
+    rows, cols = 2, 2
+    tbl = s2.shapes.add_table(rows, cols, Inches(1), Inches(1),
+                              Inches(6), Inches(2)).table
+    tbl.cell(0, 0).text = "Arm"
+    tbl.cell(0, 1).text = "Weight loss"
+    tbl.cell(1, 0).text = "CagriSema"
+    tbl.cell(1, 1).text = "23%"
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def test_table_to_text_flattens_rows_pipe_delimited():
+    from services.document_extractor import _table_to_text
+    out = _table_to_text([["Arm", "Result"], ["CagriSema", "23%"], ["", ""]])
+    assert out == "Arm | Result\nCagriSema | 23%"   # empty row dropped
+
+
+def test_extracted_document_has_tables_field():
+    from services.document_extractor import ExtractedDocument, ExtractedTable
+    fields = ExtractedDocument.__dataclass_fields__
+    assert "tables" in fields
+    assert "rows" in ExtractedTable.__dataclass_fields__
+
+
+def test_extract_pptx_text_tables_and_notes():
+    from services.document_extractor import extract_text
+    doc = extract_text(_make_pptx_bytes(), filename="readout.pptx")
+    assert doc.format == "pptx"
+    assert doc.metadata["slide_count"] == 2
+    # slide body text
+    assert "20.7% mean weight loss" in doc.full_text
+    # speaker notes folded in
+    assert "Early responders 27.7%" in doc.full_text
+    assert "[notes]" in doc.full_text
+    # table both flattened into text and surfaced structurally
+    assert "CagriSema | 23%" in doc.full_text
+    assert doc.metadata["table_count"] == 1
+    assert doc.tables[0].rows[1] == ["CagriSema", "23%"]
+
+
+def test_pptx_detected_by_extension():
+    from services.document_extractor import _detect_format
+    assert _detect_format(b"PK\x03\x04stuff", "deck.pptx") == "pptx"
+
+
+def test_pdf_table_extraction(monkeypatch):
+    """PDF tables are lifted into ExtractedDocument.tables + folded into text."""
+    pytest.importorskip("reportlab")
+    from services.document_extractor import extract_text
+    payload = _make_pdf_bytes(["Trial summary table follows"])
+    doc = extract_text(payload, filename="trial.pdf")
+    # table_count key always present on the PDF path (0 is fine for a no-table PDF)
+    assert "table_count" in doc.metadata
+    assert doc.format == "pdf"
