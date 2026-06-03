@@ -1875,15 +1875,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-IX01] Promote bridge — signal → dossier / war-game / engagement
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-IX02, PB-IX03
 - **Created**: 2026-06-02
-- **Last touched**: 2026-06-02
-- **Notes**: The missing connector. A signal action menu (in IntelligenceTab) → seed a standalone dossier, a war game, or a full engagement from the signal. Upstream `signal_promoter.py` (events→signals) + `decisions.promote_round` (round→decision) exist; this adds the middle signal→work promotion + a seed endpoint. Highest-value IA loop.
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 64a8572). Completes the signal→work promote set. War-room (Simulate, already carried `source_signal_id`) + Decision (Frame) pre-existed; IX01 adds **Build dossier** (standalone 8-domain dossier seeded by the signal's asset, auto-builds) + **Start engagement** (New Engagement modal pre-filled with asset + name + signal summary as strategic context). URL-driven like the existing "View dossier" link (`/ci?tab=dossier&asset=` · `/ci?tab=engagements&new=1&asset=&seedName=&seedContext=`); deep-linkable, no deep prop threading. No new backend (dossier-preview ephemeral-by-asset, POST /engagements + war-room seed already exist). +6 tests; full vitest 933 (no-file-parallelism), vite build clean, no new tsc errors. Touched: SignalDetail, StandaloneDossierTab, EngagementsTab, NewEngagementModal, CIPage.
 
 #### [PB-IX04] War Game surface + mode picker (turn-based / game-theory / autonomous)
 - **Type**: feature
