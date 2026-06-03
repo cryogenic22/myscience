@@ -1289,15 +1289,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H14] Scenario calibration loop (re-weight probability from new signals)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H09, PB-H01
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: THE Learn-loop gap. Benchmark re-weights `prior_prob → current_prob` as signals arrive, each change carrying a `calibration_note` tracing to the causing signal. Our learn layer is strong and WIRED (telemetry, 3 feedback loops, outcome detection every 1h, EWMA source-accuracy via `learning_service.py`) — but scenario probabilities are never recalibrated. Wire signal arrival (via affects_scenario_ids, PB-H01) → Bayesian update of scenario current_prob (reuse `learning_service.ewma_update`) → write a calibration_note. Closes the flywheel. Acceptance: a new signal affecting a scenario shifts its current_prob and records a calibration_note citing the signal.
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 2c8069b). The Learn-loop vertebra. `services/scenario_calibration.py`: `calibrate_scenario_prob` (pure) re-weights prior→current via EWMA (reuses `learning_service.ewma_update`), one observation per corroborating signal mapped from confidence tier (confirmed .90…disputed .45); measures evidence ACCUMULATION only (honest — no reversal claims), bounded [0.05,0.95], writes a calibration_note citing count/entity/shift/latest-signal. **H01 was never built** so the signal→scenario link is ENTITY-LEVEL: a scenario's engagement focal asset → signals about that entity arriving after derivation corroborate it (from_fact_ids mix synthetic ids, so no fact-id join). Wired into scheduler task 11 (`calibrate_all_engagements`, bounded, idempotent) + `Scenario.to_dict.calibrationNote` + ScenariosPage renders it under the dial (visible + traced). +9 calib tests, full vitest 935, build clean. Live prod gate (semaglutide eng db4fe801): 4 scenarios calibrated — competitive 0.38→0.639, signal 0.30→0.62, each with a citing note. Follow-up: rival-name matching (not just focal entity) + contradiction detection for downward moves.
 
 #### [PB-H15] SDAL flywheel KPI dashboard (sense / decide / act / learn)
 - **Type**: enhancement
