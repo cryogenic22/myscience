@@ -4,6 +4,7 @@ import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
 import FactClassGlyph from './FactClassGlyph';
+import type { FactClass } from '../../lib/helix';
 import EvidenceStack from './EvidenceStack';
 import MaterialityDrawer from './MaterialityDrawer';
 import { useEvidenceDocuments } from '../../hooks/useEvidenceDocuments';
@@ -227,6 +228,43 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
 
       {/* Evidence */}
       <EvidenceField signal={signal} />
+
+      {/* PB-SL05 — facts this signal feeds (forward provenance) */}
+      {signal.linked_facts && signal.linked_facts.length > 0 && (
+        <Field label={`Feeds ${signal.linked_facts.length} fact${signal.linked_facts.length === 1 ? '' : 's'}`}>
+          <div className="space-y-2">
+            {signal.linked_facts.map((f) => (
+              <div
+                key={f.fact_id}
+                className="flex items-start gap-2"
+                style={{
+                  padding: '8px 10px', borderRadius: '8px',
+                  background: 'var(--color-surface-2)',
+                  border: '1px solid var(--color-line)',
+                }}
+              >
+                <FactClassGlyph factClass={(f.fact_class ?? 'signal') as FactClass} size={15} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="text-[12.5px]" style={{ color: 'var(--color-ink)', lineHeight: 1.4 }}>
+                    {f.claim ?? f.predicate}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink-4)' }}>
+                    {f.predicate} · {f.role}
+                    {f.source_id && <> · {f.source_id}</>}
+                    {f.source_url && (
+                      <>
+                        {' · '}
+                        <a href={f.source_url} target="_blank" rel="noreferrer"
+                           style={{ color: 'var(--color-accent)' }}>source ↗</a>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
 
       {/* Audit */}
       {(reviewed || shipped || signal.superseded_by) && (

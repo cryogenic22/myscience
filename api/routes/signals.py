@@ -200,7 +200,31 @@ def get_signal(signal_id: str, db: Database = Depends(get_db)):
 
     if not row:
         raise HTTPException(404, f"signal not found: {signal_id}")
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    result["linked_facts"] = _linked_facts(db, signal_id)
+    return result
+
+
+def _linked_facts(db: Database, signal_id: str) -> list[dict]:
+    """PB-SL05 — the facts this signal feeds (via signal_facts), with their
+    class + source for forward provenance (signal → fact → evidence → source)."""
+    try:
+        rows = db.fetch_all(
+            """SELECT sf.role, f.id::text AS fact_id, f.predicate, f.fact_class,
+                      f.object_value->>'description' AS claim,
+                      f.confidence,
+                      e.source_id, e.source_url
+                 FROM signal_facts sf
+                 JOIN facts f ON f.id = sf.fact_id
+                 LEFT JOIN evidence_records e ON e.evidence_id = f.source_doc_id
+                WHERE sf.signal_id::text = %s
+                ORDER BY f.confidence DESC NULLS LAST""",
+            [signal_id],
+        )
+        return [dict(r) for r in rows]
+    except Exception:
+        logger.exception("linked_facts query failed for %s", signal_id)
+        return []
 
 
 # ────────────────────────────────────────────────────────────────────

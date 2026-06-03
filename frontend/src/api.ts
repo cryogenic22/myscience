@@ -1040,6 +1040,20 @@ export interface Signal {
   reviewed_by: string | null;
   reviewed_at: string | null;
   shipped_at: string | null;
+  /** PB-SL05 — facts this signal feeds (forward provenance), on detail only. */
+  linked_facts?: SignalLinkedFact[];
+}
+
+/** A fact a signal produces/relates to (signal_facts edge). */
+export interface SignalLinkedFact {
+  role: string;
+  fact_id: string;
+  predicate: string;
+  fact_class: string | null;
+  claim: string | null;
+  confidence: number | null;
+  source_id: string | null;
+  source_url: string | null;
 }
 
 export interface SignalsListParams {

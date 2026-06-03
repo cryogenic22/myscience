@@ -120,6 +120,15 @@ def _make_db(signals: list = None):
 
     def fake_fetch_all(sql, params=None):
         s = (sql or "").lower()
+        if "from signal_facts" in s:
+            # PB-SL05 — linked facts for a signal (forward provenance)
+            return [{
+                "role": "produces", "fact_id": "fact-1",
+                "predicate": "safety_signal", "fact_class": "corporate",
+                "claim": "Boxed warning: thyroid C-cell tumors",
+                "confidence": 0.8, "source_id": "openfda_labels",
+                "source_url": "https://example.com/label",
+            }]
         if "from signals" in s:
             out = list(rows)
             params_list = list(params or [])
@@ -376,6 +385,20 @@ def test_detail_endpoint_404_for_unknown_id():
     db, _ = _make_db()
     r = _client(db).get("/signals/does-not-exist")
     assert r.status_code == 404
+
+
+def test_detail_endpoint_includes_linked_facts():
+    """PB-SL05 — signal detail carries the facts it feeds (forward provenance)."""
+    db, _ = _make_db()
+    body = _client(db).get("/signals/sig-1").json()
+    assert "linked_facts" in body
+    assert isinstance(body["linked_facts"], list)
+    lf = body["linked_facts"][0]
+    assert lf["predicate"] == "safety_signal"
+    assert lf["fact_class"] == "corporate"
+    assert lf["role"] == "produces"
+    assert "Boxed warning" in lf["claim"]
+    assert lf["source_id"] == "openfda_labels"
 
 
 # ────────────────────────────────────────────────────────────────────
