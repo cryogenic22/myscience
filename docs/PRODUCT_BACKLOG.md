@@ -25,13 +25,13 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 8     |
+| in-progress   | 7     |
 | triaged       | 115   |
 | blocked       | 0     |
 | proposed      | 2     |
-| shipped (90d) | 24    |
+| shipped (90d) | 25    |
 
-## Currently in flight (8)
+## Currently in flight (7)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
@@ -40,7 +40,6 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
-- [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -2024,14 +2023,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2)
 - **Type**: feature
-- **Status**: in-progress
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: The `signal_facts (signal_id, fact_id, role)` edge SHIPPED with PB-SL07 (migration 078). REMAINING: read API (signal detail returns its linked facts) + wire the existing ProvenancePanel into the signals UI for forward (signal→facts→evidence→source) + backward (fact→signals/insights/scenarios) provenance. Data exists now (65 fact-derived signals linked); this surfaces it.
+- **Notes**: SHIPPED. Edge (signal_facts + event_id-nullable, migration 078) landed with PB-SL07; forward provenance shipped here (commit ee64893): GET /signals/{id} returns linked_facts (signal→fact→evidence→source); SignalDetail renders a "Feeds N facts" block with FactClassGlyph + claim + source link. Gate: signals API 21, tsc/build clean, full vitest 923. Backward provenance (fact→signals/insights/scenarios) deferred to the dossier-side ProvenancePanel (out of signals scope).
 
 #### [PB-SL06] Wire emit_document_facts into the upload route (S1.3)
 - **Type**: feature
