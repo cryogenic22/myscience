@@ -2,6 +2,7 @@ import type { Signal } from '../../api';
 import {
   HELIX as H, catColor, catSoft, CAT_LABEL, IMPACT_TONE, IMPACT_WORD, fmtAge,
 } from '../../lib/helix';
+import FactClassGlyph from './FactClassGlyph';
 
 interface Props {
   signal: Signal;
@@ -46,6 +47,11 @@ export default function SignalCard({ signal, selected, onSelect }: Props) {
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
+        <FactClassGlyph
+          confidence_tier={signal.confidence_tier}
+          source_id={signal.evidence_document_ids?.[0]}
+          size={15}
+        />
         <span style={{
           fontFamily: H.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.07em',
           textTransform: 'uppercase', padding: '1px 6px', borderRadius: 4,

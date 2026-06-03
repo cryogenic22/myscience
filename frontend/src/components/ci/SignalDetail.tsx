@@ -3,6 +3,7 @@ import { Swords } from 'lucide-react';
 import { signalsApi, warRoomApi, type Signal } from '../../api';
 import ConfidenceBadge from './ConfidenceBadge';
 import ImpactBadge from './ImpactBadge';
+import FactClassGlyph from './FactClassGlyph';
 import EvidenceStack from './EvidenceStack';
 import MaterialityDrawer from './MaterialityDrawer';
 import { useEvidenceDocuments } from '../../hooks/useEvidenceDocuments';
@@ -94,6 +95,12 @@ export default function SignalDetail({ signal, reviewerMode = false, onReviewed,
       {/* Header */}
       <div style={{ marginBottom: '16px' }}>
         <div className="flex items-center gap-2 flex-wrap mb-2">
+          <FactClassGlyph
+            confidence_tier={signal.confidence_tier}
+            source_id={signal.evidence_document_ids?.[0]}
+            size={16}
+            withLabel
+          />
           <ConfidenceBadge tier={signal.confidence_tier} />
           <ImpactBadge tier={signal.impact_tier} />
           <span

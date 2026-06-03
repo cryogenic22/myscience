@@ -64,6 +64,67 @@ export const CAT_LABEL: Record<string, string> = {
   esg_supply: 'ESG & Supply',
 };
 
+/**
+ * Fact-class system — aligns the sensing UI to the Helix v8 provenance
+ * vocabulary (PB-SL04). Every fact/signal is coloured by WHERE it came from,
+ * not just how urgent it is. Five classes, each with a glyph + theme-aware
+ * colour (the `--fc-*` vars defined in index.css, both themes):
+ *   R reference · C corporate · S signal · I inferred · X internal
+ */
+export type FactClass = 'reference' | 'corporate' | 'signal' | 'inferred' | 'internal';
+
+export const FACT_CLASS: Record<FactClass, { color: string; glyph: string; label: string }> = {
+  reference: { color: 'var(--fc-ref)',      glyph: 'R', label: 'Reference' },
+  corporate: { color: 'var(--fc-corp)',     glyph: 'C', label: 'Corporate' },
+  signal:    { color: 'var(--fc-signal)',   glyph: 'S', label: 'Signal' },
+  inferred:  { color: 'var(--fc-inferred)', glyph: 'I', label: 'Inferred' },
+  internal:  { color: 'var(--fc-internal)', glyph: 'X', label: 'Internal' },
+};
+
+const _fc = (c: FactClass | undefined): FactClass =>
+  c && FACT_CLASS[c] ? c : 'signal';
+
+export const factClassColor = (c: FactClass | undefined): string =>
+  FACT_CLASS[_fc(c)].color;
+
+/** Soft (translucent) fill for chips/rails. */
+export const factClassSoft = (c: FactClass | undefined, alpha = 0.16): string =>
+  `color-mix(in srgb, ${FACT_CLASS[_fc(c)].color} ${Math.round(alpha * 100)}%, transparent)`;
+
+// confidence_tier (signals) is our closest provenance field today; map it into
+// the v8 vocabulary. The unify-stores loop (PB-SL07) replaces this heuristic
+// with the real fact_class once signals link to ledger facts.
+const _TIER_TO_CLASS: Record<string, FactClass> = {
+  confirmed: 'reference',
+  reported: 'corporate',
+  inferred: 'inferred',
+  disputed: 'signal',
+};
+
+/**
+ * Best-effort fact class for a signal or feed event from the fields we have.
+ * Order: internal source → confidence_tier → source_tier → default 'signal'.
+ */
+export function deriveFactClass(input: {
+  confidence_tier?: string | null;
+  source_tier?: string | null;
+  source_id?: string | null;
+  fact_class?: string | null;
+}): FactClass {
+  if (input.fact_class && FACT_CLASS[input.fact_class as FactClass]) {
+    return input.fact_class as FactClass;   // exact, once unified (SL07)
+  }
+  const src = (input.source_id ?? '').toLowerCase();
+  if (src.includes('internal') || src.includes('user_document') || src.includes('zs_')) {
+    return 'internal';
+  }
+  if (input.confidence_tier && _TIER_TO_CLASS[input.confidence_tier]) {
+    return _TIER_TO_CLASS[input.confidence_tier];
+  }
+  if (input.source_tier === 'tier_1') return 'reference';
+  return 'signal';
+}
+
 export const IMPACT_TONE: Record<string, string> = {
   high: HELIX.bad, medium: HELIX.warn, low: HELIX.faint,
 };

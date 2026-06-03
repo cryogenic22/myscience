@@ -3,6 +3,7 @@ import { ChevronDown, X } from 'lucide-react';
 import type { IntelligenceFeedItem, GraphNode, GraphEdge } from '../../api';
 import { api } from '../../api';
 import KnowledgeGraph from '../KnowledgeGraph';
+import FactClassGlyph from '../ci/FactClassGlyph';
 
 /* ── Severity palette ───────────────────────────────── */
 
@@ -308,8 +309,9 @@ export function EventCard({ item, onClick, onDismiss, onAskInChat }: EventCardPr
 
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Top row: severity + timestamp + source tier */}
+        {/* Top row: fact class + severity + timestamp + source tier */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <FactClassGlyph source_tier={item.source_tier} size={15} />
           <span
             style={{
               fontSize: '10px',
