@@ -25,13 +25,13 @@
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 7     |
-| triaged       | 116   |
+| in-progress   | 8     |
+| triaged       | 115   |
 | blocked       | 0     |
-| proposed      | 3     |
-| shipped (90d) | 23    |
+| proposed      | 2     |
+| shipped (90d) | 24    |
 
-## Currently in flight (7)
+## Currently in flight (8)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
@@ -40,6 +40,7 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
+- [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -2023,15 +2024,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: in-progress
 - **Priority**: high
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
-- **Blocked by**: PB-SL04
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: New `signal_facts (signal_id, fact_id, role)` join (= v8 feeds_fact_ids). Wire the existing ProvenancePanel into the signals UI: forward (signal→facts→evidence→source) + backward (fact→signals/insights/scenarios). The bidirectional provenance from the spec.
+- **Notes**: The `signal_facts (signal_id, fact_id, role)` edge SHIPPED with PB-SL07 (migration 078). REMAINING: read API (signal detail returns its linked facts) + wire the existing ProvenancePanel into the signals UI for forward (signal→facts→evidence→source) + backward (fact→signals/insights/scenarios) provenance. Data exists now (65 fact-derived signals linked); this surfaces it.
 
 #### [PB-SL06] Wire emit_document_facts into the upload route (S1.3)
 - **Type**: feature
@@ -2047,15 +2047,14 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-SL07] Emit signals from high-impact fact deltas — unify the two stores (S2.1)
 - **Type**: feature
-- **Status**: proposed
-- **Priority**: medium
+- **Status**: shipped
+- **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
-- **Blocked by**: PB-SL05
 - **Created**: 2026-06-03
 - **Last touched**: 2026-06-03
-- **Notes**: When a DR emitter asserts a high-impact fact (phase-3 readout, boxed warning, price change), mint a signal with role=produces. Signals stop being market_events-only; the signal lens reads the unified fact graph. The structural payoff of the spec.
+- **Notes**: SHIPPED (commit 409ed8b + migration 078). `services/fact_signals.py mint_signals_from_facts` — selective (SIGNAL_WORTHY predicates only), evidence-required (fact.source_doc_id → signal evidence), idempotent (skips facts already in signal_facts). fact_class→confidence_tier, predicate→impact+KBQ; minted as 'candidate'. Live: 65 signals from DR-4 boxed warnings, idempotent, provenance chain signal→fact→evidence intact. Carried the signal_facts edge + event_id-nullable (the schema half of SL05). +8 tests; backend 49 pass.
 
 #### [PB-SL08] KBQ as the query surface + confidence/date filters (S2.2)
 - **Type**: enhancement
