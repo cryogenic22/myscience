@@ -31,6 +31,7 @@ export default function SignalsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<ImpactTier | 'all'>('all');
+  const [query, setQuery] = useState('');
 
   // PB-104 — kbq is multi-select, mirrored to `?kbq=financial,clinical` in the URL
   const [searchParams, setSearchParams] = useSearchParams();
@@ -95,13 +96,25 @@ export default function SignalsTab({
   }, [selectedId]);
 
   const filtered = useMemo(() => {
-    if (!watchlistFilter || watchlistFilter.length === 0) return signals;
-    const set = new Set(watchlistFilter.map((w) => `${w.entity_type}:${w.entity_id}`));
-    return signals.filter(
-      (s) => s.primary_entity_type && s.primary_entity_id
-        && set.has(`${s.primary_entity_type}:${s.primary_entity_id}`),
-    );
-  }, [signals, watchlistFilter]);
+    let out = signals;
+    if (watchlistFilter && watchlistFilter.length > 0) {
+      const set = new Set(watchlistFilter.map((w) => `${w.entity_type}:${w.entity_id}`));
+      out = out.filter(
+        (s) => s.primary_entity_type && s.primary_entity_id
+          && set.has(`${s.primary_entity_type}:${s.primary_entity_id}`),
+      );
+    }
+    // Free-text search across headline / summary / entity name (client-side
+    // over the loaded page — the user asked to "search for a signal").
+    const q = query.trim().toLowerCase();
+    if (q) {
+      out = out.filter((s) =>
+        [s.headline, s.summary, s.primary_entity_name]
+          .some((v) => (v ?? '').toLowerCase().includes(q)),
+      );
+    }
+    return out;
+  }, [signals, watchlistFilter, query]);
 
   const emptyMessage = (
     <div className="space-y-3">
@@ -129,16 +142,32 @@ export default function SignalsTab({
   );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0a0b0e' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)' }}>
       {/* Filter bar */}
       <div
         className="shrink-0 flex items-center gap-3 flex-wrap"
         style={{
           padding: '10px 16px',
-          borderBottom: '1px solid #23262d',
-          background: '#0a0b0e',
+          borderBottom: '1px solid var(--color-line)',
+          background: 'var(--color-surface)',
         }}
       >
+        {/* Free-text search */}
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search signals…"
+          className="text-[12px]"
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            border: '1px solid var(--color-line)',
+            background: 'var(--color-bg)',
+            color: 'var(--color-ink)',
+            minWidth: '200px',
+          }}
+        />
         <select
           value={impact}
           onChange={(e) => setImpact(e.target.value as ImpactTier | 'all')}
@@ -146,9 +175,9 @@ export default function SignalsTab({
           style={{
             padding: '4px 8px',
             borderRadius: '6px',
-            border: '1px solid #2c3038',
-            background: '#12141a',
-            color: '#e8eaed',
+            border: '1px solid var(--color-line)',
+            background: 'var(--color-bg)',
+            color: 'var(--color-ink)',
             fontFamily: "'JetBrains Mono', ui-monospace, monospace",
           }}
         >
@@ -157,7 +186,7 @@ export default function SignalsTab({
           ))}
         </select>
         <KBQFilter selected={kbq} onSelect={setKbq} />
-        <span className="ml-auto" style={{ color: '#8a8f99', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
+        <span className="ml-auto" style={{ color: 'var(--color-ink-3)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
           {loading ? 'LOADING…' : `${filtered.length} SIGNAL${filtered.length === 1 ? '' : 'S'}`}
         </span>
       </div>
@@ -165,7 +194,7 @@ export default function SignalsTab({
       {error && (
         <div
           className="text-[12px]"
-          style={{ padding: '10px 16px', color: '#B91C1C' }}
+          style={{ padding: '10px 16px', color: 'var(--color-critical, #B91C1C)' }}
         >
           {error}
         </div>
@@ -188,7 +217,7 @@ export default function SignalsTab({
         ) : (
           <div
             className="flex-1 flex items-center justify-center text-[13px]"
-            style={{ color: '#5a5f69', background: '#0a0b0e' }}
+            style={{ color: 'var(--color-ink-4)', background: 'var(--color-bg)' }}
           >
             {filtered.length === 0 ? '' : 'Select a signal'}
           </div>
