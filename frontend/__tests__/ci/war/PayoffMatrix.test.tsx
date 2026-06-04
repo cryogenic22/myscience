@@ -20,6 +20,8 @@ const MOCK_MATRIX: PayoffMatrixT = {
     { row_id: 'r2', col_id: 'c2', outcome: 'win',     delta_pct: 6.0,  confidence: 0.79 },
   ],
   recommended_cell: { row_id: 'r2', col_id: 'c1' },
+  nash_cell: { row_id: 'r2', col_id: 'c2' },
+  nash_reasoning: 'Security equilibrium: cede is the rival gain-minimising response.',
 };
 
 describe('PayoffMatrix (PB-501)', () => {
@@ -66,6 +68,14 @@ describe('PayoffMatrix (PB-501)', () => {
     expect(within(recommended as HTMLElement).getByText(/recommend/i)).toBeDefined();
   });
 
+  it('marks the nash (security) cell and renders its reasoning (PB-H12)', () => {
+    render(<PayoffMatrix matrix={MOCK_MATRIX} />);
+    const nash = document.querySelector('[data-nash="true"]');
+    expect(nash).not.toBeNull();
+    expect(within(nash as HTMLElement).getByText('+6.0%')).toBeDefined();
+    expect(screen.getByText(/security equilibrium/i)).toBeDefined();
+  });
+
   it('renders the empty-state message when the matrix has zero cells', () => {
     const empty: PayoffMatrixT = {
       room_id: 'room-empty',
@@ -73,6 +83,8 @@ describe('PayoffMatrix (PB-501)', () => {
       cols: [],
       cells: [],
       recommended_cell: null,
+      nash_cell: null,
+      nash_reasoning: null,
     };
     render(<PayoffMatrix matrix={empty} />);
     expect(screen.getByText(/no scenarios yet/i)).toBeDefined();

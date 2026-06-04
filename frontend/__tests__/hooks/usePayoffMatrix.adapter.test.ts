@@ -90,15 +90,48 @@ describe('adaptPayoffResponse — BE-8 wire shape → frontend PayoffMatrix', ()
     expect(out.recommended_cell).toBeNull();
   });
 
-  it('throws if our_moves length is not 2', () => {
-    expect(() =>
-      adaptPayoffResponse(FIXTURE.response, FIXTURE.roomId, ['only-one'] as any, FIXTURE.adversaryStates),
-    ).toThrow(/exactly 2/);
+  it('maps nash_cell + nash_reasoning (PB-H12)', () => {
+    const r = { ...FIXTURE.response, nash_cell: [1, 0], nash_reasoning: 'Security equilibrium: ...' };
+    const out = adaptPayoffResponse(r as any, FIXTURE.roomId, FIXTURE.ourMoves, FIXTURE.adversaryStates);
+    expect(out.nash_cell).toEqual({ row_id: 'r-wait_q4', col_id: 'c-defend' });
+    expect(out.nash_reasoning).toMatch(/security equilibrium/i);
   });
 
-  it('throws if adversary_states length is not 2', () => {
+  it('leaves nash null when the backend omits it', () => {
+    const out = adaptPayoffResponse(FIXTURE.response, FIXTURE.roomId, FIXTURE.ourMoves, FIXTURE.adversaryStates);
+    expect(out.nash_cell).toBeNull();
+    expect(out.nash_reasoning).toBeNull();
+  });
+
+  it('reshapes a 3×3 grid (PB-H12)', () => {
+    const wire = {
+      cells: [
+        [{ delta_pct: 6, confidence: 0.7 }, { delta_pct: 4, confidence: 0.7 }, { delta_pct: -2, confidence: 0.6 }],
+        [{ delta_pct: 1, confidence: 0.6 }, { delta_pct: 2, confidence: 0.6 }, { delta_pct: -3, confidence: 0.6 }],
+        [{ delta_pct: 3, confidence: 0.8 }, { delta_pct: 2, confidence: 0.8 }, { delta_pct: 1, confidence: 0.8 }],
+      ],
+      recommended_cell: [0, 0],
+      nash_cell: [2, 2],
+      nash_reasoning: 'Security equilibrium: ...',
+    };
+    const out = adaptPayoffResponse(
+      wire as any, 'room-3',
+      ['launch', 'hold', 'partner'],
+      ['defend', 'cede', 'escalate'],
+    );
+    expect(out.cells).toHaveLength(9);
+    expect(out.nash_cell).toEqual({ row_id: 'r-partner', col_id: 'c-escalate' });
+  });
+
+  it('throws if our_moves length is below 2', () => {
+    expect(() =>
+      adaptPayoffResponse(FIXTURE.response, FIXTURE.roomId, ['only-one'] as any, FIXTURE.adversaryStates),
+    ).toThrow(/at least 2/);
+  });
+
+  it('throws if adversary_states length is below 2', () => {
     expect(() =>
       adaptPayoffResponse(FIXTURE.response, FIXTURE.roomId, FIXTURE.ourMoves, ['only-one'] as any),
-    ).toThrow(/exactly 2/);
+    ).toThrow(/at least 2/);
   });
 });

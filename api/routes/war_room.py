@@ -954,8 +954,9 @@ def delete_comment(
 
 
 class PayoffMatrixBody(BaseModel):
-    our_moves: list[str] = Field(min_length=2, max_length=2)
-    adversary_states: list[str] = Field(min_length=2, max_length=2)
+    # PB-H12 — 2..5 per dim (3×3 is the benchmark target; 2×2 the default).
+    our_moves: list[str] = Field(min_length=2, max_length=5)
+    adversary_states: list[str] = Field(min_length=2, max_length=5)
     samples: int = Field(default=1200, ge=100, le=10000)
 
 

@@ -258,9 +258,13 @@ export default function WarRoomView({ roomId, onClose }: Props) {
             <h2 className="mz-text-xs uppercase font-medium" style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}>
               Game-theoretic
             </h2>
-            <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>payoff matrix · equilibrium</span>
+            <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>3×3 payoff · Nash equilibrium</span>
           </header>
-          <PayoffMatrixSection roomId={roomId} />
+          <PayoffMatrixSection
+            roomId={roomId}
+            ourMoves={GT_OUR_MOVES}
+            adversaryStates={GT_ADVERSARY_MOVES}
+          />
         </section>
       )}
 
@@ -334,8 +338,22 @@ export default function WarRoomView({ roomId, onClose }: Props) {
  * the hook swaps to a real `POST /war-rooms/{id}/payoff-matrix`
  * call without changing this component.
  */
-function PayoffMatrixSection({ roomId }: { roomId: string }) {
-  const { data, error, isLoading } = usePayoffMatrix(roomId);
+// Game-theoretic mode plays a 3×3 of strategic postures so the Nash
+// (security) equilibrium has room to differ from the EV pick. Guided mode
+// keeps the hook's 2×2 default.
+const GT_OUR_MOVES = ['launch_q3', 'wait_q4', 'partner'];
+const GT_ADVERSARY_MOVES = ['defend', 'cede', 'escalate'];
+
+function PayoffMatrixSection({
+  roomId,
+  ourMoves,
+  adversaryStates,
+}: {
+  roomId: string;
+  ourMoves?: string[];
+  adversaryStates?: string[];
+}) {
+  const { data, error, isLoading } = usePayoffMatrix(roomId, { ourMoves, adversaryStates });
   if (isLoading) {
     return (
       <div

@@ -45,11 +45,12 @@ export function adaptPayoffResponse(
   ourMoves: string[],
   adversaryStates: string[],
 ): PayoffMatrix {
-  if (ourMoves.length !== 2) {
-    throw new Error(`adaptPayoffResponse: ourMoves must be exactly 2, got ${ourMoves.length}`);
+  // PB-H12 — N×N (2..5 per dim). Was a hard 2×2.
+  if (ourMoves.length < 2) {
+    throw new Error(`adaptPayoffResponse: ourMoves must be at least 2, got ${ourMoves.length}`);
   }
-  if (adversaryStates.length !== 2) {
-    throw new Error(`adaptPayoffResponse: adversaryStates must be exactly 2, got ${adversaryStates.length}`);
+  if (adversaryStates.length < 2) {
+    throw new Error(`adaptPayoffResponse: adversaryStates must be at least 2, got ${adversaryStates.length}`);
   }
 
   const rows = ourMoves.map((label) => ({ id: `r-${label}`, label }));
@@ -72,25 +73,33 @@ export function adaptPayoffResponse(
     }
   }
 
-  let recommended: { row_id: string; col_id: string } | null = null;
-  const rc = wire?.recommended_cell;
-  if (Array.isArray(rc) && rc.length === 2 && rows[rc[0]] && cols[rc[1]]) {
-    recommended = { row_id: rows[rc[0]].id, col_id: cols[rc[1]].id };
-  }
+  const idxPair = (key: string): { row_id: string; col_id: string } | null => {
+    const v = wire?.[key];
+    if (Array.isArray(v) && v.length === 2 && rows[v[0]] && cols[v[1]]) {
+      return { row_id: rows[v[0]].id, col_id: cols[v[1]].id };
+    }
+    return null;
+  };
 
   return {
     room_id: roomId,
     rows,
     cols,
     cells,
-    recommended_cell: recommended,
+    recommended_cell: idxPair('recommended_cell'),
+    nash_cell: idxPair('nash_cell'),
+    nash_reasoning: typeof wire?.nash_reasoning === 'string' ? wire.nash_reasoning : null,
   };
 }
 
-async function fetchPayoffMatrix(roomId: string): Promise<PayoffMatrix> {
+async function fetchPayoffMatrix(
+  roomId: string,
+  ourMoves: string[] = DEFAULT_OUR_MOVES,
+  adversaryStates: string[] = DEFAULT_ADVERSARY_STATES,
+): Promise<PayoffMatrix> {
   const body = {
-    our_moves: DEFAULT_OUR_MOVES,
-    adversary_states: DEFAULT_ADVERSARY_STATES,
+    our_moves: ourMoves,
+    adversary_states: adversaryStates,
     samples: 1200,
   };
   // Use shared auth header pattern — payoff matrix requires uploader role.
@@ -109,13 +118,27 @@ async function fetchPayoffMatrix(roomId: string): Promise<PayoffMatrix> {
     throw err;
   }
   const wire = await res.json();
-  return adaptPayoffResponse(wire, roomId, DEFAULT_OUR_MOVES, DEFAULT_ADVERSARY_STATES);
+  return adaptPayoffResponse(wire, roomId, ourMoves, adversaryStates);
 }
 
-export function usePayoffMatrix(roomId: string | null | undefined): UsePayoffMatrixResult {
+export interface UsePayoffMatrixOptions {
+  /** Override the row strategies (our moves). Default 2×2. */
+  ourMoves?: string[];
+  /** Override the column strategies (adversary moves/states). Default 2×2. */
+  adversaryStates?: string[];
+}
+
+export function usePayoffMatrix(
+  roomId: string | null | undefined,
+  opts: UsePayoffMatrixOptions = {},
+): UsePayoffMatrixResult {
   const [data, setData] = useState<PayoffMatrix | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(roomId));
+
+  // Stable dep keys so the effect re-runs only when the strategy sets change.
+  const ourKey = opts.ourMoves ? opts.ourMoves.join('|') : '';
+  const advKey = opts.adversaryStates ? opts.adversaryStates.join('|') : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -127,7 +150,11 @@ export function usePayoffMatrix(roomId: string | null | undefined): UsePayoffMat
     }
     setIsLoading(true);
     setError(null);
-    fetchPayoffMatrix(roomId)
+    fetchPayoffMatrix(
+      roomId,
+      ourKey ? ourKey.split('|') : undefined,
+      advKey ? advKey.split('|') : undefined,
+    )
       .then((m) => {
         if (!cancelled) {
           setData(m);
@@ -144,7 +171,7 @@ export function usePayoffMatrix(roomId: string | null | undefined): UsePayoffMat
     return () => {
       cancelled = true;
     };
-  }, [roomId]);
+  }, [roomId, ourKey, advKey]);
 
   return { data, error, isLoading };
 }

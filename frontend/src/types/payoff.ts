@@ -38,4 +38,7 @@ export interface PayoffMatrix {
   cols: PayoffCol[];
   cells: PayoffCell[];
   recommended_cell: { row_id: string; col_id: string } | null;
+  /** PB-H12 — security (maximin) equilibrium cell + its justification. */
+  nash_cell: { row_id: string; col_id: string } | null;
+  nash_reasoning: string | null;
 }
