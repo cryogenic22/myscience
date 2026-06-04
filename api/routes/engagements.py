@@ -17,10 +17,12 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from api.deps import get_db, require_role
 from db import Database
+from services.engagement_export import render_executive_brief_html
 from services.business_context_brief import (
     BCBContractError,
     create_bcb,
@@ -581,6 +583,66 @@ def get_scenarios(
         raise HTTPException(404, f"engagement not found: {eid}")
     scenarios = list_scenarios(db, eid)
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
+
+
+def _pick_recommendation(scenarios: list[dict]) -> Optional[str]:
+    """The committed decision output, else the recommended decision option."""
+    for s in scenarios:
+        out = s.get("decisionOutput")
+        if out:
+            return out if isinstance(out, str) else str(out)
+    for s in scenarios:
+        for opt in (s.get("decisionOptions") or []):
+            if opt.get("recommended"):
+                stmt = (opt.get("statement") or "").strip()
+                rat = (opt.get("rationale") or "").strip()
+                return f"{stmt} — {rat}".strip(" —") or None
+    return None
+
+
+@router.get("/engagements/{eid}/export/brief.html", response_class=HTMLResponse)
+def export_executive_brief(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX12 — printable Executive Brief (browser → PDF). Assembled server-side
+    from the engagement's dossier readiness + scenarios (+ BCB summary when
+    present); no fabricated content — empty sections degrade honestly."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    eng_dict = _engagement_to_dict(eng)
+
+    snapshot = get_latest_snapshot(db, eid)
+    readiness = None
+    if snapshot is not None:
+        readiness = snapshot.to_dict().get("readiness")
+
+    scen_dicts = [s.to_dict() for s in list_scenarios(db, eid)]
+    scenarios = [
+        {"name": s.get("name"),
+         "probability": s.get("probabilityCurrent") if s.get("probabilityCurrent") is not None
+         else s.get("probability")}
+        for s in scen_dicts
+    ]
+
+    bcb = get_bcb_for_engagement(db, eid)
+    brief_summary = None
+    if bcb is not None:
+        bcb_d = _bcb_to_dict(bcb)
+        brief_summary = bcb_d.get("summary") or bcb_d.get("objective")
+
+    html_doc = render_executive_brief_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or "—",
+        readiness=readiness,
+        recommendation=_pick_recommendation(scen_dicts),
+        scenarios=scenarios,
+        generated_label=f"engagement {eid[:8]}",
+        brief_summary=brief_summary,
+    )
+    return HTMLResponse(content=html_doc)
 
 
 # ── Synthesis (PB-UX06): typed insights derived from the dossier ──
