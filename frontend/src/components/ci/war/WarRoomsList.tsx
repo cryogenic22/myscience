@@ -43,6 +43,10 @@ export default function WarRoomsList({ onOpen }: Props) {
   const [rooms, setRooms] = useState<WarRoom[]>([]);
   const [loading, setLoading] = useState(authed);
   const [error, setError] = useState<string | null>(null);
+  // IX04b — standalone war-game launch (no engagement / no scenario needed).
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
 
   const filters = useMemo(() => tabToFilters(tab, q), [tab, q]);
 
@@ -60,6 +64,23 @@ export default function WarRoomsList({ onOpen }: Props) {
   }, [authed, filters]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  const submitCreate = async () => {
+    const title = newTitle.trim();
+    if (!title || createBusy) return;
+    setCreateBusy(true);
+    setError(null);
+    try {
+      const room = await warRoomApi.create({ title });
+      setShowCreate(false);
+      setNewTitle('');
+      onOpen(room.id);   // jump straight into the new room (guided default)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
 
   const handleDelete = async (e: React.MouseEvent, id: string, title: string) => {
     e.stopPropagation();
@@ -125,8 +146,26 @@ export default function WarRoomsList({ onOpen }: Props) {
             })}
           </div>
 
+          <button
+            type="button"
+            data-testid="new-war-game"
+            onClick={() => setShowCreate((v) => !v)}
+            className="text-[11px] uppercase font-medium ml-auto"
+            style={{
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              background: 'var(--color-accent)',
+              color: 'var(--color-bg)',
+              letterSpacing: '0.06em',
+              cursor: 'pointer',
+            }}
+          >
+            + New war game
+          </button>
+
           <div
-            className="flex items-center gap-1 ml-auto"
+            className="flex items-center gap-1"
             style={{
               padding: '4px 10px',
               borderRadius: '6px',
@@ -162,6 +201,50 @@ export default function WarRoomsList({ onOpen }: Props) {
             )}
           </div>
         </div>
+
+        {showCreate && (
+          <div
+            data-testid="new-war-game-form"
+            className="flex items-center gap-2 mt-3"
+          >
+            <input
+              autoFocus
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void submitCreate(); }}
+              placeholder="War game title — e.g. Wegovy vs Zepbound, EU launch"
+              className="text-[12px] flex-1"
+              style={{
+                padding: '7px 12px', borderRadius: '6px',
+                border: '1px solid var(--color-line)', background: 'var(--color-surface)',
+                color: 'var(--color-ink)', outline: 'none', maxWidth: '420px',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void submitCreate()}
+              disabled={createBusy || !newTitle.trim()}
+              className="text-[11px] uppercase font-medium"
+              style={{
+                padding: '7px 14px', borderRadius: '6px', border: 'none',
+                background: createBusy || !newTitle.trim() ? 'var(--color-surface-2)' : 'var(--color-ink)',
+                color: createBusy || !newTitle.trim() ? 'var(--color-ink-4)' : 'var(--color-bg)',
+                letterSpacing: '0.06em',
+                cursor: createBusy || !newTitle.trim() ? 'default' : 'pointer',
+              }}
+            >
+              {createBusy ? 'Creating…' : 'Create'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowCreate(false); setNewTitle(''); }}
+              className="text-[11px]"
+              style={{ padding: '7px 10px', background: 'transparent', border: 'none', color: 'var(--color-ink-4)', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (

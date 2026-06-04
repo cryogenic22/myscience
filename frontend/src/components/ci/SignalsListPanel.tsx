@@ -59,8 +59,8 @@ export default function SignalsListPanel({
       className="overflow-y-auto"
       style={{
         width: '380px',
-        borderRight: '1px solid #23262d',
-        background: '#0a0b0e',
+        borderRight: '1px solid var(--color-line)',
+        background: 'var(--color-bg)',
       }}
     >
       {signals.map((s) => (

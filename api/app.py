@@ -367,6 +367,7 @@ def create_app() -> FastAPI:
         all_routers.append(agents_activity_route.router)
     if _KBQ_ROUTER_OK:
         all_routers.append(kbq_route.router)
+        all_routers.append(kbq_route.asset_router)  # PB-SL10 — /kbq?asset= (unshadowed)
     if _FACTS_ROUTER_OK:
         all_routers.append(facts_route.router)
     for r in all_routers:

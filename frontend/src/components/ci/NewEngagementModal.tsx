@@ -15,13 +15,19 @@
  * Submit → POST /engagements → caller receives the new engagement for
  * navigation.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { engagementsApi, type EngagementDTO } from '../../api';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: (engagement: EngagementDTO) => void;
+  /** PB-IX01 — seed the form when promoting from a signal. */
+  initialAsset?: string;
+  initialName?: string;
+  initialContext?: string;
+  /** PB-IX01 — the signal this engagement was promoted from (provenance). */
+  initialSignalId?: string;
 }
 
 type Situation = 'launch' | 'defense' | 'lcm';
@@ -32,7 +38,9 @@ const SITUATIONS: { value: Situation; label: string; blurb: string }[] = [
   { value: 'lcm', label: 'LCM', blurb: 'Life-cycle management of a mature asset' },
 ];
 
-export default function NewEngagementModal({ open, onClose, onCreated }: Props) {
+export default function NewEngagementModal({
+  open, onClose, onCreated, initialAsset, initialName, initialContext, initialSignalId,
+}: Props) {
   const [name, setName] = useState('');
   const [asset, setAsset] = useState('');
   const [situation, setSituation] = useState<Situation>('launch');
@@ -41,6 +49,16 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
   const [sponsor, setSponsor] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // PB-IX01 — when promoting a signal, the modal opens pre-filled. Seed on
+  // each open transition so a fresh promote always reflects the latest signal.
+  useEffect(() => {
+    if (!open) return;
+    if (initialAsset) setAsset(initialAsset);
+    if (initialName) setName(initialName);
+    if (initialContext) setContext(initialContext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 
@@ -68,6 +86,10 @@ export default function NewEngagementModal({ open, onClose, onCreated }: Props) 
       const scope: Record<string, unknown> = {};
       if (context.trim()) scope.context = context.trim();
       if (keyQuestions.length) scope.key_questions = keyQuestions;
+      // PB-IX01 — keep the provenance link back to the originating signal, so
+      // the engagement records where it came from (parity with the war-room
+      // seed, which persists source_signal_id).
+      if (initialSignalId) scope.source_signal_id = initialSignalId;
 
       const body: {
         name: string; asset: string; situation: Situation;

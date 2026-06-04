@@ -120,6 +120,15 @@ def _make_db(signals: list = None):
 
     def fake_fetch_all(sql, params=None):
         s = (sql or "").lower()
+        if "from signal_facts" in s:
+            # PB-SL05 — linked facts for a signal (forward provenance)
+            return [{
+                "role": "produces", "fact_id": "fact-1",
+                "predicate": "safety_signal", "fact_class": "corporate",
+                "claim": "Boxed warning: thyroid C-cell tumors",
+                "confidence": 0.8, "source_id": "openfda_labels",
+                "source_url": "https://example.com/label",
+            }]
         if "from signals" in s:
             out = list(rows)
             params_list = list(params or [])
@@ -138,6 +147,16 @@ def _make_db(signals: list = None):
                 tier = params_list[param_idx]
                 param_idx += 1
                 out = [r for r in out if r["impact_tier"] == tier]
+
+            if "confidence_tier =" in s:
+                conf = params_list[param_idx]
+                param_idx += 1
+                out = [r for r in out if r["confidence_tier"] == conf]
+
+            if "created_at >" in s:
+                # date filter — consume the param to keep alignment; the fake
+                # rows are all recent so it doesn't drop them.
+                param_idx += 1
 
             if "kbq_tags && " in s:
                 tags = params_list[param_idx]
@@ -261,6 +280,47 @@ def test_list_endpoint_filters_by_status():
     assert ids == {"s2"}
 
 
+def test_list_endpoint_status_all_reveals_candidates():
+    """PB-SL08 — status=all drops the default reviewed/shipped filter so the
+    auto-minted candidate fact-signals become visible."""
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", status="shipped"),
+        _make_signal_row(signal_id="s2", status="candidate"),
+        _make_signal_row(signal_id="s3", status="reviewed"),
+    ])
+    default_ids = {s["id"] for s in _client(db).get("/signals").json()["signals"]}
+    assert "s2" not in default_ids                    # candidate hidden by default
+    all_ids = {s["id"] for s in _client(db).get("/signals?status=all").json()["signals"]}
+    assert {"s1", "s2", "s3"} <= all_ids              # status=all reveals it
+
+
+def test_list_endpoint_filters_by_confidence():
+    db, _ = _make_db([
+        _make_signal_row(signal_id="s1", confidence_tier="confirmed"),
+        _make_signal_row(signal_id="s2", confidence_tier="reported"),
+    ])
+    body = _client(db).get("/signals?status=all&confidence=reported").json()
+    assert {s["id"] for s in body["signals"]} == {"s2"}
+
+
+def test_list_endpoint_rejects_bad_confidence():
+    db, _ = _make_db()
+    assert _client(db).get("/signals?confidence=bogus").status_code == 400
+
+
+def test_list_endpoint_accepts_since_days():
+    db, _ = _make_db([_make_signal_row(signal_id="s1")])
+    r = _client(db).get("/signals?since_days=30")
+    assert r.status_code == 200
+    assert {s["id"] for s in r.json()["signals"]} == {"s1"}
+
+
+def test_list_endpoint_rejects_bad_since_days():
+    db, _ = _make_db()
+    # ge=1 / le=3650 validation → 422
+    assert _client(db).get("/signals?since_days=0").status_code == 422
+
+
 def test_list_endpoint_filters_by_impact():
     db, _ = _make_db([
         _make_signal_row(signal_id="s1", impact_tier="high"),
@@ -376,6 +436,20 @@ def test_detail_endpoint_404_for_unknown_id():
     db, _ = _make_db()
     r = _client(db).get("/signals/does-not-exist")
     assert r.status_code == 404
+
+
+def test_detail_endpoint_includes_linked_facts():
+    """PB-SL05 — signal detail carries the facts it feeds (forward provenance)."""
+    db, _ = _make_db()
+    body = _client(db).get("/signals/sig-1").json()
+    assert "linked_facts" in body
+    assert isinstance(body["linked_facts"], list)
+    lf = body["linked_facts"][0]
+    assert lf["predicate"] == "safety_signal"
+    assert lf["fact_class"] == "corporate"
+    assert lf["role"] == "produces"
+    assert "Boxed warning" in lf["claim"]
+    assert lf["source_id"] == "openfda_labels"
 
 
 # ────────────────────────────────────────────────────────────────────

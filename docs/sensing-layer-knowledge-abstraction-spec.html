@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sensing Layer as a Curated Abstraction over the Knowledge Store — Design Spec (3 Jun 2026)</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --zs-orange:#F26C0D;
+    /* v8 fact_class palette (the design target) */
+    --fc-ref:#8B9BD9; --fc-corp:#F58F3F; --fc-signal:#4FB3C4; --fc-inferred:#BD7FB0; --fc-internal:#B5957A;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Fraunces",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 var(--sans);-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 28px 120px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:36px;letter-spacing:-.02em;margin:0 0 6px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:24px;margin:50px 0 14px;padding-top:22px;border-top:1px solid var(--line);}
+  h3{font-size:14.5px;letter-spacing:.01em;margin:26px 0 8px;color:var(--ink);}
+  h4{font-size:13px;margin:18px 0 6px;color:var(--ink2);}
+  p{color:var(--ink2);margin:0 0 14px;} .sub{color:var(--ink3);font-size:15px;margin:0 0 24px;}
+  .mono{font-family:var(--mono);} code{font-family:var(--mono);font-size:.84em;background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--teal);}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;font-weight:600;}
+  .c-agent{background:rgba(167,139,250,.16);color:var(--violet);} .c-hitl{background:rgba(251,191,36,.16);color:var(--amber);}
+  .c-green{background:rgba(52,211,153,.14);color:var(--green);} .c-blue{background:rgba(91,140,255,.16);color:var(--accent);}
+  .c-orange{background:rgba(242,108,13,.16);color:var(--zs-orange);} .c-red{background:rgba(248,113,113,.14);color:var(--red);}
+  .c-teal{background:rgba(94,234,212,.14);color:var(--teal);}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.5px;}
+  th,td{text-align:left;padding:9px 11px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);}
+  td{color:var(--ink2);} td.stg{font-family:var(--mono);color:var(--accent);font-weight:600;white-space:nowrap;}
+  .callout{background:var(--surface);border-radius:14px;padding:20px 22px;margin:20px 0;border-left:3px solid var(--teal);}
+  .callout.violet{border-left-color:var(--violet);} .callout.amber{border-left-color:var(--amber);} .callout.orange{border-left-color:var(--zs-orange);} .callout.green{border-left-color:var(--green);} .callout.red{border-left-color:var(--red);}
+  ul{margin:6px 0 16px;padding-left:22px;color:var(--ink2)} li{margin:7px 0}
+  .mock{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;line-height:1.7;white-space:pre-wrap;}
+  .mock .a{color:var(--violet);} .mock .h{color:var(--amber);} .mock .g{color:var(--green);} .mock .d{color:var(--ink4);} .mock .o{color:var(--zs-orange);} .mock .t{color:var(--teal);} .mock .r{color:var(--red);} .mock .b{color:var(--accent);}
+  .foot{margin-top:54px;color:var(--ink4);font-size:13px;font-family:var(--mono);border-top:1px solid var(--line);padding-top:18px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:14px 0;}
+  .card h4{margin:0 0 6px;color:var(--ink);font-size:15px;font-family:var(--serif);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+  .num-big{font-family:var(--serif);font-size:32px;font-weight:600;color:var(--ink);line-height:1;}
+  .num-label{font-family:var(--mono);font-size:10.5px;color:var(--ink3);letter-spacing:.04em;text-transform:uppercase;margin-top:4px;}
+  /* fact-class glyph + chips */
+  .fc{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;color:#0b0d11;vertical-align:middle;}
+  .fc.ref{background:var(--fc-ref);} .fc.corp{background:var(--fc-corp);} .fc.signal{background:var(--fc-signal);} .fc.inferred{background:var(--fc-inferred);} .fc.internal{background:var(--fc-internal);}
+  .fctag{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;}
+  .fctag.ref{background:rgba(139,155,217,.16);color:var(--fc-ref);} .fctag.corp{background:rgba(245,143,63,.16);color:var(--fc-corp);}
+  .fctag.signal{background:rgba(79,179,196,.16);color:var(--fc-signal);} .fctag.inferred{background:rgba(189,127,176,.16);color:var(--fc-inferred);} .fctag.internal{background:rgba(181,149,122,.16);color:var(--fc-internal);}
+  /* rendered signal-row mock */
+  .ui{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:14px 0;background:var(--surface);}
+  .ui-bar{display:flex;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--surface2);font-family:var(--mono);font-size:11px;color:var(--ink3);}
+  .ui-search{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 9px;color:var(--ink3);font-size:11px;}
+  .pill{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--ink3);}
+  .pill.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .srow{display:grid;grid-template-columns:4px 64px 1fr 72px;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line);align-items:start;}
+  .srail{width:4px;border-radius:2px;height:100%;min-height:34px;}
+  .stime{font-family:var(--mono);font-size:10.5px;color:var(--ink4);}
+  .shead{font-size:13px;color:var(--ink);font-weight:500;line-height:1.4;}
+  .smeta{font-family:var(--mono);font-size:10px;color:var(--ink4);margin-top:4px;}
+  .simpact{font-family:var(--mono);font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;text-align:center;}
+  .simpact.high{background:rgba(248,113,113,.16);color:var(--red);} .simpact.med{background:rgba(251,191,36,.16);color:var(--amber);}
+  .feeds{display:inline-block;font-family:var(--mono);font-size:9.5px;padding:1px 6px;border-radius:4px;background:rgba(79,179,196,.14);color:var(--fc-signal);margin-top:5px;}
+  .ladder td.up{color:var(--green);font-family:var(--mono);} .ladder td.new{color:var(--teal);}
+  .step{border-left:2px solid var(--line);padding:2px 0 2px 18px;margin:0 0 0 6px;position:relative;}
+  .step::before{content:"";position:absolute;left:-6px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--surface3);border:2px solid var(--accent);}
+  .step.t1::before{border-color:var(--fc-corp);} .step.t2::before{border-color:var(--fc-corp);} .step.t3::before{border-color:var(--fc-internal);}
+  .step h4{margin:0 0 4px;color:var(--ink);font-family:var(--serif);font-size:15px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mono" style="color:var(--ink4);font-size:12px;letter-spacing:.06em;">MARKET ZERO &middot; SENSING LAYER DESIGN SPEC &middot; 3 JUN 2026</div>
+  <h1>The signal is a lens, not a store</h1>
+  <p class="sub">A design for making the sensing layer a <em>curated abstraction over the unified knowledge store</em> &mdash;
+  so that as we feed it richer data (a conference deck, an annual report, a company&rsquo;s own history), the facts,
+  the knowledge graph, the signals, and the synthesis all get richer <em>together</em>, through one spine.
+  Companion to <code>data-hub-agentic-layer-analysis.html</code> and the Helix v8 sensing model. Grounded in the
+  shipped DR-loop fact substrate (DR-1/3/4/6/7/9), the facts ledger, the signals table, and <code>dossier_kb</code>.</p>
+
+  <div class="callout">
+    <strong style="color:var(--ink)">The thesis in one line.</strong>
+    <p style="margin:8px 0 0">A <strong>fact</strong> is the atom of the knowledge store. A <strong>signal</strong> is
+    not a separate kind of thing &mdash; it is <em>a fact (or cluster of facts) the sense layer has scored, timed, and
+    surfaced because it matters now</em>. Today they live in two parallel tables that don&rsquo;t reference each other.
+    The design unifies them: signals reference the facts they feed (Helix v8&rsquo;s <code>feeds_fact_ids</code>), the
+    knowledge store stays the single source of truth, and every new document deepens both at once.</p>
+  </div>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>1 &middot; Where we are &mdash; two parallel stores</h2>
+
+  <p>The substrate work this session filled the <strong>facts ledger</strong> from a 2-predicate monoculture
+  (3,303 rows) to a 9-predicate, evidence-bearing knowledge base (9,679 facts / 5,709 evidence records) via the
+  DR-loop fact emitters. But the <strong>signal layer</strong> never connected to it &mdash; it derives from
+  <code>market_events</code> and scores them, on a track of its own.</p>
+
+  <div class="mock"><span class="d">  TODAY — parallel, disconnected</span>
+
+  market_events ──▶ <span class="t">signals</span> (037)        facts ledger (065) ◀── DR-1/3/4/6/7/9 emitters
+     │              kbq_tags, trust,        │   predicate, subject, object_value,
+     │              impact, status          │   <span class="b">fact_class</span>, confidence, valid_from,
+     │                  │                    │   source_doc_id ─▶ evidence_records
+     ▼                  ▼                    ▼
+  <span class="g">Digest</span>            <span class="g">Stream / Signals DB</span>      <span class="h">Dossier (8 domains)</span>
+  (reads market_events) (reads signals)        (reads facts + signals + metrics)
+        <span class="r">▲ no link between a signal and the facts it implies ▲</span></div>
+
+  <p>Consequences we already felt this session: the digest flooded with 2,688&times;-duplicated recall events
+  (fixed by read-time dedup); the Signals DB couldn&rsquo;t show <em>why</em> a signal matters (no link to the
+  underlying facts); and the rich new facts (mechanism, literature, trial readouts) don&rsquo;t surface as
+  signals at all.</p>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>2 &middot; The target &mdash; one substrate, many lenses</h2>
+
+  <div class="callout violet">
+    <strong style="color:var(--ink)">One knowledge store. The signal layer, the dossier, the KBQ view, and the
+    scenario priors are all <em>lenses</em> over it.</strong>
+    <p style="margin:8px 0 0">A lens adds curation metadata (scoring, timing, grouping, KBQ tag) but never owns the
+    truth. Delete a lens and the knowledge is intact; add a lens and it reads the same facts a new way.</p>
+  </div>
+
+  <div class="mock"><span class="d">  TARGET — one spine, lenses on top</span>
+
+                         <span class="o">DATA HUB</span>  (5 source tiers — see data-hub spec)
+        public APIs · licensed · internal · <span class="h">contributed docs</span> · learned
+                                   │
+                          INTEGRATION SPINE
+              normalise → resolve → embed → store → cross-link
+                                   │
+                                   ▼
+   ┌──────────────────────── <span class="g">KNOWLEDGE STORE</span> ────────────────────────┐
+   │  entities ·  <span class="b">facts</span> (atoms) ·  evidence ·  entity_links (graph) ·  embeddings │
+   │  every fact: predicate · subject · object · <span class="b">fact_class</span> · confidence · time · source │
+   └───────────────────────────────────────────────────────────────────┘
+        │              │                │               │             │
+        ▼              ▼                ▼               ▼             ▼
+   <span class="t">SIGNAL LENS</span>     <span class="h">DOSSIER LENS</span>      <span class="t">KBQ LENS</span>       SCENARIO LENS   SEARCH/RAG
+   scored, timed,   8 ZS domains,    8 business      priors from     semantic
+   grouped facts    facts by domain  questions       fact deltas     retrieval
+   <span class="d">(feeds_fact_ids)</span>                <span class="d">(kbq_views)</span>     <span class="d">(PB-H14)</span></div>
+
+  <p>The signal lens becomes a thin, queryable, curated projection: <em>&ldquo;the facts that changed recently,
+  scored by impact &times; trust, grouped, and tagged to a business question.&rdquo;</em> That is precisely the
+  &ldquo;curated for CI / KBQ&rdquo; abstraction you described.</p>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>3 &middot; The unified data model</h2>
+
+  <h3>3.1 &middot; The fact is the atom (exists today)</h3>
+  <div class="mock">fact {
+  predicate         <span class="d">// clinical_trial · mechanism_of_action · key_publication ·</span>
+                    <span class="d">//   trial_result · label_indication · wac_usd · market_event …</span>
+  subject_entity    <span class="d">// (drug | company | trial | …, id)  ← entity-resolved</span>
+  object_value      <span class="d">// jsonb: the claim + structured fields</span>
+  <span class="b">fact_class</span>        <span class="d">// reference | corporate | signal | inferred | internal</span>
+  confidence        <span class="d">// 0..1</span>
+  valid_from / to   <span class="d">// temporal</span>
+  source_doc_id  ───▶ evidence_record { source_id, source_url, extracted_text, hash }
+}</div>
+
+  <h3>3.2 &middot; The fact_class colour system (adopt Helix v8 verbatim)</h3>
+  <p>Legibility comes from <em>meaning</em>. Every fact and every signal is coloured by where it came from &mdash;
+  the single most important change to the &ldquo;all-black&rdquo; Signals DB:</p>
+  <p style="line-height:2.4">
+    <span class="fc ref">R</span> <span class="fctag ref">reference</span> &nbsp;regulatory baseline, epidemiology, MeSH mechanism, peer-reviewed lit &nbsp;&nbsp;
+    <span class="fc corp">C</span> <span class="fctag corp">corporate</span> &nbsp;10-K/10-Q/8-K, label, press release, conference deck<br>
+    <span class="fc signal">S</span> <span class="fctag signal">signal</span> &nbsp;monitored / time-bound (FAERS trend, news event) &nbsp;&nbsp;
+    <span class="fc inferred">I</span> <span class="fctag inferred">inferred</span> &nbsp;analyst / modelled / LLM-derived &nbsp;&nbsp;
+    <span class="fc internal">X</span> <span class="fctag internal">internal</span> &nbsp;ZS / client tenant-scoped (KOL panel, field notes)
+  </p>
+
+  <h3>3.3 &middot; The one new join: signal &harr; fact</h3>
+  <p>The only schema addition needed to unify the layers &mdash; the v8 <code>feeds_fact_ids</code> edge:</p>
+  <div class="mock"><span class="d">-- new: the link that makes a signal a lens over facts</span>
+signal_facts (
+  signal_id   uuid  → signals.id,
+  fact_id     uuid  → facts.id,
+  role        text  <span class="d">// 'produces' | 'corroborates' | 'contradicts' | 'relates'</span>
+)
+<span class="d">-- a signal now answers "which facts did I change?"  ▸ provenance forward
+-- a fact now answers   "which signals surfaced me?" ▸ provenance backward</span></div>
+  <p>Signals can then be <em>emitted from fact deltas</em>, not only from <code>market_events</code>: when a DR
+  emitter asserts a high-impact fact (a phase-3 readout, a boxed warning, a price change), a signal is minted that
+  <code>produces</code> it. The two stores become one graph.</p>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>4 &middot; End state &mdash; what the Signals DB looks like</h2>
+  <p>Theme-correct (no more black box), coloured by fact_class, searchable, and every row shows the facts it feeds.
+  Clicking a signal opens the provenance drawer: signal &rarr; facts &rarr; evidence &rarr; source.</p>
+
+  <div class="ui">
+    <div class="ui-bar">
+      <span class="ui-search">⌕  search signals…</span>
+      <span class="pill on">All impact</span><span class="pill">High</span>
+      <span class="pill on">Clinical</span><span class="pill">Pricing</span><span class="pill">Competitive</span>
+      <span style="margin-left:auto">42 SIGNALS</span>
+    </div>
+    <div class="srow">
+      <div class="srail" style="background:var(--fc-corp)"></div>
+      <div class="stime">2h ago</div>
+      <div>
+        <div class="shead"><span class="fc corp">C</span> &nbsp;REDEFINE 4: CagriSema 23% weight loss &mdash; non-inferiority vs tirzepatide not met</div>
+        <div class="smeta">Novo Nordisk Form 6-K · corporate · trust 0.78</div>
+        <span class="feeds">↓ feeds 2 facts · affects scenarios A, D</span>
+      </div>
+      <div class="simpact high">HIGH</div>
+    </div>
+    <div class="srow">
+      <div class="srail" style="background:var(--fc-ref)"></div>
+      <div class="stime">1d ago</div>
+      <div>
+        <div class="shead"><span class="fc ref">R</span> &nbsp;Bimagrumab + semaglutide BELIEVE Phase 2b published &mdash; 92.8% of loss is fat mass</div>
+        <div class="smeta">Nature Medicine · reference · trust 0.91</div>
+        <span class="feeds">↓ feeds 3 facts · affects scenario B</span>
+      </div>
+      <div class="simpact med">MED</div>
+    </div>
+    <div class="srow">
+      <div class="srail" style="background:var(--fc-internal)"></div>
+      <div class="stime">3d ago</div>
+      <div>
+        <div class="shead"><span class="fc internal">X</span> &nbsp;KOL panel (N=80): 61% would not switch from tirzepatide without a head-to-head CV outcome</div>
+        <div class="smeta">ZS KOL pulse Q2 2026 · internal · tenant-scoped</div>
+        <span class="feeds">↓ feeds 1 fact · affects scenario D</span>
+      </div>
+      <div class="simpact high">HIGH</div>
+    </div>
+  </div>
+
+  <h4>Provenance drawer (click a signal)</h4>
+  <div class="mock"><span class="o">SIGNAL</span>  REDEFINE 4 — CagriSema 23%, NI not met        <span class="d">[×]</span>
+  <span class="fc corp">C</span> corporate · Novo Nordisk Form 6-K · 2h ago · <span class="b">open source ↗</span>
+
+  ↓ <span class="t">FACTS THIS SIGNAL FEEDS (2)</span>
+  ├─ <span class="fc corp">C</span> trial_result · subject: <span class="b">drug:tirzepatide-comparator</span>
+  │   "Phase 3, primary endpoint not met, in obesity (REDEFINE 4)"
+  │   → clinical_profile · conf 0.70 · evidence: 6-K excerpt ↗
+  └─ <span class="fc inferred">I</span> competitive_read · subject: <span class="b">drug:cagrisema</span>
+      "Efficacy gap vs tirzepatide narrows positioning window"  → competitive
+
+  ↑ <span class="t">INSIGHTS / SCENARIOS THAT CITE THESE FACTS</span>
+  → Scenario A (price defence) · Scenario D (cannibalisation)</div>
+
+  <p>This is the bidirectional provenance from v8: forward (signal&rarr;facts&rarr;evidence&rarr;source) and backward
+  (fact&rarr;signals/insights/scenarios). The <code>ProvenancePanel</code> component already exists for dossier facts;
+  this wires it to signals via the new <code>signal_facts</code> edge.</p>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>5 &middot; Progressive enrichment &mdash; how each document deepens everything</h2>
+
+  <p>This is the heart of the design. Follow one asset (<strong>CagriSema</strong>, in the Novo obesity wargame) as
+  data is added. Each addition flows through the <em>same</em> spine (resolve &rarr; fact &rarr; evidence &rarr; graph
+  edge &rarr; signal &rarr; synthesis). Nothing is bolted on; the substrate compounds.</p>
+
+  <div class="step">
+    <h4>T0 &middot; Public substrate (where we are after the DR-loops)</h4>
+    <p style="font-size:13.5px;margin:0 0 10px">Public connectors + DR emitters give the baseline. CagriSema /
+    semaglutide already carry:</p>
+    <p style="margin:0 0 6px">
+      <span class="fctag ref">R</span> mechanism_of_action (DR-6) &nbsp;
+      <span class="fctag ref">R</span> key_publication &times;N (DR-7) &nbsp;
+      <span class="fctag corp">C</span> clinical_trial &times;N (DR-1) &nbsp;
+      <span class="fctag signal">S</span> adverse_event (DR-3) &nbsp;
+      <span class="fctag corp">C</span> label_indication (DR-4)</p>
+    <p style="font-size:12.5px;color:var(--ink3);margin:6px 0 0">Dossier coverage: clinical_profile strong;
+    disease &amp; patient seeded; <span style="color:var(--red)">pricing, commercial, HCP, internal — thin or empty.</span></p>
+  </div>
+
+  <div class="step t1">
+    <h4>T1 &middot; + Upload a conference-readout deck (PPTX) &mdash; DR-9</h4>
+    <div class="mock"><span class="h">ECO 2026 — REDEFINE 4 readout.pptx</span>  (drag onto Sources)
+  → document_extractor: slides + tables + speaker notes        <span class="d">[DR-9 P1 ✓]</span>
+  → extract_document_facts (LLM): <span class="fc corp">C</span> trial_result                <span class="d">[DR-9 P2 ✓]</span>
+       "Phase 3, primary endpoint not met, in obesity (REDEFINE 4) — 23%"
+  → resolve_asset_to_subject("CagriSema") ─▶ <span class="b">drug:cagrisema</span> (richest row)
+  → assert_fact + evidence_record (slide text, hash)            <span class="d">[ledger +1, evidence +1]</span>
+  → <span class="t">NEW GRAPH EDGE</span>: cagrisema ──trial_result──▶ REDEFINE 4
+  → <span class="t">NEW SIGNAL</span> minted, role=produces, impact=high (primary missed)
+  → <span class="h">SYNTHESIS</span>: clinical_profile fact count ↑; Scenario A/D priors shift</div>
+    <p style="font-size:12.5px;color:var(--ink3);margin:6px 0 0">A single deck became: 1 fact + 1 evidence record +
+    1 graph edge + 1 high-impact signal + a scenario-prior nudge &mdash; all entity-resolved and provenanced, with
+    zero new wiring beyond the upload.</p>
+  </div>
+
+  <div class="step t2">
+    <h4>T2 &middot; + Upload the Novo annual report (10-K / 6-K PDF) &mdash; DR-9 + SEC</h4>
+    <div class="mock"><span class="h">Novo Nordisk FY2025 annual report.pdf</span>
+  → document_extractor: per-page text + <span class="t">tables</span> (financials)         <span class="d">[DR-9 P1 ✓]</span>
+  → financial extraction (existing SEC 8-K schemas): revenue, guidance
+  → facts: <span class="fc corp">C</span> revenue · <span class="fc corp">C</span> sales_guidance · subject <span class="b">company:novo-nordisk</span>
+  → entity_links: novo ──owns──▶ semaglutide ──competes──▶ tirzepatide
+  → <span class="t">FILLS</span> commercial_operational domain (was empty)
+  → <span class="t">NEW SIGNALS</span>: "Novo FY guidance raised", "Wegovy revenue +56%"
+  → <span class="h">SYNTHESIS</span>: KBQ-5 (Sales &amp; Sentiment) flips insufficient → fresh</div>
+    <p style="font-size:12.5px;color:var(--ink3);margin:6px 0 0">The same uploader, a different document shape, fills
+    a <em>different</em> domain. The knowledge graph now spans clinical <em>and</em> commercial &mdash; the dossier
+    can reason about efficacy-vs-revenue trade-offs it couldn&rsquo;t before.</p>
+  </div>
+
+  <div class="step t3">
+    <h4>T3 &middot; + Add the company&rsquo;s own history &amp; field intelligence (internal)</h4>
+    <div class="mock"><span class="h">Past launch retrospective.pptx · KOL advisory notes · field call log</span>
+  → same pipeline, <span class="fc internal">X</span> internal fact_class, tenant-scoped (engagement_sources)
+  → facts: <span class="fc internal">X</span> kol_stance · <span class="fc internal">X</span> payer_signal · <span class="fc inferred">I</span> launch_lesson
+       "KOLs require H2H CV outcome before switching" (N=80, 61%)
+  → entity_links: cagrisema ──hcp_barrier──▶ "head-to-head requirement"
+  → <span class="t">FILLS</span> hcp_and_patient domain; corroborates Scenario D
+  → <span class="h">SYNTHESIS</span>: cross-class triangulation — a <span class="fc corp">C</span> corporate efficacy gap
+       + an <span class="fc internal">X</span> internal KOL barrier = a sharper, defensible insight</div>
+    <p style="font-size:12.5px;color:var(--ink3);margin:6px 0 0">This is the differentiator: public + corporate data
+    is the same for every competitor; the client&rsquo;s own history and field intelligence is <em>unique</em>. Once
+    it&rsquo;s in the same graph with the same provenance, synthesis can weigh it against public evidence.</p>
+  </div>
+
+  <h3>5.1 &middot; The richness ladder</h3>
+  <p>How the substrate compounds as documents are added (illustrative, CagriSema):</p>
+  <table class="ladder">
+    <thead><tr><th>After</th><th>Facts</th><th>Fact classes</th><th>Graph edges</th><th>Domains filled</th><th>Signal quality</th></tr></thead>
+    <tbody>
+      <tr><td class="stg">T0 public</td><td>baseline</td><td><span class="fc ref">R</span><span class="fc corp">C</span><span class="fc signal">S</span></td><td>trials, mechanism, lit</td><td>2–3 / 8</td><td>event-derived, unlinked</td></tr>
+      <tr><td class="stg">T1 + deck</td><td class="up">+ readout</td><td><span class="fc ref">R</span><span class="fc corp">C</span><span class="fc signal">S</span></td><td class="up">+ REDEFINE 4</td><td>clinical ↑</td><td class="up">fact-linked, scenario-tagged</td></tr>
+      <tr><td class="stg">T2 + 10-K</td><td class="up">+ financials</td><td><span class="fc ref">R</span><span class="fc corp">C</span><span class="fc signal">S</span></td><td class="up">+ owns/competes</td><td class="up">+ commercial</td><td class="up">+ revenue/guidance signals</td></tr>
+      <tr><td class="stg">T3 + internal</td><td class="up">+ KOL/field</td><td class="new"><span class="fc ref">R</span><span class="fc corp">C</span><span class="fc signal">S</span><span class="fc inferred">I</span><span class="fc internal">X</span></td><td class="up">+ hcp barriers</td><td class="up">+ HCP, + wargame</td><td class="new">cross-class, triangulated</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout green">
+    <strong style="color:var(--ink)">Why this design enables synthesis.</strong>
+    <p style="margin:8px 0 0">Because every addition lands as a <em>typed, classed, time-stamped, entity-resolved,
+    evidence-backed fact in one graph</em>, synthesis is just <em>reading the graph through a lens</em>: the dossier
+    reads it by domain, the KBQ view by business question, the scenario engine by prior-delta, the signal lens by
+    recency &times; impact. Add a document &rarr; the facts appear &rarr; every lens that touches those entities gets
+    richer automatically. No lens needs to know where the data came from.</p>
+  </div>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>6 &middot; How synthesis reads the enriched substrate</h2>
+  <div class="grid2">
+    <div class="card"><h4>Dossier lens</h4><p style="font-size:13px;margin:0"><code>assemble_dossier_for_asset</code>
+      routes each fact to one of 8 ZS domains by predicate. More fact classes &rarr; more domains cross the
+      readiness threshold &rarr; fewer gaps. The deck filled clinical; the 10-K filled commercial; the internal
+      notes filled HCP.</p></div>
+    <div class="card"><h4>KBQ lens</h4><p style="font-size:13px;margin:0"><code>kbq_views</code> maps facts+signals to
+      8 business questions. The &ldquo;curated for CI&rdquo; entry point: ask <em>&ldquo;What&rsquo;s the competitive
+      picture?&rdquo;</em> and get the classed, sourced facts that answer it &mdash; the query surface you asked for.</p></div>
+    <div class="card"><h4>Scenario lens</h4><p style="font-size:13px;margin:0">PB-H14 writes
+      <code>scenarios.current_prob</code> from fact deltas. A new high-impact <span class="fctag corp">corporate</span>
+      readout fact shifts a prior; the war-game re-weights. Signals become the change-detector for priors.</p></div>
+    <div class="card"><h4>Signal lens</h4><p style="font-size:13px;margin:0">Reads the same facts by recency &times;
+      impact &times; trust, grouped + KBQ-tagged. Every signal carries <code>feeds_fact_ids</code> so the user can
+      always drill from &ldquo;what changed&rdquo; to &ldquo;the evidence behind it.&rdquo;</p></div>
+  </div>
+
+  <!-- ───────────────────────────────────────────── -->
+  <h2>7 &middot; Build plan</h2>
+  <p>Phased, each slice shippable, grounded in what already exists. Shipped this session marked <span class="chip c-green">done</span>.</p>
+  <table>
+    <thead><tr><th style="width:7%">#</th><th style="width:8%">Size</th><th style="width:45%">What</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="stg">S0.1</td><td><span class="chip c-green">S</span></td><td>Read-time digest dedup + <code>UNIQUE(signals.event_id)</code></td><td><span class="chip c-green">done</span> (migration 077)</td></tr>
+      <tr><td class="stg">S0.2</td><td><span class="chip c-green">S</span></td><td>Signals DB legibility (theme vars) + free-text search</td><td><span class="chip c-green">done</span></td></tr>
+      <tr><td class="stg">S0.3</td><td><span class="chip c-green">M</span></td><td>DR-9: deck/PDF text+tables → trial_result facts</td><td><span class="chip c-green">done</span> (P1+P2)</td></tr>
+      <tr><td class="stg">S1.1</td><td><span class="chip c-blue">S</span></td><td><strong>fact_class colour system</strong> across Digest / Stream / Signals DB (adopt v8 palette + glyph)</td><td><span class="chip c-blue">next</span></td></tr>
+      <tr><td class="stg">S1.2</td><td><span class="chip c-hitl">M</span></td><td><code>signal_facts</code> edge + wire <code>ProvenancePanel</code> into signals (forward + backward provenance)</td><td><span class="chip c-blue">next</span></td></tr>
+      <tr><td class="stg">S1.3</td><td><span class="chip c-green">S</span></td><td>Wire <code>emit_document_facts</code> into the upload route (auto-emit on upload) + live run</td><td><span class="chip c-blue">next</span></td></tr>
+      <tr><td class="stg">S2.1</td><td><span class="chip c-hitl">M</span></td><td>Emit signals from high-impact fact deltas (not only market_events) → unify the two stores</td><td><span class="chip c-orange">then</span></td></tr>
+      <tr><td class="stg">S2.2</td><td><span class="chip c-hitl">M</span></td><td>KBQ lens as the primary &ldquo;query / curated-for-CI&rdquo; surface + confidence/date filters</td><td><span class="chip c-orange">then</span></td></tr>
+      <tr><td class="stg">S2.3</td><td><span class="chip c-hitl">M</span></td><td>Post-extraction fact review (accept/reject extracted facts before they enter the store) + <code>internal</code> tier</td><td><span class="chip c-orange">then</span></td></tr>
+      <tr><td class="stg">S3.1</td><td><span class="chip c-orange">L</span></td><td>Market_events ingest-dedup (fix the recall re-insert at source) + connector scheduling cadence</td><td><span class="chip c-orange">then</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout orange">
+    <strong style="color:var(--ink)">The one idea to take away.</strong>
+    <p style="margin:8px 0 0">Don&rsquo;t build a better signals table. Make the signal a <em>lens</em> over the
+    facts we&rsquo;re already accumulating, link every signal to the facts it feeds, colour everything by where it
+    came from, and let every uploaded document deepen the one graph. Then &ldquo;making the sensing layer richer&rdquo;
+    stops being a feature you build and becomes a property that emerges every time data arrives.</p>
+  </div>
+
+  <div class="foot">
+    Claude Code &middot; sensing layer as a curated abstraction &middot; 3 Jun 2026 &middot;
+    companion to data-hub-agentic-layer-analysis.html + Helix v8 sensing model &middot;
+    grounded in: facts ledger (9,679 facts / 9 predicates / 5,709 evidence), signals (037), dossier_kb,
+    kbq_views, DR-1/3/4/6/7/9 emitters, document_extractor + document_facts.
+  </div>
+
+</div>
+</body>
+</html>

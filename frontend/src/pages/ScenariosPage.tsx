@@ -49,6 +49,7 @@ export interface Scenario {
   };
   probability: number;          // 0..1
   probabilityCurrent?: number;  // 0..1, only set after calibration
+  calibrationNote?: string | null;  // PB-H14 — why current moved (cites the signal)
   teamMoves: TeamMove[];
   decisionOptions: DecisionOption[];
   decisionOutput?: string;
@@ -213,6 +214,21 @@ function ScenarioCard({
             }}
           >
             ◇ Blocked by unresolved gap{scenario.blockedByGaps!.length === 1 ? '' : 's'}: {scenario.blockedByGaps!.join(', ')}
+          </div>
+        )}
+        {scenario.calibrationNote && (
+          <div
+            data-testid="scenario-calibration-note"
+            style={{
+              fontSize: 11.5,
+              color: 'var(--color-ink-3)',
+              lineHeight: 1.45,
+              borderLeft: '2px solid var(--color-accent)',
+              paddingLeft: 8,
+            }}
+            title="How this scenario's probability was re-weighted from new signals (PB-H14)"
+          >
+            {scenario.calibrationNote}
           </div>
         )}
       </div>

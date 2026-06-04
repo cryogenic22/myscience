@@ -38,6 +38,8 @@ import SourcesContainer from './SourcesContainer';
 import BriefContainer from './BriefContainer';
 import WorkshopContainer from './WorkshopContainer';
 import PersonaPicker from './PersonaPicker';
+import ExportMenu from './ExportMenu';
+import ActivityDrawer from './ActivityDrawer';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
 interface Props {
@@ -194,7 +196,9 @@ export default function EngagementDetailContainer({
       onStageSelect={(engagementId, s) => onStageChange(engagementId, s)}
       sidebar={null}
     >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 0 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', padding: '8px 0 0' }}>
+        <ActivityDrawer engagementId={engagement.id} />
+        <ExportMenu engagementId={engagement.id} />
         <PersonaPicker />
       </div>
       {currentStage === 'brief' ? (

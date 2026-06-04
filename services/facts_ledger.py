@@ -153,7 +153,7 @@ def supersede_fact(db, old_fact_id: str, **new_fact_kwargs) -> str:
 _SELECT_SUBJECT_SQL = """
     SELECT id, kind, predicate, subject_entity_type, subject_entity_id,
            object_value, valid_from, valid_to, asserted_at, source_doc_id,
-           confidence, created_by, superseded_by, tenant_scope
+           confidence, created_by, superseded_by, tenant_scope, fact_class
       FROM facts
      WHERE subject_entity_type = %s AND subject_entity_id = %s
        {predicate_clause}

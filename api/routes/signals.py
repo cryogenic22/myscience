@@ -29,6 +29,7 @@ _DEFAULT_STATUSES = ("reviewed", "shipped")
 _VALID_STATUSES = ("candidate", "reviewed", "shipped", "superseded", "retracted")
 _REVIEWABLE_STATUSES = ("reviewed", "shipped", "retracted")
 _VALID_IMPACTS = ("high", "medium", "low")
+_VALID_CONFIDENCE = ("confirmed", "reported", "inferred", "disputed")
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -88,8 +89,10 @@ def _row_to_dict(row: dict) -> dict:
 
 @router.get("")
 def list_signals(
-    status: Optional[str] = Query(None, description="Filter to one status"),
+    status: Optional[str] = Query(None, description="one status, or 'all' for every status (incl. candidate)"),
     impact: Optional[str] = Query(None, description="high|medium|low"),
+    confidence: Optional[str] = Query(None, description="confirmed|reported|inferred|disputed"),
+    since_days: Optional[int] = Query(None, ge=1, le=3650, description="only signals created within the last N days"),
     kbq: Optional[str] = Query(
         None,
         description="comma-separated kbq tags — signal matches if it has ANY of them (e.g. `financial,clinical`)",
@@ -104,7 +107,9 @@ def list_signals(
     where_clauses = []
     params: list = []
 
-    if status:
+    if status == "all":
+        pass  # no status filter — reveal candidates (incl. auto-minted fact-signals)
+    elif status:
         if status not in _VALID_STATUSES:
             raise HTTPException(400, f"invalid status: {status}")
         where_clauses.append("status = %s")
@@ -118,6 +123,16 @@ def list_signals(
             raise HTTPException(400, f"invalid impact: {impact}")
         where_clauses.append("impact_tier = %s")
         params.append(impact)
+
+    if confidence:
+        if confidence not in _VALID_CONFIDENCE:
+            raise HTTPException(400, f"invalid confidence: {confidence}")
+        where_clauses.append("confidence_tier = %s")
+        params.append(confidence)
+
+    if since_days:
+        where_clauses.append("created_at > NOW() - make_interval(days => %s)")
+        params.append(since_days)
 
     if kbq:
         # PB-104 — CSV of any-of tags. Dedup, strip whitespace, drop empties.
@@ -200,7 +215,31 @@ def get_signal(signal_id: str, db: Database = Depends(get_db)):
 
     if not row:
         raise HTTPException(404, f"signal not found: {signal_id}")
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    result["linked_facts"] = _linked_facts(db, signal_id)
+    return result
+
+
+def _linked_facts(db: Database, signal_id: str) -> list[dict]:
+    """PB-SL05 — the facts this signal feeds (via signal_facts), with their
+    class + source for forward provenance (signal → fact → evidence → source)."""
+    try:
+        rows = db.fetch_all(
+            """SELECT sf.role, f.id::text AS fact_id, f.predicate, f.fact_class,
+                      f.object_value->>'description' AS claim,
+                      f.confidence,
+                      e.source_id, e.source_url
+                 FROM signal_facts sf
+                 JOIN facts f ON f.id = sf.fact_id
+                 LEFT JOIN evidence_records e ON e.evidence_id = f.source_doc_id
+                WHERE sf.signal_id::text = %s
+                ORDER BY f.confidence DESC NULLS LAST""",
+            [signal_id],
+        )
+        return [dict(r) for r in rows]
+    except Exception:
+        logger.exception("linked_facts query failed for %s", signal_id)
+        return []
 
 
 # ────────────────────────────────────────────────────────────────────

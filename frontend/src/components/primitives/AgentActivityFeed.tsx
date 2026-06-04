@@ -6,6 +6,7 @@
  * relative timestamp + activity text. Driven by polled data.
  */
 import AgentGlyph, { AGENTS, type AgentId } from './AgentGlyph';
+import NudgeMenu from '../ci/NudgeMenu';
 import type { AgentActivity, ActivityKind } from '../../types/agents';
 
 const ORDER: AgentId[] = ['sentinel', 'strategist', 'curator'];
@@ -56,14 +57,17 @@ function AgentRow({ id, activity }: { id: AgentId; activity?: AgentActivity }) {
           >
             {meta.name}
           </span>
-          {activity ? (
-            <span
-              className="text-[10px]"
-              style={{ color: 'var(--color-ink-4)', whiteSpace: 'nowrap' }}
-            >
-              {relativeTime(activity.timestamp)}
-            </span>
-          ) : null}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {activity ? (
+              <span
+                className="text-[10px]"
+                style={{ color: 'var(--color-ink-4)', whiteSpace: 'nowrap' }}
+              >
+                {relativeTime(activity.timestamp)}
+              </span>
+            ) : null}
+            <NudgeMenu agent={id} />
+          </span>
         </div>
         <div
           className="text-[10px] uppercase mb-1"

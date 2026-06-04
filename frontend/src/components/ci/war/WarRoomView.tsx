@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { warRoomApi, type MoveType, type WarRoom } from '../../../api';
+import { warRoomApi, type MoveType, type WarRoom, type WarRoomMode } from '../../../api';
 import CommentsPanel from './CommentsPanel';
 import MoveSelector, { type MoveSelectorHandle } from './MoveSelector';
 import MoveSuggestions from './MoveSuggestions';
 import PayoffMatrix from './PayoffMatrix';
 import RoomActionsMenu from './RoomActionsMenu';
 import RoundHistory from './RoundHistory';
+import WarRoomModePicker from './WarRoomModePicker';
+import AutonomousPanel from './AutonomousPanel';
 import { usePayoffMatrix } from '../../../hooks/usePayoffMatrix';
 
 interface Props {
@@ -37,6 +39,7 @@ export default function WarRoomView({ roomId, onClose }: Props) {
   const [room, setRoom] = useState<WarRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [modeBusy, setModeBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -52,6 +55,24 @@ export default function WarRoomView({ roomId, onClose }: Props) {
   }, [roomId]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  const mode: WarRoomMode = room?.mode ?? 'guided';
+
+  const handleModeChange = async (next: WarRoomMode) => {
+    if (!room || next === mode) return;
+    const prev = room.mode ?? 'guided';
+    setRoom({ ...room, mode: next });          // optimistic
+    setModeBusy(true);
+    setError(null);
+    try {
+      await warRoomApi.setMode(roomId, next);
+    } catch (e) {
+      setRoom((r) => (r ? { ...r, mode: prev } : r));  // revert
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setModeBusy(false);
+    }
+  };
 
   const handleSubmit = async (move_type: MoveType, payload: Record<string, string>) => {
     setBusy(true);
@@ -174,52 +195,97 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         )}
       </div>
 
-      {/* Strategy group — payoff matrix + autonomous suggestions + move
-          selector. Loop #10 consolidated these three siblings into one
-          panel; Loop #11 drops the surrounding border in favour of a
-          background-elevation tier (Spotify/Oura model). */}
-      <section
-        aria-label="Strategy"
-        className="mb-8"
-        style={{
-          padding: '24px',
-          background: 'var(--color-surface-2)',
-          borderRadius: 'var(--radius-panel)',
-        }}
-      >
-        <header
-          className="flex items-baseline justify-between"
-          style={{ marginBottom: '16px' }}
-        >
-          <h2
-            className="mz-text-xs uppercase font-medium"
-            style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}
-          >
-            Strategy
-          </h2>
-          <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>
-            Strategist · payoff matrix · move
-          </span>
-        </header>
+      {/* IX04a — mode picker over the shared scenario state. */}
+      <WarRoomModePicker mode={mode} onModeChange={handleModeChange} busy={modeBusy} />
 
-        <PayoffMatrixSection roomId={roomId} />
-        <MoveSuggestions
-          roomId={roomId}
-          signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
-          onPick={(move_type, payload) => {
-            selectorRef.current?.applySuggestion(move_type, payload);
+      {/* Guided — Strategist's payoff matrix + suggestions + move composer.
+          The backend gates round submission to Guided mode, so the composer
+          only renders here. Loop #10 consolidated these three siblings into one
+          panel; Loop #11 dropped the border for a background-elevation tier. */}
+      {mode === 'guided' && (
+        <section
+          aria-label="Strategy"
+          className="mb-8"
+          style={{
+            padding: '24px',
+            background: 'var(--color-surface-2)',
+            borderRadius: 'var(--radius-panel)',
           }}
-        />
-        <div style={{ marginTop: '16px' }}>
-          <MoveSelector
-            ref={selectorRef}
-            onSubmit={handleSubmit}
-            busy={busy}
-            initialMoveType={suggestedMove}
+        >
+          <header
+            className="flex items-baseline justify-between"
+            style={{ marginBottom: '16px' }}
+          >
+            <h2
+              className="mz-text-xs uppercase font-medium"
+              style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}
+            >
+              Strategy
+            </h2>
+            <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>
+              Strategist · payoff matrix · move
+            </span>
+          </header>
+
+          <PayoffMatrixSection roomId={roomId} />
+          <MoveSuggestions
             roomId={roomId}
+            signalContext={signalKbq ? { kbq_tags: [signalKbq] } : undefined}
+            onPick={(move_type, payload) => {
+              selectorRef.current?.applySuggestion(move_type, payload);
+            }}
           />
-        </div>
-      </section>
+          <div style={{ marginTop: '16px' }}>
+            <MoveSelector
+              ref={selectorRef}
+              onSubmit={handleSubmit}
+              busy={busy}
+              initialMoveType={suggestedMove}
+              roomId={roomId}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Game-theoretic — the payoff matrix is the surface; the 3×3 NPV-pair
+          Nash solver arrives in L2 (PB-H12). */}
+      {mode === 'game_theoretic' && (
+        <section
+          aria-label="Game-theoretic"
+          className="mb-8"
+          style={{ padding: '24px', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-panel)' }}
+        >
+          <header className="flex items-baseline justify-between" style={{ marginBottom: '16px' }}>
+            <h2 className="mz-text-xs uppercase font-medium" style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}>
+              Game-theoretic
+            </h2>
+            <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>3×3 payoff · Nash equilibrium</span>
+          </header>
+          <PayoffMatrixSection
+            roomId={roomId}
+            ourMoves={GT_OUR_MOVES}
+            adversaryStates={GT_ADVERSARY_MOVES}
+          />
+        </section>
+      )}
+
+      {/* Autonomous — agents play every team and narrate; the human observes
+          (PB-H13). Reactions are DB-grounded server-side. */}
+      {mode === 'autonomous' && (
+        <section
+          aria-label="Autonomous"
+          className="mb-8"
+          style={{ padding: '24px', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-panel)' }}
+        >
+          <header className="flex items-baseline justify-between" style={{ marginBottom: '16px' }}>
+            <h2 className="mz-text-xs uppercase font-medium" style={{ color: 'var(--color-ink-3)', letterSpacing: '0.08em' }}>
+              Autonomous
+            </h2>
+            <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>agents play · narrated</span>
+          </header>
+          <AutonomousPanel roomId={roomId} />
+        </section>
+      )}
 
       {error && (
         <div
@@ -268,8 +334,22 @@ export default function WarRoomView({ roomId, onClose }: Props) {
  * the hook swaps to a real `POST /war-rooms/{id}/payoff-matrix`
  * call without changing this component.
  */
-function PayoffMatrixSection({ roomId }: { roomId: string }) {
-  const { data, error, isLoading } = usePayoffMatrix(roomId);
+// Game-theoretic mode plays a 3×3 of strategic postures so the Nash
+// (security) equilibrium has room to differ from the EV pick. Guided mode
+// keeps the hook's 2×2 default.
+const GT_OUR_MOVES = ['launch_q3', 'wait_q4', 'partner'];
+const GT_ADVERSARY_MOVES = ['defend', 'cede', 'escalate'];
+
+function PayoffMatrixSection({
+  roomId,
+  ourMoves,
+  adversaryStates,
+}: {
+  roomId: string;
+  ourMoves?: string[];
+  adversaryStates?: string[];
+}) {
+  const { data, error, isLoading } = usePayoffMatrix(roomId, { ourMoves, adversaryStates });
   if (isLoading) {
     return (
       <div

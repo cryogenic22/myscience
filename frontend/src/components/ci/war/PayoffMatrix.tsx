@@ -35,7 +35,7 @@ function findCell(cells: PayoffCell[], rowId: string, colId: string): PayoffCell
 }
 
 export default function PayoffMatrix({ matrix }: Props) {
-  const { rows, cols, cells, recommended_cell } = matrix;
+  const { rows, cols, cells, recommended_cell, nash_cell, nash_reasoning } = matrix;
 
   if (rows.length === 0 || cols.length === 0) {
     return (
@@ -131,17 +131,27 @@ export default function PayoffMatrix({ matrix }: Props) {
                     recommended_cell !== null &&
                     recommended_cell.row_id === r.id &&
                     recommended_cell.col_id === c.id;
+                  const isNash =
+                    !!nash_cell &&
+                    nash_cell.row_id === r.id &&
+                    nash_cell.col_id === c.id;
+                  // Recommended (EV) takes the violet ring; a Nash-only cell
+                  // gets a dashed ink ring so the two picks read distinctly.
+                  const ring = isRecommended
+                    ? `inset 0 0 0 2px rgb(${AGENTS.strategist.rgb})`
+                    : isNash
+                      ? 'inset 0 0 0 2px var(--color-ink-3)'
+                      : 'none';
                   return (
                     <td
                       key={c.id}
                       data-outcome={cell.outcome}
                       data-recommended={isRecommended ? 'true' : 'false'}
+                      data-nash={isNash ? 'true' : 'false'}
                       style={{
                         padding: '16px',
                         background: OUTCOME_BACKGROUND[cell.outcome],
-                        boxShadow: isRecommended
-                          ? `inset 0 0 0 2px rgb(${AGENTS.strategist.rgb})`
-                          : 'none',
+                        boxShadow: ring,
                         borderRadius: 'var(--radius-card)',
                         verticalAlign: 'top',
                       }}
@@ -177,6 +187,20 @@ export default function PayoffMatrix({ matrix }: Props) {
                           Strategist recommends
                         </div>
                       )}
+                      {isNash && !isRecommended && (
+                        <div
+                          data-nash-badge="true"
+                          className="mz-text-xs uppercase font-medium"
+                          style={{
+                            color: 'var(--color-ink-3)',
+                            letterSpacing: '0.08em',
+                            marginTop: '10px',
+                          }}
+                          title="Security (maximin) equilibrium — best worst-case outcome"
+                        >
+                          Nash · security
+                        </div>
+                      )}
                     </td>
                   );
                 })}
@@ -185,6 +209,16 @@ export default function PayoffMatrix({ matrix }: Props) {
           </tbody>
         </table>
       </div>
+
+      {nash_reasoning && (
+        <p
+          data-nash-reasoning
+          className="mz-text-xs"
+          style={{ color: 'var(--color-ink-4)', marginTop: '10px', lineHeight: 1.5 }}
+        >
+          {nash_reasoning}
+        </p>
+      )}
     </section>
   );
 }

@@ -63,6 +63,48 @@ describe('NewEngagementModal', () => {
     });
   });
 
+  it('PB-IX01: pre-fills asset/name/context when seeded from a signal promote', () => {
+    render(
+      <NewEngagementModal
+        open={true}
+        onClose={() => {}}
+        onCreated={() => {}}
+        initialAsset="drug:semaglutide"
+        initialName="Semaglutide — signal response"
+        initialContext="FDA expands the obesity label."
+      />,
+    );
+    expect((screen.getByTestId('ne-asset') as HTMLInputElement).value).toBe('drug:semaglutide');
+    expect((screen.getByTestId('ne-name') as HTMLInputElement).value).toBe('Semaglutide — signal response');
+    expect((screen.getByTestId('ne-context') as HTMLTextAreaElement).value).toBe('FDA expands the obesity label.');
+    // Seeded form is immediately submittable (name + asset present).
+    expect((screen.getByTestId('ne-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('PB-IX01: persists source_signal_id in scope when promoted from a signal', async () => {
+    const created = {
+      id: 'eng-prov', name: 'Sema', asset: 'drug:semaglutide', sponsor: null,
+      situation: 'launch', workshop_date: null, stage: 'brief',
+      status: 'draft', scope: {}, created_by: 'u', created_at: '',
+      updated_at: '', tenant_scope: null,
+    };
+    (engagementsApi.create as any).mockResolvedValue(created);
+    render(
+      <NewEngagementModal
+        open={true}
+        onClose={() => {}}
+        onCreated={() => {}}
+        initialAsset="drug:semaglutide"
+        initialName="Sema"
+        initialSignalId="sig-42"
+      />,
+    );
+    fireEvent.click(screen.getByTestId('ne-submit'));
+    await waitFor(() => expect(engagementsApi.create as any).toHaveBeenCalledTimes(1));
+    const body = (engagementsApi.create as any).mock.calls[0][0];
+    expect(body.scope).toMatchObject({ source_signal_id: 'sig-42' });
+  });
+
   it('renders the agent-context fields (context + key questions)', () => {
     render(<NewEngagementModal open={true} onClose={() => {}} onCreated={() => {}} />);
     expect(screen.getByTestId('ne-context')).toBeInTheDocument();

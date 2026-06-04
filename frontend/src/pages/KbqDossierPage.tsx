@@ -7,9 +7,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { kbqApi, type EntityKbqs } from '../api';
 import KbqDossier from '../components/ci/KbqDossier';
 
-const H_BG = '#0a0b0e';
-const H_INK = '#e8eaed';
-const H_DIM = '#8a8f99';
+const H_BG = 'var(--color-bg)';
+const H_INK = 'var(--color-ink)';
+const H_DIM = 'var(--color-ink-3)';
 
 export default function KbqDossierPage() {
   const { entityType = '', entityId = '' } = useParams<{ entityType: string; entityId: string }>();
@@ -48,7 +48,7 @@ export default function KbqDossierPage() {
   );
 
   if (loading) return shell(<p style={{ color: H_DIM }}>Loading dossier…</p>);
-  if (error) return shell(<p style={{ color: '#f87171' }}>Could not load dossier: {error}</p>);
+  if (error) return shell(<p style={{ color: 'var(--color-red, #dc2626)' }}>Could not load dossier: {error}</p>);
   if (!data) return shell(<p style={{ color: H_DIM }}>No dossier data.</p>);
 
   return (

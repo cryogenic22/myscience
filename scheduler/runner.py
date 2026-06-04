@@ -224,7 +224,68 @@ class DataPipelineScheduler:
             logger.exception("Post-task fact_convergence failed")
             results["fact_convergence"] = f"ERROR: {e}"
 
+        # 10. Fact emitters (entity tables → facts ledger) — DR-8 / Epic E19.
+        # Lifts clinical_trials / adverse_events / drug_labels into the ledger
+        # so dossiers carry granular clinical evidence, not just the
+        # market_event monoculture. Bounded + idempotent (skips on
+        # source_row_id), so each cycle only asserts genuinely new rows. Reuses
+        # services.fact_emitters; own connection (long sweeps risk a Railway
+        # proxy drop). For a full cross-drug catch-up run
+        # scripts/backfill_fact_emitters instead.
+        try:
+            t0 = time.time()
+            results["fact_emitters"] = (
+                self._run_fact_emitters(limit=200) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: fact_emitters — %s", results["fact_emitters"])
+        except Exception as e:
+            logger.exception("Post-task fact_emitters failed")
+            results["fact_emitters"] = f"ERROR: {e}"
+
+        # 11. Scenario calibration (signals → scenario current_prob) — PB-H14.
+        # The Learn-loop vertebra: re-weights each live scenario's structural
+        # prior into a current probability from fresh signals about its focal
+        # entity, recording a calibration_note. Idempotent (recomputes from
+        # prior each cycle). Own connection.
+        try:
+            t0 = time.time()
+            results["scenario_calibration"] = (
+                self._run_scenario_calibration() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: scenario_calibration — %s", results["scenario_calibration"])
+        except Exception as e:
+            logger.exception("Post-task scenario_calibration failed")
+            results["scenario_calibration"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_scenario_calibration(self) -> str:
+        """Re-weight live scenarios from new signals (PB-H14). Own connection."""
+        from services.scenario_calibration import calibrate_all_engagements
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = calibrate_all_engagements(db, limit=200)
+            return f"OK: {stats['scenarios_updated']} updated across {stats['engagements']} engagements"
+        finally:
+            db.close()
+
+    def _run_fact_emitters(self, limit: int = 200) -> str:
+        """Converge recent entity rows into the facts ledger (DR-8). Mirrors
+        fact_convergence; bounded per emitter, idempotent. Own connection."""
+        from services.fact_emitters.base import run_all_emitters
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = run_all_emitters(db, limit=limit)
+            return "OK: " + ", ".join(
+                f"{name}={s.asserted}a/{s.skipped_existing}e"
+                for name, s in stats.items()
+            )
+        finally:
+            db.close()
 
     def _run_fact_convergence(self, since_days: int = 7) -> str:
         """Converge recent market_events into the facts ledger (PB-H17).

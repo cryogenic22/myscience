@@ -61,6 +61,31 @@ describe('EngagementsTab — container behaviour', () => {
     });
   });
 
+  it('PB-IX01: autoNew opens the create modal pre-seeded from the signal', async () => {
+    (engagementsApi.list as any).mockResolvedValue({ engagements: [], count: 0 });
+    const onSeedConsumed = vi.fn();
+    render(
+      <EngagementsTab
+        autoNew
+        seedAsset="drug:semaglutide"
+        seedName="Semaglutide — signal response"
+        seedContext="FDA expands the obesity label."
+        onSeedConsumed={onSeedConsumed}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('new-engagement-modal')).toBeInTheDocument());
+    expect((screen.getByTestId('ne-asset') as HTMLInputElement).value).toBe('drug:semaglutide');
+    expect((screen.getByTestId('ne-name') as HTMLInputElement).value).toBe('Semaglutide — signal response');
+    expect(onSeedConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-open the modal without autoNew', async () => {
+    (engagementsApi.list as any).mockResolvedValue({ engagements: [], count: 0 });
+    render(<EngagementsTab />);
+    await waitFor(() => expect(screen.getByTestId('engagements-empty')).toBeInTheDocument());
+    expect(screen.queryByTestId('new-engagement-modal')).not.toBeInTheDocument();
+  });
+
   it('renders PortfolioBoard with transformed shape when items present', async () => {
     (engagementsApi.list as any).mockResolvedValue({
       engagements: [

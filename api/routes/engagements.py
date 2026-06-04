@@ -17,16 +17,23 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from api.deps import get_db, require_role
 from db import Database
+from services.engagement_export import (
+    render_dossier_html,
+    render_executive_brief_html,
+    render_strategy_deck_html,
+)
 from services.business_context_brief import (
     BCBContractError,
     create_bcb,
     get_bcb,
     get_bcb_for_engagement,
     sign_off_bcb,
+    update_bcb,
 )
 from services.engagement import (
     Engagement,
@@ -68,6 +75,7 @@ from services.gap_remediation import (
     set_remediation as set_gap_remediation,
     list_remediations as list_gap_remediations,
 )
+from services.engagement_activity import list_engagement_activity
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +345,38 @@ def create_brief(
     return _bcb_to_dict(bcb)
 
 
+@router.put("/engagements/{eid}/brief")
+def update_brief(
+    eid: str,
+    body: CreateBCBBody,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """UX08 — edit the engagement's BCB in place. 404 if no brief yet; 409 if
+    the brief is signed-off (immutable); 400 on contract violation."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    try:
+        bcb = update_bcb(
+            db,
+            engagement_id=eid,
+            focal_asset=body.focal_asset,
+            situation=body.situation,
+            strategic_decisions=[d.model_dump() for d in body.strategic_decisions],
+            competitive_set=[t.model_dump() for t in body.competitive_set],
+            success_criteria=body.success_criteria,
+            constraints=body.constraints,
+        )
+    except BCBContractError as e:
+        msg = str(e)
+        if "no brief to update" in msg:
+            raise HTTPException(404, msg) from e
+        if "signed-off" in msg:
+            raise HTTPException(409, msg) from e
+        raise HTTPException(400, msg) from e
+    return _bcb_to_dict(bcb)
+
+
 @router.get("/engagements/{eid}/brief")
 def get_brief(
     eid: str,
@@ -581,6 +621,159 @@ def get_scenarios(
         raise HTTPException(404, f"engagement not found: {eid}")
     scenarios = list_scenarios(db, eid)
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
+
+
+@router.get("/engagements/{eid}/activity")
+def get_engagement_activity(
+    eid: str,
+    limit: int = Query(60, ge=1, le=200),
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX11 — engagement activity timeline: a newest-first feed of what happened
+    on this engagement (briefs, scenarios, insights, gap remediations, dossier
+    assemblies), human and agent actions alike. Read-time union over the
+    engagement's own artifacts — empty engagements show an honest empty feed."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    items = list_engagement_activity(db, eid, limit=limit)
+    return {"activity": items, "total": len(items)}
+
+
+def _pick_recommendation(scenarios: list[dict]) -> Optional[str]:
+    """The committed decision output, else the recommended decision option."""
+    for s in scenarios:
+        out = s.get("decisionOutput")
+        if out:
+            return out if isinstance(out, str) else str(out)
+    for s in scenarios:
+        for opt in (s.get("decisionOptions") or []):
+            if opt.get("recommended"):
+                stmt = (opt.get("statement") or "").strip()
+                rat = (opt.get("rationale") or "").strip()
+                return f"{stmt} — {rat}".strip(" —") or None
+    return None
+
+
+@router.get("/engagements/{eid}/export/brief.html", response_class=HTMLResponse)
+def export_executive_brief(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX12 — printable Executive Brief (browser → PDF). Assembled server-side
+    from the engagement's dossier readiness + scenarios (+ BCB summary when
+    present); no fabricated content — empty sections degrade honestly."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    eng_dict = _engagement_to_dict(eng)
+
+    snapshot = get_latest_snapshot(db, eid)
+    readiness = None
+    if snapshot is not None:
+        readiness = snapshot.to_dict().get("readiness")
+
+    scen_dicts = [s.to_dict() for s in list_scenarios(db, eid)]
+    scenarios = [
+        {"name": s.get("name"),
+         "probability": s.get("probabilityCurrent") if s.get("probabilityCurrent") is not None
+         else s.get("probability")}
+        for s in scen_dicts
+    ]
+
+    bcb = get_bcb_for_engagement(db, eid)
+    brief_summary = None
+    if bcb is not None:
+        bcb_d = _bcb_to_dict(bcb)
+        brief_summary = bcb_d.get("summary") or bcb_d.get("objective")
+
+    html_doc = render_executive_brief_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or "—",
+        readiness=readiness,
+        recommendation=_pick_recommendation(scen_dicts),
+        scenarios=scenarios,
+        generated_label=f"engagement {eid[:8]}",
+        brief_summary=brief_summary,
+    )
+    return HTMLResponse(content=html_doc)
+
+
+@router.get("/engagements/{eid}/export/dossier.html", response_class=HTMLResponse)
+def export_dossier(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX12 — printable full Intelligence Dossier (browser → PDF). All domains
+    + their grounded facts; sourced facts link to evidence."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    snapshot = get_latest_snapshot(db, eid)
+    if snapshot is None:
+        raise HTTPException(404, f"no dossier assembled yet for engagement {eid}")
+    snap = snapshot.to_dict()
+    eng_dict = _engagement_to_dict(eng)
+    html_doc = render_dossier_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or snap.get("focal_asset") or "—",
+        readiness=snap.get("readiness"),
+        fact_count=snap.get("fact_count") or 0,
+        domains=snap.get("domains") or [],
+        generated_label=f"engagement {eid[:8]}",
+    )
+    return HTMLResponse(content=html_doc)
+
+
+@router.get("/engagements/{eid}/export/deck.html", response_class=HTMLResponse)
+def export_strategy_deck(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX13 — printable Strategy Deck (browser → PDF, landscape). Slides:
+    situation · scenarios · recommendation, assembled from the grounded
+    dossier + scenarios."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    eng_dict = _engagement_to_dict(eng)
+
+    snapshot = get_latest_snapshot(db, eid)
+    snap = snapshot.to_dict() if snapshot is not None else {}
+    scen_dicts = [s.to_dict() for s in list_scenarios(db, eid)]
+
+    readiness = snap.get("readiness")
+    pct = f"{round(float(readiness) * 100)}%" if readiness is not None else "not yet assembled"
+    situation = [
+        f"Dossier readiness: {pct} across {len(snap.get('domains') or [])} domains.",
+        f"Grounded facts in the knowledge store: {snap.get('fact_count') or 0}.",
+    ]
+    scen_bullets = [
+        s.get("name") + (
+            f" — {round(float(s.get('probabilityCurrent') if s.get('probabilityCurrent') is not None else s.get('probability'))*100)}% likely"
+            if (s.get("probabilityCurrent") if s.get("probabilityCurrent") is not None else s.get("probability")) is not None
+            else ""
+        )
+        for s in scen_dicts
+    ] or ["No scenarios derived yet."]
+    rec = _pick_recommendation(scen_dicts)
+    rec_bullets = [rec] if rec else ["No committed recommendation yet."]
+
+    slides = [
+        {"title": "Situation", "bullets": situation},
+        {"title": "Scenarios under evaluation", "bullets": scen_bullets},
+        {"title": "Recommendation", "bullets": rec_bullets},
+    ]
+    html_doc = render_strategy_deck_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or snap.get("focal_asset") or "—",
+        slides=slides,
+        generated_label=f"engagement {eid[:8]}",
+    )
+    return HTMLResponse(content=html_doc)
 
 
 # ── Synthesis (PB-UX06): typed insights derived from the dossier ──

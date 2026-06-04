@@ -21,23 +21,25 @@
 > **Status taxonomy:** `proposed | triaged | blocked | in-progress | shipped | archived | wontfix`.
 > See [SPEC-042 §4.2](../specs/SPEC_042_centralized_product_backlog.md).
 
-## Dashboard (regenerated 2026-06-01)
+## Dashboard (regenerated 2026-06-03)
 
 | Status        | Count |
 |---------------|-------|
-| in-progress   | 5     |
-| triaged       | 103   |
+| in-progress   | 7     |
+| triaged       | 114   |
 | blocked       | 0     |
-| proposed      | 0     |
-| shipped (90d) | 8     |
+| proposed      | 1     |
+| shipped (90d) | 28    |
 
-## Currently in flight (5)
+## Currently in flight (7)
 
 - [PB-001] SPEC-041 User Feedback Loop · in-app widget + autonomous triage — frontend-claude / PR #35
 - [PB-002] SPEC-042 Centralized Product Backlog — frontend-claude / SPEC-042
 - [PB-1301] Reskin remaining /ci tabs to Helix (consistency pass) — frontend-claude / n/a
 - [PB-E05] Evidence drill-through — claims to source records — shared / adhoc
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
+- [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
+- [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
 
 ## 24-week sequencing — design-review plan
 
@@ -199,15 +201,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-203] Agent nudges · address an agent
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: spec
 - **Source ref**: legacy:design-review-E2.S2.3
 - **Blocked by**: PB-202
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: Per-agent nudge intents — Sentinel (watch / ignore / boost source), Strategist (rerun sim / draft counter), Curator (explain score / mark outcome verified). Backend: new `POST /agents/{agent}/nudge` endpoint + intent registry at `services/agent/nudge_intents.py` (BE-5). Frontend: `NudgeMenu.tsx`.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L13, 4 Jun). Per-agent nudge intents — Sentinel (watch / ignore / boost source), Strategist (rerun sim / draft counter), Curator (explain score / mark outcome verified). Backend: intent registry `services/agent/nudge_intents.py` (pure validate + append-only `record_nudge`/`list_nudges`), `POST /agents/{agent}/nudge` (uploader) + `GET /agents/{agent}/intents` (anon) + `GET /agents/{agent}/nudges` (viewer), migration 079 `agent_nudges` (applied to prod). Nudges are QUEUED (agents consume on next background pass — not synchronous, honest). Frontend: `NudgeMenu.tsx` (lazy-loads intents, prompts for target or accepts parent-supplied via `resolveTarget`, "Queued ✓" ack), mounted per row in `AgentActivityFeed`. +16 backend / +4 frontend tests; live-gated on prod.
 
 #### [PB-204] Agent degradation visibility
 - **Type**: feature
@@ -1263,39 +1265,39 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H12] 3×3 Nash payoff matrix + Nash reasoning
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: low
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H11
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark PAYOFF_MATRIX is 3×3 (Novo strategies × Lilly strategies), each cell an (npv_a, npv_b) pair, with a computed `nash_cell` + `nash_reasoning`. Our `simulation/payoff.py` builds 2×2 from Bayesian runs (delta_pct, not NPV pairs) and `game_theory.py` does Stackelberg (sequential) not simultaneous Nash. Generalise to N×N, emit NPV pairs, add a simultaneous-move Nash solver + reasoning. Note: SPEC-025 Bayesian/Stackelberg layer was deferred — this revisits it with the benchmark as the concrete target. Acceptance: a 3×3 matrix returns a Nash cell with a textual justification.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L2, commit d8f3e2d). `build_payoff_matrix` generalised from a hard 2×2 to N×N (2..5/dim; 3×3 is the target), returning a security (maximin) `nash_cell` + `nash_reasoning` alongside the EV `recommended_cell`. HONESTY CALL: no NPV pairs are fabricated — a real (npv_a, npv_b) Nash needs the value model deferred in PB-H10; the Nash here is a robustness read over the SAME grounded Bayesian deltas (assume the rival best-responds to suppress our gain; pick the move whose worst case is best), clearly labelled. Frontend PayoffMatrix renders a distinct Nash badge + reasoning; the game-theoretic war-room mode requests a 3×3. Acceptance met (3×3 + Nash cell + justification). Follow-up if a value model lands: emit true NPV-pair payoffs + simultaneous Nash.
 
 #### [PB-H13] Autonomous multi-round war-game play
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: low
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H12
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark AUTONOMOUS_PLAY = a scripted multi-round team-move sequence with narration. We have `war_game_adversary.WarGameOrchestrator` (reactive per-option rounds) but no autonomous campaign that loops the war room through rounds without human prompting. Add an auto-play orchestration over the move catalog + payoff matrix. Acceptance: a war-game run produces a coherent N-round move/counter-move transcript autonomously.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L3, commit d2d9d08). `services/war_game_autonomous.py::autoplay` — a pure, injectable engine that runs an N-round campaign (cycles a move catalog; the injected reactor returns adversary reactions; narrates the highest-confidence response per round). `POST /war-rooms/{id}/run-autonomous` injects a reactor backed by the SAME DB-grounded `war_game_engine.generate_reactions` the Guided path uses — no fabrication; transcript is ephemeral. Owner-only; validates move types. Frontend AutonomousPanel (run/re-run + transcript) in WarRoomView's autonomous mode. +7 engine + 6 route (TestClient registration) + 3 frontend tests. Acceptance met (coherent N-round transcript). Follow-up: persist campaigns + feed Learn loop (PB-H14).
 
 #### [PB-H14] Scenario calibration loop (re-weight probability from new signals)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H09, PB-H01
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: THE Learn-loop gap. Benchmark re-weights `prior_prob → current_prob` as signals arrive, each change carrying a `calibration_note` tracing to the causing signal. Our learn layer is strong and WIRED (telemetry, 3 feedback loops, outcome detection every 1h, EWMA source-accuracy via `learning_service.py`) — but scenario probabilities are never recalibrated. Wire signal arrival (via affects_scenario_ids, PB-H01) → Bayesian update of scenario current_prob (reuse `learning_service.ewma_update`) → write a calibration_note. Closes the flywheel. Acceptance: a new signal affecting a scenario shifts its current_prob and records a calibration_note citing the signal.
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 2c8069b). The Learn-loop vertebra. `services/scenario_calibration.py`: `calibrate_scenario_prob` (pure) re-weights prior→current via EWMA (reuses `learning_service.ewma_update`), one observation per corroborating signal mapped from confidence tier (confirmed .90…disputed .45); measures evidence ACCUMULATION only (honest — no reversal claims), bounded [0.05,0.95], writes a calibration_note citing count/entity/shift/latest-signal. **H01 was never built** so the signal→scenario link is ENTITY-LEVEL: a scenario's engagement focal asset → signals about that entity arriving after derivation corroborate it (from_fact_ids mix synthetic ids, so no fact-id join). Wired into scheduler task 11 (`calibrate_all_engagements`, bounded, idempotent) + `Scenario.to_dict.calibrationNote` + ScenariosPage renders it under the dial (visible + traced). +9 calib tests, full vitest 935, build clean. Live prod gate (semaglutide eng db4fe801): 4 scenarios calibrated. **Review-hardened (this was the deepest defect): (1) WRONG ENTITY — every scenario was re-weighted by the FOCAL asset's signals, so 3 distinct rival scenarios got the identical 0.639; competitive-pressure scenarios now target the RIVAL's signals (rival resolved from the scenario name). (2) DISHONEST DIRECTION — EWMA anchored disputed at 0.45, so a disputed signal RAISED a 0.30 prior; replaced with CORROBORATION_WEIGHT (confirmed 1.0…disputed 0.0), monotonic-up only, "no refutation modeled" stated plainly. (3) idempotency hole — stale current_prob now cleared to NULL when no corroboration.** Corrected live result: Dulaglutide 0.38→0.825 (has signals), Signal:Apotex 0.30→0.73, albiglutide/exenatide → uncalibrated (honest). Idempotent across 2 runs. Follow-up: topical relevance (signal kbq_tags ↔ scenario domain) + contradiction detection for genuine downward moves.
 
 #### [PB-H15] SDAL flywheel KPI dashboard (sense / decide / act / learn)
 - **Type**: enhancement
@@ -1504,15 +1506,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX11] Activity timeline (Collaboration P3.2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Unified human+agent activity feed scoped to the engagement. `activity_log` table (actor_type agent|human, actor_id, action, target_type/id, ts, metadata). `ActivityDrawer` extends the demo's agent-drawer pattern. EL's primary oversight surface; the agent-activity rail from the design doc.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L12, 4 Jun). DEVIATION (deliberate): implemented as a READ-TIME UNION over the engagement's existing timestamped artifacts (briefs, scenarios [batch-grouped], insights, gap remediations, dossier snapshots) — `services/engagement_activity.py::list_engagement_activity` (per-source, graceful) + `GET /engagements/{eid}/activity` (viewer) — NOT a new `activity_log` write table. Rationale: immediately populated with real authored rows, no risky cross-cutting instrumentation, honest empty state; `actor_kind` (human|system) distinguishes agent/system vs teammate actions. Frontend `ActivityDrawer.tsx` (dismissible, newest-first, color by kind), mounted in EngagementDetailContainer header. Live-gated on semaglutide (12 real events). +6 backend / +4 frontend tests. FOLLOW-UP if needed: add `activity_log` for events with no own row (exports, nudges consumed, persona switches) and union it in.
 
 #### [PB-UX12] Export — Executive Brief + Intelligence Dossier (Deliverables P3.3)
 - **Type**: feature
@@ -1873,27 +1875,27 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-IX01] Promote bridge — signal → dossier / war-game / engagement
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: high
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-IX02, PB-IX03
 - **Created**: 2026-06-02
-- **Last touched**: 2026-06-02
-- **Notes**: The missing connector. A signal action menu (in IntelligenceTab) → seed a standalone dossier, a war game, or a full engagement from the signal. Upstream `signal_promoter.py` (events→signals) + `decisions.promote_round` (round→decision) exist; this adds the middle signal→work promotion + a seed endpoint. Highest-value IA loop.
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 64a8572). Completes the signal→work promote set. War-room (Simulate, already carried `source_signal_id`) + Decision (Frame) pre-existed; IX01 adds **Build dossier** (standalone 8-domain dossier seeded by the signal's asset, auto-builds) + **Start engagement** (New Engagement modal pre-filled with asset + name + signal summary as strategic context). URL-driven like the existing "View dossier" link (`/ci?tab=dossier&asset=` · `/ci?tab=engagements&new=1&asset=&seedName=&seedContext=`); deep-linkable, no deep prop threading. No new backend (dossier-preview ephemeral-by-asset, POST /engagements + war-room seed already exist). +6 tests; full vitest 933 (no-file-parallelism), vite build clean, no new tsc errors. Touched: SignalDetail, StandaloneDossierTab, EngagementsTab, NewEngagementModal, CIPage. **Review-hardened: the engagement promote dropped provenance (war-room seed persisted source_signal_id but engagement didn't) → now threads seedSignalId → scope.source_signal_id; added a static URL-contract test pinning the promote params on both the SignalDetail (writer) and CIPage (reader) sides (cross-file seam, no type link).**
 
 #### [PB-IX04] War Game surface + mode picker (turn-based / game-theory / autonomous)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-IX05
 - **Created**: 2026-06-02
-- **Last touched**: 2026-06-02
-- **Notes**: Unify the three play modes under one War Game home: guided turn-based (live: war_game_engine/adversary), game-theory payoff+Nash (PB-H12), autonomous N-round sim (PB-H13). Standalone start OR seeded from a scenario. The "rooms" tab is already relabelled War Game (IX-5); this gives it the mode picker + standalone launch.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED across loops L1+L4. L1 (commit 0eafb67) — WarRoomModePicker harvested from the unused F11 WarRoomPage design + mounted in WarRoomView, backed by PATCH /war-rooms/{id}/mode; guided keeps the move composer (backend gates rounds to guided), game-theoretic shows the payoff matrix, autonomous shows the L3 panel. L4 (commit cdfded2) — standalone "New war game" launch from WarRoomsList (no engagement/scenario needed). Seed-from-scenario already shipped via the Workshop stage (UX-Workshop). Game-theory 3×3 Nash = PB-H12 (L2); autonomous N-round = PB-H13 (L3).
 
 #### [PB-IX06] Learn loop closes to Sense (re-order Digest from calibration)
 - **Type**: feature
@@ -1924,6 +1926,177 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 > (PubMed/PMC) · **DR-8** connector scheduling. Priority: DR-0+DR-1+DR-2+DR-5 first
 > (biggest dossier-quality jump from data we already hold). The licensed gaps
 > (Rx volume / claims / prescriber behaviour) stay in E17 tiers 2–3.
+>
+> **SHIPPED (2 Jun):** **DR-0** fact-emitter framework (`services/fact_emitters/`:
+> `EmittedFact`/`EmitStats`/`FactEmitter` + idempotent `emit_one`/`run_emitter`,
+> keyed on `object_value.source_row_id`); **DR-1** clinical-trials emitter
+> (`ClinicalTrialEmitter`: clinical_trials → `clinical_trial` facts routed to
+> `clinical_profile`); **DR-5** evidence-on-ingest (a standalone `evidence_record`
+> per newly-asserted fact, linked via `facts.source_doc_id`). Also fixed a latent
+> bug: `facts_as_of` never SELECTed `fact_class`, so every ledger fact rendered in
+> the dossier as `signal` — now corrected. **Real-DB gate (semaglutide):** 174
+> trial facts asserted, re-run idempotent, evidence_records 1→174, clinical_profile
+> went gap→complete (readiness 1.0), overall readiness 0.36→0.47.
+> **DR-3 + DR-4 SHIPPED (2 Jun):** **DR-3** `AdverseEventEmitter` — AGGREGATES
+> adverse_events per (drug, reaction) into `adverse_event` signal-class safety
+> facts (individual FAERS case reports would be noise; singletons dropped, count +
+> serious/fatal carried). **DR-4** `DrugLabelEmitter` — one `label_indication`
+> (corporate) fact + one `safety_signal` boxed-warning fact per SPL label. Both
+> routed to `clinical_profile`. Real-DB gate (semaglutide): +14 AE facts, +10 label
+> facts, idempotent, evidence_records 174→196; clinical_profile is now genuinely
+> multi-source (128 trials + 14 AE signals + 5 boxed warnings + 5 indications +
+> metrics), not trial-only.
+> **DR-2 (pricing) is BLOCKED:** `drug_pricing` is empty (0 rows) and there is no
+> `nadac_prices` table — no source data to lift; needs a NADAC ingest first
+> (E17/pricing backlog), so it is deferred, not skipped. **Still open:** DR-8
+> (scheduler wiring + full cross-drug backfill — emitters currently run per-drug
+> on demand), DR-6 (mechanism/target), DR-7 (literature/epidemiology). Minor: the
+> demo's pre-fix clinical-trial facts carry "Clinical trial: Trial NCT…" wording;
+> future emits use the cleaned format (append-only, so existing rows weren't
+> rewritten).
+>
+> **SHIPPED (3 Jun):** **DR-8** scheduler wiring (`_run_fact_emitters`) + full
+> cross-drug backfill (`scripts/backfill_fact_emitters.py`) — ledger broke the
+> monoculture (3,303→9,679 facts, 2→9 predicates, evidence 1→5,709; clinical_trial
+> facts now span 1,427 drugs). **DR-6** mechanism (`MechanismEmitter`:
+> drugs.mechanism_id→`mechanism_of_action` reference facts, 621 drugs;
+> `BioactivityEmitter` built-but-dormant — bioactivities.drug_id all NULL).
+> **DR-7** literature (`LiteratureEmitter`: pubmed_articles→`key_publication`
+> clinical / `disease_evidence` epidemiology, 1,118 facts). **A6** drug-dup
+> consolidation (56 rows merged, 0 orphans) + resolver richness-ranking fixed the
+> Mounjaro-vs-semaglutide sameness. **DR-2 still blocked** (no NADAC source data).
+
+### E20 — Sensing layer as a curated abstraction over the knowledge store
+
+> From `docs/sensing-layer-knowledge-abstraction-spec.html` (3 Jun, user-approved).
+> **Thesis:** a signal is not a separate store — it is a scored/timed/grouped
+> *lens* over the facts ledger. Today `signals` (037) and `facts` (065) are
+> parallel and unlinked. Unify them via one edge (`signal_facts` = Helix v8
+> `feeds_fact_ids`), colour everything by `fact_class`, and let every uploaded
+> document deepen the one graph. Build plan S0 (done) → S1 (legibility/provenance/
+> upload-wire) → S2 (unify stores + KBQ query surface) → S3 (ingest-dedup +
+> scheduling). Delivered loop-by-loop with TDD + verify gates.
+
+#### [PB-SL01] Digest dedup + signals.event_id unique constraint (S0.1)
+- **Type**: bug
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Digest read market_events with no dedup; table held the same FDA recall 2,688×. `get_feed`/`get_feed_summary` now DISTINCT ON (entity,type,description) keeping highest-trust/newest (36,463→1,518 in 5yr window). + UNIQUE(signals.event_id) migration 077 (applied to prod). +2 tests. Commit 7f81b7f.
+
+#### [PB-SL02] Signals DB legibility (theme vars) + free-text search (S0.2)
+- **Type**: bug
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SignalsTab/SignalsListPanel hardcoded #0a0b0e (the "all black" report) → theme vars; added headline/summary/entity search. tsc/build clean, vitest 18. Commit dda5ab7.
+
+#### [PB-SL03] DR-9: deck/PDF text+tables → trial_result facts (S0.3)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: Phase 1 — PPTX + PDF-table extraction in document_extractor (475ec24). Phase 2 — document_facts.py runs extract_structured/TrialReadoutExtraction → trial_result EmittedFact, idempotent emit (c1bb56c). +12 tests. Wiring into the upload route is PB-SL06.
+
+#### [PB-SL04] fact_class colour system across Digest / Stream / Signals DB (S1.1)
+- **Type**: enhancement
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit cbccdf3). FACT_CLASS palette + deriveFactClass() in lib/helix.ts, --fc-* vars (light+dark) in index.css, shared FactClassGlyph applied in SignalCard / SignalDetail / EventCard. R/C/S/I/X coloured by provenance. deriveFactClass is a heuristic over confidence_tier/source_tier today; PB-SL07 replaces it with the real fact_class via signal_facts. Gate: +7 tests, touched 25 pass, tsc/build clean, full vitest 923 pass.
+
+#### [PB-SL05] signal_facts edge + ProvenancePanel wired into signals (S1.2)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED. Edge (signal_facts + event_id-nullable, migration 078) landed with PB-SL07; forward provenance shipped here (commit ee64893): GET /signals/{id} returns linked_facts (signal→fact→evidence→source); SignalDetail renders a "Feeds N facts" block with FactClassGlyph + claim + source link. Gate: signals API 21, tsc/build clean, full vitest 923. Backward provenance (fact→signals/insights/scenarios) deferred to the dossier-side ProvenancePanel (out of signals scope).
+
+#### [PB-SL06] Wire emit_document_facts into the upload route (S1.3)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 419b4a7). `default_structured_call()` builds an OpenAI StructuredCall from OPENAI_API_KEY (model MZ_EXTRACTION_MODEL, default gpt-4o-mini), None if unconfigured. Upload route → emit_document_facts → mint_signals_from_facts; response gains facts_emitted + signals_minted; best-effort (LLM error never breaks upload). LIVE GATE (real OpenAI + prod DB): a REDEFINE 4 readout deck → 1 trial_result fact ("Phase 3, primary endpoint not met, in obesity (REDEFINE 4)", corporate) → 1 high-impact signal via signal_facts. Full deck→facts→signals loop closed. +1 test; backend 32.
+
+#### [PB-SL07] Emit signals from high-impact fact deltas — unify the two stores (S2.1)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 409ed8b + migration 078). `services/fact_signals.py mint_signals_from_facts` — selective (SIGNAL_WORTHY predicates only), evidence-required (fact.source_doc_id → signal evidence), idempotent (skips facts already in signal_facts). fact_class→confidence_tier, predicate→impact+KBQ; minted as 'candidate'. Live: 65 signals from DR-4 boxed warnings, idempotent, provenance chain signal→fact→evidence intact. Carried the signal_facts edge + event_id-nullable (the schema half of SL05). +8 tests; backend 49 pass.
+
+#### [PB-SL08] Signals DB filter set: status + confidence + date (S2.2)
+- **Type**: enhancement
+- **Status**: shipped
+- **Priority**: medium
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commits e6dc621 + 95ce06f). Signals DB filter set complete: **status** (Live / All statuses / Candidate / Reviewed / Shipped — `status=all` reveals SL07 candidates) + **confidence-tier** + **date-range** (since_days 7/30/90), alongside existing search / impact / KBQ. API gained `confidence`, `status=all`, `since_days`. +6 tests; signals API 26, tsc/build, full vitest 923. The "KBQ as primary query surface" half is carved to PB-SL10 (separate UI, backed by the existing /entities/{type}/{id}/kbq endpoint).
+
+#### [PB-SL10] KBQ-as-primary-query-surface UI (curated-for-CI entry point)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: medium
+- **Owner**: frontend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 1088567). KBQ query surface: type an asset → 8 KBQs answered, each item drillable to provenance (signal→fact→evidence). Backend: `build_entity_kbqs_for_asset` (richness-ranked resolver + name fallback) + `GET /entities/kbq?asset=`. Frontend: `KbqQueryTab` (asset picker + suggestions + provenance drawer) + `KbqDossier` rewritten to design-token theme (dropped the locked-dark `#0a0b0e` palette — the "everything is black" complaint) with FactClassGlyph per item; mounted under cockpit "Sense". +6 tests; kbq_views 14, full vitest 927 (no-file-parallelism), vite build clean. Live prod gate: semaglutide/Wegovy→semaglutide, tirzepatide distinct, unknown→graceful empty; SL07 candidate fact-signals flow in (3/8 filled). **E20 COMPLETE.** **Review-hardened (commit per fix): (1) by-asset route was SHADOWED — mounted at /entities/kbq which the entities `/{entity_type}` route captured → moved to own `/kbq` mount + TestClient route test (the original only tested the service, missing the dead route); (2) company-asset fallback (bare names default to drug); (3) `_NAME_TABLE` used nonexistent `clinical_trials.title` → `official_title`.** Follow-up shipped as PB-SL11 below.
+
+#### [PB-SL11] KBQ surface reads the fact ledger (lens over the knowledge store)
+- **Type**: feature
+- **Status**: shipped
+- **Priority**: high
+- **Owner**: shared
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit cba8c94). Carved from the SL10 review — KBQ views read only `signals`, leaving fact-rich/signal-poor entities (most of 1,470 drugs) mostly "insufficient" despite the 9.7k-fact ledger. `build_entity_kbqs` now merges signals (curated, lead) + ledger facts routed by predicate (`_PREDICATE_KBQ`: label_indication/disease_evidence→Indications; clinical_trial/trial_result/adverse_event/safety_signal/key_publication/mechanism_of_action→Clinical; wac_usd→Pricing; noisy market_event SKIPPED). Facts deduped vs signal claims (SL07 mint overlap); KBQ-3 fact items round-robined by predicate (mix, not 10 identical trials); fact items carry fact_class glyph + source link, render inline, don't trigger the signal drawer. Live prod: exenatide (0 signals/113 facts) 0/8→2/8, albiglutide 0→1/8, semaglutide Indications/Clinical now mix signals+facts. +8 tests; full vitest 940, build clean. Follow-up: KBQ-2/4/5 (Competitors/Positioning/Sales) still signal-only — no fact predicates map there yet (would need competition/financial fact emitters).
+
+#### [PB-SL09] market_events ingest-dedup + connector scheduling cadence (S3.1)
+- **Type**: bug
+- **Status**: shipped
+- **Priority**: medium
+- **Owner**: backend-claude
+- **Source**: feedback
+- **Source ref**: adhoc
+- **Created**: 2026-06-03
+- **Last touched**: 2026-06-03
+- **Notes**: SHIPPED (commit 6d316ac). Root cause: `_store_event` never populated `event_hash` (all 36,463 rows NULL → the existing partial unique idx_events_hash never fired) and had no ON CONFLICT. Now computes a stable `_event_hash` (case/whitespace-normalised) + `ON CONFLICT (event_hash) WHERE event_hash IS NOT NULL DO NOTHING`, returning the existing id on conflict. Live gate: 2nd insert of same hash skipped. +4 tests. STOPS NEW dups; existing 36k NULL rows still collapsed at read time (SL01) — backfilling event_hash needs the 211 dup groups removed first (supervised destructive cleanup, deferred like A6). Connector fetch-cadence overlaps E17 PB-D08 (separate).
 
 ## Out of scope (deferred per `design-strategy.md` §7)
 

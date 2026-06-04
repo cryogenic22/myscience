@@ -19,6 +19,32 @@ const IMPACT_OPTIONS: Array<{ key: ImpactTier | 'all'; label: string }> = [
   { key: 'low', label: 'Low' },
 ];
 
+// PB-SL08 — 'default' keeps the reviewed+shipped view; 'all' reveals the
+// auto-minted candidate fact-signals; the rest pin one status.
+type StatusFilter = 'default' | 'all' | 'candidate' | 'reviewed' | 'shipped';
+const STATUS_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
+  { key: 'default', label: 'Live (reviewed)' },
+  { key: 'all', label: 'All statuses' },
+  { key: 'candidate', label: 'Candidate' },
+  { key: 'reviewed', label: 'Reviewed' },
+  { key: 'shipped', label: 'Shipped' },
+];
+
+const CONFIDENCE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'all', label: 'All confidence' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'reported', label: 'Reported' },
+  { key: 'inferred', label: 'Inferred' },
+  { key: 'disputed', label: 'Disputed' },
+];
+
+const SINCE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'all', label: 'Any time' },
+  { key: '7', label: 'Last 7 days' },
+  { key: '30', label: 'Last 30 days' },
+  { key: '90', label: 'Last 90 days' },
+];
+
 export default function SignalsTab({
   reviewerMode = false,
   initialStatus,
@@ -31,6 +57,10 @@ export default function SignalsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<ImpactTier | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('default');
+  const [confidence, setConfidence] = useState<string>('all');
+  const [since, setSince] = useState<string>('all');
+  const [query, setQuery] = useState('');
 
   // PB-104 — kbq is multi-select, mirrored to `?kbq=financial,clinical` in the URL
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,8 +90,13 @@ export default function SignalsTab({
     setError(null);
     try {
       const params: Parameters<typeof signalsApi.list>[0] = { limit: 100 };
+      // Reviewer mode pins status; otherwise the user-facing status filter
+      // drives it ('default' = reviewed+shipped, omit the param).
       if (initialStatus) params.status = initialStatus;
+      else if (statusFilter !== 'default') params.status = statusFilter;
       if (impact !== 'all') params.impact = impact;
+      if (confidence !== 'all') params.confidence = confidence as typeof params.confidence;
+      if (since !== 'all') params.since_days = Number(since);
       if (kbq.length > 0) params.kbq = kbq;
       const r = await signalsApi.list(params);
       setSignals(r.signals);
@@ -83,7 +118,7 @@ export default function SignalsTab({
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impact, kbqKey, initialStatus]);
+  }, [impact, statusFilter, confidence, since, kbqKey, initialStatus]);
 
   // Load detail when selection changes
   useEffect(() => {
@@ -95,13 +130,25 @@ export default function SignalsTab({
   }, [selectedId]);
 
   const filtered = useMemo(() => {
-    if (!watchlistFilter || watchlistFilter.length === 0) return signals;
-    const set = new Set(watchlistFilter.map((w) => `${w.entity_type}:${w.entity_id}`));
-    return signals.filter(
-      (s) => s.primary_entity_type && s.primary_entity_id
-        && set.has(`${s.primary_entity_type}:${s.primary_entity_id}`),
-    );
-  }, [signals, watchlistFilter]);
+    let out = signals;
+    if (watchlistFilter && watchlistFilter.length > 0) {
+      const set = new Set(watchlistFilter.map((w) => `${w.entity_type}:${w.entity_id}`));
+      out = out.filter(
+        (s) => s.primary_entity_type && s.primary_entity_id
+          && set.has(`${s.primary_entity_type}:${s.primary_entity_id}`),
+      );
+    }
+    // Free-text search across headline / summary / entity name (client-side
+    // over the loaded page — the user asked to "search for a signal").
+    const q = query.trim().toLowerCase();
+    if (q) {
+      out = out.filter((s) =>
+        [s.headline, s.summary, s.primary_entity_name]
+          .some((v) => (v ?? '').toLowerCase().includes(q)),
+      );
+    }
+    return out;
+  }, [signals, watchlistFilter, query]);
 
   const emptyMessage = (
     <div className="space-y-3">
@@ -129,16 +176,32 @@ export default function SignalsTab({
   );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0a0b0e' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)' }}>
       {/* Filter bar */}
       <div
         className="shrink-0 flex items-center gap-3 flex-wrap"
         style={{
           padding: '10px 16px',
-          borderBottom: '1px solid #23262d',
-          background: '#0a0b0e',
+          borderBottom: '1px solid var(--color-line)',
+          background: 'var(--color-surface)',
         }}
       >
+        {/* Free-text search */}
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search signals…"
+          className="text-[12px]"
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            border: '1px solid var(--color-line)',
+            background: 'var(--color-bg)',
+            color: 'var(--color-ink)',
+            minWidth: '200px',
+          }}
+        />
         <select
           value={impact}
           onChange={(e) => setImpact(e.target.value as ImpactTier | 'all')}
@@ -146,9 +209,9 @@ export default function SignalsTab({
           style={{
             padding: '4px 8px',
             borderRadius: '6px',
-            border: '1px solid #2c3038',
-            background: '#12141a',
-            color: '#e8eaed',
+            border: '1px solid var(--color-line)',
+            background: 'var(--color-bg)',
+            color: 'var(--color-ink)',
             fontFamily: "'JetBrains Mono', ui-monospace, monospace",
           }}
         >
@@ -156,8 +219,53 @@ export default function SignalsTab({
             <option key={o.key} value={o.key}>{o.label}</option>
           ))}
         </select>
+        <select
+          value={confidence}
+          onChange={(e) => setConfidence(e.target.value)}
+          className="text-[12px]"
+          style={{
+            padding: '4px 8px', borderRadius: '6px',
+            border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+            color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          }}
+        >
+          {CONFIDENCE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+        <select
+          value={since}
+          onChange={(e) => setSince(e.target.value)}
+          className="text-[12px]"
+          style={{
+            padding: '4px 8px', borderRadius: '6px',
+            border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+            color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          }}
+        >
+          {SINCE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+        {!initialStatus && (
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="text-[12px]"
+            title="Candidate = auto-minted signals awaiting review"
+            style={{
+              padding: '4px 8px', borderRadius: '6px',
+              border: '1px solid var(--color-line)', background: 'var(--color-bg)',
+              color: 'var(--color-ink)', fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            }}
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        )}
         <KBQFilter selected={kbq} onSelect={setKbq} />
-        <span className="ml-auto" style={{ color: '#8a8f99', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
+        <span className="ml-auto" style={{ color: 'var(--color-ink-3)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, letterSpacing: '0.04em' }}>
           {loading ? 'LOADING…' : `${filtered.length} SIGNAL${filtered.length === 1 ? '' : 'S'}`}
         </span>
       </div>
@@ -165,7 +273,7 @@ export default function SignalsTab({
       {error && (
         <div
           className="text-[12px]"
-          style={{ padding: '10px 16px', color: '#B91C1C' }}
+          style={{ padding: '10px 16px', color: 'var(--color-critical, #B91C1C)' }}
         >
           {error}
         </div>
@@ -188,7 +296,7 @@ export default function SignalsTab({
         ) : (
           <div
             className="flex-1 flex items-center justify-center text-[13px]"
-            style={{ color: '#5a5f69', background: '#0a0b0e' }}
+            style={{ color: 'var(--color-ink-4)', background: 'var(--color-bg)' }}
           >
             {filtered.length === 0 ? '' : 'Select a signal'}
           </div>

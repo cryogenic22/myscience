@@ -60,6 +60,33 @@ def test_is_junk_competitor_name_reuses_a6_patterns():
     assert not _is_junk_competitor_name(None)
 
 
+def test_is_junk_competitor_name_rc4_dose_and_self():
+    from services.dossier_kb import _is_junk_competitor_name
+    # RC4: dosing-arm descriptors are study arms, not competitors
+    assert _is_junk_competitor_name("Tirzepatide Dose 1")
+    assert _is_junk_competitor_name("Semaglutide high dose")
+    assert _is_junk_competitor_name("Dulaglutide QW")
+    assert _is_junk_competitor_name("Insulin pen")
+    # RC4 self-competition: a variant of the SUBJECT is not its own competitor
+    assert _is_junk_competitor_name("Tirzepatide Dose 1", subject_name="tirzepatide")
+    assert _is_junk_competitor_name("Semaglutide 2.4 mg", subject_name="Semaglutide")
+    # a genuinely different rival is still kept even with subject context
+    assert not _is_junk_competitor_name("dulaglutide", subject_name="tirzepatide")
+
+
+def test_build_domains_suppresses_self_competition():
+    related = [
+        {"id": "d1", "type": "drug", "name": "dulaglutide", "relation": "COMPETES_WITH", "edge_count": 3},
+        {"id": "d2", "type": "drug", "name": "Tirzepatide Dose 1", "relation": "COMPETES_WITH", "edge_count": 2},
+    ]
+    domains, _, _ = build_domains([], None, None, related, subject_name="tirzepatide")
+    comp = {d.domain: d for d in domains}["competitive"]
+    claims = " ".join(f.claim for f in comp.facts)
+    assert "dulaglutide" in claims
+    assert "Tirzepatide Dose 1" not in claims
+    assert len(comp.facts) == 1
+
+
 def test_build_domains_filters_junk_competitors():
     # PB-H07 read-time: junk drug rows (placebo/dosage arms) the graph links as
     # COMPETES_WITH must not present as competitors; real rivals are kept.
@@ -144,6 +171,30 @@ def test_resolve_unresolved_falls_back_to_raw_slug():
     db = _ResolveDB(by_name={}, by_alias={})
     # graceful degradation: returns the slug, never raises
     assert kb.resolve_asset_to_subject(db, "drug:nonexistent") == ("drug", "nonexistent")
+
+
+def test_resolve_ranks_duplicate_drug_rows_by_richness():
+    """Audit RC1: duplicate drug rows (semaglutide ×17, tirzepatide ×2) were
+    resolved by table order, so a name could land on a 0-fact/0-trial dup. The
+    drugs query must rank candidates by data richness so the row that owns the
+    evidence wins. Pin the SQL so the ranking can't be silently dropped."""
+
+    class _CapturingDB:
+        def __init__(self):
+            self.sql = None
+
+        def fetch_one(self, sql, params=None):
+            if "from drugs" in (sql or "").lower():
+                self.sql = sql
+                return {"id": "rich-dup", "richness": 174}
+            return None
+
+    db = _CapturingDB()
+    assert kb.resolve_asset_to_subject(db, "drug:tirzepatide") == ("drug", "rich-dup")
+    s = db.sql.lower()
+    assert "richness" in s
+    assert "order by richness desc" in s
+    assert "clinical_trials" in s and "facts" in s
 
 
 # ── Pure: build_domains ────────────────────────────────────────────

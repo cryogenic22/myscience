@@ -129,6 +129,8 @@ class Scenario:
             "probability": round(self.prior_prob, 3),
             "probabilityCurrent": round(self.current_prob, 3)
                 if self.current_prob is not None else None,
+            # PB-H14 — why current moved (cites the corroborating signal).
+            "calibrationNote": self.calibration_note,
             "teamMoves": [m.to_dict() for m in self.team_moves],
             "decisionOptions": [o.to_dict() for o in self.decision_options],
             "decisionOutput": self.decision_output,

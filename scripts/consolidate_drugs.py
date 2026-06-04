@@ -59,6 +59,20 @@ def _normalize_drug_name(name: str) -> str:
     return n
 
 
+def combo_safe_normalize(name: str) -> str:
+    """Normalize for dedup grouping, but NEVER collapse an additive combo into
+    its mono. `_normalize_drug_name` strips parentheticals, so
+    "losartan potassium (+ hydrochlorothiazide)" would otherwise normalize to
+    "losartan" and be merged into the monotherapy — a wrong merge. When an
+    additive-combo marker is present ("(+", " + "), fall back to the exact
+    lowercased raw name so the row only groups with identical strings."""
+    if not name:
+        return ""
+    if "(+" in name or " + " in name:
+        return name.strip().lower()
+    return _normalize_drug_name(name)
+
+
 def _pick_canonical(records: list[dict]) -> dict:
     """Pick the best record to keep as canonical.
 

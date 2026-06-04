@@ -29,6 +29,10 @@ from services.scenario_state import (
     ScenarioNotFound,
     transition_mode as _transition_scenario_mode,
 )
+from services.war_game_autonomous import (
+    DEFAULT_MOVES as AUTOPLAY_DEFAULT_MOVES,
+    autoplay as _autoplay,
+)
 from services.war_game_engine import (
     MOVE_TYPES,
     generate_reactions as _engine_generate,
@@ -676,6 +680,76 @@ def submit_round(
 
 
 # ────────────────────────────────────────────────────────────────────
+# W3 · POST /war-rooms/{id}/run-autonomous — autonomous N-round play (PB-H13)
+# ────────────────────────────────────────────────────────────────────
+
+class AutonomousBody(BaseModel):
+    rounds: int = Field(default=3, ge=1, le=8)
+    our_moves: Optional[list[str]] = Field(default=None, max_length=8)
+    player_company_id: Optional[str] = None
+    player_company_name: Optional[str] = None
+
+
+@router.post("/{room_id}/run-autonomous", status_code=200)
+def run_autonomous(
+    room_id: str,
+    body: AutonomousBody,
+    user: Optional[dict] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    llm = Depends(get_llm),
+):
+    """Run an autonomous N-round war-game campaign (PB-H13).
+
+    Owner-only. The agents play every round; each move's adversary reactions
+    come from the SAME DB-grounded `generate_reactions` the Guided path uses,
+    so nothing is fabricated. The transcript is returned (ephemeral) — no
+    schema change; the Learn loop (PB-H14) and persistence are separate.
+    """
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+    room = _fetch_room(db, room_id)
+    if not room:
+        raise HTTPException(404, f"war room not found: {room_id}")
+    if str(room.get("owner_user_id")) != str(user.get("id")):
+        raise HTTPException(403, "only the room owner can run autonomous play")
+
+    moves = body.our_moves or list(AUTOPLAY_DEFAULT_MOVES)
+    invalid = [m for m in moves if not is_valid_move_type(m)]
+    if invalid:
+        raise HTTPException(
+            400, f"invalid move_type(s): {', '.join(invalid)} (allowed: {', '.join(MOVE_TYPES)})"
+        )
+
+    player_name = body.player_company_name or room.get("primary_entity_name") or "Player"
+    competitors = _fetch_competitors(
+        db, body.player_company_id, body.player_company_name or room.get("primary_entity_name")
+    )
+
+    def _reactor(move_type: str, round_num: int, history: list[dict]) -> list[dict]:
+        return _generate_reactions(
+            db, llm,
+            player_name=player_name,
+            move_type=move_type,
+            move_payload={},
+            competitors=competitors,
+            game_phase=room.get("game_phase") or "launch",
+            history=history,
+        )
+
+    try:
+        result = _autoplay(
+            our_moves=moves, reactor=_reactor, rounds=body.rounds, player_name=player_name
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    result["mode"] = "autonomous"
+    result["war_room_id"] = room_id
+    return result
+
+
+# ────────────────────────────────────────────────────────────────────
 # POST /war-rooms/{id}/suggest-moves — Phase A.5 autonomous move suggester
 # ────────────────────────────────────────────────────────────────────
 
@@ -954,8 +1028,9 @@ def delete_comment(
 
 
 class PayoffMatrixBody(BaseModel):
-    our_moves: list[str] = Field(min_length=2, max_length=2)
-    adversary_states: list[str] = Field(min_length=2, max_length=2)
+    # PB-H12 — 2..5 per dim (3×3 is the benchmark target; 2×2 the default).
+    our_moves: list[str] = Field(min_length=2, max_length=5)
+    adversary_states: list[str] = Field(min_length=2, max_length=5)
     samples: int = Field(default=1200, ge=100, le=10000)
 
 

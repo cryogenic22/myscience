@@ -69,6 +69,14 @@
   --color-red:          #C0392B;
   --color-red-soft:     #FEF2F2;
 
+  /* Fact-class provenance palette (Helix v8 alignment — PB-SL04).
+     R reference · C corporate · S signal · I inferred · X internal. */
+  --fc-ref:             #6B7AB8;
+  --fc-corp:            #F26C0D;
+  --fc-signal:          #1E8A99;
+  --fc-inferred:        #9C5D8A;
+  --fc-internal:        #8B7355;
+
   /* Entity colours */
   --color-drug:         #2563EB;
   --color-company:      #D97706;
@@ -162,6 +170,12 @@ html.dark, [data-theme="dark"] {
   --color-green:        #3fb950;
   --color-amber:        #f0883e;
   --color-red:          #f85149;
+  /* Fact-class palette — lighter for dark surfaces (v8 dark variants). */
+  --fc-ref:             #8B9BD9;
+  --fc-corp:            #F58F3F;
+  --fc-signal:          #4FB3C4;
+  --fc-inferred:        #BD7FB0;
+  --fc-internal:        #B5957A;
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 8px 24px rgba(0,0,0,0.4);
   --shadow-lg:  0 20px 60px rgba(0,0,0,0.5);

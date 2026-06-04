@@ -1040,11 +1040,30 @@ export interface Signal {
   reviewed_by: string | null;
   reviewed_at: string | null;
   shipped_at: string | null;
+  /** PB-SL05 — facts this signal feeds (forward provenance), on detail only. */
+  linked_facts?: SignalLinkedFact[];
+}
+
+/** A fact a signal produces/relates to (signal_facts edge). */
+export interface SignalLinkedFact {
+  role: string;
+  fact_id: string;
+  predicate: string;
+  fact_class: string | null;
+  claim: string | null;
+  confidence: number | null;
+  source_id: string | null;
+  source_url: string | null;
 }
 
 export interface SignalsListParams {
-  status?: SignalStatus;
+  /** A single status, or 'all' to drop the default reviewed/shipped filter
+      (reveals auto-minted candidate fact-signals). PB-SL08. */
+  status?: SignalStatus | 'all';
   impact?: ImpactTier;
+  confidence?: ConfidenceTier;
+  /** PB-SL08 — only signals created within the last N days. */
+  since_days?: number;
   /** PB-104 — pass multiple values; serialized to `kbq=a,b,c` on the wire. */
   kbq?: string[];
   entity_type?: string;
@@ -1098,11 +1117,20 @@ export const bridgeApi = {
 
 export interface KbqItem {
   claim: string;
-  signal_id: string;
+  /** PB-SL11 — 'signal' (curated) or 'fact' (the underlying ledger). */
+  source?: 'signal' | 'fact';
+  /** null for fact items (they carry fact_id instead). */
+  signal_id: string | null;
+  fact_id?: string | null;
+  /** PB-SL11 — fact_class for the glyph on fact items. */
+  fact_class?: string | null;
   evidence_ids: string[];
   impact_tier: 'high' | 'medium' | 'low' | null;
   confidence_tier: string | null;
   date: string | null;
+  /** PB-SL11 — provenance for fact items (source registry id + URL). */
+  source_label?: string | null;
+  source_url?: string | null;
 }
 export interface KbqView {
   kbq: number;
@@ -1114,6 +1142,8 @@ export interface EntityKbqs {
   entity: { type: string; id: string; name?: string | null };
   kbqs: KbqView[];
   completeness: number;
+  /** PB-SL10 — echoed back when fetched via the by-asset query surface. */
+  asset?: string;
 }
 
 export const kbqApi = {
@@ -1123,11 +1153,41 @@ export const kbqApi = {
         if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
         return r.json();
       }),
+  /** PB-SL10 — resolve a typed asset → 8 KBQs (the query surface).
+   *  Mounted at /kbq (NOT /entities/kbq, which the /entities/{entity_type}
+   *  route would shadow). */
+  byAsset: (asset: string): Promise<EntityKbqs> =>
+    fetch(`${BASE}/kbq?asset=${encodeURIComponent(asset)}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+        return r.json();
+      }),
 };
 
 export const agentsApi = {
   activity: (): Promise<import('./types/agents').AgentActivityResponse> =>
     fetch(`${BASE}/agents/activity`).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /** PB-203 — the nudge intents available for one agent (static registry). */
+  intents: (agent: string): Promise<import('./types/agents').AgentIntentsResponse> =>
+    fetch(`${BASE}/agents/${encodeURIComponent(agent)}/intents`).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /** PB-203 — queue a nudge for an agent. Requires uploader role. */
+  nudge: (
+    agent: string,
+    body: { intent: string; target?: Record<string, unknown>; note?: string },
+  ): Promise<{ nudge: import('./types/agents').NudgeRecord }> =>
+    fetch(`${BASE}/agents/${encodeURIComponent(agent)}/nudge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
     }),
@@ -1234,6 +1294,42 @@ export interface WarRoomRound {
   reactions: WarRoomReaction[];
 }
 
+// UX12/UX13 — engagement deliverable exports (printable HTML → browser PDF).
+// The endpoints are Bearer-auth'd, so a plain <a href> would 401; fetch with
+// the auth header, then open the rendered HTML as a blob in a new tab.
+export type EngagementExportKind = 'brief' | 'dossier' | 'deck';
+
+export const engagementExportApi = {
+  open: async (eid: string, kind: EngagementExportKind): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/engagements/${encodeURIComponent(eid)}/export/${kind}.html`,
+      { headers: { ...authHeaders() } },
+    );
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => res.statusText)}`);
+    const blobUrl = URL.createObjectURL(await res.blob());
+    window.open(blobUrl, '_blank');
+  },
+};
+
+// W1 / IX04a — the war room's scenario mode. Values match
+// services/scenario_state.py::ScenarioMode.
+export type WarRoomMode = 'guided' | 'autonomous' | 'game_theoretic';
+
+// PB-H13 — autonomous play transcript.
+export interface AutoplayRound {
+  round: number;
+  our_move: string;
+  reactions: WarRoomReaction[];
+  narration: string;
+}
+export interface AutoplayResult {
+  mode: string;
+  war_room_id: string;
+  rounds: AutoplayRound[];
+  narration: string[];
+  summary: { rounds_played: number; moves: string[]; total_reactions: number };
+}
+
 export interface WarRoom {
   id: string;
   title: string;
@@ -1245,6 +1341,8 @@ export interface WarRoom {
   source_signal_id: string | null;
   game_phase: GamePhase;
   status: 'draft' | 'active' | 'closed';
+  mode?: WarRoomMode;                             // IX04a — guided default
+  mode_changed_at?: string | null;
   archived_at: string | null;                     // Phase B
   created_at: string | null;
   updated_at: string | null;
@@ -1310,6 +1408,31 @@ export const warRoomApi = {
   }): Promise<WarRoom> =>
     fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}`, {
       method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  // IX04a — switch the room's scenario mode (owner-only, idempotent).
+  setMode: (id: string, mode: WarRoomMode): Promise<{
+    war_room_id: string; mode: WarRoomMode; round_count: number; mode_changed_at: string | null;
+  }> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/mode`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ mode }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  // PB-H13 — run an autonomous N-round campaign (owner-only). Ephemeral
+  // transcript; adversary reactions are DB-grounded server-side.
+  runAutonomous: (id: string, body: { rounds?: number; our_moves?: string[]; player_company_name?: string } = {}): Promise<AutoplayResult> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/run-autonomous`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     }).then(async (r) => {
@@ -2424,6 +2547,28 @@ export const engagementBriefApi = {
       if (r.status === 404) return null;     // no brief authored yet
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
+    }),
+};
+
+// ── Engagement activity timeline (UX11 / L12) ───────────────────────
+
+export interface ActivityItem {
+  at: string | null;
+  actor: string | null;
+  actor_kind: 'human' | 'system';
+  kind: 'brief' | 'scenario' | 'insight' | 'gap' | 'dossier';
+  summary: string;
+  ref_type: string | null;
+  ref_id: string | null;
+}
+
+export const engagementActivityApi = {
+  list: (eid: string, limit = 60): Promise<ActivityItem[]> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/activity?limit=${limit}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).activity ?? [];
     }),
 };
 

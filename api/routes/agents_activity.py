@@ -18,11 +18,20 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import BaseModel
 
-from api.deps import get_db
+from api.deps import get_db, require_role
 from db import Database
+from services.agent.nudge_intents import (
+    NudgeError,
+    VALID_AGENTS,
+    list_intents,
+    list_nudges,
+    record_nudge,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +154,63 @@ def get_agent_activity(db: Database = Depends(get_db)) -> dict:
         "activities": activities,
         "poll_after_seconds": 5,
     }
+
+
+# ── PB-203: agent nudges ─────────────────────────────────────────────────────
+
+
+class NudgeBody(BaseModel):
+    intent: str
+    target: Optional[dict] = None
+    note: Optional[str] = None
+
+
+@router.get("/{agent}/intents")
+def get_agent_intents(agent: str = Path(...)) -> dict:
+    """List the nudge intents available for one agent. Anonymous read — this is
+    static registry data the NudgeMenu renders. 404 for an unknown agent."""
+    if agent.lower() not in VALID_AGENTS:
+        raise HTTPException(404, f"unknown agent '{agent}'")
+    return {"agent": agent.lower(),
+            "intents": [i.to_dict() for i in list_intents(agent)]}
+
+
+@router.post("/{agent}/nudge", status_code=201)
+def post_agent_nudge(
+    agent: str = Path(...),
+    body: NudgeBody = ...,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+) -> dict:
+    """Queue a nudge for an agent (append-only). The agent consumes it on its
+    next background pass — this records the instruction, it does not execute it
+    synchronously. 400 for an unknown agent/intent or a missing required
+    target."""
+    try:
+        nudge = record_nudge(
+            db, agent=agent, intent_key=body.intent, target=body.target,
+            note=body.note, created_by=str(user.get("id") or user.get("username") or "user"),
+        )
+    except NudgeError as e:
+        raise HTTPException(400, str(e)) from e
+    for k in ("created_at",):
+        if hasattr(nudge.get(k), "isoformat"):
+            nudge[k] = nudge[k].isoformat()
+    return {"nudge": nudge}
+
+
+@router.get("/{agent}/nudges")
+def get_agent_nudges(
+    agent: str = Path(...),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+) -> dict:
+    """Recent nudges queued for an agent (newest first)."""
+    if agent.lower() not in VALID_AGENTS:
+        raise HTTPException(404, f"unknown agent '{agent}'")
+    rows = list_nudges(db, agent=agent, limit=limit)
+    for r in rows:
+        if hasattr(r.get("created_at"), "isoformat"):
+            r["created_at"] = r["created_at"].isoformat()
+    return {"agent": agent.lower(), "nudges": rows, "total": len(rows)}
