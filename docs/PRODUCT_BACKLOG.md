@@ -1265,27 +1265,27 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-H12] 3×3 Nash payoff matrix + Nash reasoning
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: low
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H11
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark PAYOFF_MATRIX is 3×3 (Novo strategies × Lilly strategies), each cell an (npv_a, npv_b) pair, with a computed `nash_cell` + `nash_reasoning`. Our `simulation/payoff.py` builds 2×2 from Bayesian runs (delta_pct, not NPV pairs) and `game_theory.py` does Stackelberg (sequential) not simultaneous Nash. Generalise to N×N, emit NPV pairs, add a simultaneous-move Nash solver + reasoning. Note: SPEC-025 Bayesian/Stackelberg layer was deferred — this revisits it with the benchmark as the concrete target. Acceptance: a 3×3 matrix returns a Nash cell with a textual justification.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L2, commit d8f3e2d). `build_payoff_matrix` generalised from a hard 2×2 to N×N (2..5/dim; 3×3 is the target), returning a security (maximin) `nash_cell` + `nash_reasoning` alongside the EV `recommended_cell`. HONESTY CALL: no NPV pairs are fabricated — a real (npv_a, npv_b) Nash needs the value model deferred in PB-H10; the Nash here is a robustness read over the SAME grounded Bayesian deltas (assume the rival best-responds to suppress our gain; pick the move whose worst case is best), clearly labelled. Frontend PayoffMatrix renders a distinct Nash badge + reasoning; the game-theoretic war-room mode requests a 3×3. Acceptance met (3×3 + Nash cell + justification). Follow-up if a value model lands: emit true NPV-pair payoffs + simultaneous Nash.
 
 #### [PB-H13] Autonomous multi-round war-game play
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: low
 - **Owner**: backend-claude
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-H12
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Benchmark AUTONOMOUS_PLAY = a scripted multi-round team-move sequence with narration. We have `war_game_adversary.WarGameOrchestrator` (reactive per-option rounds) but no autonomous campaign that loops the war room through rounds without human prompting. Add an auto-play orchestration over the move catalog + payoff matrix. Acceptance: a war-game run produces a coherent N-round move/counter-move transcript autonomously.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L3, commit d2d9d08). `services/war_game_autonomous.py::autoplay` — a pure, injectable engine that runs an N-round campaign (cycles a move catalog; the injected reactor returns adversary reactions; narrates the highest-confidence response per round). `POST /war-rooms/{id}/run-autonomous` injects a reactor backed by the SAME DB-grounded `war_game_engine.generate_reactions` the Guided path uses — no fabrication; transcript is ephemeral. Owner-only; validates move types. Frontend AutonomousPanel (run/re-run + transcript) in WarRoomView's autonomous mode. +7 engine + 6 route (TestClient registration) + 3 frontend tests. Acceptance met (coherent N-round transcript). Follow-up: persist campaigns + feed Learn loop (PB-H14).
 
 #### [PB-H14] Scenario calibration loop (re-weight probability from new signals)
 - **Type**: feature
@@ -1887,15 +1887,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-IX04] War Game surface + mode picker (turn-based / game-theory / autonomous)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: PB-IX05
 - **Created**: 2026-06-02
-- **Last touched**: 2026-06-02
-- **Notes**: Unify the three play modes under one War Game home: guided turn-based (live: war_game_engine/adversary), game-theory payoff+Nash (PB-H12), autonomous N-round sim (PB-H13). Standalone start OR seeded from a scenario. The "rooms" tab is already relabelled War Game (IX-5); this gives it the mode picker + standalone launch.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED across loops L1+L4. L1 (commit 0eafb67) — WarRoomModePicker harvested from the unused F11 WarRoomPage design + mounted in WarRoomView, backed by PATCH /war-rooms/{id}/mode; guided keeps the move composer (backend gates rounds to guided), game-theoretic shows the payoff matrix, autonomous shows the L3 panel. L4 (commit cdfded2) — standalone "New war game" launch from WarRoomsList (no engagement/scenario needed). Seed-from-scenario already shipped via the Workshop stage (UX-Workshop). Game-theory 3×3 Nash = PB-H12 (L2); autonomous N-round = PB-H13 (L3).
 
 #### [PB-IX06] Learn loop closes to Sense (re-order Digest from calibration)
 - **Type**: feature
