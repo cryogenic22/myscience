@@ -37,13 +37,17 @@ describe('LandingPage (refresh)', () => {
     vi.stubGlobal('IntersectionObserver', IO);
   });
 
-  it('renders the value proposition', () => {
+  it('renders the value proposition + microsite themes', () => {
     render(<LandingPage onEnter={() => {}} onSearch={() => {}} />);
-    expect(screen.getByText(/grounded in evidence/i)).toBeInTheDocument();
-    // the closed-loop spine
-    expect(screen.getByText(/From signal to decision/i)).toBeInTheDocument();
-    expect(screen.getByText(/living dossier per asset/i)).toBeInTheDocument();
-    expect(screen.getByText(/Game-theoretic scenarios/i)).toBeInTheDocument();
+    // hero: intelligence substrate
+    expect(screen.getByText(/for pharma decisions/i)).toBeInTheDocument();
+    // theme 1 — AI-ready / AI-led (appears in hero + a shift card)
+    expect(screen.getAllByText(/AI-led, not AI-assist/i).length).toBeGreaterThan(0);
+    // theme 2 — the substrate stack + SDAL flywheel
+    expect(screen.getByText(/one substrate/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sense → Decide → Act → Learn, on autopilot\./i)).toBeInTheDocument();
+    // Beta framing (appears in multiple places)
+    expect(screen.getAllByText(/Beta/i).length).toBeGreaterThan(0);
   });
 
   it('wires the three CTA actions', () => {

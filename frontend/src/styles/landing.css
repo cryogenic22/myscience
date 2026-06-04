@@ -163,3 +163,96 @@
   .lp-header__actions .lp-btn--text { display: none; }
   .lp-actions .lp-btn { width: 100%; }
 }
+
+/* ============================================================================
+   Microsite expansion — substrate / SDAL flywheel / agents / Beta.
+   Same discipline: tokens, tone + shadow separation, authored classes.
+   ============================================================================ */
+
+/* Beta badge */
+.lp-beta {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.lp-beta__dot { width: 6px; height: 6px; border-radius: 999px; background: var(--color-accent); }
+
+/* Lead paragraph under a section head */
+.lp-section__lead { font-size: clamp(16px, 1.6vw, 19px); line-height: 1.6; color: var(--color-ink-2); max-width: 720px; margin: 18px 0 0; }
+
+/* ── Problem statement — quiet, editorial ───────────────────────────────────*/
+.lp-problem { display: grid; grid-template-columns: 1fr; gap: 22px; margin-top: 8px; }
+.lp-problem__lead { font-family: var(--font-display); font-weight: 400; font-size: clamp(22px, 2.6vw, 30px); line-height: 1.35; letter-spacing: -0.01em; color: var(--color-ink); margin: 0; }
+.lp-problem__lead em { font-style: italic; color: var(--color-accent); }
+
+/* ── The stack — layered substrate, "what sits on top" ─────────────────────*/
+.lp-stack { display: flex; flex-direction: column-reverse; gap: 14px; }
+.lp-layer {
+  background: var(--color-surface); border-radius: var(--radius-panel); box-shadow: var(--shadow-sm);
+  padding: 26px 28px; display: grid; grid-template-columns: 1fr; gap: 8px;
+  position: relative;
+}
+.lp-layer__tier { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-accent); }
+.lp-layer__title { font-family: var(--font-display); font-weight: 500; font-size: 20px; color: var(--color-ink); margin: 0; }
+.lp-layer__body { font-size: 15px; line-height: 1.55; color: var(--color-ink-3); margin: 0; }
+.lp-layer__meta { font-family: var(--font-mono); font-size: 11px; color: var(--color-ink-4); margin-top: 4px; }
+/* the top layer (intelligence) gets an accent wash to read as "the payoff" */
+.lp-layer--top { background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)) 0%, var(--color-surface) 100%); }
+
+/* ── Fact-class atom row ────────────────────────────────────────────────────*/
+.lp-fc-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.lp-fc {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 13px; border-radius: var(--radius-pill);
+  background: var(--color-surface); box-shadow: var(--shadow-xs);
+  font-size: 13px; color: var(--color-ink-2);
+}
+.lp-fc__dot { width: 9px; height: 9px; border-radius: 999px; flex-shrink: 0; }
+.lp-fc__dot--ref { background: var(--fc-ref); }
+.lp-fc__dot--corp { background: var(--fc-corp); }
+.lp-fc__dot--signal { background: var(--fc-signal); }
+.lp-fc__dot--inferred { background: var(--fc-inferred); }
+.lp-fc__dot--internal { background: var(--fc-internal); }
+
+/* ── SDAL flywheel ──────────────────────────────────────────────────────────*/
+.lp-flywheel { display: grid; grid-template-columns: 1fr; gap: 18px; counter-reset: phase; }
+.lp-phase {
+  background: var(--color-surface); border-radius: var(--radius-panel); box-shadow: var(--shadow-sm);
+  padding: 30px; position: relative; overflow: hidden;
+}
+.lp-phase::after { /* connective accent bar */
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--color-accent);
+  opacity: 0.55;
+}
+.lp-phase__step { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--color-accent); margin-bottom: 12px; }
+.lp-phase__title { font-family: var(--font-display); font-weight: 500; font-size: 22px; color: var(--color-ink); margin: 0 0 10px; }
+.lp-phase__body { font-size: 15px; line-height: 1.6; color: var(--color-ink-3); margin: 0; }
+.lp-flywheel__note { display: inline-flex; align-items: center; gap: 8px; margin-top: 24px; font-family: var(--font-mono); font-size: 12px; color: var(--color-ink-3); }
+
+/* ── Impact band (industry-estimate stats) ─────────────────────────────────*/
+.lp-impact { display: grid; grid-template-columns: 1fr; gap: 24px; }
+.lp-impact__stat { text-align: left; }
+.lp-impact__num { font-family: var(--font-display); font-weight: 300; font-size: clamp(30px, 4vw, 44px); line-height: 1.05; letter-spacing: -0.02em; color: var(--color-ink); }
+.lp-impact__num em { font-style: normal; color: var(--color-accent); }
+.lp-impact__label { font-size: 14px; line-height: 1.5; color: var(--color-ink-3); margin-top: 8px; max-width: 320px; }
+.lp-impact__src { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--color-ink-4); margin-top: 10px; }
+
+/* ── Agents ─────────────────────────────────────────────────────────────────*/
+.lp-agents { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.lp-agent { background: var(--color-surface); border-radius: var(--radius-panel); box-shadow: var(--shadow-sm); padding: 28px; }
+.lp-agent__name { font-family: var(--font-display); font-weight: 500; font-size: 19px; color: var(--color-ink); margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+.lp-agent__role { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--color-ink-4); margin-bottom: 12px; }
+.lp-agent__body { font-size: 14.5px; line-height: 1.6; color: var(--color-ink-3); margin: 0; }
+.lp-agent__glyph { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+
+/* responsive */
+@media (min-width: 768px) {
+  .lp-flywheel { grid-template-columns: repeat(2, 1fr); }
+  .lp-impact { grid-template-columns: repeat(3, 1fr); }
+  .lp-agents { grid-template-columns: repeat(3, 1fr); }
+  .lp-layer { grid-template-columns: 200px 1fr; gap: 28px; align-items: start; }
+  .lp-layer__head { display: flex; flex-direction: column; gap: 8px; }
+}
