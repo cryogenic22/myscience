@@ -201,15 +201,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-203] Agent nudges · address an agent
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: spec
 - **Source ref**: legacy:design-review-E2.S2.3
 - **Blocked by**: PB-202
 - **Created**: 2026-05-10
-- **Last touched**: 2026-05-10
-- **Notes**: Per-agent nudge intents — Sentinel (watch / ignore / boost source), Strategist (rerun sim / draft counter), Curator (explain score / mark outcome verified). Backend: new `POST /agents/{agent}/nudge` endpoint + intent registry at `services/agent/nudge_intents.py` (BE-5). Frontend: `NudgeMenu.tsx`.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L13, 4 Jun). Per-agent nudge intents — Sentinel (watch / ignore / boost source), Strategist (rerun sim / draft counter), Curator (explain score / mark outcome verified). Backend: intent registry `services/agent/nudge_intents.py` (pure validate + append-only `record_nudge`/`list_nudges`), `POST /agents/{agent}/nudge` (uploader) + `GET /agents/{agent}/intents` (anon) + `GET /agents/{agent}/nudges` (viewer), migration 079 `agent_nudges` (applied to prod). Nudges are QUEUED (agents consume on next background pass — not synchronous, honest). Frontend: `NudgeMenu.tsx` (lazy-loads intents, prompts for target or accepts parent-supplied via `resolveTarget`, "Queued ✓" ack), mounted per row in `AgentActivityFeed`. +16 backend / +4 frontend tests; live-gated on prod.
 
 #### [PB-204] Agent degradation visibility
 - **Type**: feature

@@ -1170,6 +1170,27 @@ export const agentsApi = {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
     }),
+
+  /** PB-203 — the nudge intents available for one agent (static registry). */
+  intents: (agent: string): Promise<import('./types/agents').AgentIntentsResponse> =>
+    fetch(`${BASE}/agents/${encodeURIComponent(agent)}/intents`).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /** PB-203 — queue a nudge for an agent. Requires uploader role. */
+  nudge: (
+    agent: string,
+    body: { intent: string; target?: Record<string, unknown>; note?: string },
+  ): Promise<{ nudge: import('./types/agents').NudgeRecord }> =>
+    fetch(`${BASE}/agents/${encodeURIComponent(agent)}/nudge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
 };
 
 export const evidenceApi = {

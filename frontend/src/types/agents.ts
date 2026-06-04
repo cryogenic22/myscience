@@ -21,3 +21,29 @@ export interface AgentActivityResponse {
   /** Seconds the client should wait before re-polling. */
   poll_after_seconds?: number;
 }
+
+/** PB-203 — a bounded action a reviewer can ask of an agent. */
+export interface NudgeIntent {
+  key: string;
+  label: string;
+  description: string;
+  requires_target: boolean;
+  target_kind: string | null;
+}
+
+export interface AgentIntentsResponse {
+  agent: AgentId;
+  intents: NudgeIntent[];
+}
+
+/** A queued nudge as returned by POST /agents/{agent}/nudge. */
+export interface NudgeRecord {
+  id: string;
+  agent: AgentId;
+  intent: string;
+  target: Record<string, unknown> | null;
+  note: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: string | null;
+}

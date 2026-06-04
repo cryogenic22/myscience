@@ -24,6 +24,7 @@ import { PRODUCT_NAME } from '../brand';
 import IntelligenceTab, { type IntelView } from '../components/ci/IntelligenceTab';
 import StandaloneDossierTab from '../components/ci/StandaloneDossierTab';
 import KbqQueryTab from '../components/ci/KbqQueryTab';
+import AgentsDrawer from '../components/ci/AgentsDrawer';
 import SignalsTab from '../components/ci/SignalsTab';
 import WatchlistTab from '../components/ci/WatchlistTab';
 import WarRoomView from '../components/ci/war/WarRoomView';
@@ -230,6 +231,7 @@ export default function CIPage() {
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
+    <>
     <CockpitShell
       nav={
         <NavRail header={navHeader} footer={navFooter}>
@@ -382,6 +384,8 @@ export default function CIPage() {
         )}
       </ContentRegion>
     </CockpitShell>
+    <AgentsDrawer />
+    </>
   );
 }
 
