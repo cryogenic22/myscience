@@ -1277,6 +1277,21 @@ export interface WarRoomRound {
 // services/scenario_state.py::ScenarioMode.
 export type WarRoomMode = 'guided' | 'autonomous' | 'game_theoretic';
 
+// PB-H13 — autonomous play transcript.
+export interface AutoplayRound {
+  round: number;
+  our_move: string;
+  reactions: WarRoomReaction[];
+  narration: string;
+}
+export interface AutoplayResult {
+  mode: string;
+  war_room_id: string;
+  rounds: AutoplayRound[];
+  narration: string[];
+  summary: { rounds_played: number; moves: string[]; total_reactions: number };
+}
+
 export interface WarRoom {
   id: string;
   title: string;
@@ -1370,6 +1385,18 @@ export const warRoomApi = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ mode }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  // PB-H13 — run an autonomous N-round campaign (owner-only). Ephemeral
+  // transcript; adversary reactions are DB-grounded server-side.
+  runAutonomous: (id: string, body: { rounds?: number; our_moves?: string[]; player_company_name?: string } = {}): Promise<AutoplayResult> =>
+    fetch(`${BASE}/war-rooms/${encodeURIComponent(id)}/run-autonomous`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
     }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();

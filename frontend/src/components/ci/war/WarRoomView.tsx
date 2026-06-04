@@ -9,6 +9,7 @@ import PayoffMatrix from './PayoffMatrix';
 import RoomActionsMenu from './RoomActionsMenu';
 import RoundHistory from './RoundHistory';
 import WarRoomModePicker from './WarRoomModePicker';
+import AutonomousPanel from './AutonomousPanel';
 import { usePayoffMatrix } from '../../../hooks/usePayoffMatrix';
 
 interface Props {
@@ -268,9 +269,8 @@ export default function WarRoomView({ roomId, onClose }: Props) {
         </section>
       )}
 
-      {/* Autonomous — agents play every team and narrate while the human
-          observes/steers. The runner engine lands next loop (L3 / PB-H13);
-          this is an honest placeholder, not a fake stream. */}
+      {/* Autonomous — agents play every team and narrate; the human observes
+          (PB-H13). Reactions are DB-grounded server-side. */}
       {mode === 'autonomous' && (
         <section
           aria-label="Autonomous"
@@ -283,11 +283,7 @@ export default function WarRoomView({ roomId, onClose }: Props) {
             </h2>
             <span className="mz-text-xs" style={{ color: 'var(--color-ink-4)' }}>agents play · narrated</span>
           </header>
-          <p className="mz-text-sm" style={{ color: 'var(--color-ink-4)', margin: 0, lineHeight: 1.6 }}>
-            Autonomous play — the agents play every team and narrate the rounds while you
-            observe and steer — is being wired in. For now, switch to <strong>Guided</strong> to
-            play moves yourself, or <strong>Game-theoretic</strong> for the payoff matrix.
-          </p>
+          <AutonomousPanel roomId={roomId} />
         </section>
       )}
 
