@@ -205,6 +205,20 @@ _SELECT_BY_ID_SQL = """
      WHERE id = %s
 """
 
+_UPDATE_SQL = """
+    UPDATE business_context_briefs
+       SET focal_asset = %(focal_asset)s,
+           situation = %(situation)s,
+           strategic_decisions = %(strategic_decisions)s::jsonb,
+           competitive_set = %(competitive_set)s::jsonb,
+           success_criteria = %(success_criteria)s::jsonb,
+           constraints = %(constraints)s::jsonb
+     WHERE id = %(id)s AND signed_off = FALSE
+     RETURNING id, engagement_id, focal_asset, situation,
+               strategic_decisions, competitive_set, success_criteria, constraints,
+               created_by, created_at, signed_off, signed_off_by, signed_off_at
+"""
+
 _SIGN_OFF_SQL = """
     UPDATE business_context_briefs
        SET signed_off = TRUE,
@@ -229,22 +243,9 @@ _ENGAGEMENT_AUDIT_SQL = """
 # ── Public API ────────────────────────────────────────────────────
 
 
-def create_bcb(
-    db,
-    *,
-    engagement_id: str,
-    focal_asset: str,
-    situation: str,
-    strategic_decisions: list,
-    competitive_set: list,
-    success_criteria: Optional[list] = None,
-    constraints: Optional[list] = None,
-    created_by: str,
-) -> str:
-    """Create the BCB for an engagement. Raises BCBContractError on invariant
-    violations. Returns the new BCB id."""
-    # Validate the components first by attempting construction. This refuses
-    # an empty strategic_decisions list before we touch the DB.
+def _coerce_and_validate(strategic_decisions, competitive_set, situation):
+    """Coerce dict/dataclass inputs to typed components and enforce the BCB
+    invariants (≥1 decision; valid situation). Shared by create + update."""
     decisions = [
         d if isinstance(d, StrategicDecision)
         else StrategicDecision(statement=d["statement"], rationale=d["rationale"])
@@ -267,6 +268,26 @@ def create_bcb(
         raise BCBContractError(
             f"situation must be one of {VALID_SITUATIONS}, got {situation!r}"
         )
+    return decisions, threats
+
+
+def create_bcb(
+    db,
+    *,
+    engagement_id: str,
+    focal_asset: str,
+    situation: str,
+    strategic_decisions: list,
+    competitive_set: list,
+    success_criteria: Optional[list] = None,
+    constraints: Optional[list] = None,
+    created_by: str,
+) -> str:
+    """Create the BCB for an engagement. Raises BCBContractError on invariant
+    violations. Returns the new BCB id."""
+    decisions, threats = _coerce_and_validate(
+        strategic_decisions, competitive_set, situation
+    )
 
     params = {
         "engagement_id": engagement_id,
@@ -282,6 +303,52 @@ def create_bcb(
     bid = str(res["id"]) if res and res.get("id") else str(uuid4())
     logger.info("created BCB %s for engagement %s", bid, engagement_id)
     return bid
+
+
+def update_bcb(
+    db,
+    *,
+    engagement_id: str,
+    focal_asset: str,
+    situation: str,
+    strategic_decisions: list,
+    competitive_set: list,
+    success_criteria: Optional[list] = None,
+    constraints: Optional[list] = None,
+) -> BusinessContextBrief:
+    """Update the engagement's BCB in place (UX08 in-app authoring).
+
+    Refuses to edit a signed-off brief — a signed brief is immutable; create a
+    new one or revert sign-off first. Raises BCBContractError on a missing
+    brief, a signed brief, or an invariant violation. Returns the updated BCB.
+    """
+    existing = get_bcb_for_engagement(db, engagement_id)
+    if not existing:
+        raise BCBContractError(
+            f"no brief to update for engagement {engagement_id}; create one first"
+        )
+    if existing.signed_off:
+        raise BCBContractError(
+            "cannot edit a signed-off brief — it is immutable once signed"
+        )
+    decisions, threats = _coerce_and_validate(
+        strategic_decisions, competitive_set, situation
+    )
+    params = {
+        "id": existing.id,
+        "focal_asset": focal_asset,
+        "situation": situation,
+        "strategic_decisions": _decisions_to_jsonb(decisions),
+        "competitive_set": _threats_to_jsonb(threats),
+        "success_criteria": _list_to_jsonb(success_criteria or []),
+        "constraints": _list_to_jsonb(constraints or []),
+    }
+    res = _exec_returning(db, _UPDATE_SQL, params)
+    if not res:
+        # WHERE matched 0 rows → it was signed between our check and the UPDATE.
+        raise BCBContractError("brief update failed (was it signed concurrently?)")
+    logger.info("updated BCB %s for engagement %s", existing.id, engagement_id)
+    return _row_to_bcb(res)
 
 
 def get_bcb_for_engagement(db, engagement_id: str) -> Optional[BusinessContextBrief]:

@@ -33,6 +33,7 @@ from services.business_context_brief import (
     get_bcb,
     get_bcb_for_engagement,
     sign_off_bcb,
+    update_bcb,
 )
 from services.engagement import (
     Engagement,
@@ -340,6 +341,38 @@ def create_brief(
     bcb = get_bcb(db, bid)
     if not bcb:
         raise HTTPException(500, "BCB create succeeded but read-back failed")
+    return _bcb_to_dict(bcb)
+
+
+@router.put("/engagements/{eid}/brief")
+def update_brief(
+    eid: str,
+    body: CreateBCBBody,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """UX08 — edit the engagement's BCB in place. 404 if no brief yet; 409 if
+    the brief is signed-off (immutable); 400 on contract violation."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    try:
+        bcb = update_bcb(
+            db,
+            engagement_id=eid,
+            focal_asset=body.focal_asset,
+            situation=body.situation,
+            strategic_decisions=[d.model_dump() for d in body.strategic_decisions],
+            competitive_set=[t.model_dump() for t in body.competitive_set],
+            success_criteria=body.success_criteria,
+            constraints=body.constraints,
+        )
+    except BCBContractError as e:
+        msg = str(e)
+        if "no brief to update" in msg:
+            raise HTTPException(404, msg) from e
+        if "signed-off" in msg:
+            raise HTTPException(409, msg) from e
+        raise HTTPException(400, msg) from e
     return _bcb_to_dict(bcb)
 
 
