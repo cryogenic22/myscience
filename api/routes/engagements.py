@@ -22,7 +22,10 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_db, require_role
 from db import Database
-from services.engagement_export import render_executive_brief_html
+from services.engagement_export import (
+    render_dossier_html,
+    render_executive_brief_html,
+)
 from services.business_context_brief import (
     BCBContractError,
     create_bcb,
@@ -641,6 +644,33 @@ def export_executive_brief(
         scenarios=scenarios,
         generated_label=f"engagement {eid[:8]}",
         brief_summary=brief_summary,
+    )
+    return HTMLResponse(content=html_doc)
+
+
+@router.get("/engagements/{eid}/export/dossier.html", response_class=HTMLResponse)
+def export_dossier(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX12 — printable full Intelligence Dossier (browser → PDF). All domains
+    + their grounded facts; sourced facts link to evidence."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    snapshot = get_latest_snapshot(db, eid)
+    if snapshot is None:
+        raise HTTPException(404, f"no dossier assembled yet for engagement {eid}")
+    snap = snapshot.to_dict()
+    eng_dict = _engagement_to_dict(eng)
+    html_doc = render_dossier_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or snap.get("focal_asset") or "—",
+        readiness=snap.get("readiness"),
+        fact_count=snap.get("fact_count") or 0,
+        domains=snap.get("domains") or [],
+        generated_label=f"engagement {eid[:8]}",
     )
     return HTMLResponse(content=html_doc)
 
