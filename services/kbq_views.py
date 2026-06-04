@@ -24,7 +24,10 @@ from collections import OrderedDict, defaultdict
 logger = logging.getLogger(__name__)
 
 _MAX_ITEMS_PER_KBQ = 10
-_MAX_FACTS_FETCH = 400  # bound the ledger pull before per-KBQ capping
+# Bound the ledger pull PER predicate (not globally) so a high-volume predicate
+# can't starve a low-volume one out of the KBQ that depends on it. Comfortably
+# above _MAX_ITEMS_PER_KBQ + the diversify round-robin needs.
+_MAX_FACTS_PER_PREDICATE = 25
 
 # PB-SL11 — route the FACT LEDGER into the KBQ surface so it is a true lens over
 # the knowledge store, not just the (thin) curated signals table. Each known
@@ -44,6 +47,8 @@ _PREDICATE_KBQ: dict[str, int] = {
     "mechanism_of_action": 3,
     "wac_usd": 7,               # Pricing
     "drug_pricing": 7,          # future-proof (no rows yet)
+    "product_sales": 5,         # Sales & Sentiment (L7 — product-level net sales)
+    "sales_guidance": 5,        # forward-looking guidance (future extractor)
 }
 
 # The 8 KBQs, each mapped to the signal tags that feed it. SWOT (6) is a
@@ -137,24 +142,39 @@ def _fetch_entity_signals(db, entity_type: str, entity_id: str) -> list[dict]:
 
 def _fetch_entity_facts(db, entity_type: str, entity_id: str) -> list[dict]:
     """Pull the entity's ledger facts for the KBQ-mapped predicates (PB-SL11).
-    Joins evidence_records for the source link (provenance)."""
+    Joins evidence_records for the source link (provenance).
+
+    Caps PER PREDICATE rather than globally: a rich asset (semaglutide has 460+
+    facts) would otherwise let one high-volume, high-confidence predicate
+    (clinical_trial) crowd a low-volume one (product_sales) out of a single
+    global top-N — leaving KBQ-5 empty even when product-sales facts exist.
+    A per-predicate window guarantees each KBQ's predicate is represented."""
     sql = """
-        SELECT f.id::text AS id, f.predicate, f.fact_class,
-               f.object_value->>'description' AS claim,
-               f.confidence, f.valid_from,
+        WITH ranked AS (
+            SELECT f.id::text AS id, f.predicate, f.fact_class,
+                   f.object_value->>'description' AS claim,
+                   f.confidence, f.valid_from, f.source_doc_id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY f.predicate
+                       ORDER BY f.confidence DESC NULLS LAST, f.valid_from DESC
+                   ) AS rn
+              FROM facts f
+             WHERE f.subject_entity_type = %s
+               AND f.subject_entity_id = %s
+               AND f.superseded_by IS NULL
+               AND f.predicate = ANY(%s)
+        )
+        SELECT r.id, r.predicate, r.fact_class, r.claim, r.confidence, r.valid_from,
                e.source_id, e.source_url
-          FROM facts f
-          LEFT JOIN evidence_records e ON e.evidence_id = f.source_doc_id
-         WHERE f.subject_entity_type = %s
-           AND f.subject_entity_id = %s
-           AND f.superseded_by IS NULL
-           AND f.predicate = ANY(%s)
-         ORDER BY f.confidence DESC NULLS LAST, f.valid_from DESC
-         LIMIT %s
+          FROM ranked r
+          LEFT JOIN evidence_records e ON e.evidence_id = r.source_doc_id
+         WHERE r.rn <= %s
+         ORDER BY r.confidence DESC NULLS LAST, r.valid_from DESC
     """
     try:
         return db.fetch_all(
-            sql, [entity_type, entity_id, list(_PREDICATE_KBQ.keys()), _MAX_FACTS_FETCH],
+            sql, [entity_type, entity_id, list(_PREDICATE_KBQ.keys()),
+                  _MAX_FACTS_PER_PREDICATE],
         )
     except Exception:
         logger.exception("kbq_views: fact query failed for %s:%s", entity_type, entity_id)

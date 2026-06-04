@@ -26,6 +26,7 @@ import hashlib
 import logging
 from typing import Callable, Optional
 
+from services.extraction.product_sales import ProductSalesExtraction
 from services.extraction.trial_readout import TrialReadoutExtraction
 from services.extraction_llm import StructuredCall, extract_structured
 from services.fact_emitters.base import EmittedFact, EmitStats, emit_one
@@ -40,6 +41,17 @@ _SYSTEM_PROMPT = (
     "stated — never invent numbers, dates, or endpoints. If the text is not a "
     "trial readout (e.g. a financial or corporate slide), return no structured "
     "output. Dates must be the announcement/readout date as stated."
+)
+
+_SALES_SYSTEM_PROMPT = (
+    "You extract a single PRODUCT-LEVEL net sales figure from the text of a "
+    "pharma earnings press release, investor deck, or 10-Q/10-K MD&A. Extract "
+    "only revenue reported for ONE named product (a drug brand or generic), "
+    "never a company-wide or consolidated total. If the text reports only "
+    "company-level revenue, or is not a financial document, return no "
+    "structured output. Report net_sales_usd in full US dollars. Only extract "
+    "what is explicitly stated — never invent or estimate figures, periods, or "
+    "growth rates."
 )
 
 # A resolver maps a drug name -> (entity_type, entity_id) or None. Defaults to
@@ -138,6 +150,102 @@ def build_readout_fact(
     )
 
 
+def _sales_source_row_id(drug_id: str, sales: ProductSalesExtraction) -> str:
+    """Deterministic idempotency key so re-uploading the same earnings doc doesn't
+    duplicate: (drug, period). A new fiscal period is a new fact."""
+    raw = f"{drug_id}|{sales.period_label.strip().lower()}"
+    return "sales-" + hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def build_product_sales_fact(
+    sales: ProductSalesExtraction,
+    *,
+    subject_entity_id: str,
+    subject_entity_type: str = "drug",
+    source_url: Optional[str] = None,
+    source_id: str = "user_document",
+) -> EmittedFact:
+    """Map a validated ProductSalesExtraction → one EmittedFact (pure).
+
+    ``source_id`` is parameterised so the SAME fact shape can be produced by a
+    future structured connector (a company data warehouse, IQVIA, or a SEC
+    product-revenue parser) — they would emit ``product_sales`` facts with their
+    own source_id at higher confidence, and the dossier/KBQ-5 reads them
+    identically. The document-upload path is just the first source."""
+    delta = ""
+    if sales.yoy_change_pct is not None:
+        sign = "+" if sales.yoy_change_pct >= 0 else ""
+        delta = f", {sign}{sales.yoy_change_pct:g}% YoY"
+    claim = (f"{sales.product_name} {sales.period_label} net sales "
+             f"${sales.net_sales_usd:,.0f}{delta}")
+    object_value = {
+        "description": claim,
+        "product_name": sales.product_name,
+        "company_name": sales.company_name,
+        "period_label": sales.period_label,
+        "period_end": sales.period_end.isoformat() if sales.period_end else None,
+        "net_sales_usd": sales.net_sales_usd,
+        "currency": sales.currency,
+        "yoy_change_pct": sales.yoy_change_pct,
+        "source_url": source_url,
+    }
+    return EmittedFact(
+        predicate="product_sales",                # routes to commercial_operational / KBQ-5
+        subject_entity_type=subject_entity_type,
+        subject_entity_id=subject_entity_id,
+        object_value=object_value,
+        source_row_id=_sales_source_row_id(subject_entity_id, sales),
+        kind="point",
+        valid_from=None,
+        confidence=0.7,                           # company self-reported disclosure
+        fact_class="corporate",
+        evidence_text=sales.headline_summary,
+        source_id=source_id,
+        source_url=source_url,
+    )
+
+
+def extract_product_sales_facts(
+    text: str,
+    *,
+    structured_call: StructuredCall,
+    resolver: DrugResolver,
+    source_url: Optional[str] = None,
+) -> list[EmittedFact]:
+    """Run LLM extraction over financial-doc text → list[EmittedFact] (no DB).
+
+    Returns [] when the text isn't a product-sales disclosure, the LLM returns
+    nothing, or the product can't be resolved to a drug subject (the honesty
+    guard: a dollar figure never lands on an unresolved subject). Never raises."""
+    if not (text or "").strip():
+        return []
+    try:
+        sales = extract_structured(
+            text,
+            system_prompt=_SALES_SYSTEM_PROMPT,
+            schema_class=ProductSalesExtraction,
+            structured_call=structured_call,
+        )
+    except Exception:
+        logger.exception("product-sales fact extraction failed")
+        return []
+    if sales is None:
+        return []
+
+    resolved = resolver(sales.product_name)
+    if not resolved:
+        logger.info("product-sales for %r — drug unresolved, skipping",
+                    sales.product_name)
+        return []
+    entity_type, entity_id = resolved
+    return [build_product_sales_fact(
+        sales,
+        subject_entity_id=str(entity_id),
+        subject_entity_type=str(entity_type),
+        source_url=source_url,
+    )]
+
+
 def extract_document_facts(
     text: str,
     *,
@@ -193,10 +301,19 @@ def emit_document_facts(
     (dedup on source_row_id, DR-5 evidence)."""
     stats = EmitStats(emitter=CREATED_BY)
     resolver = resolver or _default_resolver(db)
-    facts = extract_document_facts(
-        text, structured_call=structured_call, resolver=resolver,
-        source_url=source_url,
-    )
+    # Run both extractors over the document: a deck may be a clinical readout OR
+    # an earnings disclosure (each returns [] when not applicable). This is the
+    # only place that knows about both — extract_* stay single-purpose.
+    facts = [
+        *extract_document_facts(
+            text, structured_call=structured_call, resolver=resolver,
+            source_url=source_url,
+        ),
+        *extract_product_sales_facts(
+            text, structured_call=structured_call, resolver=resolver,
+            source_url=source_url,
+        ),
+    ]
     for fact in facts:
         stats.scanned += 1
         status, _ = emit_one(db, CREATED_BY, fact, write_evidence=write_evidence)

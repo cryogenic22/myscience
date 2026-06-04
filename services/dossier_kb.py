@@ -149,6 +149,10 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "epidemiology":         "disease_and_patient",
     "revenue":              "commercial_operational",
     "sales_guidance":       "commercial_operational",
+    # L7 / Tier 2: product-level net sales from uploaded earnings docs (and,
+    # later, warehouse/syndicated connectors). Starts with "product", so it
+    # needs an exact entry — the "sales" prefix rule below would miss it.
+    "product_sales":        "commercial_operational",
     "prescriber_trend":     "hcp_and_patient",
 }
 
