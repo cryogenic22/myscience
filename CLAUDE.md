@@ -38,6 +38,7 @@ Read these before writing ANY code:
 - **Fonts**: Fraunces (serif display) + DM Sans (body) — loaded in `index.html`
 - **Color tokens**: `var(--color-ink)`, `var(--color-surface)`, `var(--color-accent)`, `var(--color-line)`
 - **Components use inline styles with CSS variables** (not Tailwind color classes)
+- **⚠️ Tailwind v4 + Railway gotcha**: v4 auto-detects which files to scan for class names from the Git root; Railway/Nixpacks builds WITHOUT `.git`, so utilities under-generate in prod (work locally, silently no-op deployed). `index.css` has explicit `@source` globs to make this deterministic — **do not remove them** (guarded by `tailwind-source.test.ts`). Prefer inline styles / authored CSS for layout over utility classes; for a whole page, an authored stylesheet of semantic classes (see `styles/landing.css`) is the robust pattern. NEVER build class names dynamically (`` `text-${x}` ``) — the scanner can't see them. See memory `frontend_tailwind_v4_railway`.
 
 ### Key Frontend Files
 | File | Purpose |
