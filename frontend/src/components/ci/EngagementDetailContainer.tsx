@@ -39,6 +39,7 @@ import BriefContainer from './BriefContainer';
 import WorkshopContainer from './WorkshopContainer';
 import PersonaPicker from './PersonaPicker';
 import ExportMenu from './ExportMenu';
+import ActivityDrawer from './ActivityDrawer';
 import { usePersona, personaDefaults } from '../../hooks/usePersona';
 
 interface Props {
@@ -196,6 +197,7 @@ export default function EngagementDetailContainer({
       sidebar={null}
     >
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', padding: '8px 0 0' }}>
+        <ActivityDrawer engagementId={engagement.id} />
         <ExportMenu engagementId={engagement.id} />
         <PersonaPicker />
       </div>

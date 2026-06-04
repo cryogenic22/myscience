@@ -75,6 +75,7 @@ from services.gap_remediation import (
     set_remediation as set_gap_remediation,
     list_remediations as list_gap_remediations,
 )
+from services.engagement_activity import list_engagement_activity
 
 logger = logging.getLogger(__name__)
 
@@ -620,6 +621,23 @@ def get_scenarios(
         raise HTTPException(404, f"engagement not found: {eid}")
     scenarios = list_scenarios(db, eid)
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
+
+
+@router.get("/engagements/{eid}/activity")
+def get_engagement_activity(
+    eid: str,
+    limit: int = Query(60, ge=1, le=200),
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX11 — engagement activity timeline: a newest-first feed of what happened
+    on this engagement (briefs, scenarios, insights, gap remediations, dossier
+    assemblies), human and agent actions alike. Read-time union over the
+    engagement's own artifacts — empty engagements show an honest empty feed."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    items = list_engagement_activity(db, eid, limit=limit)
+    return {"activity": items, "total": len(items)}
 
 
 def _pick_recommendation(scenarios: list[dict]) -> Optional[str]:

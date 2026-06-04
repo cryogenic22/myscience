@@ -1506,15 +1506,15 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 
 #### [PB-UX11] Activity timeline (Collaboration P3.2)
 - **Type**: feature
-- **Status**: triaged
+- **Status**: shipped
 - **Priority**: medium
 - **Owner**: shared
 - **Source**: feedback
 - **Source ref**: adhoc
 - **Blocked by**: n/a
 - **Created**: 2026-06-01
-- **Last touched**: 2026-06-01
-- **Notes**: Unified human+agent activity feed scoped to the engagement. `activity_log` table (actor_type agent|human, actor_id, action, target_type/id, ts, metadata). `ActivityDrawer` extends the demo's agent-drawer pattern. EL's primary oversight surface; the agent-activity rail from the design doc.
+- **Last touched**: 2026-06-04
+- **Notes**: SHIPPED (L12, 4 Jun). DEVIATION (deliberate): implemented as a READ-TIME UNION over the engagement's existing timestamped artifacts (briefs, scenarios [batch-grouped], insights, gap remediations, dossier snapshots) — `services/engagement_activity.py::list_engagement_activity` (per-source, graceful) + `GET /engagements/{eid}/activity` (viewer) — NOT a new `activity_log` write table. Rationale: immediately populated with real authored rows, no risky cross-cutting instrumentation, honest empty state; `actor_kind` (human|system) distinguishes agent/system vs teammate actions. Frontend `ActivityDrawer.tsx` (dismissible, newest-first, color by kind), mounted in EngagementDetailContainer header. Live-gated on semaglutide (12 real events). +6 backend / +4 frontend tests. FOLLOW-UP if needed: add `activity_log` for events with no own row (exports, nudges consumed, persona switches) and union it in.
 
 #### [PB-UX12] Export — Executive Brief + Intelligence Dossier (Deliverables P3.3)
 - **Type**: feature

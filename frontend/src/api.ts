@@ -2550,6 +2550,28 @@ export const engagementBriefApi = {
     }),
 };
 
+// ── Engagement activity timeline (UX11 / L12) ───────────────────────
+
+export interface ActivityItem {
+  at: string | null;
+  actor: string | null;
+  actor_kind: 'human' | 'system';
+  kind: 'brief' | 'scenario' | 'insight' | 'gap' | 'dossier';
+  summary: string;
+  ref_type: string | null;
+  ref_id: string | null;
+}
+
+export const engagementActivityApi = {
+  list: (eid: string, limit = 60): Promise<ActivityItem[]> =>
+    fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/activity?limit=${limit}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).activity ?? [];
+    }),
+};
+
 // ── Gap remediation persistence (PB-UX05b) ──────────────────────────
 
 export interface GapRemediationDTO {
