@@ -35,6 +35,7 @@ _MAX_FACTS_FETCH = 400  # bound the ledger pull before per-KBQ capping
 _PREDICATE_KBQ: dict[str, int] = {
     "label_indication": 1,      # Indications
     "disease_evidence": 1,      # epidemiology / disease context
+    "competitor": 2,            # Competitors (L6 — entity-graph rivals)
     "clinical_trial": 3,        # Clinical
     "trial_result": 3,
     "adverse_event": 3,         # safety

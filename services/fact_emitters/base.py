@@ -244,6 +244,7 @@ def get_emitters() -> dict[str, FactEmitter]:
     """Registry of available emitters. Imported lazily to avoid import cycles."""
     from services.fact_emitters.adverse_events import AdverseEventEmitter
     from services.fact_emitters.clinical_trials import ClinicalTrialEmitter
+    from services.fact_emitters.competition import CompetitionEmitter
     from services.fact_emitters.drug_labels import DrugLabelEmitter
     from services.fact_emitters.literature import LiteratureEmitter
     from services.fact_emitters.mechanisms import (
@@ -258,6 +259,7 @@ def get_emitters() -> dict[str, FactEmitter]:
         MechanismEmitter(),
         BioactivityEmitter(),
         LiteratureEmitter(),
+        CompetitionEmitter(),
     )
     return {e.name: e for e in emitters}
 
