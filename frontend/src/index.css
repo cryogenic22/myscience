@@ -1,4 +1,14 @@
 @import "tailwindcss";
+
+/* Tailwind v4 auto-detects which files to scan for class names by walking up
+   from the Git root and honouring .gitignore. Railway/Nixpacks builds the app
+   without a .git directory, so that heuristic under-scans in production —
+   utilities render locally (git present) but silently no-op in the deploy.
+   These explicit @source globs make scanning deterministic in every
+   environment. (Additive to auto-detection; node_modules stays excluded.) */
+@source "../index.html";
+@source "./**/*.{ts,tsx,js,jsx}";
+
 /* Fonts loaded once via index.html — Fraunces (display), DM Sans (body),
    DM Mono (technical). The previous @import here doubled the request and
    pulled in Syne which is no longer the canonical display family. */

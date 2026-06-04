@@ -1,64 +1,67 @@
 /**
- * D2 — LandingPage migration lint.
+ * LandingPage — architecture + D2 border discipline.
  *
- * Pin the post-D2 contract: no border-r/l/t/b/x/y utilities, no
- * standalone `border` class, no `borderColor` inline. Spotify/Gemini-
- * style surface separation only.
+ * The page was recoded onto a dedicated stylesheet (styles/landing.css) of
+ * semantic classes + design tokens, instead of Tailwind utilities (which
+ * generate on demand and can differ between local and Railway builds — the
+ * root cause of the page rendering fine locally yet collapsing in prod).
+ *
+ * These checks pin that contract: no Tailwind border utilities in the TSX, no
+ * hard 1px borders in the stylesheet (separation via tone + shadow), the
+ * stylesheet is built on the design tokens, and the three CTA actions remain.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const SRC = readFileSync(
-  resolve(__dirname, '../../src/pages/LandingPage.tsx'),
-  'utf-8',
-);
+const TSX = readFileSync(resolve(__dirname, '../../src/pages/LandingPage.tsx'), 'utf-8');
+const CSS = readFileSync(resolve(__dirname, '../../src/styles/landing.css'), 'utf-8');
 
 function stripComments(src: string): string {
   return src
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    // Only strip // comments NOT preceded by : (URLs etc.)
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-const CODE = stripComments(SRC);
+const TSX_CODE = stripComments(TSX);
 
-describe('LandingPage — D2 border discipline', () => {
-  it('contains no border-r / border-l / border-t / border-b / border-x / border-y utilities', () => {
-    const matches = CODE.match(/\bborder-(r|l|t|b|x|y)(?:-\d)?\b/g) || [];
-    expect(matches).toEqual([]);
+describe('LandingPage — architecture + D2 discipline', () => {
+  it('uses the dedicated landing stylesheet (not utility soup)', () => {
+    expect(TSX_CODE).toMatch(/import\s+['"]\.\.\/styles\/landing\.css['"]/);
   });
 
-  it('contains no standalone `border` class in any className', () => {
-    // Look for "border" as a class word (not "border-radius" or "border-foo-bar")
-    // inside className="..." or className={...}.
-    const classNameValues = CODE.match(/className=["'][^"']+["']/g) || [];
+  it('contains no border-r / -l / -t / -b / -x / -y utilities in the TSX', () => {
+    expect(TSX_CODE.match(/\bborder-(r|l|t|b|x|y)(?:-\d)?\b/g) || []).toEqual([]);
+  });
+
+  it('contains no standalone `border` class in any TSX className', () => {
+    const classNameValues = TSX_CODE.match(/className=["'][^"']+["']/g) || [];
     for (const cn of classNameValues) {
-      // Strip the className=" wrapper and split by whitespace.
-      const inner = cn.replace(/^className=["']/, '').replace(/["']$/, '');
-      const classes = inner.split(/\s+/);
+      const classes = cn.replace(/^className=["']/, '').replace(/["']$/, '').split(/\s+/);
       expect(classes).not.toContain('border');
     }
   });
 
-  it('contains no `borderColor` inline style anywhere', () => {
-    expect(CODE).not.toMatch(/borderColor\s*:/);
+  it('the stylesheet declares no hard 1px borders (tone + shadow only)', () => {
+    const css = stripComments(CSS);
+    expect(css).not.toMatch(/border\s*:\s*[^;]*\b\d+px\b/);
+    expect(css).not.toMatch(/border-(top|right|bottom|left|style)\s*:/);
   });
 
-  it('contains no `border-style` or border:1px inline', () => {
-    expect(CODE).not.toMatch(/border\s*:\s*['"]?\s*1px/);
-    expect(CODE).not.toMatch(/borderStyle\s*:/);
+  it('the stylesheet is built on the design tokens', () => {
+    expect(CSS).toMatch(/var\(--color-bg\)/);
+    expect(CSS).toMatch(/var\(--color-ink\)/);
+    expect(CSS).toMatch(/var\(--color-accent\)/);
+    expect(CSS).toMatch(/var\(--font-display\)/);
   });
 
-  it('still uses CSS variables for surface/text/accent', () => {
-    expect(CODE).toMatch(/var\(--color-bg\)/);
-    expect(CODE).toMatch(/var\(--color-ink\)/);
-    expect(CODE).toMatch(/var\(--color-accent\)/);
+  it('owns its own scroll (avoids the global body overflow clamp)', () => {
+    expect(CSS).toMatch(/overflow-y\s*:\s*auto/);
   });
 
-  it('still exports the three CTA actions (no functional regression)', () => {
-    expect(CODE).toMatch(/onEnter/);
-    expect(CODE).toMatch(/onSearch/);
-    expect(CODE).toMatch(/onCI/);
+  it('still wires the three CTA actions (no functional regression)', () => {
+    expect(TSX_CODE).toMatch(/onEnter/);
+    expect(TSX_CODE).toMatch(/onSearch/);
+    expect(TSX_CODE).toMatch(/onCI/);
   });
 });
