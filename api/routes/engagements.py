@@ -25,6 +25,7 @@ from db import Database
 from services.engagement_export import (
     render_dossier_html,
     render_executive_brief_html,
+    render_strategy_deck_html,
 )
 from services.business_context_brief import (
     BCBContractError,
@@ -670,6 +671,55 @@ def export_dossier(
         readiness=snap.get("readiness"),
         fact_count=snap.get("fact_count") or 0,
         domains=snap.get("domains") or [],
+        generated_label=f"engagement {eid[:8]}",
+    )
+    return HTMLResponse(content=html_doc)
+
+
+@router.get("/engagements/{eid}/export/deck.html", response_class=HTMLResponse)
+def export_strategy_deck(
+    eid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """UX13 — printable Strategy Deck (browser → PDF, landscape). Slides:
+    situation · scenarios · recommendation, assembled from the grounded
+    dossier + scenarios."""
+    eng = get_engagement(db, eid)
+    if not eng:
+        raise HTTPException(404, f"engagement not found: {eid}")
+    eng_dict = _engagement_to_dict(eng)
+
+    snapshot = get_latest_snapshot(db, eid)
+    snap = snapshot.to_dict() if snapshot is not None else {}
+    scen_dicts = [s.to_dict() for s in list_scenarios(db, eid)]
+
+    readiness = snap.get("readiness")
+    pct = f"{round(float(readiness) * 100)}%" if readiness is not None else "not yet assembled"
+    situation = [
+        f"Dossier readiness: {pct} across {len(snap.get('domains') or [])} domains.",
+        f"Grounded facts in the knowledge store: {snap.get('fact_count') or 0}.",
+    ]
+    scen_bullets = [
+        s.get("name") + (
+            f" — {round(float(s.get('probabilityCurrent') if s.get('probabilityCurrent') is not None else s.get('probability'))*100)}% likely"
+            if (s.get("probabilityCurrent") if s.get("probabilityCurrent") is not None else s.get("probability")) is not None
+            else ""
+        )
+        for s in scen_dicts
+    ] or ["No scenarios derived yet."]
+    rec = _pick_recommendation(scen_dicts)
+    rec_bullets = [rec] if rec else ["No committed recommendation yet."]
+
+    slides = [
+        {"title": "Situation", "bullets": situation},
+        {"title": "Scenarios under evaluation", "bullets": scen_bullets},
+        {"title": "Recommendation", "bullets": rec_bullets},
+    ]
+    html_doc = render_strategy_deck_html(
+        engagement_name=eng_dict.get("name") or "Engagement",
+        asset=eng_dict.get("asset") or snap.get("focal_asset") or "—",
+        slides=slides,
         generated_label=f"engagement {eid[:8]}",
     )
     return HTMLResponse(content=html_doc)

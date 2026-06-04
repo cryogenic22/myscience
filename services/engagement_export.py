@@ -116,6 +116,54 @@ def render_executive_brief_html(
 </body></html>"""
 
 
+_DECK_CSS = """
+* { box-sizing: border-box; }
+body { font-family:'Helvetica Neue',Arial,sans-serif; margin:0; color:#16181d; background:#fff; }
+.slide { width:100%; min-height:540px; padding:56px 64px; page-break-after:always;
+         display:flex; flex-direction:column; border-bottom:1px solid #eef0f3; }
+.slide:last-child { page-break-after:auto; }
+.skicker { font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#1E8A99; }
+.stitle { font-family:Georgia,serif; font-size:34px; margin:6px 0 18px; letter-spacing:-0.01em; }
+.cover .stitle { font-size:48px; margin-top:120px; }
+ul { font-size:18px; line-height:1.6; padding-left:22px; } li { margin:8px 0; }
+.muted { color:#6b7280; }
+@page { size: landscape; margin:0; }
+@media print { .slide { min-height:100vh; border:none; } }
+"""
+
+
+def render_strategy_deck_html(
+    *,
+    engagement_name: str,
+    asset: str,
+    slides: list[dict],
+    generated_label: str,
+) -> str:
+    """Slide-style printable deck (browser → PDF, landscape). ``slides`` items:
+    {title, bullets:[str]}. A cover slide is prepended."""
+    body = [
+        f'<section class="slide cover">'
+        f'<div class="skicker">Strategy Deck · {_esc(generated_label)}</div>'
+        f'<div class="stitle">{_esc(engagement_name)}</div>'
+        f'<div class="muted" style="font-size:18px">Focal asset: {_esc(asset)}</div>'
+        f"</section>"
+    ]
+    for s in slides:
+        bullets = s.get("bullets") or []
+        items = "".join(f"<li>{_esc(b)}</li>" for b in bullets) if bullets else \
+            '<li class="muted">No content yet.</li>'
+        body.append(
+            f'<section class="slide"><div class="skicker">{_esc(asset)}</div>'
+            f'<div class="stitle">{_esc(s.get("title"))}</div>'
+            f"<ul>{items}</ul></section>"
+        )
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Strategy Deck — {_esc(engagement_name)}</title>
+<style>{_DECK_CSS}</style></head>
+<body>{"".join(body)}</body></html>"""
+
+
 def _pretty_domain(slug: str) -> str:
     return (slug or "").replace("_", " ").strip().title() or "Domain"
 

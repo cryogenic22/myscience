@@ -4,6 +4,7 @@ from __future__ import annotations
 from services.engagement_export import (
     render_dossier_html,
     render_executive_brief_html,
+    render_strategy_deck_html,
 )
 
 
@@ -110,6 +111,39 @@ class TestDossierHtml:
         assert "&lt;img" in doc
 
 
+class TestStrategyDeckHtml:
+    def _deck(self, **over):
+        kw = dict(
+            engagement_name="Wegovy Launch", asset="semaglutide",
+            slides=[
+                {"title": "Situation", "bullets": ["Readiness 47%", "464 facts"]},
+                {"title": "Recommendation", "bullets": ["Defend & differentiate"]},
+            ],
+            generated_label="engagement db4fe801",
+        )
+        kw.update(over)
+        return render_strategy_deck_html(**kw)
+
+    def test_has_cover_and_landscape_print(self):
+        doc = self._deck()
+        assert "Strategy Deck" in doc
+        assert "size: landscape" in doc
+        assert 'class="slide cover"' in doc
+
+    def test_one_slide_per_entry_plus_cover(self):
+        doc = self._deck()
+        assert doc.count('class="slide') == 3   # cover + 2 slides
+
+    def test_renders_bullets_and_escapes(self):
+        doc = self._deck(slides=[{"title": "X", "bullets": ["<b>hi</b>"]}])
+        assert "<b>hi</b>" not in doc
+        assert "&lt;b&gt;hi" in doc
+
+    def test_empty_bullets_degrade(self):
+        doc = self._deck(slides=[{"title": "X", "bullets": []}])
+        assert "No content yet" in doc
+
+
 class TestRouteRegistered:
     def test_export_routes_on_the_wire(self):
         """SL10 lesson: prove the routes are registered (not just the service)."""
@@ -118,3 +152,4 @@ class TestRouteRegistered:
         paths = {getattr(r, "path", "") for r in app.routes}
         assert "/engagements/{eid}/export/brief.html" in paths
         assert "/engagements/{eid}/export/dossier.html" in paths
+        assert "/engagements/{eid}/export/deck.html" in paths
