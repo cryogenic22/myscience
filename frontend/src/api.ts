@@ -1273,6 +1273,23 @@ export interface WarRoomRound {
   reactions: WarRoomReaction[];
 }
 
+// UX12/UX13 — engagement deliverable exports (printable HTML → browser PDF).
+// The endpoints are Bearer-auth'd, so a plain <a href> would 401; fetch with
+// the auth header, then open the rendered HTML as a blob in a new tab.
+export type EngagementExportKind = 'brief' | 'dossier' | 'deck';
+
+export const engagementExportApi = {
+  open: async (eid: string, kind: EngagementExportKind): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/engagements/${encodeURIComponent(eid)}/export/${kind}.html`,
+      { headers: { ...authHeaders() } },
+    );
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => res.statusText)}`);
+    const blobUrl = URL.createObjectURL(await res.blob());
+    window.open(blobUrl, '_blank');
+  },
+};
+
 // W1 / IX04a — the war room's scenario mode. Values match
 // services/scenario_state.py::ScenarioMode.
 export type WarRoomMode = 'guided' | 'autonomous' | 'game_theoretic';
