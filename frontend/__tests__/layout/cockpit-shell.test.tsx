@@ -156,11 +156,15 @@ describe('ContentRegion', () => {
     expect(screen.getByTestId('kid')).toBeInTheDocument();
   });
 
-  it('default maxWidth is xl; honors override', () => {
+  it('default maxWidth is the generous xl cap; honors override', () => {
+    // Layout is inline (Railway-safe) — assert the computed style, not a class.
     const { rerender } = render(<ContentRegion>x</ContentRegion>);
-    expect(screen.getByTestId('content-region').className).toMatch(/max-w-(screen-)?xl|max-w-6xl/);
+    expect(screen.getByTestId('content-region').style.maxWidth).toBe('1440px');
+    expect(screen.getByTestId('content-region').style.marginInline).toBe('auto');
     rerender(<ContentRegion maxWidth="2xl">x</ContentRegion>);
-    expect(screen.getByTestId('content-region').className).toMatch(/max-w-(screen-)?2xl|max-w-7xl/);
+    expect(screen.getByTestId('content-region').style.maxWidth).toBe('1760px');
+    rerender(<ContentRegion maxWidth="none">x</ContentRegion>);
+    expect(screen.getByTestId('content-region').style.maxWidth).toBe('100%');
   });
 
   it('no hardcoded hex codes', () => {
