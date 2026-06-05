@@ -398,10 +398,34 @@ def patch_decision(
         sets.append("target_value = %s")
         params.append(body.target_value)
 
+    # When an outcome is recorded together with (or onto) a terminal
+    # verdict, compute the calibration_score so the learning loop has its
+    # input. Previously PATCH left calibration NULL — the decision then
+    # never reached find_decisions_with_outcomes and the Learn arc stayed
+    # open. (capture-outcome already did this; PATCH is the simpler path
+    # users actually hit, so it must close the loop too.) F6/C6.
+    cal_score: Optional[float] = None
     if body.actual_outcome is not None:
         sets.append("actual_outcome = %s")
         sets.append("actual_outcome_recorded_at = NOW()")
         params.append(body.actual_outcome)
+
+        # Effective verdict = the status being set, else the current status.
+        verdict = body.status if body.status is not None else row.get("status")
+        if verdict in VALID_OUTCOME_VERDICTS:
+            numeric_cal = compute_numeric_calibration(
+                target_value=(
+                    body.target_value if body.target_value is not None
+                    else row.get("target_value")
+                ),
+                actual_outcome=body.actual_outcome,
+            )
+            cal_score = numeric_cal if numeric_cal is not None else compute_calibration_score(
+                verdict=verdict,
+                confidence_at_commit=row.get("confidence_at_commit"),
+            )
+            sets.append("calibration_score = %s")
+            params.append(cal_score)
 
     if not sets:
         return _decision_to_dict(row)
@@ -417,6 +441,20 @@ def patch_decision(
         raise HTTPException(500, f"patch failed: {exc}") from exc
 
     updated = _fetch_decision(db, decision_id)
+
+    # Close the loop: a recorded outcome with calibration emits a learning
+    # row (signal_score_adjustments) immediately — not just on the next
+    # scheduler tick. Idempotent + best-effort: outcome capture must not
+    # fail if learning emission does.
+    if cal_score is not None and updated:
+        try:
+            from services.learning_service import emit_signal_score_adjustment
+            emit_signal_score_adjustment(
+                db, decision=updated, calibration_score=cal_score,
+            )
+        except Exception:
+            logger.warning("learning emission failed for decision %s", decision_id, exc_info=True)
+
     return _decision_to_dict(updated) if updated else _decision_to_dict(row)
 
 
