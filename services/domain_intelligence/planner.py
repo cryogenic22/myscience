@@ -35,6 +35,10 @@ from services.domain_intelligence.playbook import (
     PlaybookRegistry,
     get_playbook_registry,
 )
+from services.domain_intelligence.route_executors import (
+    execute_link_route,
+    execute_source_route,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +185,29 @@ class DecompositionPlanner:
         else:
             self.registry = get_playbook_registry()
         self.max_facts_per_dimension = max_facts_per_dimension
+        self._graph: Any = None
+        self._graph_init = False
+
+    def _graph_traversal(self) -> Any:
+        """Lazily build a read-only GraphTraversal for link routes. Cached;
+        returns None if it can't be constructed (link routes then no-op into a
+        gap rather than raising). Reuses the existing graph service unchanged."""
+        if self._graph_init:
+            return self._graph
+        self._graph_init = True
+        if self.db is None:
+            return None
+        try:
+            from services.graph import GraphTraversal
+            try:
+                from config import config as _config
+            except Exception:
+                _config = None
+            self._graph = GraphTraversal(self.db, _config)
+        except Exception:
+            logger.debug("planner: GraphTraversal unavailable; link routes skip", exc_info=True)
+            self._graph = None
+        return self._graph
 
     def plan(
         self,
@@ -231,36 +258,82 @@ class DecompositionPlanner:
         executed: list[str] = []
         skipped: list[str] = []
 
+        def _remaining() -> int:
+            return self.max_facts_per_dimension - len(facts)
+
+        def _add(rendered: dict, dedup_key: str) -> None:
+            """Add a rendered cell-fact, deduping on a stable key so the same
+            finding reached via two routes (e.g. an AE that is also a
+            safety_signal, or a competitor named in a fact AND a graph edge)
+            appears once."""
+            key = (dedup_key or rendered.get("claim", "")).strip().lower()
+            if not key or key in seen_claims:
+                return
+            seen_claims.add(key)
+            facts.append(rendered)
+
         for route in dim.routes:
-            if route.kind != "predicate":
-                # link / source routes are recorded but not yet executed — the
-                # predicate substrate carries the value today. Transparent, not
-                # invented (DI-3 honesty): the cell shows what it couldn't reach.
-                skipped.append(f"{route.kind}:{route.value}")
-                continue
-            executed.append(f"predicate:{route.value}")
-            try:
-                rows = facts_as_of(self.db, etype, eid, as_of=as_of, predicate=route.value)
-            except Exception:
-                logger.exception("planner: facts_as_of failed for %s:%s pred=%s",
-                                 etype, eid, route.value)
-                rows = []
-            for fact in rows:
-                rendered = _fact_to_cell_fact(fact)
-                # Dedup within the cell on the underlying claim VALUE (the
-                # rendered object_value), so the same finding surfaced via two
-                # predicates routed to one dimension (e.g. an AE that is also a
-                # safety_signal) appears once.
-                key = _render_value(fact.get("object_value")).strip().lower() \
-                    or rendered["claim"].strip().lower()
-                if not key or key in seen_claims:
-                    continue
-                seen_claims.add(key)
-                facts.append(rendered)
-                if len(facts) >= self.max_facts_per_dimension:
-                    break
-            if len(facts) >= self.max_facts_per_dimension:
+            if _remaining() <= 0:
                 break
+
+            if route.kind == "predicate":
+                executed.append(f"predicate:{route.value}")
+                try:
+                    rows = facts_as_of(self.db, etype, eid, as_of=as_of, predicate=route.value)
+                except Exception:
+                    logger.exception("planner: facts_as_of failed for %s:%s pred=%s",
+                                     etype, eid, route.value)
+                    rows = []
+                for fact in rows:
+                    if _remaining() <= 0:
+                        break
+                    rendered = _fact_to_cell_fact(fact)
+                    _add(rendered, _render_value(fact.get("object_value")))
+
+            elif route.kind == "link":
+                # Execute the link route via the read-only graph traversal.
+                graph = self._graph_traversal()
+                try:
+                    link_facts = execute_link_route(
+                        graph, route, etype, eid, limit=_remaining()
+                    )
+                except Exception:
+                    logger.exception("planner: link route failed %s for %s:%s",
+                                     route.value, etype, eid)
+                    link_facts = []
+                if graph is None:
+                    skipped.append(f"link:{route.value}")
+                else:
+                    executed.append(f"link:{route.value}")
+                    for rendered in link_facts:
+                        if _remaining() <= 0:
+                            break
+                        _add(rendered, rendered.get("claim", ""))
+
+            elif route.kind == "source":
+                try:
+                    src_facts = execute_source_route(
+                        self.db, route, etype, eid, limit=_remaining()
+                    )
+                except Exception:
+                    logger.exception("planner: source route failed %s for %s:%s",
+                                     route.value, etype, eid)
+                    src_facts = []
+                # A non-whitelisted source table returns [] — record it as
+                # skipped so the cell stays transparent about what it couldn't
+                # reach (DI-3 honesty); a whitelisted one is executed.
+                from services.domain_intelligence.route_executors import SOURCE_ROUTES
+                if route.value in SOURCE_ROUTES:
+                    executed.append(f"source:{route.value}")
+                    for rendered in src_facts:
+                        if _remaining() <= 0:
+                            break
+                        _add(rendered, rendered.get("claim", ""))
+                else:
+                    skipped.append(f"source:{route.value}")
+
+            else:
+                skipped.append(f"{route.kind}:{route.value}")
 
         return DimensionCell(
             dimension_key=dim.key,
