@@ -22,6 +22,7 @@ def _subgraph_to_response(sg) -> SubgraphResponse:
             source_id=e.source_id, target_id=e.target_id,
             link_type=e.link_type, confidence=e.confidence,
             via=e.via, source=e.source,
+            provenance_source=e.provenance_source, as_of=e.as_of,
         ) for e in sg.edges],
         center_entity_id=sg.center_entity_id,
         node_count=len(sg.nodes),

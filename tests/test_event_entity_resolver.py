@@ -159,11 +159,17 @@ class TestDerivePrimaryFromDrugId:
         db = _UpdateReturningDB([{"?column?": 1}, {"?column?": 1}])
         stats = derive_primary_from_drug_id(db, limit=10)
         assert stats == {"scanned": 2, "grounded": 2}
-        # one set-based statement, guarding against merged drug rows
         sql = db.sql_seen[0].lower()
         assert "update market_events" in sql
-        assert "record_status" in sql and "merged" in sql
         assert "primary_entity_id is null" in sql  # additive/idempotent
+        # D2 live-DB finding: drug_id-set NULL-primary events point at rich
+        # canonical rows mislabelled 'merged'. Gate on evidence (facts/trials),
+        # not the status label — but still exclude truly-dead dup rows.
+        assert "superseded" in sql and "excluded" in sql
+        # merged is NOT in the status-exclusion list (those rows hold the
+        # evidence); the only NOT IN (...) clause excludes superseded/excluded.
+        assert "not in ('superseded','excluded')" in sql
+        assert "from facts" in sql and "from clinical_trials" in sql
 
     def test_empty_when_nothing_to_ground(self):
         db = _UpdateReturningDB([])

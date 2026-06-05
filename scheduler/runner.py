@@ -289,6 +289,21 @@ class DataPipelineScheduler:
             logger.exception("Post-task concept_weight_adjuster failed")
             results["concept_weight_adjuster"] = f"ERROR: {e}"
 
+        # 14. Reground market_events (drug_id/free-text → primary_entity_*) — D2.
+        # Keeps the event spine grounded so the dossier/feed can cite them.
+        # Additive + idempotent (only NULL-primary rows). The drug_id-derive
+        # pass is set-based and cheap; the free-text pass is bounded. Own
+        # connection (the derive UPDATE can touch many rows).
+        try:
+            t0 = time.time()
+            results["event_reground"] = (
+                self._run_event_reground() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: event_reground — %s", results["event_reground"])
+        except Exception as e:
+            logger.exception("Post-task event_reground failed")
+            results["event_reground"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
 
     def _run_learning_service(self) -> str:
@@ -322,6 +337,23 @@ class DataPipelineScheduler:
             return (
                 f"OK: analyzed {report.analyzed_queries} queries, "
                 f"{report.concepts_adjusted} concepts adjusted"
+            )
+        finally:
+            db.close()
+
+    def _run_event_reground(self) -> str:
+        """Reground orphaned market_events to the entity spine (D2). Own
+        connection; additive + idempotent."""
+        from scripts.reground_market_events import reground
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = reground(db, text_limit=500)
+            return (
+                f"OK: {stats['derived_from_drug_id']} from drug_id, "
+                f"{stats['resolved_from_text']} from text, "
+                f"NULL-primary {stats['null_primary_before']}→{stats['null_primary_after']}"
             )
         finally:
             db.close()

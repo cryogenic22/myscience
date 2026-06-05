@@ -129,14 +129,23 @@ def resolve_from_text(text: str, vocab: list[VocabEntry]) -> Optional[tuple[str,
 
 
 def derive_primary_from_drug_id(db, *, limit: Optional[int] = None) -> dict:
-    """D2-additive: ground events that already have a (canonical) drug_id.
+    """D2-additive: ground events that already have a drug_id.
 
-    ~96% of NULL-primary_entity_id events are recalls that carry a drug_id but
-    were never given a primary_entity_id. Deriving primary_entity_id := drug_id
-    for events whose drug is canonical (not merged/superseded) grounds the bulk
-    of the gap with zero new resolution. Additive + idempotent (only touches
-    NULL primary_entity_id rows pointing at a live drug). Merged-drug events are
-    left for consolidation (a destructive step, deferred).
+    The bulk of NULL-primary_entity_id events are recalls that carry a drug_id
+    but were never given a primary_entity_id (the writer set drug_id and forgot
+    the spine field — established convention is primary_entity_id == drug_id::text
+    for drug-grounded events). Deriving primary_entity_id := drug_id grounds the
+    bulk of the gap with zero new resolution.
+
+    Status gate (live-DB finding, D2): on prod every drug_id-set NULL-primary
+    event points at a row labelled ``record_status='merged'`` — but those rows
+    are the *rich canonical evidence-holders* (e.g. VALSARTAN 1,233 facts /
+    52 trials), the merge **targets**, mislabelled. ``facts.subject_entity_id``
+    and the dossier resolve to exactly these ids, so mirroring drug_id into the
+    spine field is correct. We therefore gate on **evidence** (the drug carries
+    ≥1 fact or clinical trial), not on the status label, and exclude only
+    ``superseded``/``excluded`` (truly dead duplicates that own no evidence).
+    Additive + idempotent (only touches NULL primary_entity_id rows).
     """
     # Set-based UPDATE…RETURNING: one statement grounds tens of thousands of
     # recalls without per-row round-trips. Bounded by a CTE when a limit is given.
@@ -148,8 +157,18 @@ def derive_primary_from_drug_id(db, *, limit: Optional[int] = None) -> dict:
               JOIN drugs d ON d.id = m.drug_id
              WHERE m.primary_entity_id IS NULL
                AND m.drug_id IS NOT NULL
+               -- never resurrect a truly-dead duplicate; merged rows here are
+               -- the rich canonical targets, so gate on evidence not status.
                AND (d.record_status IS NULL
-                    OR d.record_status NOT IN ('merged','superseded','excluded'))
+                    OR d.record_status NOT IN ('superseded','excluded'))
+               AND (
+                    EXISTS (SELECT 1 FROM facts f
+                             WHERE f.subject_entity_type = 'drug'
+                               AND f.subject_entity_id = d.id::text
+                               AND f.superseded_by IS NULL)
+                 OR EXISTS (SELECT 1 FROM clinical_trials ct
+                             WHERE ct.drug_id = d.id)
+               )
              {limit_cte}
         )
     """

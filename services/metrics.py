@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from services.telemetry import log_mv_fallback
@@ -27,6 +28,71 @@ VIEWS = [
     "mv_competitive_landscape",
     "mv_company_portfolio",
 ]
+
+# D6 — metric provenance. Materialized-view / realtime aggregates are real but
+# were unciteable: a "23 drugs in P2-3" narrative had no source or as-of, the
+# largest ungrounded-prose risk. We stamp every metric row with a `_provenance`
+# block — derivation (which view/base tables + the aggregation), computed_at
+# (when this call read it), and a record_basis (the N records the figure rolls
+# up) — so the synthesis layer (owned elsewhere) can cite it without recomputing.
+# Each metric method declares how it was derived here.
+_METHOD_PROVENANCE: dict[str, dict] = {
+    "drug_pipeline_strength": {
+        "source": "mv_drug_pipeline_strength",
+        "derivation": "phase-weighted active-trial count per drug from clinical_trials",
+        "basis_field": "total_trials",
+    },
+    "trial_success_rate": {
+        "source": "mv_trial_success_rate",
+        "derivation": "completed / (completed + terminated + withdrawn) per drug from clinical_trials",
+        "basis_field": "total",
+    },
+    "evidence_density": {
+        "source": "mv_evidence_density",
+        "derivation": "recency-weighted PubMed article count per drug from pubmed_articles",
+        "basis_field": "total_articles",
+    },
+    "competitive_landscape": {
+        "source": "mv_competitive_landscape",
+        "derivation": "drugs/trials grouped by mechanism × therapeutic_area",
+        "basis_field": "drug_count",
+    },
+    "company_portfolio": {
+        "source": "mv_company_portfolio",
+        "derivation": "drug/trial/article rollup per company via entity_links (SPONSORS, OWNS)",
+        "basis_field": "drug_count",
+    },
+}
+
+
+def stamp_metric_provenance(
+    rows: list[dict], method: str, *, realtime: bool = False
+) -> list[dict]:
+    """Attach a citeable `_provenance` block to each metric row (D6).
+
+    Additive: mutates rows in place and returns them. Each row's `_provenance`
+    carries the derivation, the source view (or 'base tables (realtime)' when
+    the MV fallback fired), a computed_at timestamp, and a record_basis count
+    drawn from the row's basis_field — enough for the synthesis layer to render
+    "derived from N records, as of <date>" without recomputing.
+    """
+    meta = _METHOD_PROVENANCE.get(method, {})
+    source = "base tables (realtime)" if realtime else meta.get("source", method)
+    computed_at = datetime.now(timezone.utc).isoformat()
+    basis_field = meta.get("basis_field")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        basis = row.get(basis_field) if basis_field else None
+        row["_provenance"] = {
+            "method": method,
+            "source": source,
+            "derivation": meta.get("derivation", ""),
+            "computed_at": computed_at,
+            "record_basis": int(basis) if isinstance(basis, (int, float)) else None,
+            "realtime_fallback": realtime,
+        }
+    return rows
 
 
 class PharmaMetrics:
@@ -112,9 +178,9 @@ class PharmaMetrics:
             )
             rt_rows = realtime_pipeline_strength(self.db, therapeutic_area, limit=limit)
             if len(rt_rows) > len(rows):
-                return rt_rows
+                return stamp_metric_provenance(rt_rows, "drug_pipeline_strength", realtime=True)
 
-        return rows
+        return stamp_metric_provenance(rows, "drug_pipeline_strength")
 
     def trial_success_rate(
         self,
@@ -149,7 +215,7 @@ class PharmaMetrics:
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
 
-        return self.db.fetch_all(
+        rows = self.db.fetch_all(
             f"""
             SELECT drug_id, drug_name, therapeutic_area,
                    total, completed, terminated, withdrawn, suspended, active,
@@ -161,6 +227,7 @@ class PharmaMetrics:
             """,
             params,
         )
+        return stamp_metric_provenance(rows, "trial_success_rate")
 
     def evidence_density(
         self,
@@ -183,7 +250,7 @@ class PharmaMetrics:
         where = f"WHERE {' AND '.join(conditions)}"
         params.append(limit)
 
-        return self.db.fetch_all(
+        rows = self.db.fetch_all(
             f"""
             SELECT drug_id, drug_name, total_articles, recent_count,
                    weighted_score, oldest_date, newest_date
@@ -194,6 +261,7 @@ class PharmaMetrics:
             """,
             params,
         )
+        return stamp_metric_provenance(rows, "evidence_density")
 
     def competitive_landscape(
         self,
@@ -270,9 +338,9 @@ class PharmaMetrics:
                     if len(rt_original) > len(rt_rows):
                         rt_rows = rt_original
                 if len(rt_rows) > len(rows):
-                    return rt_rows
+                    return stamp_metric_provenance(rt_rows, "competitive_landscape", realtime=True)
 
-            return rows
+            return stamp_metric_provenance(rows, "competitive_landscape")
         except Exception as exc:
             logger.warning("competitive_landscape unavailable: %s", exc)
             log_mv_fallback(
@@ -288,7 +356,7 @@ class PharmaMetrics:
                 rt_rows = realtime_competitive_landscape(self.db, topic, limit=limit)
                 if not rt_rows and original_topic and original_topic.lower() != topic.lower():
                     rt_rows = realtime_competitive_landscape(self.db, original_topic, limit=limit)
-                return rt_rows
+                return stamp_metric_provenance(rt_rows, "competitive_landscape", realtime=True)
             return []
 
     def company_portfolio(
@@ -312,7 +380,7 @@ class PharmaMetrics:
         params.append(limit)
 
         try:
-            return self.db.fetch_all(
+            rows = self.db.fetch_all(
                 f"""
                 SELECT company_id, company_name, ticker, country,
                        drug_count, trial_count, active_trial_count,
@@ -324,6 +392,7 @@ class PharmaMetrics:
                 """,
                 params,
             )
+            return stamp_metric_provenance(rows, "company_portfolio")
         except Exception as exc:
             logger.warning("company_portfolio unavailable: %s", exc)
             log_mv_fallback(
