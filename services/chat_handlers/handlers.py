@@ -890,6 +890,33 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     result = engine.compare_entities([r["entity_id"] for r in resolved], resolved[0]["entity_type"])
     names = [r["label"] for r in resolved]
 
+    # ── DI-2/DI-3: Domain-Intelligence decomposition ──
+    # Decompose the comparison into the dimensions a domain analyst examines,
+    # fill each from grounded ledger facts, and assemble a matrix. The matrix
+    # drives a grounded per-dimension narrative + structured LLM context so the
+    # answer reflects real facts with explicit gaps (never invented). Falls back
+    # silently to the legacy metric/graph comparison when no playbook matches.
+    di_matrix = None
+    di_narrative = ""
+    di_context = ""
+    di_lead = ""
+    try:
+        from services.domain_intelligence.planner import DecompositionPlanner
+        from services.domain_intelligence.synthesis import (
+            synthesize_matrix, matrix_to_context, matrix_insight_lead,
+        )
+        di_entities = [
+            {"entity_id": r["entity_id"], "entity_type": r["entity_type"], "label": r["label"]}
+            for r in resolved
+        ]
+        di_matrix = DecompositionPlanner(db).plan("compare", di_entities)
+        if di_matrix is not None:
+            di_narrative = synthesize_matrix(di_matrix)
+            di_context = matrix_to_context(di_matrix)
+            di_lead = matrix_insight_lead(di_matrix)
+    except Exception as exc:
+        logger.debug("Domain-intelligence decomposition skipped: %s", exc)
+
     # Template fallback
     template_parts = [f"Comparison of **{' vs '.join(names)}**."]
     if result.get("shared_connections"):
@@ -913,8 +940,10 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
                     f"Success rate: {float(sr['success_rate']):.1f}%."
                 )
 
-    # LLM synthesis
-    fallback = " ".join(template_parts)
+    # LLM synthesis. When the DI matrix is available, the grounded
+    # per-dimension narrative is the FALLBACK floor (correct even with the LLM
+    # off — no fabrication), and the legacy metric template trails it as colour.
+    fallback = di_narrative if di_narrative else " ".join(template_parts)
 
     # Build per-entity metrics for LLM
     metrics_for_llm = {}
@@ -925,7 +954,10 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
 
     # Pre-compute differentials so the LLM can cite them directly
     comparison_insights = compute_comparison_insights(resolved, metrics_comp)
-    if comparison_insights:
+    # DI-3: lead with the grounded key differentiator from the matrix.
+    if di_lead:
+        comparison_insights = f"{di_lead}\n\n{comparison_insights}" if comparison_insights else di_lead
+    if comparison_insights and not di_narrative:
         fallback = fallback + "\n\n" + comparison_insights
 
     # Activate domain concepts for compare + resolved entity types
@@ -935,6 +967,16 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     if compare_concept_hint:
         comparison_insights = f"{compare_concept_hint}\n\n{comparison_insights}" if comparison_insights else compare_concept_hint
 
+    # DI-3: feed the grounded decomposition matrix as extra context so the LLM
+    # answer reflects the per-dimension facts and reports gaps rather than
+    # filling them from training data. The matrix marks every GAP cell so the
+    # model cannot silently invent.
+    compare_extra_context = conv_context or ""
+    if di_context:
+        compare_extra_context = (
+            f"{di_context}\n\n{compare_extra_context}" if compare_extra_context else di_context
+        )
+
     narrative = llm.synthesize_comparison(
         entity_names=names,
         metrics_by_entity=metrics_for_llm,
@@ -942,7 +984,7 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         unique_connections=result.get("unique_connections"),
         fallback_narrative=fallback,
         computed_insights=comparison_insights,
-        extra_context=conv_context if conv_context else None,
+        extra_context=compare_extra_context if compare_extra_context else None,
     )
 
     # Normalize to standard QueryResponse format for frontend rendering
@@ -986,13 +1028,18 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         metrics_available=bool(metrics_comp),
     )
 
-    return {
+    payload = {
         "narrative": narrative,
         "intent": "compare",
         "confidence": confidence,
         "data": normalized_data,
         "table_data": comparison_table,
     }
+    # DI-2/DI-3: surface the structured decomposition matrix so the caller/UI can
+    # render the entities × dimensions grid with per-cell coverage + citations.
+    if di_matrix is not None:
+        payload["decomposition"] = di_matrix.to_dict()
+    return payload
 
 
 def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "", db=None, engine=None) -> dict:
