@@ -228,9 +228,13 @@ _FETCH_SQL = """
 """
 
 
-def _fetch_events(db, limit, since_days, event_types) -> list[dict]:
+def _fetch_events(db, limit, since_days, event_types, active_only=False) -> list[dict]:
     clauses: list[str] = []
     params: list[Any] = []
+    if active_only:
+        # D2: never re-emit a fact for a soft-deleted (superseded) event — that
+        # would re-create the orphans the dedup just removed.
+        clauses.append("record_status IS DISTINCT FROM 'superseded'")
     if since_days is not None:
         clauses.append("created_at >= NOW() - (%s || ' days')::interval")
         params.append(str(int(since_days)))
@@ -256,10 +260,14 @@ def backfill_facts_from_events(
     limit: Optional[int] = None,
     since_days: Optional[int] = None,
     event_types: Optional[list[str]] = None,
+    active_only: bool = False,
 ) -> BackfillStats:
-    """Assert facts for existing market_events. Idempotent — safe to re-run."""
+    """Assert facts for existing market_events. Idempotent — safe to re-run.
+
+    ``active_only`` skips soft-deleted (record_status='superseded') events so a
+    post-D2-dedup re-emit never re-grounds a dropped duplicate."""
     stats = BackfillStats()
-    for event in _fetch_events(db, limit, since_days, event_types):
+    for event in _fetch_events(db, limit, since_days, event_types, active_only):
         stats.scanned += 1
         status, _ = _assert_with_status(db, event)
         if status == "asserted":

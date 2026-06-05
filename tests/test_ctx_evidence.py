@@ -106,6 +106,25 @@ def test_large_payload_compresses():
         assert "build_ms" in metrics
 
 
+def test_provenance_source_survives_compression():
+    """D5: a citeable source id (provenance.source_url) must survive entity
+    merge so a compressed L2 snippet still drills through. 20 identical items
+    merge to one entity (high-ratio CTX, deterministically ctx mode); the src
+    text must appear in the compressed output, not just the dropped provenance."""
+    items = [{
+        "content": "Semaglutide: GLP-1 receptor agonist for type 2 diabetes and "
+                   "obesity developed by Novo Nordisk with SUSTAIN and PIONEER "
+                   "cardiovascular outcome programs and oral plus subcutaneous "
+                   "formulations widely studied",
+        "entity_type": "drug",
+        "entity_id": f"id-{i}",
+        "provenance": {"source_url": "https://clinicaltrials.gov/NCT0SEMA"},
+    } for i in range(20)]
+    text, metrics = pack_evidence(items)
+    assert metrics["mode"] == "ctx", metrics  # high redundancy → must compress
+    assert "clinicaltrials.gov/NCT0SEMA" in text  # source survives the merge
+
+
 def test_no_merges_small_count_passes_through():
     """3 unique entities with no merges should pass through."""
     # Make items large enough to pass threshold but with unique names

@@ -163,6 +163,22 @@ class TestFetchSqlColumns:
         assert "as entity_type" in sql
         assert "as source_feed" in sql
 
+    def test_active_only_filters_superseded_events(self):
+        """D2: active_only=True must exclude soft-deleted (superseded) events so
+        a post-dedup re-emit never re-grounds a dropped duplicate."""
+        captured = {}
+
+        class _DB:
+            def fetch_all(self, sql, params=None):
+                captured["sql"] = sql.lower()
+                return []
+
+        fi._fetch_events(_DB(), None, None, None, active_only=True)
+        assert "record_status is distinct from 'superseded'" in captured["sql"]
+        # default (active_only=False) must NOT add the filter
+        fi._fetch_events(_DB(), None, None, None)
+        assert "record_status" not in captured["sql"]
+
 
 class TestBackfill:
     def test_counts_asserted_and_skipped(self, monkeypatch):

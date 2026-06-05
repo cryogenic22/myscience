@@ -55,7 +55,7 @@ ORPHAN_CEILINGS = {
     "bioactivities.drug_id": 0.95,          # legacy unlinked rows remain; new rows link
     "clinical_trials.drug_id": 0.15,
     "adverse_events.drug_id": 0.10,
-    "facts.source_doc_id": 0.40,            # D5 (not yet done) will push this <10%
+    "facts.source_doc_id": 0.10,            # D5 done — backfilled to ~0% NULL
 }
 
 
@@ -154,7 +154,8 @@ def test_fk_orphan_share_under_ceiling(conn, label):
 @live
 def test_fact_ledger_has_evidence_floor(conn):
     """A meaningful share of ledger facts carry an evidence link (source_doc_id),
-    so the dossier can drill through. Floor is conservative (D5 will raise it)."""
+    so the dossier can drill through. Floor raised to 0.90 after the D5 backfill
+    (scripts/backfill_evidence.py) — live NULL share is ~0%."""
     n_null, total = _scalar(
         conn,
         "SELECT count(*) FILTER (WHERE source_doc_id IS NULL), count(*) "
@@ -163,7 +164,7 @@ def test_fact_ledger_has_evidence_floor(conn):
     if total == 0:
         pytest.skip("ledger empty")
     with_evidence = 1 - (n_null / total)
-    assert with_evidence >= 0.50, f"only {with_evidence:.0%} of facts have evidence links"
+    assert with_evidence >= 0.90, f"only {with_evidence:.0%} of facts have evidence links"
 
 
 @live
