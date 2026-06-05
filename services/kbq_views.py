@@ -45,6 +45,7 @@ _PREDICATE_KBQ: dict[str, int] = {
     "safety_signal": 3,
     "key_publication": 3,
     "mechanism_of_action": 3,
+    "target_activity": 3,       # D3 — ChEMBL drug→target binding (IC50/Ki/EC50)
     "wac_usd": 7,               # Pricing
     "drug_pricing": 7,          # future-proof (no rows yet)
     "product_sales": 5,         # Sales & Sentiment (L7 — product-level net sales)

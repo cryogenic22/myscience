@@ -198,6 +198,9 @@ class ChEMBLConnector(BaseConnector):
                     identifiers={
                         "chembl_id": chembl_id,
                         "target_chembl_id": target_name,
+                        # D3: link the drug so the MOA's molecular_target row
+                        # joins the drug spine.
+                        "generic_name": drug_name,
                     },
                 ))
         except Exception as e:
@@ -250,6 +253,10 @@ class ChEMBLConnector(BaseConnector):
                     identifiers={
                         "chembl_id": chembl_id,
                         "activity_id": str(activity_id),
+                        # D3: carry the drug name so the entity resolver links a
+                        # drug_id — without it bioactivities.drug_id stayed 100%
+                        # NULL (the resolver had no drug identifier to match).
+                        "generic_name": drug_name,
                     },
                 ))
         except Exception as e:

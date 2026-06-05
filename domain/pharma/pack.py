@@ -352,6 +352,18 @@ def get_pharma_pack() -> DomainPack:
             target_entity="drug_label",
             stored_id_is="target",
         ),
+
+        # Bioactivity → drug (D3). ChEMBL activity rows carry generic_name; this
+        # joins drug → bioactivity into the entity graph (the bioactivity→target
+        # FK is set in the store via _upsert_target_by_chembl).
+        LinkRule(
+            record_type="bioactivity",
+            identifier_key="generic_name",
+            link_type="HAS_BIOACTIVITY",
+            source_entity="drug",
+            target_entity="bioactivity",
+            stored_id_is="target",
+        ),
     ]
 
     # ── Field Mappings ──────────────────────────────────────────
