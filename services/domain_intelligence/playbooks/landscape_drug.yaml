@@ -1,0 +1,57 @@
+# DI-4 — competitive-landscape playbook (asset-centric).
+#
+# Encoded domain expertise: to map the competitive landscape AROUND an asset, an
+# analyst asks who it competes with, on what mechanism the competition turns, and
+# how the field is positioned (sales / pricing pressure). The competitive set is
+# the load-bearing dimension and it lives in the entity graph — so this playbook
+# leans on the now-executed link:COMPETES_WITH route, backed by the ledger's
+# competitor / market_share predicates.
+#
+# Fires for "competitive landscape for X" / "who competes with X" when X resolves
+# to a single drug.
+
+id: landscape.drug
+pack: pharma
+trigger:
+  intent: landscape
+  entities: "drug"
+synthesis:
+  shape: landscape
+  lead_with: competitive_set
+
+dimensions:
+  - key: competitive_set
+    label: Competitive set
+    sub_question: "Which drugs compete with {entity}?"
+    routes:
+      - link:COMPETES_WITH
+      - predicate:competitor
+    required: true
+    weight: 1.0
+
+  - key: mechanism
+    label: Shared mechanism / class
+    sub_question: "What drug class / mechanism defines {entity}'s competitive field?"
+    routes:
+      - predicate:mechanism_of_action
+      - predicate:target_activity
+    required: false
+    weight: 0.7
+
+  - key: market_position
+    label: Market position
+    sub_question: "What is {entity}'s market position — sales and share?"
+    routes:
+      - predicate:product_sales
+      - predicate:market_share
+    required: false
+    weight: 0.8
+
+  - key: pricing_access
+    label: Pricing pressure
+    sub_question: "What pricing / access pressure shapes {entity}'s market?"
+    routes:
+      - predicate:wac_usd
+      - predicate:pricing_intent
+    required: false
+    weight: 0.6
