@@ -145,7 +145,8 @@ def find_decisions_with_outcomes(
     rows = db.fetch_all(
         f"""
         SELECT id, calibration_score, actual_outcome_recorded_at,
-               war_room_id, source_signal_id, owner_user_id, created_at
+               war_room_id, source_signal_id, owner_user_id, created_at,
+               move_type, status
           FROM decisions
          WHERE {' AND '.join(where)}
          ORDER BY actual_outcome_recorded_at ASC
@@ -222,6 +223,127 @@ def find_source_ids_for_decision(db, decision: dict) -> tuple[list[str], str]:
             logger.debug("signal lookup failed for %s: %s", sig_id, exc)
 
     return [], "no_attribution_path"
+
+
+# Fallback rule_version_id stamped on signal_score_adjustments derived
+# from a decision that has no matched signal. Keyed by move_type so the
+# Phase-2 recalibration job can still aggregate by (rule_version, kbq).
+DECISION_RULE_VERSION = "decision-outcome-v1"
+
+
+def _kbq_tags_for_decision(db, decision: dict) -> tuple[list[str], Optional[str], Optional[str]]:
+    """Resolve the (kbq_tags, rule_version_id, matched_signal_id) context
+    used to key a signal_score_adjustments row for a realized outcome.
+
+    Resolution order (most-specific first):
+      1. A confirmed outcome_proposals row → its matched signal's
+         kbq_tags + rule_version_id (the AI-detected outcome signal).
+      2. The decision's source_signal_id → that signal's kbq_tags +
+         rule_version_id (the seed signal).
+      3. Fallback: the decision's move_type as the single kbq_tag and
+         DECISION_RULE_VERSION (so the loop still produces a row even
+         for hand-recorded outcomes with no signal attribution).
+    """
+    decision_id = str(decision["id"])
+
+    # Path 1: confirmed proposal → matched signal
+    try:
+        row = db.fetch_one(
+            """
+            SELECT s.id AS signal_id, s.kbq_tags, s.rule_version_id
+              FROM outcome_proposals p
+              JOIN signals s ON s.id = p.matched_signal_id
+             WHERE p.decision_id::text = %s AND p.status = 'confirmed'
+             ORDER BY p.resolved_at DESC NULLS LAST
+             LIMIT 1
+            """,
+            (decision_id,),
+        )
+        if row and (row.get("kbq_tags") or row.get("rule_version_id")):
+            tags = [str(t) for t in (row.get("kbq_tags") or [])] or ["uncategorized"]
+            return tags, row.get("rule_version_id"), str(row["signal_id"])
+    except Exception as exc:
+        logger.debug("confirmed-proposal kbq lookup failed for %s: %s", decision_id, exc)
+
+    # Path 2: the decision's seed signal
+    sig_id = decision.get("source_signal_id")
+    if sig_id:
+        try:
+            row = db.fetch_one(
+                "SELECT kbq_tags, rule_version_id FROM signals WHERE id::text = %s",
+                (str(sig_id),),
+            )
+            if row and (row.get("kbq_tags") or row.get("rule_version_id")):
+                tags = [str(t) for t in (row.get("kbq_tags") or [])] or ["uncategorized"]
+                return tags, row.get("rule_version_id"), str(sig_id)
+        except Exception as exc:
+            logger.debug("seed-signal kbq lookup failed for %s: %s", decision_id, exc)
+
+    # Path 3: fallback on move_type
+    move_type = decision.get("move_type") or "uncategorized"
+    return [str(move_type)], DECISION_RULE_VERSION, None
+
+
+def emit_signal_score_adjustment(
+    db, *, decision: dict, calibration_score: float, verdict: Optional[str] = None,
+) -> int:
+    """Append signal_score_adjustments row(s) for a realized decision outcome.
+
+    This is the load-bearing F6/C6 step: it turns a recorded outcome into
+    a learning row keyed by (rule_version_id, kbq_tag) that the Phase-2
+    recalibration job aggregates to tune signal weights — closing the
+    decision→outcome→learn loop.
+
+    Idempotent: skips inserting a (decision_id, kbq_tag) pair that already
+    has a row, so re-running the scheduled learning loop over the same
+    outcome doesn't double-count. Returns the number of rows inserted.
+
+    `verdict` defaults to the decision's `status` when omitted (the
+    capture path sets status == verdict).
+    """
+    from services.outcome_detector import suggest_weight_delta
+
+    decision_id = str(decision["id"])
+    verdict = verdict or decision.get("status") or "verified"
+    cal = max(0.0, min(1.0, float(calibration_score)))
+    delta = suggest_weight_delta(calibration_score=cal, verdict=verdict)
+
+    kbq_tags, rule_version, matched_signal_id = _kbq_tags_for_decision(db, decision)
+    rule_version = rule_version or DECISION_RULE_VERSION
+
+    inserted = 0
+    for tag in kbq_tags:
+        # Idempotency guard — one row per (decision, kbq_tag)
+        try:
+            existing = db.fetch_one(
+                """SELECT 1 AS x FROM signal_score_adjustments
+                    WHERE decision_id::text = %s AND kbq_tag = %s LIMIT 1""",
+                (decision_id, tag),
+            )
+        except Exception:
+            existing = None
+        if existing:
+            continue
+        try:
+            db.execute(
+                """INSERT INTO signal_score_adjustments
+                       (rule_version_id, kbq_tag, decision_id,
+                        matched_signal_id, calibration_score,
+                        weight_delta_suggested, notes)
+                   VALUES (%s, %s, %s::uuid, %s, %s, %s, %s)""",
+                (
+                    rule_version, tag, decision_id,
+                    matched_signal_id, cal, delta,
+                    f"learning_service: outcome {verdict!r} on decision {decision_id}",
+                ),
+            )
+            inserted += 1
+        except Exception as exc:
+            logger.warning(
+                "signal_score_adjustments insert failed (decision=%s kbq=%s): %s",
+                decision_id, tag, exc,
+            )
+    return inserted
 
 
 def find_prompts_in_window(db, *, days: int = PROMPT_FLAG_WINDOW_DAYS) -> list[dict]:
@@ -315,13 +437,18 @@ class LearningService:
         attributions: list[SourceAttribution] = []
         skipped_reasons: dict[str, int] = {}
         attribution_methods: dict[str, int] = {}
+        signal_adjustments_emitted = 0
 
         try:
             decisions = find_decisions_with_outcomes(
                 db, since=since, limit=self.max_decisions,
             )
 
-            # Phase 1: per-decision source attribution + EWMA update
+            # Phase 1: per-decision learning. Two outputs from each outcome:
+            #   (a) signal_score_adjustments — keyed by (rule_version, kbq),
+            #       independent of the source registry (THE F6/C6 closure).
+            #   (b) source predictive_accuracy EWMA — only when the decision
+            #       can be attributed to a registered source.
             for d in decisions:
                 try:
                     cal = d.get("calibration_score")
@@ -333,13 +460,18 @@ class LearningService:
                         skipped_reasons["calibration_out_of_range"] = skipped_reasons.get("calibration_out_of_range", 0) + 1
                         continue
 
+                    decisions_processed += 1
+
+                    # (a) Always emit a signal score adjustment for the outcome.
+                    signal_adjustments_emitted += emit_signal_score_adjustment(
+                        db, decision=d, calibration_score=cal,
+                    )
+
+                    # (b) Best-effort source attribution + EWMA update.
                     sids, method = find_source_ids_for_decision(db, d)
                     attribution_methods[method] = attribution_methods.get(method, 0) + 1
                     if not sids:
                         skipped_reasons["no_source_attribution"] = skipped_reasons.get("no_source_attribution", 0) + 1
-                        continue
-
-                    decisions_processed += 1
                     for sid in sids:
                         attribution = self._update_source(
                             db, run_id=run_id, decision_id=str(d["id"]),
@@ -365,6 +497,7 @@ class LearningService:
                 "decisions_seen": len(decisions),
                 "decisions_processed": decisions_processed,
                 "sources_updated": sources_updated,
+                "signal_adjustments_emitted": signal_adjustments_emitted,
                 "prompts_flagged": len(prompt_flags),
                 "attribution_methods": attribution_methods,
                 "skipped_reasons": skipped_reasons,
