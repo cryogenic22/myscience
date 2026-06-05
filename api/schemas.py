@@ -92,6 +92,9 @@ class GraphEdgeResponse(BaseModel):
     confidence: float
     via: str = ""
     source: str = ""
+    # D6 — edge provenance for citeable graph claims
+    provenance_source: str = ""
+    as_of: str = ""
 
 
 class SubgraphResponse(BaseModel):

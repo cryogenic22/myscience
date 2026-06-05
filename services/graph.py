@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,14 @@ class GraphNode:
 
 @dataclass
 class GraphEdge:
-    """A directed edge in the knowledge graph."""
+    """A directed edge in the knowledge graph.
+
+    D6 provenance: a graph-edge claim ("X used alongside Y") was real but
+    unciteable. ``provenance_source`` (where the link was derived — a cross-link
+    rule, a connector, the LLM) and ``as_of`` (the edge's creation time) make it
+    drillable; ``via`` is the human-readable derivation. ``source`` carries the
+    derivation label for the response/synthesis layer.
+    """
 
     source_id: str
     target_id: str
@@ -39,6 +47,8 @@ class GraphEdge:
     confidence: float = 1.0
     via: str = ""
     source: str = ""
+    provenance_source: str = ""
+    as_of: str = ""
 
 
 @dataclass
@@ -145,12 +155,18 @@ class GraphTraversal:
             tgt = str(row["target_id"])
             entity_ids.add(src)
             entity_ids.add(tgt)
+            via = row.get("link_via") or ""
             edges.append(GraphEdge(
                 source_id=src,
                 target_id=tgt,
                 link_type=lt,
                 confidence=conf,
-                via=row.get("link_via") or "",
+                via=via,
+                # traverse_graph() returns no created_at/provenance_source, so
+                # derive the citeable source from the link_type + via (the
+                # cross-link rule that produced it); as_of is left for the
+                # direct-SELECT paths (path_between/entity_summary).
+                source=via or lt,
             ))
 
         # Resolve labels for all entities
@@ -202,7 +218,8 @@ class GraphTraversal:
         for i in range(len(path_ids) - 1):
             edge_row = self.db.fetch_one(
                 """
-                SELECT source_entity_id, target_entity_id, link_type, confidence, link_via
+                SELECT source_entity_id, target_entity_id, link_type, confidence,
+                       link_via, provenance_source, created_at
                 FROM entity_links
                 WHERE (source_entity_id = %s AND target_entity_id = %s)
                    OR (source_entity_id = %s AND target_entity_id = %s)
@@ -211,12 +228,18 @@ class GraphTraversal:
                 [path_ids[i], path_ids[i + 1], path_ids[i + 1], path_ids[i]],
             )
             if edge_row:
+                created = edge_row.get("created_at")
+                via = edge_row.get("link_via") or ""
+                prov = edge_row.get("provenance_source") or ""
                 path_edges.append(GraphEdge(
                     source_id=edge_row["source_entity_id"],
                     target_id=edge_row["target_entity_id"],
                     link_type=edge_row["link_type"],
                     confidence=float(edge_row.get("confidence") or 1.0),
-                    via=edge_row.get("link_via") or "",
+                    via=via,
+                    source=prov or via or edge_row["link_type"],
+                    provenance_source=prov,
+                    as_of=created.isoformat() if hasattr(created, "isoformat") else "",
                 ))
 
         return path_edges if path_edges else None
@@ -329,6 +352,14 @@ class GraphTraversal:
             "connections_by_type": {r["link_type"]: r["cnt"] for r in link_counts},
             "connections_by_entity_type": {r["connected_type"]: r["cnt"] for r in entity_type_counts},
             "total_connections": total,
+            # D6: a connection-count claim ("15 connections") is now citeable —
+            # derived from entity_links, counted at this timestamp.
+            "_provenance": {
+                "source": "entity_links",
+                "derivation": "COUNT(*) of entity_links incident on the entity, grouped by link_type",
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "record_basis": total,
+            },
         }
 
     def drugs_by_mechanism_class(self, mechanism_class: str) -> list[dict]:
