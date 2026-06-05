@@ -229,12 +229,13 @@ class PMCConnector(BaseConnector):
         results = []
 
         for article_elem in root.findall(".//article"):
-            # Extract PMC ID from article-id elements
-            pmc_id = None
-            for aid in article_elem.findall(".//article-id"):
-                if aid.get("pub-id-type") == "pmc":
-                    pmc_id = aid.text
-                    break
+            # Extract PMC ID from article-id elements. NCBI's PMC efetch XML no
+            # longer tags the PMC id as pub-id-type="pmc" — current responses use
+            # "pmcid" / "pmcaid" (numeric). The old code matched only "pmc", so
+            # every article was silently dropped → pmc_articles stayed empty
+            # despite a daily schedule and hundreds of SUCCESS runs. Accept all
+            # known PMC id variants in priority order.
+            pmc_id = self._extract_pmc_id(article_elem)
             if pmc_id:
                 # Ensure PMC prefix
                 if not pmc_id.startswith("PMC"):
@@ -242,6 +243,23 @@ class PMCConnector(BaseConnector):
                 results.append((pmc_id, article_elem))
 
         return results
+
+    @staticmethod
+    def _extract_pmc_id(article_elem: ET.Element) -> Optional[str]:
+        """Pull the PMC id from an <article>, tolerating NCBI's id-type variants.
+
+        Preference: pmcid (e.g. "PMC13236199") → pmc (legacy) → pmcaid/pmcaiid
+        (numeric). Returns None if no PMC id is present.
+        """
+        ids: dict[str, str] = {}
+        for aid in article_elem.findall(".//article-id"):
+            pub_type = aid.get("pub-id-type")
+            if pub_type and aid.text:
+                ids.setdefault(pub_type, aid.text)
+        for key in ("pmcid", "pmc", "pmcaid", "pmcaiid"):
+            if ids.get(key):
+                return ids[key]
+        return None
 
     def _parse_article(
         self, pmc_id: str, article_elem: ET.Element, searched_drug: str
