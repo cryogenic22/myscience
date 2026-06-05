@@ -519,6 +519,32 @@ class TestLLMLookup:
 
         assert "generic_name" not in result.resolved_links
 
+    def test_llm_null_similarity_does_not_crash(self):
+        """Regression (D1): a candidate row with NULL `sim` (the {column} was
+        NULL for some stub row) must not crash float(None). The COALESCE/`or 0`
+        guard makes it gracefully reject. Surfaced live recovering openFDA
+        labels — 12 records failed on `float(None)` before the fix."""
+        db = MockResolverDB()
+        db.add_fetch_all("where similarity", [])
+        db.add_fetch_all("order by similarity", [
+            {"id": "uuid-stub", "name": None, "sim": None},
+        ])
+        resolver = EntityResolver(db, _make_config(
+            llm_resolution_enabled=True,
+            llm_confidence_threshold=0.75,
+            auto_create_entities=False,
+            resolution_audit_enabled=False,
+        ))
+        mock_openai = MagicMock()
+        mock_openai.embeddings.create.side_effect = Exception("skip")
+        resolver.openai_client = mock_openai
+
+        record = _make_record(identifiers={"generic_name": "x"})
+        result = resolver.resolve(record)  # must not raise
+
+        # NULL sim < 0.1 → candidate rejected, no link
+        assert "generic_name" not in result.resolved_links
+
 
 # ============================================================
 # Strategy 6: Auto-create entity

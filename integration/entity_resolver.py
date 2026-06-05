@@ -445,18 +445,22 @@ class EntityResolver:
 
         table, column, entity_type = self._fuzzy_match_fields[id_key]
 
-        # Get top 5 candidates (even below fuzzy threshold)
+        # Get top 5 candidates (even below fuzzy threshold).
+        # COALESCE the similarity: rows whose {column} is NULL yield a NULL
+        # similarity, and float(None) crashed the resolver (failed every record
+        # whose top candidate had a NULL name, e.g. unnamed drug stubs).
         candidates_rows = self.db.fetch_all(
             f"""
-            SELECT id, {column} AS name, similarity({column}, %s) AS sim
+            SELECT id, {column} AS name,
+                   COALESCE(similarity({column}, %s), 0) AS sim
             FROM {table}
-            ORDER BY similarity({column}, %s) DESC
+            ORDER BY similarity({column}, %s) DESC NULLS LAST
             LIMIT 5
             """,
             [value, value],
         )
 
-        if not candidates_rows or float(candidates_rows[0]["sim"]) < 0.1:
+        if not candidates_rows or float(candidates_rows[0]["sim"] or 0) < 0.1:
             return None
 
         source_type = record.raw.provenance.source_type.value
