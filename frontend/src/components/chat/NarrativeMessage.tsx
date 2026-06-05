@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink, Network } from 'lucide-react';
+import { FlaskConical, Shield, Flag, Building2, FileText, ExternalLink, Network, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { Message } from '../ChatMessage';
 import type { EvidenceItem, EntitySummary, GraphNode, GraphEdge } from '../../api';
 import { api } from '../../api';
@@ -15,6 +15,8 @@ function cleanPromptArtifacts(text: string): string {
 interface NarrativeMessageProps {
   message: Message;
   isUser: boolean;
+  /** The user question this answer responds to — sent with C2 feedback. */
+  question?: string;
   onFollowUp?: (q: string) => void;
   onCitationClick?: (index: number) => void;
   onEntityClick?: (entityId: string, entityType: string) => void;
@@ -24,6 +26,7 @@ interface NarrativeMessageProps {
 export default function NarrativeMessage({
   message,
   isUser,
+  question,
   onFollowUp,
   onCitationClick,
   onEntityClick,
@@ -122,6 +125,15 @@ export default function NarrativeMessage({
                 </button>
               )}
 
+              {/* C2 — answer feedback (thumbs up/down) */}
+              {!message.loading && (
+                <AnswerFeedback
+                  question={question}
+                  intent={message.intent}
+                  answerExcerpt={message.content}
+                />
+              )}
+
               {/* Follow-up suggestions */}
               {onFollowUp && message.followupSuggestions && message.followupSuggestions.length > 0 && (
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -156,6 +168,97 @@ export default function NarrativeMessage({
         </div>
       )}
     </motion.div>
+  );
+}
+
+/* ── C2 answer feedback (thumbs up/down) ── */
+
+function AnswerFeedback({
+  question,
+  intent,
+  answerExcerpt,
+}: {
+  question?: string;
+  intent?: string;
+  answerExcerpt?: string;
+}) {
+  const [rating, setRating] = useState<1 | -1 | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = useCallback(
+    (value: 1 | -1) => {
+      if (submitting || rating === value || !question) return;
+      setSubmitting(true);
+      setRating(value); // optimistic
+      api
+        .chatFeedback({
+          question,
+          rating: value,
+          intent,
+          answerExcerpt,
+        })
+        .catch(() => {
+          // Revert on failure so the user can retry.
+          setRating(null);
+        })
+        .finally(() => setSubmitting(false));
+    },
+    [question, intent, answerExcerpt, rating, submitting],
+  );
+
+  // No question to attribute feedback to — don't render the control.
+  if (!question) return null;
+
+  const btn = (active: boolean): React.CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '5px',
+    border: 'none',
+    background: active ? 'var(--color-accent-soft)' : 'none',
+    borderRadius: '7px',
+    cursor: rating !== null ? 'default' : 'pointer',
+    color: active ? 'var(--color-accent)' : 'var(--color-ink-4)',
+    transition: 'background 0.15s, color 0.15s',
+  });
+
+  return (
+    <div
+      data-testid="answer-feedback"
+      className="flex items-center gap-1"
+      style={{ marginTop: '12px' }}
+    >
+      <button
+        type="button"
+        data-testid="feedback-up"
+        aria-label="Helpful answer"
+        aria-pressed={rating === 1}
+        disabled={rating !== null}
+        onClick={() => submit(1)}
+        style={btn(rating === 1)}
+      >
+        <ThumbsUp size={14} />
+      </button>
+      <button
+        type="button"
+        data-testid="feedback-down"
+        aria-label="Unhelpful answer"
+        aria-pressed={rating === -1}
+        disabled={rating !== null}
+        onClick={() => submit(-1)}
+        style={btn(rating === -1)}
+      >
+        <ThumbsDown size={14} />
+      </button>
+      {rating !== null && (
+        <span
+          data-testid="feedback-thanks"
+          style={{ fontSize: '11px', color: 'var(--color-ink-4)', marginLeft: '4px' }}
+        >
+          Thanks for the feedback
+        </span>
+      )}
+    </div>
   );
 }
 
