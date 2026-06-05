@@ -22,6 +22,34 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def build_openfda_date_search(
+    base_query: str,
+    since: Optional[datetime],
+    date_field: str,
+) -> str:
+    """Build an openFDA Lucene ``search`` string with an optional date range.
+
+    openFDA accepts ``AND`` as a space-separated keyword and date ranges as
+    ``field:[YYYYMMDD TO YYYYMMDD]``. ``requests`` URL-encodes the spaces to
+    ``+`` correctly. The previous implementation hard-coded literal ``+AND+``
+    and ``+TO+`` into the query string, which ``requests`` then re-encoded to
+    ``%2BAND%2B`` — openFDA rejects that with HTTP 500, so every incremental
+    (scheduled) run silently fetched 0 rows while still recording SUCCESS. That
+    is why ``drug_labels`` / ``adverse_events`` went stale on 19-Feb. Pass the
+    range as a normal string and let ``requests`` do the encoding.
+
+    Args:
+        base_query: the field query, e.g. ``openfda.generic_name:"semaglutide"``.
+        since: incremental cut-off; if None, no date clause is appended.
+        date_field: the openFDA date field — ``effective_time`` for labels,
+            ``receivedate`` for FAERS.
+    """
+    if since is None:
+        return base_query
+    date_str = since.strftime("%Y%m%d")
+    return f"{base_query} AND {date_field}:[{date_str} TO 20991231]"
+
+
 # ============================================================
 # Enums
 # ============================================================

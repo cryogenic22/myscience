@@ -1399,7 +1399,8 @@ class KnowledgeStore:
                     gene_symbol,
                     data.get("target_name") or data.get("name") or gene_symbol or "Unknown",
                     data.get("organism"),
-                    data.get("target_type"),
+                    # target_type is NOT NULL (default 'SINGLE PROTEIN').
+                    data.get("target_type") or "SINGLE PROTEIN",
                     chembl_id,
                     ensembl_id,
                     data.get("uniprot_id"),
@@ -1410,6 +1411,54 @@ class KnowledgeStore:
             )
             return new_id, True
 
+    def _upsert_target_by_chembl(self, data: dict, prov) -> Optional[str]:
+        """Upsert a molecular_targets row keyed on the *target's* ChEMBL id.
+
+        D3: a bioactivity/mechanism record carries the target via
+        ``target_chembl_id`` / ``target_name`` (distinct from the molecule's
+        ``chembl_id``). Resolving/creating the target here populates
+        molecular_targets (was 0 rows) and yields the FK for bioactivities.
+        Returns the target id, or None if no target info is present."""
+        target_chembl = data.get("target_chembl_id")
+        target_name = data.get("target_name")
+        if not target_chembl and not target_name:
+            return None
+        row = None
+        if target_chembl:
+            row = self.db.fetch_one(
+                "SELECT id FROM molecular_targets WHERE chembl_id = %s", [target_chembl]
+            )
+        if not row and target_name:
+            row = self.db.fetch_one(
+                "SELECT id FROM molecular_targets WHERE name = %s", [target_name]
+            )
+        if row:
+            return str(row["id"])
+        import uuid
+
+        new_id = str(uuid.uuid4())
+        self.db.execute(
+            """
+            INSERT INTO molecular_targets
+                (id, name, chembl_id, organism, target_type,
+                 source_api, source_url, retrieved_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                new_id,
+                target_name or target_chembl or "Unknown target",
+                target_chembl,
+                data.get("target_organism") or data.get("organism"),
+                # target_type is NOT NULL (default 'SINGLE PROTEIN'); the ChEMBL
+                # activity endpoint omits it, so fall back rather than pass NULL.
+                data.get("target_type") or "SINGLE PROTEIN",
+                prov.source_type.value,
+                prov.api_endpoint,
+                prov.retrieved_at,
+            ],
+        )
+        return new_id
+
     def _store_bioactivity(self, record: EmbeddedRecord, etl_run_id: str) -> tuple[str, bool]:
         """Store a bioactivity measurement from ChEMBL or similar sources."""
         data = record.resolved.normalized.canonical_data
@@ -1418,6 +1467,15 @@ class KnowledgeStore:
         chembl_activity_id = data.get(
             "chembl_activity_id", record.resolved.normalized.raw.external_id
         )
+
+        # D3: link drug + target so bioactivities joins the spine (was 100% NULL
+        # drug_id, 0 molecular_targets). drug_id from the resolved generic_name
+        # link (added to the connector's identifiers); target_id upserted from
+        # the activity's own target fields.
+        links = record.resolved.resolved_links or {}
+        drug_link = links.get("generic_name")
+        drug_id = drug_link.entity_id if drug_link else None
+        target_id = self._upsert_target_by_chembl(data, prov)
 
         row = self.db.fetch_one(
             "SELECT id FROM bioactivities WHERE chembl_activity_id = %s",
@@ -1428,7 +1486,14 @@ class KnowledgeStore:
             self.db.execute(
                 """
                 UPDATE bioactivities
-                SET activity_type = COALESCE(%s, activity_type),
+                -- Overwrite drug_id/target_id when a fresh resolution exists
+                -- (not COALESCE): the resolver is the authority and now excludes
+                -- merged dup rows, so a re-run must re-point a stale merged
+                -- drug_id to the canonical one. Falls back to the existing value
+                -- only when this run produced no link.
+                SET drug_id = COALESCE(%s, drug_id),
+                    target_id = COALESCE(%s, target_id),
+                    activity_type = COALESCE(%s, activity_type),
                     activity_value = COALESCE(%s, activity_value),
                     activity_units = COALESCE(%s, activity_units),
                     assay_type = COALESCE(%s, assay_type),
@@ -1438,6 +1503,8 @@ class KnowledgeStore:
                 WHERE id = %s
                 """,
                 [
+                    drug_id,
+                    target_id,
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),
                     data.get("activity_units") or data.get("standard_units"),
@@ -1457,13 +1524,15 @@ class KnowledgeStore:
             self.db.execute(
                 """
                 INSERT INTO bioactivities
-                    (id, chembl_activity_id, activity_type, activity_value,
-                     activity_units, assay_type, pchembl_value, assay_description,
-                     source_api, retrieved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, drug_id, target_id, chembl_activity_id, activity_type,
+                     activity_value, activity_units, assay_type, pchembl_value,
+                     assay_description, source_api, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     new_id,
+                    drug_id,
+                    target_id,
                     chembl_activity_id,
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),

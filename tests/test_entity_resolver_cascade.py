@@ -227,6 +227,23 @@ class TestAliasLookup:
         assert link.matched_via == "alias"
         assert link.confidence == 0.95
 
+    def test_alias_to_merged_drug_is_skipped(self):
+        """RC1 regression: an alias pointing at a merged/superseded drug must be
+        ignored so resolution falls through to fuzzy (canonical row). Otherwise
+        fresh data is linked onto a dead duplicate."""
+        db = MockResolverDB()
+        db.add_fetch_one("entity_aliases", {"entity_id": "uuid-merged", "confidence": 0.95})
+        db.add_fetch_one("record_status from drugs", {"record_status": "merged"})
+        # fuzzy fallback finds the canonical active row
+        db.add_fetch_all("similarity", [{"id": "uuid-canonical", "name": "semaglutide", "sim": 0.99}])
+        resolver = EntityResolver(db, _make_config(resolution_audit_enabled=False))
+
+        result = resolver.resolve(_make_record(identifiers={"generic_name": "ozempic"}))
+        link = result.resolved_links.get("generic_name")
+        assert link is not None
+        assert link.entity_id == "uuid-canonical"
+        assert link.matched_via == "fuzzy"  # alias was skipped
+
     def test_alias_miss_falls_through_to_fuzzy(self):
         """When alias table has no match, resolver should try fuzzy next."""
         db = MockResolverDB()
@@ -289,6 +306,27 @@ class TestFuzzyLookup:
         link = result.resolved_links.get("generic_name")
         assert link is not None
         assert link.entity_id == "uuid-drug-1"
+
+    def test_fuzzy_excludes_merged_rows_for_drugs(self):
+        """D3 regression: drug fuzzy lookup must exclude soft-deleted dup rows
+        (record_status merged/superseded) and rank by richness — otherwise the
+        resolver links fresh data onto a dead duplicate (RC1) and downstream
+        emitters silently skip it."""
+        captured: list[str] = []
+
+        class _CapDB(MockResolverDB):
+            def fetch_all(self, sql, params=None):
+                captured.append(sql)
+                return super().fetch_all(sql, params)
+
+        db = _CapDB()
+        db.add_fetch_all("similarity", [{"id": "uuid-drug-1", "name": "semaglutide", "sim": 0.95}])
+        resolver = EntityResolver(db, _make_config(resolution_audit_enabled=False))
+        resolver.resolve(_make_record(identifiers={"generic_name": "semaglutide"}))
+
+        fuzzy_sql = next((s for s in captured if "similarity" in s.lower() and "where" in s.lower()), "")
+        assert "record_status" in fuzzy_sql.lower()
+        assert "merged" in fuzzy_sql.lower()
 
     def test_fuzzy_match_below_threshold_returns_none(self):
         """Similarity below threshold should not match."""
@@ -517,6 +555,32 @@ class TestLLMLookup:
         record = _make_record(identifiers={"generic_name": "brand new compound"})
         result = resolver.resolve(record)
 
+        assert "generic_name" not in result.resolved_links
+
+    def test_llm_null_similarity_does_not_crash(self):
+        """Regression (D1): a candidate row with NULL `sim` (the {column} was
+        NULL for some stub row) must not crash float(None). The COALESCE/`or 0`
+        guard makes it gracefully reject. Surfaced live recovering openFDA
+        labels — 12 records failed on `float(None)` before the fix."""
+        db = MockResolverDB()
+        db.add_fetch_all("where similarity", [])
+        db.add_fetch_all("order by similarity", [
+            {"id": "uuid-stub", "name": None, "sim": None},
+        ])
+        resolver = EntityResolver(db, _make_config(
+            llm_resolution_enabled=True,
+            llm_confidence_threshold=0.75,
+            auto_create_entities=False,
+            resolution_audit_enabled=False,
+        ))
+        mock_openai = MagicMock()
+        mock_openai.embeddings.create.side_effect = Exception("skip")
+        resolver.openai_client = mock_openai
+
+        record = _make_record(identifiers={"generic_name": "x"})
+        result = resolver.resolve(record)  # must not raise
+
+        # NULL sim < 0.1 → candidate rejected, no link
         assert "generic_name" not in result.resolved_links
 
 
