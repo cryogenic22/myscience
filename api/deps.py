@@ -128,7 +128,10 @@ def get_entity_canonicalizer():
 
 @lru_cache()
 def get_llm() -> LLMSynthesizer:
-    return LLMSynthesizer(config)
+    # C1 (learning loops): inject the shared DB handle so every synthesis call
+    # is recorded in llm_call_log 1:1 (gateway-bypass fix). Logging is
+    # fire-and-forget inside LLMSynthesizer, so this never affects the response.
+    return LLMSynthesizer(config, db=get_db())
 
 
 @lru_cache()
