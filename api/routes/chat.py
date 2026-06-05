@@ -794,6 +794,71 @@ def export_report(body: dict):
     )
 
 
+# ── Chat answer feedback (C2 — learning loops) ──
+
+@router.post("/feedback")
+def submit_chat_feedback(
+    body: dict,
+    db: Database = Depends(get_db),
+):
+    """Record a thumbs up/down on a chat answer — the missing training signal.
+
+    Body: {question, rating (1|-1|"up"|"down"), session_id?, comment?,
+           intent?, answer_excerpt?}. Persists to chat_answer_feedback,
+    soft-linked to the matching query_telemetry row.
+    """
+    from services import chat_feedback as cf
+
+    question = str(body.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    raw_rating = body.get("rating")
+    if isinstance(raw_rating, str):
+        rmap = {"up": 1, "down": -1, "1": 1, "-1": -1}
+        rating = rmap.get(raw_rating.strip().lower())
+    else:
+        rating = raw_rating
+    if rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="rating must be 1 (up) or -1 (down)")
+
+    try:
+        rec = cf.record_feedback(
+            db,
+            question=question,
+            rating=int(rating),
+            session_id=str(body.get("session_id") or "").strip() or None,
+            comment=str(body.get("comment") or "").strip() or None,
+            intent=str(body.get("intent") or "").strip() or None,
+            answer_excerpt=str(body.get("answer_excerpt") or "").strip() or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"feedback": rec}
+
+
+@router.get("/feedback")
+def get_chat_feedback(
+    question: str = Query(...),
+    limit: int = Query(50, ge=1, le=200),
+    db: Database = Depends(get_db),
+):
+    """Return feedback rows for a given question (latest first)."""
+    from services import chat_feedback as cf
+    rows = cf.list_feedback_for_question(db, question, limit=limit)
+    return {"feedback": rows, "count": len(rows)}
+
+
+@router.get("/feedback/summary")
+def get_chat_feedback_summary(
+    days: int = Query(30, ge=1, le=365),
+    db: Database = Depends(get_db),
+):
+    """Aggregate up/down satisfaction over the window."""
+    from services import chat_feedback as cf
+    return cf.feedback_summary(db, days=days)
+
+
 # ── Research jobs ──
 
 @router.post("/research-jobs")
