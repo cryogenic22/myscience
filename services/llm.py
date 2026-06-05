@@ -531,9 +531,14 @@ def _build_context_block(
 class LLMSynthesizer:
     """Synthesizes structured pharma data into analyst-grade narratives."""
 
-    def __init__(self, config):
+    def __init__(self, config, db=None):
         self.config = config
         self._client = None
+        # C1 (learning loops): optional DB handle so every production synthesis
+        # call lands in llm_call_log 1:1 — closes the gateway-bypass gap (~26
+        # logged calls vs ~78 chat queries). When db is None we behave exactly
+        # as before: no logging, no extra dependency.
+        self._db = db
 
     @property
     def enabled(self) -> bool:
@@ -547,6 +552,39 @@ class LLMSynthesizer:
             from openai import OpenAI
             self._client = OpenAI(api_key=self.config.llm.api_key)
         return self._client
+
+    def _log_call(
+        self,
+        *,
+        caller: str,
+        model,
+        prompt_text: str,
+        completion_text,
+        latency_ms: int,
+        succeeded: bool,
+        error=None,
+    ) -> None:
+        """C1: persist one llm_call_log row via the shared telemetry helper.
+        Fire-and-forget — telemetry must never break synthesis. No-op when no
+        db handle was injected (preserves DB-free unit tests)."""
+        if self._db is None:
+            return
+        try:
+            from services.llm_telemetry import log_llm_call, _est_tokens
+            log_llm_call(
+                self._db,
+                caller=caller,
+                model=model,
+                prompt_version=getattr(self.config.llm, "ctx_mode", "ctx"),
+                user_id=None,
+                latency_ms=latency_ms,
+                prompt_tokens=_est_tokens(prompt_text),
+                completion_tokens=_est_tokens(completion_text or ""),
+                succeeded=succeeded,
+                error_message=(str(error)[:500] if error else None),
+            )
+        except Exception:
+            logger.debug("llm _log_call failed", exc_info=True)
 
     def _post_validate(
         self,
@@ -605,6 +643,9 @@ class LLMSynthesizer:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
+        import time as _time
+        _t0 = _time.perf_counter()
+        _last_err = None
         for model in models:
             try:
                 resp = client.chat.completions.create(
@@ -615,10 +656,23 @@ class LLMSynthesizer:
                 )
                 text = (resp.choices[0].message.content or "").strip()
                 if text:
+                    self._log_call(
+                        caller="llm.raw_chat", model=model,
+                        prompt_text=system + "\n" + user, completion_text=text,
+                        latency_ms=int((_time.perf_counter() - _t0) * 1000),
+                        succeeded=True,
+                    )
                     return text
             except Exception as e:
+                _last_err = e
                 logger.warning("raw_chat model %s failed: %s", model, e)
                 continue
+        self._log_call(
+            caller="llm.raw_chat", model=(models[-1] if models else None),
+            prompt_text=system + "\n" + user, completion_text=None,
+            latency_ms=int((_time.perf_counter() - _t0) * 1000),
+            succeeded=False, error=_last_err,
+        )
         return None
 
     def synthesize(
@@ -677,6 +731,10 @@ class LLMSynthesizer:
             models.append(fallback_model)
 
         client = self._get_client()
+        import time as _time
+        _t0 = _time.perf_counter()
+        _last_err = None
+        _prompt_text = system_prompt + "\n" + context
         for model in models:
             try:
                 response = client.chat.completions.create(
@@ -689,6 +747,14 @@ class LLMSynthesizer:
                 if narrative:
                     if model != primary_model:
                         logger.info("Used fallback model %s (primary unavailable)", model)
+                    # C1: log the successful synthesis call before post-validation
+                    # (which only edits the text, not whether the call happened).
+                    self._log_call(
+                        caller=f"llm.synthesize:{intent}", model=model,
+                        prompt_text=_prompt_text, completion_text=narrative,
+                        latency_ms=int((_time.perf_counter() - _t0) * 1000),
+                        succeeded=True,
+                    )
                     # Post-synthesis validation
                     source_nums = _extract_source_numbers(metrics, evidence_snippets)
                     narrative = self._post_validate(
@@ -698,9 +764,16 @@ class LLMSynthesizer:
                     )
                     return narrative
             except Exception as e:
+                _last_err = e
                 logger.warning("Model %s failed: %s", model, e)
                 continue
 
+        self._log_call(
+            caller=f"llm.synthesize:{intent}", model=(models[-1] if models else None),
+            prompt_text=_prompt_text, completion_text=None,
+            latency_ms=int((_time.perf_counter() - _t0) * 1000),
+            succeeded=False, error=_last_err,
+        )
         return fallback_narrative
 
     def synthesize_stream(

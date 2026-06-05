@@ -1,0 +1,89 @@
+# DI-4 — single-drug dossier playbook.
+#
+# Encoded domain expertise: to build a dossier on ONE asset, an analyst examines
+# the same analytical dimensions as a comparison, but for a single entity — the
+# what-it-is (mechanism/indication), the evidence (efficacy/safety), the market
+# position (competition/pricing), and the regulatory path. Routes reuse the EXACT
+# predicates the fact ledger emits (services/dossier_kb._PREDICATE_DOMAIN +
+# services/kbq_views._PREDICATE_KBQ) plus the now-executed link/source routes:
+#   * competition → link:COMPETES_WITH (entity-graph rivals)
+#   * regulatory  → source:regulatory_milestones (FDA submissions table)
+#
+# Trigger signature is a single "drug" so it fires for "Tell me about X".
+
+id: dossier.drug
+pack: pharma
+trigger:
+  intent: dossier
+  entities: "drug"          # exactly one drug
+synthesis:
+  shape: dossier
+  lead_with: mechanism
+
+dimensions:
+  - key: mechanism
+    label: Mechanism & target
+    sub_question: "What is {entity}'s mechanism of action and molecular target?"
+    routes:
+      - predicate:mechanism_of_action
+      - predicate:target_activity
+    required: true
+    weight: 0.9
+
+  - key: indication
+    label: Indications
+    sub_question: "What is {entity} indicated for, and what disease does it address?"
+    routes:
+      - predicate:label_indication
+      - predicate:disease_evidence
+    required: true
+    weight: 0.8
+
+  - key: efficacy
+    label: Efficacy / clinical evidence
+    sub_question: "What efficacy and clinical evidence supports {entity}?"
+    routes:
+      - predicate:trial_result
+      - predicate:clinical_trial
+      - predicate:key_publication
+    required: true
+    weight: 1.0
+
+  - key: safety
+    label: Safety profile
+    sub_question: "What is {entity}'s safety profile — adverse events and warnings?"
+    routes:
+      - predicate:adverse_event
+      - predicate:safety_signal
+    required: true
+    weight: 0.95
+
+  - key: competition
+    label: Competitive position
+    sub_question: "Who does {entity} compete with?"
+    routes:
+      - predicate:competitor
+      - predicate:market_share
+      - link:COMPETES_WITH
+    required: false
+    weight: 0.8
+
+  - key: pricing_access
+    label: Pricing & access
+    sub_question: "What is known about {entity}'s pricing, sales, and access?"
+    routes:
+      - predicate:wac_usd
+      - predicate:pricing_intent
+      - predicate:product_sales
+    required: false
+    weight: 0.6
+
+  - key: regulatory
+    label: Regulatory status
+    sub_question: "What is {entity}'s regulatory / approval status and timeline?"
+    routes:
+      - predicate:regulatory_approval
+      - predicate:fda_approval_date
+      - source:regulatory_milestones
+    required: false
+    weight: 0.7

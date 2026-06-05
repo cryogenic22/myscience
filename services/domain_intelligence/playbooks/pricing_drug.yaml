@@ -1,0 +1,59 @@
+# DI-4 — pricing & access playbook (single drug).
+#
+# Encoded domain expertise: a pricing/access question on an asset decomposes into
+# list price (WAC), realized sales, payer/access posture, and the competitive
+# pricing context. Routes reuse the ledger's pricing predicates (services
+# /kbq_views._PREDICATE_KBQ KBQ-7/8) + the COMPETES_WITH link for the field that
+# sets the pricing reference.
+#
+# NOTE: WAC/NADAC data is thin in the KB today (DR-2 pricing emitter is blocked
+# on a NADAC source) — uncovered cells surface as honest GAPS, never invented.
+#
+# Fires for "pricing for X" / "what does X cost" / "access for X" → single drug.
+
+id: pricing.drug
+pack: pharma
+trigger:
+  intent: pricing
+  entities: "drug"
+synthesis:
+  shape: dossier
+  lead_with: list_price
+
+dimensions:
+  - key: list_price
+    label: List price (WAC)
+    sub_question: "What is {entity}'s list price (WAC / net price)?"
+    routes:
+      - predicate:wac_usd
+      - predicate:wac_usd_monthly
+      - predicate:net_price
+      - predicate:pricing_intent
+    required: true
+    weight: 1.0
+
+  - key: sales
+    label: Sales & uptake
+    sub_question: "What are {entity}'s product sales and uptake?"
+    routes:
+      - predicate:product_sales
+      - predicate:sales_guidance
+    required: false
+    weight: 0.8
+
+  - key: access
+    label: Payer access
+    sub_question: "What is known about {entity}'s payer access and coverage?"
+    routes:
+      - predicate:label_indication
+    required: false
+    weight: 0.5
+
+  - key: competitive_pricing
+    label: Competitive pricing context
+    sub_question: "Which competitors set the pricing reference for {entity}?"
+    routes:
+      - link:COMPETES_WITH
+      - predicate:competitor
+    required: false
+    weight: 0.7

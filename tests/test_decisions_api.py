@@ -63,6 +63,7 @@ def _make_db():
         ],
     }
     decisions: dict[str, dict] = {}
+    adjustments: list[tuple] = []
     next_id = [1]
 
     def _gen_id(prefix: str) -> str:
@@ -152,6 +153,15 @@ def _make_db():
                     return dict(d)
             return None
 
+        # F6/C6 emit lookups — no proposals / signals / prior adjustments
+        # in this fixture, so the emit path falls back to move_type.
+        if "from outcome_proposals p" in s:
+            return None
+        if "from signals where id::text" in s:
+            return None
+        if "from signal_score_adjustments" in s:
+            return None
+
         return None
 
     def fake_fetch_all(sql, params=None):
@@ -185,14 +195,14 @@ def _make_db():
     def fake_execute(sql, params=None):
         s = (sql or "").lower()
 
-        # Capture-outcome UPDATE — has actual_outcome_recorded_at = NOW()
-        # AND calibration_score = %s (PATCH doesn't touch calibration).
+        # Capture-outcome UPDATE — fixed form using COALESCE(%s, notes).
         # Match this BEFORE the generic PATCH path so its fixed param order
         # is respected (route uses: actual_outcome, verdict, cal_score, notes, id).
+        # (PATCH computes calibration too but builds notes = %s, not COALESCE.)
         if (
             "update decisions" in s
             and "actual_outcome_recorded_at = now()" in s
-            and "calibration_score = %s" in s
+            and "coalesce(%s, notes)" in s
             and params
         ):
             did = str(params[-1])
@@ -228,7 +238,14 @@ def _make_db():
             if "actual_outcome = %s" in s:
                 decisions[did]["actual_outcome"] = params[pi]; pi += 1
                 decisions[did]["actual_outcome_recorded_at"] = datetime.now(timezone.utc)
+            if "calibration_score = %s" in s:
+                decisions[did]["calibration_score"] = params[pi]; pi += 1
             decisions[did]["updated_at"] = datetime.now(timezone.utc)
+            return None
+
+        # F6/C6 learning emission — accept inserts, no-op storage.
+        if "insert into signal_score_adjustments" in s:
+            adjustments.append(tuple(params or ()))
             return None
 
         # DELETE decision
@@ -243,6 +260,7 @@ def _make_db():
     db.fetch_one.side_effect = fake_fetch_one
     db.fetch_all.side_effect = fake_fetch_all
     db.execute.side_effect = fake_execute
+    db._adjustments = adjustments  # expose for F6/C6 assertions
     return db, decisions
 
 
@@ -534,6 +552,43 @@ def test_patch_decision_actual_outcome_sets_recorded_at():
     body = r.json()
     assert body["actual_outcome"] == "Lilly accelerated MASH program"
     assert body["actual_outcome_recorded_at"] is not None
+
+
+def test_patch_outcome_with_verdict_computes_calibration_and_emits_learning():
+    """F6/C6: recording an outcome with a terminal verdict via PATCH must
+    compute calibration_score AND emit a signal_score_adjustments row —
+    closing the decision→outcome→learn loop."""
+    db, decisions = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    did = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                       json={"title": "x"}).json()["id"]
+    r = client.patch(f"/decisions/{did}", headers=_hdr(tok),
+                     json={"actual_outcome": "trial read out positive",
+                           "status": "verified"})
+    assert r.status_code == 200
+    # calibration_score now populated (was NULL on the old PATCH path)
+    assert decisions[did]["calibration_score"] is not None
+    # a learning row was appended (the F6/C6 closure)
+    assert len(db._adjustments) >= 1
+    # keyed by the round's move_type (trial_readout) since there's no signal
+    kbq_tags = {row[1] for row in db._adjustments}
+    assert "trial_readout" in kbq_tags
+
+
+def test_patch_outcome_without_verdict_skips_calibration():
+    """Recording outcome text without a terminal verdict (e.g. status stays
+    open) should NOT compute calibration or emit a learning row."""
+    db, decisions = _make_db()
+    client = _client(db)
+    tok = _login(client, "viewer@demo.market-zero.io")
+    did = client.post("/decisions/from-round/rnd-1", headers=_hdr(tok),
+                       json={"title": "x"}).json()["id"]
+    r = client.patch(f"/decisions/{did}", headers=_hdr(tok),
+                     json={"actual_outcome": "interim note"})
+    assert r.status_code == 200
+    assert decisions[did]["calibration_score"] is None
+    assert db._adjustments == []
 
 
 # ────────────────────────────────────────────────────────────────────

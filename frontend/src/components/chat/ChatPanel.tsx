@@ -121,16 +121,30 @@ export default function ChatPanel({
           ) : (
             <div className="space-y-10">
               <AnimatePresence initial={false}>
-                {messages.map((message) => (
-                  <NarrativeMessage
-                    key={message.id}
-                    message={message}
-                    isUser={message.role === 'user'}
-                    onFollowUp={handleFollowUp}
-                    onCitationClick={onCitationClick}
-                    onViewInGraph={onViewInGraph}
-                  />
-                ))}
+                {messages.map((message, idx) => {
+                  // The question an assistant answer is rated against is the
+                  // most recent preceding user message (C2 feedback signal).
+                  let question: string | undefined;
+                  if (message.role === 'assistant') {
+                    for (let j = idx - 1; j >= 0; j--) {
+                      if (messages[j].role === 'user') {
+                        question = messages[j].content;
+                        break;
+                      }
+                    }
+                  }
+                  return (
+                    <NarrativeMessage
+                      key={message.id}
+                      message={message}
+                      isUser={message.role === 'user'}
+                      question={question}
+                      onFollowUp={handleFollowUp}
+                      onCitationClick={onCitationClick}
+                      onViewInGraph={onViewInGraph}
+                    />
+                  );
+                })}
               </AnimatePresence>
               <div ref={messagesEndRef} />
             </div>

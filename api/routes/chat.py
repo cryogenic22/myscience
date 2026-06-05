@@ -329,6 +329,7 @@ def ctx_benchmark(body: dict):
 @router.post("")
 def chat(
     body: dict,
+    background_tasks: BackgroundTasks = None,
     db: Database = Depends(get_db),
     engine: QueryEngine = Depends(get_query_engine),
     metrics_svc: PharmaMetrics = Depends(get_metrics),
@@ -587,6 +588,28 @@ def chat(
                 response_latency_ms=round(latency_ms, 1),
                 gap_type=gap_type, gap_details=gap_details,
             )
+
+            # C3: close the query → quality → research loop. When the answer
+            # was weak (gap detected above), auto-spawn a gap-fill research
+            # job — the trigger the dormant research path never had. Dedup +
+            # fire-and-forget inside the helper; the background task runs the
+            # same deep-research path as a manual job.
+            if gap_type and background_tasks is not None:
+                try:
+                    from services.gap_research import maybe_trigger_gap_research
+                    scope = normalize_scope(session_id)
+                    job = maybe_trigger_gap_research(
+                        db, question=question, gap_type=gap_type,
+                        gap_details=gap_details, scope_key=scope,
+                        session_id=session_id,
+                    )
+                    if job and job.get("id"):
+                        background_tasks.add_task(
+                            _run_research_job_task, job["id"], scope,
+                        )
+                        payload["gap_research_job_id"] = job["id"]
+                except Exception:
+                    logger.debug("gap-research trigger failed", exc_info=True)
         except Exception:
             pass  # telemetry must never break chat
 
@@ -792,6 +815,71 @@ def export_report(body: dict):
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Chat answer feedback (C2 — learning loops) ──
+
+@router.post("/feedback")
+def submit_chat_feedback(
+    body: dict,
+    db: Database = Depends(get_db),
+):
+    """Record a thumbs up/down on a chat answer — the missing training signal.
+
+    Body: {question, rating (1|-1|"up"|"down"), session_id?, comment?,
+           intent?, answer_excerpt?}. Persists to chat_answer_feedback,
+    soft-linked to the matching query_telemetry row.
+    """
+    from services import chat_feedback as cf
+
+    question = str(body.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    raw_rating = body.get("rating")
+    if isinstance(raw_rating, str):
+        rmap = {"up": 1, "down": -1, "1": 1, "-1": -1}
+        rating = rmap.get(raw_rating.strip().lower())
+    else:
+        rating = raw_rating
+    if rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="rating must be 1 (up) or -1 (down)")
+
+    try:
+        rec = cf.record_feedback(
+            db,
+            question=question,
+            rating=int(rating),
+            session_id=str(body.get("session_id") or "").strip() or None,
+            comment=str(body.get("comment") or "").strip() or None,
+            intent=str(body.get("intent") or "").strip() or None,
+            answer_excerpt=str(body.get("answer_excerpt") or "").strip() or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"feedback": rec}
+
+
+@router.get("/feedback")
+def get_chat_feedback(
+    question: str = Query(...),
+    limit: int = Query(50, ge=1, le=200),
+    db: Database = Depends(get_db),
+):
+    """Return feedback rows for a given question (latest first)."""
+    from services import chat_feedback as cf
+    rows = cf.list_feedback_for_question(db, question, limit=limit)
+    return {"feedback": rows, "count": len(rows)}
+
+
+@router.get("/feedback/summary")
+def get_chat_feedback_summary(
+    days: int = Query(30, ge=1, le=365),
+    db: Database = Depends(get_db),
+):
+    """Aggregate up/down satisfaction over the window."""
+    from services import chat_feedback as cf
+    return cf.feedback_summary(db, days=days)
 
 
 # ── Research jobs ──

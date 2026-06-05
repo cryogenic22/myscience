@@ -35,6 +35,40 @@ logger = logging.getLogger(__name__)
 _concept_registry = ConceptRegistry(auto_register=True)
 
 
+def _run_domain_intelligence(intent: str, di_entities: list[dict], db) -> dict:
+    """DI-2/DI-3/DI-4: decompose a question into a grounded per-dimension matrix.
+
+    Shared across handlers so dossier / landscape / pricing / pipeline reuse the
+    SAME DecompositionPlanner + dimension-aware synthesis the compare handler
+    uses (no duplication). Selects the playbook for (intent × entity signature),
+    fills each dimension from grounded ledger facts + executed link/source routes,
+    and returns a bundle the handler folds into its fallback + LLM context:
+
+        {"matrix", "narrative", "context", "lead"}
+
+    Returns empty strings when no playbook matches or anything fails — the caller
+    falls back to its legacy path (graceful degradation, never a crash). Gaps are
+    surfaced honestly by the synthesis layer, never invented.
+    """
+    bundle = {"matrix": None, "narrative": "", "context": "", "lead": ""}
+    if not di_entities or db is None:
+        return bundle
+    try:
+        from services.domain_intelligence.planner import DecompositionPlanner
+        from services.domain_intelligence.synthesis import (
+            synthesize_matrix, matrix_to_context, matrix_insight_lead,
+        )
+        matrix = DecompositionPlanner(db).plan(intent, di_entities)
+        if matrix is not None:
+            bundle["matrix"] = matrix
+            bundle["narrative"] = synthesize_matrix(matrix)
+            bundle["context"] = matrix_to_context(matrix)
+            bundle["lead"] = matrix_insight_lead(matrix)
+    except Exception as exc:
+        logger.debug("Domain-intelligence decomposition skipped (%s): %s", intent, exc)
+    return bundle
+
+
 def _hydrate_dossier_ctx(entity_name: str, entity_type: str) -> Optional[str]:
     """Try to hydrate entity context from the CTX corpus for richer dossier context.
 
@@ -814,8 +848,29 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     # ── LLM synthesis (with template fallback) ──
     fallback = " ".join(template_parts)
 
+    # ── DI-4: single-drug Domain-Intelligence decomposition ──
+    # Decompose the dossier into the analytical dimensions an analyst examines
+    # for one asset (mechanism, indication, efficacy, safety, competition,
+    # pricing, regulatory), filling each from grounded ledger facts + executed
+    # link/source routes. The matrix is the grounded fallback floor (correct even
+    # with the LLM off) and its structured context guides the LLM to report gaps
+    # rather than invent. Fires only when the dossier.drug playbook matches
+    # (single drug); silently no-ops otherwise.
+    di_dossier_context = ""
+    _di = _run_domain_intelligence(
+        "dossier",
+        [{"entity_id": eid, "entity_type": etype, "label": label}],
+        db,
+    )
+    if _di["narrative"]:
+        # Grounded per-dimension narrative becomes the fallback floor.
+        fallback = _di["narrative"]
+        di_dossier_context = _di["context"]
+
     # Build extra_context: include fuzzy match warning + conversation context + concept hints + CTX hydration
     dossier_extra_context = ""
+    if di_dossier_context:
+        dossier_extra_context += di_dossier_context + "\n\n"
     if ctx_hydration_context:
         dossier_extra_context += ctx_hydration_context + "\n"
     if match_score is not None and match_score < 0.8:
@@ -854,11 +909,17 @@ def handle_dossier(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         metrics_available=bool(result.metrics_context),
     )
 
+    dossier_data = _enrich_result(result, db)
+    # DI-4: surface the grounded decomposition matrix so the UI can render the
+    # per-dimension analysis (covered cells cite facts; gaps are stated).
+    if _di["matrix"] is not None and isinstance(dossier_data, dict):
+        dossier_data["decomposition_matrix"] = _di["matrix"].to_dict()
+
     return {
         "narrative": narrative,
         "intent": "dossier",
         "confidence": confidence,
-        "data": _enrich_result(result, db),
+        "data": dossier_data,
     }
 
 
@@ -890,6 +951,22 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     result = engine.compare_entities([r["entity_id"] for r in resolved], resolved[0]["entity_type"])
     names = [r["label"] for r in resolved]
 
+    # ── DI-2/DI-3: Domain-Intelligence decomposition ──
+    # Decompose the comparison into the dimensions a domain analyst examines,
+    # fill each from grounded ledger facts, and assemble a matrix. The matrix
+    # drives a grounded per-dimension narrative + structured LLM context so the
+    # answer reflects real facts with explicit gaps (never invented). Falls back
+    # silently to the legacy metric/graph comparison when no playbook matches.
+    di_entities = [
+        {"entity_id": r["entity_id"], "entity_type": r["entity_type"], "label": r["label"]}
+        for r in resolved
+    ]
+    _di = _run_domain_intelligence("compare", di_entities, db)
+    di_matrix = _di["matrix"]
+    di_narrative = _di["narrative"]
+    di_context = _di["context"]
+    di_lead = _di["lead"]
+
     # Template fallback
     template_parts = [f"Comparison of **{' vs '.join(names)}**."]
     if result.get("shared_connections"):
@@ -913,8 +990,10 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
                     f"Success rate: {float(sr['success_rate']):.1f}%."
                 )
 
-    # LLM synthesis
-    fallback = " ".join(template_parts)
+    # LLM synthesis. When the DI matrix is available, the grounded
+    # per-dimension narrative is the FALLBACK floor (correct even with the LLM
+    # off — no fabrication), and the legacy metric template trails it as colour.
+    fallback = di_narrative if di_narrative else " ".join(template_parts)
 
     # Build per-entity metrics for LLM
     metrics_for_llm = {}
@@ -925,7 +1004,10 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
 
     # Pre-compute differentials so the LLM can cite them directly
     comparison_insights = compute_comparison_insights(resolved, metrics_comp)
-    if comparison_insights:
+    # DI-3: lead with the grounded key differentiator from the matrix.
+    if di_lead:
+        comparison_insights = f"{di_lead}\n\n{comparison_insights}" if comparison_insights else di_lead
+    if comparison_insights and not di_narrative:
         fallback = fallback + "\n\n" + comparison_insights
 
     # Activate domain concepts for compare + resolved entity types
@@ -935,6 +1017,16 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
     if compare_concept_hint:
         comparison_insights = f"{compare_concept_hint}\n\n{comparison_insights}" if comparison_insights else compare_concept_hint
 
+    # DI-3: feed the grounded decomposition matrix as extra context so the LLM
+    # answer reflects the per-dimension facts and reports gaps rather than
+    # filling them from training data. The matrix marks every GAP cell so the
+    # model cannot silently invent.
+    compare_extra_context = conv_context or ""
+    if di_context:
+        compare_extra_context = (
+            f"{di_context}\n\n{compare_extra_context}" if compare_extra_context else di_context
+        )
+
     narrative = llm.synthesize_comparison(
         entity_names=names,
         metrics_by_entity=metrics_for_llm,
@@ -942,7 +1034,7 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         unique_connections=result.get("unique_connections"),
         fallback_narrative=fallback,
         computed_insights=comparison_insights,
-        extra_context=conv_context if conv_context else None,
+        extra_context=compare_extra_context if compare_extra_context else None,
     )
 
     # Normalize to standard QueryResponse format for frontend rendering
@@ -986,24 +1078,57 @@ def handle_compare(params: dict, db: Database, engine: QueryEngine, llm: LLMSynt
         metrics_available=bool(metrics_comp),
     )
 
-    return {
+    payload = {
         "narrative": narrative,
         "intent": "compare",
         "confidence": confidence,
         "data": normalized_data,
         "table_data": comparison_table,
     }
+    # DI-2/DI-3: surface the structured decomposition matrix so the caller/UI can
+    # render the entities × dimensions grid with per-cell coverage + citations.
+    if di_matrix is not None:
+        payload["decomposition"] = di_matrix.to_dict()
+    return payload
 
 
 def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, llm: LLMSynthesizer, conv_context: str = "", db=None, engine=None) -> dict:
     topic = params.get("topic", "")
     expanded_topic = expand_topic_synonyms(topic) if topic else ""
+
+    # ── DI-4: asset-centric competitive landscape ──
+    # When the topic resolves to a single drug ("competitive landscape for X"),
+    # the landscape.drug playbook decomposes the field AROUND that asset — the
+    # competitive set (executed link:COMPETES_WITH route, grounded in the entity
+    # graph), shared mechanism/class, market position, pricing pressure. This is
+    # the grounded asset view the topic-based segment metrics can't give; it folds
+    # into the narrative + LLM context below. Fires only on a single-drug match.
+    di_landscape = {"matrix": None, "narrative": "", "context": "", "lead": ""}
+    if db is not None and topic:
+        drug_focus = resolve_entity(topic, "drug", db)
+        if drug_focus:
+            di_landscape = _run_domain_intelligence(
+                "landscape",
+                [{"entity_id": drug_focus["entity_id"],
+                  "entity_type": drug_focus["entity_type"],
+                  "label": drug_focus["label"]}],
+                db,
+            )
+
     segments = metrics_svc.competitive_landscape(
         topic=expanded_topic if expanded_topic else None,
         original_topic=topic if topic and expanded_topic != topic else None,
         limit=30,
     )
     if not segments:
+        # No segment metrics — but if the asset-centric playbook produced a
+        # grounded competitive set, answer from that rather than bailing.
+        if di_landscape["narrative"]:
+            return {
+                "narrative": di_landscape["narrative"],
+                "intent": "landscape",
+                "data": {"decomposition_matrix": di_landscape["matrix"].to_dict()},
+            }
         return {"narrative": "No competitive landscape data available.", "intent": "landscape", "data": None}
 
     top = sorted(segments, key=lambda x: x.get("total_pipeline_score", 0), reverse=True)[:10]
@@ -1051,10 +1176,17 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
         )
     fallback = " ".join(template_parts)
 
+    # DI-4: when an asset-centric matrix exists, lead the fallback with the
+    # grounded competitive set, trailing the segment-metric colour after it.
+    if di_landscape["narrative"]:
+        fallback = di_landscape["narrative"] + "\n\n" + fallback
+
     # Build extra context for LLM with company data
     extra_landscape_context = ""
+    if di_landscape["context"]:
+        extra_landscape_context = di_landscape["context"] + "\n\n"
     if top_companies:
-        extra_landscape_context = "TOP COMPANIES:\n" + "\n".join(
+        extra_landscape_context += "TOP COMPANIES:\n" + "\n".join(
             f"- {c.get('company_name', '?')}: {c.get('drug_count', 0)} drugs, "
             f"{c.get('trial_count', 0)} trials, pipeline score {c.get('pipeline_score_total', 0):.0f}"
             for c in top_companies
@@ -1168,6 +1300,7 @@ def handle_landscape(question: str, params: dict, metrics_svc: PharmaMetrics, ll
             "metrics_context": {s.get("mechanism_name", f"seg_{i}"): {"competitive": s} for i, s in enumerate(top)},
             "entity_focus": landscape_entity_focus,
             "provenance_summary": {"total_evidence_items": len(segments), "by_source": {"metrics": len(segments)}},
+            **({"decomposition_matrix": di_landscape["matrix"].to_dict()} if di_landscape["matrix"] else {}),
         },
         "table_data": landscape_table,
     }
@@ -1267,15 +1400,23 @@ def handle_pipeline(
     pipelines: list[dict] = []
     label_for_template = entity_name
 
+    # Track the resolved single drug (if any) for the DI pipeline.drug playbook.
+    resolved_drug_id: Optional[str] = None
+    resolved_drug_label: str = ""
+
     if drug_id:
         # Caller already resolved the entity to a drug
         pipelines = metrics_svc.drug_pipeline_strength(drug_id=drug_id, limit=20)
+        resolved_drug_id = drug_id
+        resolved_drug_label = entity_name or ""
     elif entity_name and canonicalizer is not None:
         # Try drug canonicalization first; fall back to TA filter on miss
         result = canonicalizer.canonicalize(entity_name, hint_type="drug")
         if result and result.confidence >= 0.7:
             pipelines = metrics_svc.drug_pipeline_strength(drug_id=result.entity_id, limit=20)
             label_for_template = result.canonical_name
+            resolved_drug_id = result.entity_id
+            resolved_drug_label = result.canonical_name
         else:
             pipelines = metrics_svc.drug_pipeline_strength(therapeutic_area=entity_name, limit=20)
     else:
@@ -1322,10 +1463,29 @@ def handle_pipeline(
             template += f", {pct}th percentile"
         template += ")."
 
+    # ── DI-4: single-drug pipeline decomposition ──
+    # When the query resolved to ONE drug, the pipeline.drug playbook decomposes
+    # its development status — clinical development, mechanism advanced, regulatory
+    # progression (executed source:regulatory_milestones route), program safety —
+    # from grounded facts. Folds into the fallback + LLM context; the segment
+    # template trails it as colour. Silently no-ops for TA / top-N pipeline views.
+    di_pipeline = {"matrix": None, "narrative": "", "context": "", "lead": ""}
+    if resolved_drug_id and db is not None:
+        di_pipeline = _run_domain_intelligence(
+            "pipeline",
+            [{"entity_id": resolved_drug_id, "entity_type": "drug",
+              "label": resolved_drug_label or ta or entity_name}],
+            db,
+        )
+        if di_pipeline["narrative"]:
+            template = di_pipeline["narrative"] + "\n\n" + template
+
     # Build extra context with phase distribution insights
     early_heavy = sum(1 for p in top if (p.get("p1_count", 0) or 0) + (p.get("p2_count", 0) or 0) > (p.get("p3_count", 0) or 0) + (p.get("p4_count", 0) or 0))
     late_heavy = len(top) - early_heavy
     extra_context = f"PIPELINE MATURITY: {late_heavy} of {len(top)} drugs are late-stage heavy (Phase 3+4 > Phase 1+2)."
+    if di_pipeline["context"]:
+        extra_context = di_pipeline["context"] + "\n\n" + extra_context
     if ta:
         extra_context += f"\nTherapeutic area focus: {ta}"
     if conv_context:
@@ -1435,6 +1595,7 @@ def handle_pipeline(
             "metrics_context": {p.get("drug_name", f"drug_{i}"): {"pipeline": p} for i, p in enumerate(top)},
             "entity_focus": pipeline_entity_focus,
             "provenance_summary": {"total_evidence_items": len(top), "by_source": {"metrics": len(top)}},
+            **({"decomposition_matrix": di_pipeline["matrix"].to_dict()} if di_pipeline["matrix"] else {}),
         },
         "table_data": pipeline_table,
     }

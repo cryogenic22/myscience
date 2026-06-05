@@ -673,6 +673,24 @@ export const api = {
       ...(conversationHistory && conversationHistory.length > 0 ? { conversation_history: conversationHistory } : {}),
     }),
 
+  /** C2 — record a thumbs up/down on a chat answer (the training signal). */
+  chatFeedback: (params: {
+    question: string;
+    rating: 1 | -1;
+    sessionId?: string;
+    comment?: string;
+    intent?: string;
+    answerExcerpt?: string;
+  }) =>
+    post<{ feedback: { id: string; rating: number } }>('/chat/feedback', {
+      question: params.question,
+      rating: params.rating,
+      session_id: params.sessionId,
+      comment: params.comment,
+      intent: params.intent,
+      answer_excerpt: params.answerExcerpt,
+    }),
+
   /** Streaming chat via SSE. Calls onToken for each synthesis chunk, onStatus for progress, onDone with full payload. */
   chatStream: async (
     question: string,

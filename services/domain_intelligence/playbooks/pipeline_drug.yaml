@@ -1,0 +1,57 @@
+# DI-4 — pipeline / development-status playbook (single drug).
+#
+# Encoded domain expertise: a pipeline question on an asset decomposes into its
+# clinical-development evidence (trials, readouts, publications), the mechanism it
+# advances, its regulatory progression, and the safety read on the program.
+# Routes reuse the ledger's clinical/mechanism/regulatory predicates plus the
+# now-executed source:regulatory_milestones route for the FDA submission trail.
+#
+# Fires for "pipeline for X" / "development status of X" → single drug.
+
+id: pipeline.drug
+pack: pharma
+trigger:
+  intent: pipeline
+  entities: "drug"
+synthesis:
+  shape: dossier
+  lead_with: development_stage
+
+dimensions:
+  - key: clinical_development
+    label: Clinical development
+    sub_question: "What clinical trials and readouts advance {entity}?"
+    routes:
+      - predicate:clinical_trial
+      - predicate:trial_result
+      - predicate:key_publication
+    required: true
+    weight: 1.0
+
+  - key: mechanism
+    label: Mechanism advanced
+    sub_question: "What mechanism / target does {entity}'s program pursue?"
+    routes:
+      - predicate:mechanism_of_action
+      - predicate:target_activity
+    required: false
+    weight: 0.7
+
+  - key: regulatory
+    label: Regulatory progression
+    sub_question: "Where is {entity} in the regulatory pathway?"
+    routes:
+      - predicate:regulatory_approval
+      - predicate:fda_approval_date
+      - source:regulatory_milestones
+    required: false
+    weight: 0.8
+
+  - key: safety
+    label: Program safety read
+    sub_question: "What safety signals has {entity}'s program surfaced?"
+    routes:
+      - predicate:adverse_event
+      - predicate:safety_signal
+    required: false
+    weight: 0.7
