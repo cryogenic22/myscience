@@ -226,6 +226,14 @@ except Exception as _e:
     logger.error("Failed to import facts router (PB-1307): %s", _e)
     _FACTS_ROUTER_OK = False
 
+# DI-5 — SME playbook authoring (Domain Intelligence)
+try:
+    from api.routes import playbooks as playbooks_route
+    _PLAYBOOKS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import playbooks router (DI-5): %s", _e)
+    _PLAYBOOKS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -370,6 +378,8 @@ def create_app() -> FastAPI:
         all_routers.append(kbq_route.asset_router)  # PB-SL10 — /kbq?asset= (unshadowed)
     if _FACTS_ROUTER_OK:
         all_routers.append(facts_route.router)
+    if _PLAYBOOKS_ROUTER_OK:
+        all_routers.append(playbooks_route.router)   # DI-5 — /playbooks (own prefix)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
