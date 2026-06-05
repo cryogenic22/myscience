@@ -92,6 +92,17 @@ class TestMergeRepointsSpine:
         c._merge_drug({"id": "CANON"}, {"id": "DUP", "generic_name": "x"})
         assert "update drugs set record_status = 'superseded'" in _executed_sql(db)
 
+    def test_bioactivities_is_a_repointable_fk_table(self):
+        """D2: a merged drug's ChEMBL bioactivities must repoint to the
+        canonical, not orphan on the superseded row."""
+        from integration.entity_consolidator import DRUG_FK_TABLES
+        assert "bioactivities" in DRUG_FK_TABLES
+        db = _FakeDB(fk_tables=["bioactivities"])
+        c = EntityConsolidator(db)
+        c._drug_fk_tables = ["bioactivities"]
+        c._merge_drug({"id": "CANON"}, {"id": "DUP", "generic_name": "x"})
+        assert "update bioactivities set drug_id" in _executed_sql(db)
+
 
 # ── richness-based canonical selection ─────────────────────────────
 

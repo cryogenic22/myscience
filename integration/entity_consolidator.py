@@ -50,7 +50,11 @@ COMPANY_ENRICHMENT_FIELDS = [
     "strategy_embedding", "source_url", "description",
 ]
 
-# Tables with drug_id FK that need repointing
+# Tables with drug_id FK that need repointing. (Existence is re-checked at
+# runtime via _existing_drug_fk_tables, so listing a not-yet-present table is
+# safe.) bioactivities carries drug_id but was historically missing here, so a
+# merged drug's ChEMBL bioactivities were orphaned onto the superseded row — D2
+# adds it (SPEC_DATA_001 §D2: "merged-drug bioactivities onto canonical").
 DRUG_FK_TABLES = [
     "clinical_trials",
     "market_events",
@@ -60,6 +64,7 @@ DRUG_FK_TABLES = [
     "adverse_events",
     "drug_labels",
     "pmc_articles",
+    "bioactivities",
 ]
 
 # Tables with company_id FK
