@@ -156,10 +156,12 @@ def pack_evidence(
                 content = item.get("content", "")
                 etype = item.get("entity_type", "evidence")
                 eid = item.get("entity_id", "")
+                prov = item.get("provenance") or {}
             else:
                 content = str(item)
                 etype = "evidence"
                 eid = ""
+                prov = {}
 
             if not content:
                 continue
@@ -180,6 +182,16 @@ def pack_evidence(
             if eid:
                 fields.append(IRField(
                     key="id", value=str(eid), raw_value=str(eid), source=source,
+                ))
+            # D5: carry a citeable source id THROUGH compression, so a merged L2
+            # snippet still drills through. A field survives entity merge (unlike
+            # the dropped `provenance` dict), so the LLM/citation layer keeps a
+            # link even after duplicate snippets collapse into one entity.
+            src = (prov.get("source_url") or prov.get("source_id")
+                   or prov.get("source_doc_id"))
+            if src:
+                fields.append(IRField(
+                    key="src", value=str(src), raw_value=str(src), source=source,
                 ))
 
             # Use title as entity name for resolution (duplicates merge here)
