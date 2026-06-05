@@ -300,6 +300,22 @@ class EntityResolver:
             """,
             [entity_type, alias_text, source_type.value],
         )
+        # RC1: an alias may point to a now-merged/superseded dup row. Honouring
+        # it links fresh data onto a dead duplicate (the exact failure that left
+        # bioactivities pinned to a merged drug). If the aliased entity is in a
+        # status-guarded table and soft-deleted, skip the alias so resolution
+        # falls through to fuzzy (which ranks by richness → canonical row).
+        if row and entity_type in {"drug", "company", "molecular_target"}:
+            table = {"drug": "drugs", "company": "companies",
+                     "molecular_target": "molecular_targets"}[entity_type]
+            status_row = self.db.fetch_one(
+                f"SELECT record_status FROM {table} WHERE id = %s",
+                [str(row["entity_id"])],
+            )
+            if status_row and status_row.get("record_status") in (
+                "merged", "superseded", "excluded"
+            ):
+                row = None
         if row:
             return ResolvedLink(
                 entity_type=entity_type,
@@ -322,6 +338,11 @@ class EntityResolver:
     # Strategy 3: Fuzzy name match (pg_trgm)
     # ============================================================
 
+    # Tables whose duplicate rows are soft-deleted via record_status; the
+    # resolver must never match a merged/superseded row (RC1) — doing so links
+    # fresh data onto a dead duplicate and silently breaks downstream emitters.
+    _STATUS_GUARDED_TABLES = {"drugs", "companies", "molecular_targets"}
+
     def _fuzzy_lookup(self, id_key: str, value: str) -> Optional[ResolvedLink]:
         """Fuzzy match using PostgreSQL trigram similarity."""
         if id_key not in self._fuzzy_match_fields:
@@ -329,13 +350,31 @@ class EntityResolver:
 
         table, column, entity_type = self._fuzzy_match_fields[id_key]
 
+        # Exclude soft-deleted dup rows (record_status), and for drugs prefer the
+        # richest candidate among near-ties (matches resolve_asset_to_subject's
+        # richness ranking, so ingest + read agree on the canonical row).
+        status_clause = ""
+        order_clause = "ORDER BY sim DESC"
+        if table in self._STATUS_GUARDED_TABLES:
+            status_clause = (
+                "AND (record_status IS NULL "
+                "OR record_status NOT IN ('merged', 'superseded', 'excluded'))"
+            )
+        if table == "drugs":
+            order_clause = (
+                "ORDER BY sim DESC, "
+                "(SELECT count(*) FROM facts f WHERE f.subject_entity_id = drugs.id::text) "
+                "+ (SELECT count(*) FROM clinical_trials ct WHERE ct.drug_id = drugs.id) DESC"
+            )
+
         # Get top candidates for traceability
         candidates_rows = self.db.fetch_all(
             f"""
             SELECT id, {column} AS name, similarity({column}, %s) AS sim
             FROM {table}
             WHERE similarity({column}, %s) >= %s
-            ORDER BY sim DESC
+            {status_clause}
+            {order_clause}
             LIMIT 5
             """,
             [value, value, self.fuzzy_threshold],

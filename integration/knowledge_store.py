@@ -1486,6 +1486,11 @@ class KnowledgeStore:
             self.db.execute(
                 """
                 UPDATE bioactivities
+                -- Overwrite drug_id/target_id when a fresh resolution exists
+                -- (not COALESCE): the resolver is the authority and now excludes
+                -- merged dup rows, so a re-run must re-point a stale merged
+                -- drug_id to the canonical one. Falls back to the existing value
+                -- only when this run produced no link.
                 SET drug_id = COALESCE(%s, drug_id),
                     target_id = COALESCE(%s, target_id),
                     activity_type = COALESCE(%s, activity_type),
