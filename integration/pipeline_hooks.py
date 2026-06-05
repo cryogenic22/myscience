@@ -402,11 +402,63 @@ class StalenessHook(PipelineHook):
             if result:
                 stale_count += result.get("cnt", 0)
 
+        # Source-level freshness check (D1). The per-record map above does NOT
+        # cover every scheduled source (notably it omitted openfda_labels /
+        # openfda_faers — the two that died silently for 105 days). Drive a
+        # source-level "is this source's newest row past its SLA?" check off the
+        # single FRESHNESS_SLA_DAYS config so any *scheduled* source is covered
+        # automatically without a bespoke per-record entry. This surfaces a dead
+        # source during the run, complementing scripts/connector_health.py.
+        source_stale = self._check_source_freshness(source_type)
+
         return HookResult(
             action="continue",
-            message=f"Marked {stale_count} records as stale",
-            data={"stale_count": stale_count},
+            message=f"Marked {stale_count} records as stale"
+            + (f"; SOURCE OVER SLA: {source_type}" if source_stale else ""),
+            data={"stale_count": stale_count, "source_stale": source_stale},
         )
+
+    def _check_source_freshness(self, source_type: str) -> bool:
+        """Return True if the source's target table's newest row is past its SLA.
+
+        Reads the per-source SLA registry (scheduler.config.FRESHNESS_SLA_DAYS)
+        so new sources are covered the moment they're scheduled. Best-effort and
+        read-only — never blocks the run."""
+        try:
+            from scheduler.config import FRESHNESS_SLA_DAYS
+
+            entry = next(
+                (v for k, v in FRESHNESS_SLA_DAYS.items() if k.value == source_type),
+                None,
+            )
+            if not entry:
+                return False
+            table, recency_col, sla_days = entry
+            row = self.db.fetch_one(
+                f"SELECT max({recency_col}) AS newest, count(*) AS n FROM {table}"
+            )
+            if not row or not row.get("n"):
+                logger.warning("Source %s target table %s is EMPTY (SLA %dd)",
+                               source_type, table, sla_days)
+                return True
+            newest = row.get("newest")
+            if newest is None:
+                return True
+            from datetime import datetime, timezone
+
+            if newest.tzinfo is None:
+                newest = newest.replace(tzinfo=timezone.utc)
+            age_days = (datetime.now(timezone.utc) - newest).total_seconds() / 86400.0
+            if age_days > sla_days:
+                logger.warning(
+                    "Source %s OVER SLA: %s newest is %.1fd old (SLA %dd)",
+                    source_type, table, age_days, sla_days,
+                )
+                return True
+            return False
+        except Exception as exc:  # noqa: BLE001 — alerting must never fail the run
+            logger.debug("Source freshness check failed for %s: %s", source_type, exc)
+            return False
 
 
 class ValidationGateHook(PipelineHook):
