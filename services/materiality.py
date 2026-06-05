@@ -378,8 +378,16 @@ def replace_active_config(
 # ────────────────────────────────────────────────────────────────────
 
 def persist_score_to_signal(db, *, signal_id: str, result: MaterialityResult) -> None:
-    """Update signals.materiality_score + materiality_factors. Best-effort
-    (failure is non-fatal — caller still gets the computed result)."""
+    """Update signals.materiality_factors (and score if the column exists).
+
+    Best-effort (failure is non-fatal — caller still gets the computed
+    result). The base `signals` table only has `materiality_factors` (added
+    by migration 058); `materiality_score` is an optional column some
+    deployments add. We always write `materiality_factors` (the contract the
+    frontend reads, summing factor contributions) and additionally write
+    `materiality_score` when that column is present.
+    """
+    factors_json = json.dumps({k: v.to_dict() for k, v in result.factors.items()})
     try:
         db.execute(
             """
@@ -388,11 +396,199 @@ def persist_score_to_signal(db, *, signal_id: str, result: MaterialityResult) ->
                    materiality_factors = %s::jsonb
              WHERE id::text = %s
             """,
-            (
-                int(round(result.score)),
-                json.dumps({k: v.to_dict() for k, v in result.factors.items()}),
-                str(signal_id),
-            ),
+            (int(round(result.score)), factors_json, str(signal_id)),
+        )
+        return
+    except Exception as exc:
+        # Most likely the optional `materiality_score` column is absent.
+        # Fall back to writing only the factor breakdown, which is the
+        # column the UI actually reads.
+        logger.debug(
+            "persist_score_to_signal: score+factors write failed (%s); "
+            "retrying factors-only for signal %s",
+            exc,
+            signal_id,
+        )
+    try:
+        db.execute(
+            """
+            UPDATE signals
+               SET materiality_factors = %s::jsonb
+             WHERE id::text = %s
+            """,
+            (factors_json, str(signal_id)),
         )
     except Exception as exc:
         logger.warning("persist_score_to_signal failed for signal %s: %s", signal_id, exc)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Signal → scorer-input mapping (for batch (re)scoring of real signals)
+# ────────────────────────────────────────────────────────────────────
+#
+# The factor-attributed scorer (compute_materiality) takes typed inputs
+# (source_tier, entity_criticality, claim_type, age_days). Real signals
+# don't carry those directly — they carry kbq_tags, an event source_tier,
+# confidence_tier, impact_tier, and created_at. These helpers derive the
+# scorer inputs from a signal row so historical/ongoing signals get a real
+# materiality breakdown instead of a NULL factors column.
+#
+# ROOT-CAUSE NOTE: before this, `materiality_factors` was only ever written
+# by the manual POST /materiality/score endpoint, so in production every
+# signal had NULL factors. The UI then fell back to the raw `impact_score`
+# fraction (0..1), which renders as a degenerate "~1%" for every signal.
+# Populating real factors here is the deferred "batch re-score" from
+# SPEC_031 (Out of scope → now in scope as a bounded, idempotent job).
+
+# kbq_tag → claim_type. kbq_tags is the per-signal classification the
+# intelligence layer assigns; map the strongest tag to a claim_type the
+# scorer values. Order in _KBQ_PRIORITY decides which tag wins when a
+# signal carries several.
+_KBQ_TO_CLAIM_TYPE: dict[str, str] = {
+    "clinical":       "clinical_readout",
+    "regulatory":     "regulatory_action",
+    "safety":         "safety_signal",
+    "pricing_access": "pricing_change",
+    "pricing":        "pricing_change",
+    "m_and_a":        "pipeline_update",
+    "strategic":      "pipeline_update",
+    "product":        "pipeline_update",
+    "financial":      "earnings_commentary",
+    "governance":     "earnings_commentary",
+}
+
+# When a signal has multiple kbq_tags, the most material claim wins.
+_KBQ_PRIORITY: tuple[str, ...] = (
+    "clinical", "regulatory", "safety", "pricing_access", "pricing",
+    "m_and_a", "strategic", "product", "financial", "governance",
+)
+
+
+def kbq_tags_to_claim_type(kbq_tags: Optional[list]) -> str:
+    """Pick the most material claim_type from a signal's kbq_tags.
+
+    Returns 'other' when there are no tags or none map (the scorer then
+    applies the 'other' value, never a silent zero — SPEC_031 R3)."""
+    if not kbq_tags:
+        return "other"
+    tags = {str(t).strip().lower() for t in kbq_tags if t}
+    for tag in _KBQ_PRIORITY:
+        if tag in tags and tag in _KBQ_TO_CLAIM_TYPE:
+            return _KBQ_TO_CLAIM_TYPE[tag]
+    # Fall back to any mapped tag, else 'other'
+    for tag in tags:
+        if tag in _KBQ_TO_CLAIM_TYPE:
+            return _KBQ_TO_CLAIM_TYPE[tag]
+    return "other"
+
+
+def normalize_source_tier(raw: Any) -> Optional[int]:
+    """Coerce an event source_tier to the int 1-4 the scorer expects.
+
+    Accepts ints (3), numeric strings ("3"), and labelled strings
+    ("tier_3", "tier 2"). Returns None when nothing parseable — caller
+    then uses the scorer's documented tier-3 default."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)) and math.isfinite(raw):
+        t = int(raw)
+        return t if 1 <= t <= 4 else None
+    if isinstance(raw, str):
+        s = raw.strip().lower().replace("tier", "").replace("_", " ").strip()
+        for token in s.split():
+            try:
+                t = int(token)
+            except ValueError:
+                continue
+            if 1 <= t <= 4:
+                return t
+    return None
+
+
+def derive_signal_inputs(row: dict) -> dict:
+    """Map a signal (joined with its event's source_tier) to scorer inputs.
+
+    Expected keys on `row`: kbq_tags, source_tier (event), age_days.
+    entity_criticality has no per-signal source in the current schema, so
+    it defaults to 'other' (the scorer's conservative floor) — the spread
+    still comes from claim_type · source_tier · recency. When a watchlist /
+    focal mapping exists later, thread it in here.
+    """
+    return {
+        "source_tier": normalize_source_tier(row.get("source_tier")),
+        "entity_criticality": (row.get("entity_criticality") or "other"),
+        "claim_type": kbq_tags_to_claim_type(row.get("kbq_tags")),
+        "age_days": row.get("age_days"),
+    }
+
+
+@dataclass
+class RescoreStats:
+    scanned: int = 0
+    scored: int = 0
+    skipped: int = 0
+    min_score: Optional[float] = None
+    max_score: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "scanned": self.scanned,
+            "scored": self.scored,
+            "skipped": self.skipped,
+            "min_score": round(self.min_score, 2) if self.min_score is not None else None,
+            "max_score": round(self.max_score, 2) if self.max_score is not None else None,
+        }
+
+
+def recompute_signal_scores(
+    db,
+    *,
+    limit: int = 500,
+    force: bool = False,
+    config: Optional[WeightConfig] = None,
+) -> RescoreStats:
+    """Bounded, idempotent (re)score of real signals → materiality_factors.
+
+    - Selects up to `limit` signals. By default only signals whose
+      `materiality_factors` is NULL (idempotent: a second run is a no-op
+      once everything is scored). `force=True` re-scores everything in the
+      window (e.g. after a weights change).
+    - Derives scorer inputs from each signal's real fields (kbq_tags →
+      claim_type, event source_tier, created_at → age_days) and persists
+      the factor breakdown via persist_score_to_signal.
+    - Returns a RescoreStats with the resulting score range so the caller
+      can confirm a real spread (not a constant).
+    """
+    cfg = config or get_active_config(db)
+    where = "" if force else "WHERE s.materiality_factors IS NULL"
+    rows = db.fetch_all(
+        f"""
+        SELECT s.id::text                                       AS id,
+               s.kbq_tags                                       AS kbq_tags,
+               e.source_tier                                    AS source_tier,
+               EXTRACT(EPOCH FROM (NOW() - s.created_at)) / 86400.0 AS age_days
+          FROM signals s
+          LEFT JOIN market_events e ON s.event_id = e.id
+          {where}
+         ORDER BY s.created_at DESC
+         LIMIT %s
+        """,
+        (int(limit),),
+    ) or []
+
+    stats = RescoreStats(scanned=len(rows))
+    for row in rows:
+        inputs = derive_signal_inputs(dict(row))
+        result = compute_materiality(
+            source_tier=inputs["source_tier"],
+            entity_criticality=inputs["entity_criticality"],
+            claim_type=inputs["claim_type"],
+            age_days=inputs["age_days"],
+            config=cfg,
+        )
+        persist_score_to_signal(db, signal_id=row["id"], result=result)
+        stats.scored += 1
+        stats.min_score = result.score if stats.min_score is None else min(stats.min_score, result.score)
+        stats.max_score = result.score if stats.max_score is None else max(stats.max_score, result.score)
+    stats.skipped = stats.scanned - stats.scored
+    return stats

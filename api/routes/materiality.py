@@ -49,6 +49,15 @@ class UpdateWeightsBody(BaseModel):
     recency_half_life_days: float = Field(default=30.0, gt=0, le=3650)
 
 
+class RecomputeBody(BaseModel):
+    limit: int = Field(default=500, ge=1, le=5000)
+    force: bool = Field(
+        default=False,
+        description="Re-score signals that already have a breakdown "
+        "(use after editing weights). Default only scores unscored signals.",
+    )
+
+
 # ────────────────────────────────────────────────────────────────────
 # Routes
 # ────────────────────────────────────────────────────────────────────
@@ -115,3 +124,22 @@ def update_weights(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return cfg.to_dict()
+
+
+@router.post("/recompute", status_code=200)
+def recompute(
+    body: RecomputeBody,
+    user: dict = Depends(require_role("uploader")),
+    db: Database = Depends(get_db),
+):
+    """Bounded, idempotent batch (re)score of real signals.
+
+    Populates `signals.materiality_factors` from each signal's real fields
+    (kbq_tags → claim_type, event source_tier, recency). Without this,
+    signals carry NULL factors and the UI falls back to the raw impact_score
+    fraction (the degenerate "~1%" everywhere). Default run only scores
+    unscored signals; `force=true` re-scores the window (e.g. after a
+    weights edit).
+    """
+    stats = svc.recompute_signal_scores(db, limit=body.limit, force=body.force)
+    return stats.to_dict()

@@ -366,6 +366,175 @@ def test_get_weights_falls_back_to_defaults_when_no_active():
     assert abs(sum(body["weights"].values()) - 1.0) < 1e-6
 
 
+# ════════════════════════════════════════════════════════════════════
+# PB-104b — signal → scorer-input mapping + batch (re)score
+# ════════════════════════════════════════════════════════════════════
+
+class TestKbqToClaimType:
+    def test_clinical_wins(self):
+        from services.materiality import kbq_tags_to_claim_type
+        assert kbq_tags_to_claim_type(["clinical"]) == "clinical_readout"
+
+    def test_priority_picks_most_material(self):
+        from services.materiality import kbq_tags_to_claim_type
+        # m_and_a + clinical → clinical is the more material claim
+        assert kbq_tags_to_claim_type(["m_and_a", "clinical"]) == "clinical_readout"
+
+    def test_pricing_access(self):
+        from services.materiality import kbq_tags_to_claim_type
+        assert kbq_tags_to_claim_type(["pricing_access"]) == "pricing_change"
+
+    def test_empty_and_unknown_fall_back_to_other(self):
+        from services.materiality import kbq_tags_to_claim_type
+        assert kbq_tags_to_claim_type([]) == "other"
+        assert kbq_tags_to_claim_type(None) == "other"
+        assert kbq_tags_to_claim_type(["totally_unknown_tag"]) == "other"
+
+
+class TestNormalizeSourceTier:
+    def test_labelled_string(self):
+        from services.materiality import normalize_source_tier
+        assert normalize_source_tier("tier_3") == 3
+        assert normalize_source_tier("tier 2") == 2
+
+    def test_numeric_forms(self):
+        from services.materiality import normalize_source_tier
+        assert normalize_source_tier(1) == 1
+        assert normalize_source_tier("4") == 4
+
+    def test_out_of_range_and_garbage_are_none(self):
+        from services.materiality import normalize_source_tier
+        assert normalize_source_tier(9) is None
+        assert normalize_source_tier("tier_x") is None
+        assert normalize_source_tier(None) is None
+
+
+class TestRecomputeSignalScores:
+    """The degenerate-score regression: real signals must get a SPREAD of
+    materiality_factors, not a NULL column (which the UI renders as ~1%)."""
+
+    def _db(self, signal_rows):
+        """MockDB: fetch_all returns the supplied signal rows; execute
+        captures the UPDATE persists into a dict keyed by id."""
+        persisted: dict[str, dict] = {}
+
+        def fetch_all(sql, params=None):
+            s = (sql or "").lower()
+            if "from signals" in s:
+                # honor the NULL filter when not forcing
+                if "materiality_factors is null" in s:
+                    return [r for r in signal_rows if r.get("_factors") is None]
+                return list(signal_rows)
+            return []
+
+        def fetch_one(sql, params=None):
+            # active config select → use code defaults
+            return None
+
+        def execute(sql, params=None):
+            s = (sql or "").lower()
+            if "update signals" in s and "materiality_factors" in s and params:
+                # params: (score, factors_json, id)  OR  (factors_json, id)
+                if len(params) == 3:
+                    sid = str(params[2])
+                    persisted[sid] = {"score": params[0], "factors": params[1]}
+                else:
+                    sid = str(params[1])
+                    persisted.setdefault(sid, {})["factors"] = params[0]
+                # mark scored so the NULL filter excludes it on re-run
+                for r in signal_rows:
+                    if str(r["id"]) == sid:
+                        r["_factors"] = params[0] if len(params) == 2 else params[1]
+            return None
+
+        db = MagicMock()
+        db.fetch_all.side_effect = fetch_all
+        db.fetch_one.side_effect = fetch_one
+        db.execute.side_effect = execute
+        return db, persisted
+
+    def _rows(self):
+        return [
+            {"id": "s1", "kbq_tags": ["clinical"], "source_tier": "tier_3",
+             "age_days": 0.0, "_factors": None},
+            {"id": "s2", "kbq_tags": ["regulatory"], "source_tier": "tier_3",
+             "age_days": 14.0, "_factors": None},
+            {"id": "s3", "kbq_tags": ["pricing_access", "product"], "source_tier": "tier_3",
+             "age_days": 60.0, "_factors": None},
+            {"id": "s4", "kbq_tags": [], "source_tier": None,
+             "age_days": 120.0, "_factors": None},
+        ]
+
+    def test_produces_a_score_spread_not_constant(self):
+        from services.materiality import recompute_signal_scores
+        rows = self._rows()
+        db, persisted = self._db(rows)
+        stats = recompute_signal_scores(db, limit=100)
+        assert stats.scored == 4
+        scores = {json.loads(p["factors"]) and p["score"] for p in persisted.values()}
+        # 4 distinct claim_type/recency combinations → not all the same
+        assert len(scores) >= 3, f"expected a spread, got {scores}"
+        # The degenerate bug rendered ~1 for everything; real scores are tens.
+        assert stats.max_score > stats.min_score
+        assert stats.max_score > 40  # high-material clinical/fresh signal
+
+    def test_high_material_outranks_noise(self):
+        from services.materiality import recompute_signal_scores
+        rows = self._rows()
+        db, persisted = self._db(rows)
+        recompute_signal_scores(db, limit=100)
+        # s1 = fresh clinical_readout ; s4 = stale, no tags (other)
+        assert persisted["s1"]["score"] > persisted["s4"]["score"]
+
+    def test_idempotent_second_run_is_noop(self):
+        from services.materiality import recompute_signal_scores
+        rows = self._rows()
+        db, persisted = self._db(rows)
+        first = recompute_signal_scores(db, limit=100)
+        assert first.scored == 4
+        second = recompute_signal_scores(db, limit=100)
+        assert second.scanned == 0  # all already scored → NULL filter excludes
+        assert second.scored == 0
+
+    def test_force_rescores_already_scored(self):
+        from services.materiality import recompute_signal_scores
+        rows = self._rows()
+        db, _ = self._db(rows)
+        recompute_signal_scores(db, limit=100)
+        forced = recompute_signal_scores(db, limit=100, force=True)
+        assert forced.scored == 4
+
+    def test_persist_falls_back_to_factors_only_when_score_col_missing(self):
+        """The base signals table has no materiality_score column; persist
+        must still write materiality_factors."""
+        from services.materiality import persist_score_to_signal, compute_materiality
+        calls = []
+
+        def execute(sql, params=None):
+            s = (sql or "").lower()
+            if "materiality_score" in s:
+                raise Exception('column "materiality_score" does not exist')
+            calls.append((sql, params))
+            return None
+
+        db = MagicMock()
+        db.execute.side_effect = execute
+        res = compute_materiality(source_tier=3, entity_criticality="other",
+                                  claim_type="clinical_readout", age_days=5)
+        persist_score_to_signal(db, signal_id="sig-x", result=res)
+        # factors-only UPDATE succeeded
+        assert any("materiality_factors" in (c[0] or "").lower()
+                   and "materiality_score" not in (c[0] or "").lower()
+                   for c in calls)
+
+
+def test_recompute_route_registered():
+    from api.app import create_app
+    app = create_app()
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/materiality/recompute" in paths
+
+
 def test_put_weights_validates_sum_to_1():
     db, _, _ = _make_db()
     client = _client(db); tok = _login(client, "editor@test.io")
