@@ -84,6 +84,21 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
 _NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
 
+# Unbolded statistical figures the model is prone to invent: a percentage
+# ("23% weight loss") or a multiplier ("2.5x pipeline score", "3× more").
+# Deliberately narrow — it must NOT match identifiers like "GLP-1",
+# "Type 2", "Phase 3", "8.1" inside a token — only numbers that carry a
+# statistical unit (% or x/× multiplier). The leading lookbehind rejects a
+# hyphen/letter prefix so "GLP-1" never matches.
+_UNBOLDED_STAT_RE = re.compile(
+    r"(?<![\w\-.])(\d+(?:\.\d+)?)\s?([%xX×])(?![\w])"
+)
+
+# Marker appended after an unverified statistical figure so the UI / reader
+# can see it is not grounded in the provided context (de-emphasis, not just
+# unbolding). Kept ASCII-safe.
+_UNVERIFIED_MARKER = " [unverified]"
+
 
 def _extract_source_numbers(metrics: dict | None, evidence_snippets: list[str] | None) -> set[float]:
     """Extract all numeric values from metrics context and evidence for verification."""
@@ -118,56 +133,111 @@ def _collect_numbers_from_dict(d: dict | list, out: set[float], depth: int = 0) 
                 _collect_numbers_from_dict(item, out, depth + 1)
 
 
+def _is_grounded_number(num: float, source_numbers: set[float | int], tolerance: float) -> bool:
+    """True if `num` is within `tolerance` of any source number (or its
+    percentage form, e.g. narrative 82 ≈ source 0.82)."""
+    for src in source_numbers:
+        src_f = float(src)
+        if abs(num - src_f) <= tolerance:
+            return True
+        # Percentage form: narrative "82%" matches source 0.82
+        if 0 < src_f < 1 and abs(num - src_f * 100) <= tolerance:
+            return True
+        # Inverse percentage form: narrative "0.82" matches source 82
+        if 0 < num < 1 and abs(num * 100 - src_f) <= tolerance:
+            return True
+    return False
+
+
 def verify_narrative_numbers(
     narrative: str,
     source_numbers: set[float | int],
     tolerance: float = 1.0,
 ) -> dict:
-    """Extract bold numbers from narrative and verify against source data.
+    """Verify the quantitative claims in a narrative against source data.
 
-    Extracts **N**, **N.N**, **N%** patterns.
-    Numbers within `tolerance` of any source number are verified.
-    Unverified numbers have bold formatting stripped (trust signal removal).
+    Every number in a synthesized answer must trace to a provided
+    DB/context value, or be de-emphasized — no invented stats. Two shapes
+    are checked:
 
-    Returns: {"narrative": str, "verified": int, "flagged": int, "stripped": int, "mismatches": [...]}
+      1. **Bold** numbers (``**N**``, ``**N.N**``, ``**N%**``) — the model's
+         emphasised claims.
+      2. Unbolded *statistical* figures that carry a unit: percentages
+         (``23% weight loss``) and multipliers (``2.5x pipeline score``).
+         These are the invented-stat shapes; bare identifiers like
+         ``GLP-1`` / ``Type 2`` / ``Phase 3`` are deliberately NOT matched.
+
+    Numbers within `tolerance` of any source number are verified and left
+    untouched. Unverified figures are SUPPRESSED: bold formatting is
+    stripped (trust-signal removal) AND an inline ``[unverified]`` marker is
+    appended so the figure can't pass as grounded. Conservative by design —
+    a legitimately cited number that appears in the context survives intact.
+
+    Returns: {"narrative": str, "verified": int, "flagged": int,
+              "stripped": int, "mismatches": [...]}
     """
     if not narrative:
         return {"narrative": "", "verified": 0, "flagged": 0, "stripped": 0, "mismatches": []}
 
-    matches = _BOLD_NUMBER_RE.findall(narrative)
     verified = 0
     flagged = 0
     stripped = 0
-    mismatches = []
+    mismatches: list[float] = []
 
-    for raw in matches:
+    # ── 1. Bold numbers ──────────────────────────────────────────────
+    for raw in _BOLD_NUMBER_RE.findall(narrative):
         clean = raw.rstrip("%")
         try:
             num = float(clean)
         except ValueError:
             continue
-
-        found = False
-        for src in source_numbers:
-            src_f = float(src)
-            if abs(num - src_f) <= tolerance:
-                found = True
-                break
-            # Also check percentage form: 82 matches 0.82
-            if 0 < src_f < 1 and abs(num - src_f * 100) <= tolerance:
-                found = True
-                break
-
-        if found:
+        if _is_grounded_number(num, source_numbers, tolerance):
             verified += 1
         else:
             flagged += 1
             stripped += 1
             mismatches.append(num)
-            # Strip bold formatting from unverified numbers (remove trust signal)
-            narrative = narrative.replace(f"**{raw}**", f"{raw}")
+            # Remove the trust signal (bold) AND flag it inline.
+            narrative = narrative.replace(
+                f"**{raw}**", f"{raw}{_UNVERIFIED_MARKER}", 1
+            )
 
-    return {"narrative": narrative, "verified": verified, "flagged": flagged, "stripped": stripped, "mismatches": mismatches}
+    # ── 2. Unbolded statistical figures (%, x-multiplier) ────────────
+    # Re-scan the (possibly already-modified) narrative. Skip figures we
+    # just flagged (they now carry the marker) and any already inside a
+    # bold span we left intact (verified bold numbers).
+    def _replace_unbolded(m: re.Match) -> str:
+        nonlocal verified, flagged, stripped
+        whole = m.group(0)
+        # Don't touch a figure already flagged in pass 1.
+        tail = narrative[m.end():m.end() + len(_UNVERIFIED_MARKER)]
+        if tail == _UNVERIFIED_MARKER:
+            return whole
+        try:
+            num = float(m.group(1))
+        except ValueError:
+            return whole
+        unit = m.group(2)
+        # For multipliers, verify the bare value (2.5x ↔ source 2.5).
+        # For percentages, _is_grounded_number already handles 82 ↔ 0.82.
+        if _is_grounded_number(num, source_numbers, tolerance):
+            verified += 1
+            return whole
+        flagged += 1
+        stripped += 1
+        mismatches.append(num)
+        return f"{whole}{_UNVERIFIED_MARKER}"
+
+    # Avoid double-marking: only run on text not already ending in marker.
+    narrative = _UNBOLDED_STAT_RE.sub(_replace_unbolded, narrative)
+
+    return {
+        "narrative": narrative,
+        "verified": verified,
+        "flagged": flagged,
+        "stripped": stripped,
+        "mismatches": mismatches,
+    }
 
 
 _BASE_RULES = """- Use **bold** for key entities, numbers, and findings.
