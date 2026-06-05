@@ -257,7 +257,74 @@ class DataPipelineScheduler:
             logger.exception("Post-task scenario_calibration failed")
             results["scenario_calibration"] = f"ERROR: {e}"
 
+        # 12. Learning service (decisions → source accuracy + prompt flags) —
+        # C4 / SPEC-032. EWMA-updates sources.predictive_accuracy from
+        # decision calibration scores and flags low-calibration prompt
+        # versions. Idempotent via a since-cursor (advances per successful
+        # run); writes a learning_service_runs row every cycle. Own connection.
+        try:
+            t0 = time.time()
+            results["learning_service"] = (
+                self._run_learning_service() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: learning_service — %s", results["learning_service"])
+        except Exception as e:
+            logger.exception("Post-task learning_service failed")
+            results["learning_service"] = f"ERROR: {e}"
+
+        # 13. Concept-weight adjuster (query telemetry → concept weights) —
+        # C5. Correlates per-intent answer quality (confidence + evidence)
+        # with concept activations and nudges concept weights ±10%/cycle.
+        # Conservative + clamped; no-op when telemetry is thin. Own connection.
+        try:
+            t0 = time.time()
+            results["concept_weight_adjuster"] = (
+                self._run_concept_weight_adjuster() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info(
+                "Post-task: concept_weight_adjuster — %s",
+                results["concept_weight_adjuster"],
+            )
+        except Exception as e:
+            logger.exception("Post-task concept_weight_adjuster failed")
+            results["concept_weight_adjuster"] = f"ERROR: {e}"
+
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_learning_service(self) -> str:
+        """Run the EWMA source-accuracy + prompt-flag learning loop (C4).
+        Writes a learning_service_runs row. Own connection."""
+        from services.learning_service import LearningService
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            result = LearningService().run(db, started_by_user_id=None)
+            return (
+                f"OK: run {result.run_id} status={result.status}, "
+                f"{result.decisions_processed} decisions, "
+                f"{result.sources_updated} sources, "
+                f"{result.prompts_flagged} prompts flagged"
+            )
+        finally:
+            db.close()
+
+    def _run_concept_weight_adjuster(self) -> str:
+        """Tune concept weights from query telemetry (C5). Own connection."""
+        from services.concept_weight_adjuster import ConceptWeightAdjuster
+        from services.concept_registry import ConceptRegistry
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            registry = ConceptRegistry(db=db)
+            report = ConceptWeightAdjuster(db, registry).analyze_and_adjust(lookback_days=7)
+            return (
+                f"OK: analyzed {report.analyzed_queries} queries, "
+                f"{report.concepts_adjusted} concepts adjusted"
+            )
+        finally:
+            db.close()
 
     def _run_scenario_calibration(self) -> str:
         """Re-weight live scenarios from new signals (PB-H14). Own connection."""
