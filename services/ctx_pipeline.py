@@ -290,6 +290,28 @@ class CTXQueryPipeline:
 
         return sources
 
+    # ── Stage 1.5: PLAN (Domain Intelligence — DI-2) ──
+
+    def plan_decomposition(self, intent: str, entities: list[dict], db: Any,
+                           as_of: Optional[Any] = None):
+        """The PLAN stage: decompose a nuanced question into a grounded,
+        per-dimension matrix (entities × dimensions) before generic retrieval.
+
+        Sits between understand and retrieve, per the Domain Intelligence spec.
+        `entities` are pre-resolved [{entity_id, entity_type, label}, ...]; `db`
+        is passed in so the pipeline keeps its corpus-only constructor contract.
+
+        Returns a QuestionMatrix, or None when no playbook matches the
+        (intent × entity-type signature) — callers fall back to generic
+        retrieval (graceful degradation). Failures never raise into the pipeline.
+        """
+        try:
+            from services.domain_intelligence.planner import DecompositionPlanner
+            return DecompositionPlanner(db).plan(intent, entities, as_of=as_of)
+        except Exception:
+            logger.debug("PLAN stage skipped (decomposition failed)", exc_info=True)
+            return None
+
     # ── Stage 2: Retrieve ──
 
     def retrieve(self, plan: QueryPlan) -> RetrievalResult:

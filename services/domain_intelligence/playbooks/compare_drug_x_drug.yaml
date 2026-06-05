@@ -1,0 +1,87 @@
+# DI-1 — drug-vs-drug comparison playbook.
+#
+# Encoded domain expertise: to compare two drugs, a pharma analyst examines
+# seven dimensions and, for each, knows where the answer lives. Routes reuse
+# the EXACT predicates the fact ledger already emits (see services/fact_emitters
+# + services/dossier_kb._PREDICATE_DOMAIN + services/kbq_views._PREDICATE_KBQ),
+# plus entity-graph link types — so a dimension is just a named, SME-editable
+# bundle of retrieval routes + a sub-question template.
+#
+# This file is the SEED. DI-5 makes it DB-backed + CRUD-able by an SME.
+
+id: compare.drug_x_drug
+pack: pharma
+trigger:
+  intent: compare
+  entities: "drug x drug"   # entity-type signature: exactly two drugs
+synthesis:
+  shape: matrix
+  lead_with: key_differentiator
+
+dimensions:
+  - key: mechanism
+    label: Mechanism of action
+    sub_question: "What is {entity}'s mechanism of action / molecular target?"
+    routes:
+      - predicate:mechanism_of_action
+      - predicate:target_activity
+    required: true
+    weight: 0.9
+
+  - key: efficacy
+    label: Efficacy / endpoints
+    sub_question: "What efficacy did {entity} show on its primary trial endpoints?"
+    routes:
+      - predicate:trial_result
+      - predicate:clinical_trial
+      - predicate:key_publication
+    required: true
+    weight: 1.0
+
+  - key: safety
+    label: Safety profile
+    sub_question: "What is {entity}'s safety profile — adverse events and warnings?"
+    routes:
+      - predicate:adverse_event
+      - predicate:safety_signal
+      - predicate:label_indication
+    required: true
+    weight: 0.95
+
+  - key: dosing
+    label: Dosing & administration
+    sub_question: "How is {entity} dosed and administered?"
+    routes:
+      - predicate:label_indication
+    required: false
+    weight: 0.6
+
+  - key: regulatory
+    label: Regulatory status
+    sub_question: "What is {entity}'s regulatory / approval status and timeline?"
+    routes:
+      - predicate:regulatory_approval
+      - predicate:fda_approval_date
+      - source:regulatory_milestones
+    required: false
+    weight: 0.7
+
+  - key: pricing_access
+    label: Pricing & access
+    sub_question: "What is known about {entity}'s pricing, sales, and payer access?"
+    routes:
+      - predicate:wac_usd
+      - predicate:pricing_intent
+      - predicate:product_sales
+    required: false
+    weight: 0.7
+
+  - key: competition
+    label: Competitive position
+    sub_question: "Who does {entity} compete with and what is its market position?"
+    routes:
+      - predicate:competitor
+      - predicate:market_share
+      - link:COMPETES_WITH
+    required: false
+    weight: 0.8
