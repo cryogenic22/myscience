@@ -329,6 +329,7 @@ def ctx_benchmark(body: dict):
 @router.post("")
 def chat(
     body: dict,
+    background_tasks: BackgroundTasks = None,
     db: Database = Depends(get_db),
     engine: QueryEngine = Depends(get_query_engine),
     metrics_svc: PharmaMetrics = Depends(get_metrics),
@@ -587,6 +588,28 @@ def chat(
                 response_latency_ms=round(latency_ms, 1),
                 gap_type=gap_type, gap_details=gap_details,
             )
+
+            # C3: close the query → quality → research loop. When the answer
+            # was weak (gap detected above), auto-spawn a gap-fill research
+            # job — the trigger the dormant research path never had. Dedup +
+            # fire-and-forget inside the helper; the background task runs the
+            # same deep-research path as a manual job.
+            if gap_type and background_tasks is not None:
+                try:
+                    from services.gap_research import maybe_trigger_gap_research
+                    scope = normalize_scope(session_id)
+                    job = maybe_trigger_gap_research(
+                        db, question=question, gap_type=gap_type,
+                        gap_details=gap_details, scope_key=scope,
+                        session_id=session_id,
+                    )
+                    if job and job.get("id"):
+                        background_tasks.add_task(
+                            _run_research_job_task, job["id"], scope,
+                        )
+                        payload["gap_research_job_id"] = job["id"]
+                except Exception:
+                    logger.debug("gap-research trigger failed", exc_info=True)
         except Exception:
             pass  # telemetry must never break chat
 
