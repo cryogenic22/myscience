@@ -509,6 +509,25 @@ class KnowledgeStore:
         drug_link = links.get("generic_name", None)
         drug_id = drug_link.entity_id if drug_link else None
 
+        # D2: stamp the spine entity at ingest. Established convention (verified
+        # on prod: 26,442/26,442 grounded rows) is primary_entity_id ==
+        # drug_id::text for drug-grounded events, with primary_entity_type/name
+        # mirrored. A resolved drug wins; otherwise a resolved company grounds
+        # the event (e.g. M&A/exec news with no drug subject). Previously this
+        # writer set drug_id but never the primary_entity_* spine columns, so
+        # ~29% of events landed NULL-primary and were uncited by the dossier.
+        company_link = links.get("company_name") or links.get("sponsor_name")
+        if drug_id:
+            primary_entity_id = drug_id
+            primary_entity_type = "drug"
+            primary_entity_name = data.get("generic_name")
+        elif company_link:
+            primary_entity_id = company_link.entity_id
+            primary_entity_type = "company"
+            primary_entity_name = data.get("company_name")
+        else:
+            primary_entity_id = primary_entity_type = primary_entity_name = None
+
         # event_date is NOT NULL — use retrieved_at as fallback
         event_date = data.get("event_date") or prov.retrieved_at.strftime("%Y-%m-%d")
         content_hash = self.compute_content_hash(data)
@@ -521,8 +540,10 @@ class KnowledgeStore:
             INSERT INTO market_events
                 (drug_id, event_type, event_date, description, impact_score,
                  content_hash, event_hash, last_verified_at,
-                 source_api, source_url, etl_run_id, retrieved_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+                 source_api, source_url, etl_run_id, retrieved_at,
+                 primary_entity_id, primary_entity_type, primary_entity_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s,
+                    %s, %s, %s)
             ON CONFLICT (event_hash) WHERE event_hash IS NOT NULL
                 DO NOTHING
             RETURNING id
@@ -539,6 +560,9 @@ class KnowledgeStore:
                 prov.api_endpoint,
                 etl_run_id,
                 prov.retrieved_at,
+                primary_entity_id,
+                primary_entity_type,
+                primary_entity_name,
             ],
         )
         if new_row:
