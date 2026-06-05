@@ -32,6 +32,7 @@ from connectors.base import (
     RawRecord,
     RecordType,
     SourceType,
+    build_openfda_date_search,
 )
 
 logger = logging.getLogger(__name__)
@@ -162,11 +163,11 @@ class OpenFDALabelsConnector(BaseConnector):
         skip = 0
         limit = 100
 
-        # Build search query
-        search = f'openfda.generic_name:"{drug_name}"'
-        if since:
-            date_str = since.strftime("%Y%m%d")
-            search += f"+AND+effective_time:[{date_str}+TO+20991231]"
+        # Build search query. AND is a space and the date range a plain token —
+        # see build_openfda_date_search for why literal +AND+ breaks (HTTP 500).
+        search = build_openfda_date_search(
+            f'openfda.generic_name:"{drug_name}"', since, "effective_time"
+        )
 
         while True:
             params: dict[str, Any] = {
