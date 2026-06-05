@@ -121,3 +121,27 @@ POST_RUN_TASKS = [
     "backfill_data_linkage",   # OWNS, TA, mechanism, sponsor links
     "fix_data_quality",         # literature-drug match, quality scores, MV refresh
 ]
+
+
+# ── Per-source freshness SLA (D1) ──
+# Maps SourceType -> (target_table, recency_column, sla_days). Drives
+# scripts/connector_health.py. A *single* global freshness_max_days is too
+# coarse: CT.gov/PubMed run daily (2d SLA) while FAERS/Labels/ChEMBL run weekly
+# (14d SLA). A source whose newest target-table row is older than its SLA is a
+# silent failure (e.g. labels/FAERS were 105d stale while logging SUCCESS).
+# recency_column is the ingestion-time column to age against (prefer
+# retrieved_at / last_verified_at over created_at).
+FRESHNESS_SLA_DAYS: dict[SourceType, tuple[str, str, int]] = {
+    SourceType.CLINICAL_TRIALS_GOV: ("clinical_trials", "last_verified_at", 2),
+    SourceType.PUBMED:              ("pubmed_articles", "last_verified_at", 2),
+    SourceType.PMC:                 ("pmc_articles", "retrieved_at", 3),
+    SourceType.FDA_SHORTAGES:       ("market_events", "retrieved_at", 2),
+    SourceType.FDA_ORANGE_BOOK:     ("drugs", "updated_at", 14),
+    SourceType.OPENFDA_LABELS:      ("drug_labels", "retrieved_at", 14),
+    SourceType.SEC_EDGAR:           ("companies", "updated_at", 14),
+    SourceType.OPENFDA_FAERS:       ("adverse_events", "retrieved_at", 14),
+    SourceType.EMA:                 ("regulatory_milestones", "retrieved_at", 14),
+    SourceType.NEWS:                ("market_events", "retrieved_at", 2),
+    SourceType.CHEMBL:              ("bioactivities", "retrieved_at", 14),
+    SourceType.MESH_ONTOLOGY:       ("therapeutic_areas", "updated_at", 45),
+}
