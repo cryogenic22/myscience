@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Data & Sense Layer — Status & Diagnosis (live-verified)</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Fraunces",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:56px 28px 120px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:38px;letter-spacing:-.02em;margin:0 0 6px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:25px;margin:54px 0 14px;padding-top:22px;border-top:1px solid var(--line);}
+  h3{font-size:16px;margin:24px 0 8px;color:var(--ink);}
+  p{color:var(--ink2);margin:0 0 14px;}
+  .sub{color:var(--ink3);font-size:15px;margin:0 0 24px;}
+  .mono{font-family:var(--mono);}
+  code{font-family:var(--mono);font-size:.82em;background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--teal);}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;font-weight:600;white-space:nowrap;}
+  .c-red{background:rgba(248,113,113,.14);color:var(--red);}
+  .c-amber{background:rgba(251,191,36,.14);color:var(--amber);}
+  .c-green{background:rgba(52,211,153,.14);color:var(--green);}
+  .c-blue{background:rgba(91,140,255,.16);color:var(--accent);}
+  .c-violet{background:rgba(167,139,250,.16);color:var(--violet);}
+  .c-gray{background:rgba(139,145,158,.16);color:var(--ink3);}
+  .num{font-family:var(--mono);color:var(--ink4);font-size:12px;margin-right:8px;}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;}
+  th,td{text-align:left;padding:9px 10px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);}
+  td{color:var(--ink2);}
+  td.cap{color:var(--ink);}
+  .rowct{font-family:var(--mono);color:var(--teal);}
+  .bad{font-family:var(--mono);color:var(--red);}
+  .warn{font-family:var(--mono);color:var(--amber);}
+  ul{margin:6px 0 16px;padding-left:22px;color:var(--ink2);} li{margin:6px 0;}
+  .verdict{background:var(--surface);border-radius:16px;padding:26px 30px;margin:28px 0 8px;border-left:3px solid var(--amber);}
+  .verdict .big{font-family:var(--serif);font-size:22px;color:var(--ink);margin:8px 0 10px;line-height:1.4;}
+  .card{background:var(--surface);border-radius:14px;padding:20px 22px;margin:14px 0;}
+  .card.confess{border-left:3px solid var(--red);}
+  .card.accent{border-left:3px solid var(--accent);}
+  .card.good{border-left:3px solid var(--green);}
+  .ev{font-family:var(--mono);font-size:10.5px;color:var(--ink4);}
+  .foot{margin-top:56px;color:var(--ink4);font-size:13px;font-family:var(--mono);border-top:1px solid var(--line);padding-top:18px;}
+  .big-num{font-family:var(--serif);font-size:26px;color:var(--ink);}
+  .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0;}
+  .statgrid .s{background:var(--surface2);border-radius:10px;padding:12px 14px;}
+  .statgrid .s .n{font-family:var(--serif);font-size:22px;color:var(--ink);}
+  .statgrid .s .l{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-top:2px;}
+  .pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--ink3);background:var(--surface2);padding:14px 16px;border-radius:10px;margin:10px 0;}
+  .pipe .st{padding:5px 9px;border-radius:7px;background:var(--surface3);color:var(--ink2);}
+  .pipe .ar{color:var(--ink4)}
+  @media(max-width:720px){.statgrid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="num mono">MARKET ZERO · INTERNAL · 05 JUN 2026 · live-verified against Railway prod (information_schema + exact counts + 4 read-only code sweeps)</div>
+  <h1>Data &amp; Sense Layer — Status &amp; Diagnosis</h1>
+  <p class="sub">Scope: the four questions you raised — (1) which connectors are <strong>stale vs active</strong>;
+  (2) is the data getting <strong>connected properly</strong>; (3) does the connection produce a <strong>richer schema +
+  AI-ready context</strong>; (4) are we turning the substrate into the <strong>right facts and grounded narratives with
+  source links</strong> on CI and chat. Method: a single read-only freshness probe on prod + four parallel code sweeps
+  (ingestion, resolution/cross-link, facts/AI-ready, narrative/citation). Every claim is tagged
+  <span class="ev">[db]</span> or <span class="ev">[code: file]</span>. This supersedes the 01-Jun
+  <code>intelligence-layer-diagnosis.html</code> on the points marked <span class="chip c-green">now true</span>.</p>
+
+  <!-- WHAT CHANGED SINCE THE LAST DIAGNOSIS -->
+  <div class="card good">
+    <span class="chip c-green">What the 01-Jun docs got that is now stale</span>
+    <p style="margin:10px 0 6px;color:var(--ink)">The master plan's <strong>#1 blocker (A1: facts ledger = 1 row, dead)</strong> is <strong>fixed</strong>. The DR-loop fact-emitter work landed afterwards.</p>
+    <table>
+      <thead><tr><th style="width:46%">01-Jun claim</th><th>05-Jun verified truth</th></tr></thead>
+      <tbody>
+        <tr><td>facts ledger = <span class="bad">1 row</span> (column-name bug)</td><td><span class="rowct">9,858 facts</span>, 17 predicates, 4 fact-classes, evidence-linked. <span class="ev">[db]</span></td></tr>
+        <tr><td>evidence_records = 1 row</td><td><span class="rowct">5,721</span> evidence records. <span class="ev">[db]</span></td></tr>
+        <tr><td>signals = 625</td><td><span class="rowct">691</span> (some now fact-derived via <code>signal_facts</code>). <span class="ev">[db]</span></td></tr>
+      </tbody>
+    </table>
+    <p style="margin:8px 0 0;color:var(--ink3);font-size:13px">So the layer is materially further along than the plan assumes. The remaining gaps below are <em>different and more specific</em> than "the ledger is empty."</p>
+  </div>
+
+  <!-- 0 SNAPSHOT -->
+  <h2>0 · Live production snapshot (05 Jun)</h2>
+  <div class="statgrid">
+    <div class="s"><div class="n">5,538</div><div class="l">clinical_trials · 0d</div></div>
+    <div class="s"><div class="n">4,381</div><div class="l">pubmed_articles · 0d</div></div>
+    <div class="s"><div class="n">37,325</div><div class="l">market_events · 0d</div></div>
+    <div class="s"><div class="n">22,867</div><div class="l">regulatory_milestones · 4d</div></div>
+    <div class="s"><div class="n">9,858</div><div class="l">facts · 1d</div></div>
+    <div class="s"><div class="n">5,721</div><div class="l">evidence_records</div></div>
+    <div class="s"><div class="n">10.54M</div><div class="l">entity_links · 0d</div></div>
+    <div class="s"><div class="n">691</div><div class="l">signals</div></div>
+    <div class="s" style="border:1px solid rgba(248,113,113,.4)"><div class="n" style="color:var(--red)">185</div><div class="l">drug_labels · <span style="color:var(--red)">105d</span></div></div>
+    <div class="s" style="border:1px solid rgba(248,113,113,.4)"><div class="n" style="color:var(--red)">2,075</div><div class="l">adverse_events · <span style="color:var(--red)">105d</span></div></div>
+    <div class="s" style="border:1px solid rgba(248,113,113,.4)"><div class="n" style="color:var(--red)">0</div><div class="l">pmc · patents · targets · pricing</div></div>
+    <div class="s" style="border:1px solid rgba(251,191,36,.4)"><div class="n" style="color:var(--amber)">628</div><div class="l">bioactivities · <span style="color:var(--amber)">100% orphan</span></div></div>
+  </div>
+
+  <!-- Q1 STALE VS ACTIVE -->
+  <h2>1 · Stale vs active — your instinct was right</h2>
+  <p class="sub">Verdict: <strong>5 sources are fresh and flowing, 2 are 105 days stale with no alert, 1 runs but produces orphans, and 4 tables are empty (2 of them scheduled).</strong> The scheduler reports <span class="rowct">490 SUCCESS / 10 RUNNING / 0 FAILURE</span> — failures don't surface as failures, so staleness is invisible.</p>
+  <table>
+    <thead><tr><th style="width:18%">Source</th><th style="width:16%">Target table</th><th style="width:12%">Newest row</th><th style="width:12%">State</th><th>Read</th></tr></thead>
+    <tbody>
+      <tr><td class="cap">ClinicalTrials.gov</td><td>clinical_trials</td><td class="rowct">0d</td><td><span class="chip c-green">active</span></td><td>Daily 02:00. 5,538 rows, 94% drug-linked. Healthy.</td></tr>
+      <tr><td class="cap">PubMed</td><td>pubmed_articles</td><td class="rowct">0d</td><td><span class="chip c-green">active</span></td><td>Daily 02:30. But <strong>66% have <code>drug_id</code> NULL</strong> — flowing, weakly linked (§2).</td></tr>
+      <tr><td class="cap">SEC / news / shortages</td><td>market_events</td><td class="rowct">0d</td><td><span class="chip c-green">active</span></td><td>Flowing heavily — but <strong>99.6% unlinked + heavy dup</strong> (§2). Volume ≠ value.</td></tr>
+      <tr><td class="cap">FDA Orange Book</td><td>drugs · regulatory_milestones</td><td class="rowct">4d</td><td><span class="chip c-green">active</span></td><td>Weekly Mon. 22,867 milestones — rich PDUFA/approval timeline.</td></tr>
+      <tr><td class="cap">MeSH ontology</td><td>therapeutic_areas · mechanisms</td><td class="rowct">—</td><td><span class="chip c-green">active</span></td><td>Monthly. Feeds MechanismEmitter (621 facts).</td></tr>
+      <tr><td class="cap">openFDA Labels</td><td>drug_labels</td><td class="bad">105d</td><td><span class="chip c-red">STALE</span></td><td>Weekly Tue job — last write 19 Feb. Silently stopped. 185 rows, ~19 drugs.</td></tr>
+      <tr><td class="cap">openFDA FAERS</td><td>adverse_events</td><td class="bad">105d</td><td><span class="chip c-red">STALE</span></td><td>Weekly Thu job — last write 19 Feb. Silently stopped. 2,075 rows, ~19 drugs.</td></tr>
+      <tr><td class="cap">ChEMBL</td><td>bioactivities · molecular_targets</td><td class="warn">6d</td><td><span class="chip c-amber">runs→orphan</span></td><td>Writes 628 bioactivities but <strong>100% <code>drug_id</code> NULL</strong> and <strong>molecular_targets = 0</strong>. Output unreachable.</td></tr>
+      <tr><td class="cap">PMC</td><td>pmc_articles</td><td class="bad">empty</td><td><span class="chip c-red">BROKEN</span></td><td>Scheduled daily, depends on PubMed — yet <strong>0 rows</strong> despite 4,381 articles. Silent failure.</td></tr>
+      <tr><td class="cap">Patents (Orange Book/USPTO)</td><td>patents</td><td class="bad">empty</td><td><span class="chip c-gray">unwired</span></td><td>0 rows. No FTO/patent-cliff intelligence. (Master-plan A7.)</td></tr>
+      <tr><td class="cap">Pricing (NADAC/CMS)</td><td>drug_pricing</td><td class="bad">empty</td><td><span class="chip c-gray">unwired</span></td><td>0 rows. Blocks DR-2 pricing facts. No source populates it. (A7.)</td></tr>
+    </tbody>
+  </table>
+  <div class="card confess">
+    <span class="chip c-red">Root cause — why staleness is invisible</span>
+    <ul style="margin:8px 0 0">
+      <li><strong>No failure signal.</strong> <code>etl_runs</code> shows 0 FAILURE; 10 jobs stuck in RUNNING. A job that dies mid-run leaves no FAILURE row, so nothing alerts. <span class="ev">[db]</span></li>
+      <li><strong>Staleness hook uses a hardcoded table map</strong> (<code>integration/pipeline_hooks.py:376-382</code>) instead of querying <code>source_registry</code> — newer sources (labels, FAERS, ChEMBL, news) aren't in the map, so their staleness is never computed. <span class="ev">[code]</span></li>
+      <li><strong>No per-source freshness SLA.</strong> One global <code>freshness_max_days</code> — can't say "FAERS must be &lt;14d." <span class="ev">[code]</span></li>
+    </ul>
+  </div>
+
+  <!-- Q2 CONNECTED PROPERLY -->
+  <h2>2 · Are they connected properly? — partially</h2>
+  <p class="sub">Verdict: <strong>the graph is huge (10.5M links) but lopsided.</strong> Trials and adverse events link well; the two highest-volume feeds (market_events, literature) and ChEMBL barely link to the entity spine — so a lot of raw data never becomes <em>reachable</em> intelligence.</p>
+  <table>
+    <thead><tr><th style="width:24%">Table</th><th style="width:18%">Unlinked to drug</th><th style="width:12%">State</th><th>Consequence</th></tr></thead>
+    <tbody>
+      <tr><td class="cap">clinical_trials</td><td class="rowct">351 / 5,538 (6%)</td><td><span class="chip c-green">linked</span></td><td>Trials reliably reachable from a drug. Good.</td></tr>
+      <tr><td class="cap">adverse_events</td><td class="rowct">83 / 2,075 (4%)</td><td><span class="chip c-green">linked</span></td><td>Well linked (but the source is 105d stale, §1).</td></tr>
+      <tr><td class="cap">pubmed_articles</td><td class="warn">2,889 / 4,381 (66%)</td><td><span class="chip c-amber">weak</span></td><td>Two-thirds of literature isn't attached to any drug → invisible to dossier/KBQ for that drug.</td></tr>
+      <tr><td class="cap">market_events</td><td class="bad">37,186 / 37,325 (99.6%)</td><td><span class="chip c-red">orphan</span></td><td>Almost no event resolves to <code>primary_entity_id</code>. The sensing feed is volume without entity grounding.</td></tr>
+      <tr><td class="cap">bioactivities</td><td class="bad">628 / 628 (100%)</td><td><span class="chip c-red">orphan</span></td><td>ChEMBL never linked compounds to drugs; <code>molecular_targets</code>=0 → no drug→target→activity path at all.</td></tr>
+    </tbody>
+  </table>
+  <h3>Why the gaps happen (verified)</h3>
+  <ul>
+    <li><strong>market_events:</strong> the event collector resolves <code>primary_entity_id</code> only when a generic/brand name is confidently matched; news/SEC text rarely contains a clean drug mention, so 99.6% stay NULL. Compounded by <strong>massive duplication</strong> — the top dup group is <span class="bad">1,041 copies</span> of one event. Read-time dedup hides this in the UI but the ledger ingests the noise (3,301 <code>market_event</code> facts = 33% of the whole ledger). <span class="ev">[db + code: services/event_collector.py]</span></li>
+    <li><strong>pubmed:</strong> the <code>EVIDENCE_FOR</code> link only fires when the article's generic_name resolves; MeSH-only articles (no drug string) don't link. <span class="ev">[code: cross_linker + pack.py]</span></li>
+    <li><strong>bioactivities:</strong> <code>drug_id</code> is NULLABLE and there is <em>no link rule at all</em> in <code>domain/pharma/pack.py</code> — orphaned by design. The <code>BioactivityEmitter</code> JOINs on <code>drug_id</code> → 0 rows → emits 0 facts. <span class="ev">[code: fact_emitters/mechanisms.py]</span></li>
+    <li><strong>resolution debt is growing:</strong> <code>unresolved_entities</code> 46,579 (↑ from 46,318), <code>hitl_review_queue</code> 29,429 (↑ from 28,754), steward stuck at 263 — nothing drains them. <span class="ev">[db]</span></li>
+  </ul>
+
+  <!-- Q3 RICHER SCHEMA / AI-READY -->
+  <h2>3 · Richer schema &amp; AI-ready context? — yes, with one quality leak</h2>
+  <p class="sub">Verdict: <strong>the schema is genuinely rich and the AI-ready path is well-built.</strong> The leak is that a third of the fact ledger is low-trust (unlinked, duplicated market_events) and a third of facts carry no evidence link.</p>
+  <div class="pipe">
+    <span class="st">connector</span><span class="ar">→</span>
+    <span class="st">normalize</span><span class="ar">→</span>
+    <span class="st">resolve (6-strategy)</span><span class="ar">→</span>
+    <span class="st">embed (pgvector)</span><span class="ar">→</span>
+    <span class="st">store</span><span class="ar">→</span>
+    <span class="st">cross-link</span><span class="ar">→</span>
+    <span class="st">fact emitters</span><span class="ar">→</span>
+    <span class="st">facts ledger</span><span class="ar">→</span>
+    <span class="st">CTX L2/L3</span><span class="ar">→</span>
+    <span class="st">dossier · KBQ · chat</span>
+  </div>
+  <table>
+    <thead><tr><th style="width:26%">Capability</th><th style="width:14%">State</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="cap">Entity schema breadth</td><td><span class="chip c-green">rich</span></td><td>24+ entity tables (drug, company, trial, literature, event, mechanism, target, investigator, patent, milestone, AE, label…). <span class="ev">[code: migrations 001-079]</span></td></tr>
+      <tr><td class="cap">Embeddings coverage</td><td><span class="chip c-amber">~45%</span></td><td>9/24 tables embedded (drug, trial, article, label, target, TA, company, PMC, chunk). Details (AE, outcomes, locations) not embedded. <span class="ev">[code: search.py]</span></td></tr>
+      <tr><td class="cap">Fact emitters</td><td><span class="chip c-green">8 wired</span></td><td>Clinical, AE, label, mechanism, literature, competition, document, (bioactivity dormant). All in <code>get_emitters</code>. <span class="ev">[code: fact_emitters/base.py]</span></td></tr>
+      <tr><td class="cap">Fact ledger health</td><td><span class="chip c-amber">mixed</span></td><td>9,858 facts. <strong>corporate 7,838 / reference 1,739 / signal 242 / inferred 35.</strong> But <code>market_event</code> = 3,301 (33%) from 99.6%-unlinked, duplicated events; <strong>3,441 facts (35%) have <code>source_doc_id</code> NULL</strong> → no drill-through. <span class="ev">[db]</span></td></tr>
+      <tr><td class="cap">CTX AI-ready assembly</td><td><span class="chip c-green">working</span></td><td>L2 salience-ordered + L3 universe catalog injected to ground hallucination; compression metrics logged. <span class="ev">[code: ctx_context.py · ctx_corpus.py]</span></td></tr>
+      <tr><td class="cap">Predicate → domain → KBQ routing</td><td><span class="chip c-amber">2 gaps</span></td><td><code>target_activity</code> not in <code>_PREDICATE_KBQ</code> (won't surface even if emitted); <code>market_event</code> intentionally excluded from KBQ. <span class="ev">[code: kbq_views.py]</span></td></tr>
+    </tbody>
+  </table>
+
+  <!-- Q4 FACTS + NARRATIVES + LINKS -->
+  <h2>4 · Right facts &amp; grounded narratives with source links?</h2>
+  <p class="sub">Verdict: <strong>the grounded path is strong; the ungrounded escape hatches are the risk.</strong> Clinical/mechanism/literature facts are well-formed and cited; metrics and graph edges carry no provenance, and three code paths can emit prose with no working links.</p>
+  <table>
+    <thead><tr><th style="width:30%">Path</th><th style="width:14%">Grounded?</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="cap">Chat — evidence-backed answer</td><td><span class="chip c-green">strong</span></td><td>Citation protocol in prompt + grounding tail reminder + post-synthesis <code>validate_citations</code>/<code>verify_narrative_numbers</code> strip invalid [N] and unverified numbers. <span class="ev">[code: llm.py]</span></td></tr>
+      <tr><td class="cap">Dossier domain facts</td><td><span class="chip c-green">strong</span></td><td>Each fact carries <code>fact_class</code> + <code>source_doc_id</code> + source URL → drill-through. <span class="ev">[code: dossier_kb.py]</span></td></tr>
+      <tr><td class="cap">Metrics narratives ("23 drugs in P2-3")</td><td><span class="chip c-red">no source</span></td><td>Pre-computed materialized-view aggregates have <strong>no per-row source_url or timestamp</strong>. The number is real but unciteable. <span class="ev">[code: metrics.py]</span></td></tr>
+      <tr><td class="cap">Graph-edge claims</td><td><span class="chip c-red">no source</span></td><td>Edges carry confidence but no source document → "X used alongside Y" can't be traced. <span class="ev">[code: graph.py]</span></td></tr>
+      <tr><td class="cap">Evidence compression</td><td><span class="chip c-amber">lossy</span></td><td><code>pack_evidence</code> merges snippets; per-item source URLs are dropped in the L2 serialization the LLM sees. <span class="ev">[code: ctx_evidence.py]</span></td></tr>
+      <tr><td class="cap">Fallback narrative (LLM down)</td><td><span class="chip c-red">none</span></td><td>Template path emits "Found 5 segments" with no citations. <span class="ev">[code: unified_handler.py]</span></td></tr>
+      <tr><td class="cap">Hallucination guard</td><td><span class="chip c-amber">advisory</span></td><td><code>ContextGuard</code> flags but doesn't block, and the frontend doesn't render the guard status. <span class="ev">[code: ctx_pipeline.py]</span></td></tr>
+    </tbody>
+  </table>
+
+  <!-- BOTTOM LINE -->
+  <h2>5 · Bottom line per your four questions</h2>
+  <table>
+    <thead><tr><th style="width:32%">Question</th><th>Verified answer</th></tr></thead>
+    <tbody>
+      <tr><td class="cap">Stale vs active?</td><td><strong>Mixed and unmonitored.</strong> 5 active, 2 stale 105d (labels, FAERS), ChEMBL runs→orphan, 4 empty (2 scheduled but broken: PMC). No failure alerting.</td></tr>
+      <tr><td class="cap">Connected properly?</td><td><strong>Lopsided.</strong> Trials/AE link well; market_events 99.6% and literature 66% unlinked; bioactivities 100% orphan. 76k items in resolution backlog, growing.</td></tr>
+      <tr><td class="cap">Richer schema + AI-ready?</td><td><strong>Yes — with a quality leak.</strong> Schema rich, CTX path solid, ledger alive (9,858) — but 33% of the ledger is low-trust market_event noise and 35% of facts have no evidence link.</td></tr>
+      <tr><td class="cap">Right facts + grounded narratives + links?</td><td><strong>Strong where evidence-backed; risky on metrics/graph/fallback.</strong> Clinical/mechanism/literature cite cleanly; metrics & graph edges carry no provenance; 3 paths emit ungrounded prose.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- WHAT TO INVESTIGATE -->
+  <h2>6 · The investigation queue (hand to the data team)</h2>
+  <p class="sub">Ordered by leverage. Each maps to a workstream in <code>specs/SPEC_DATA_001_data_layer_remediation.md</code>; the operating method is in <code>docs/data-agent-playbook.md</code>.</p>
+  <div class="card accent">
+    <table>
+      <thead><tr><th style="width:7%">#</th><th style="width:30%">Investigate / fix</th><th>Why it leads</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">D1</td><td><strong>Connector freshness + failure alerting</strong> — why labels/FAERS died 19 Feb; why PMC writes 0; record FAILURE; per-source SLA; staleness hook reads <code>source_registry</code>.</td><td>Restores 2 stale clinical sources and makes future staleness visible. Highest trust impact.</td></tr>
+        <tr><td class="mono">D2</td><td><strong>market_events grounding + dedup</strong> — raise <code>primary_entity_id</code> resolution; backfill <code>event_hash</code>; collapse the 1,041-copy dup groups.</td><td>Fixes the single biggest connection gap (99.6% orphan) and de-noises 33% of the ledger.</td></tr>
+        <tr><td class="mono">D3</td><td><strong>ChEMBL linkage</strong> — populate <code>bioactivities.drug_id</code> + <code>molecular_targets</code>; add the missing link rule; map <code>target_activity</code> into KBQ.</td><td>Unlocks a dormant emitter and the drug→target→activity path end to end.</td></tr>
+        <tr><td class="mono">D4</td><td><strong>Literature linkage</strong> — link the 66% MeSH-only articles via TA/mechanism bridge.</td><td>Doubles literature reachable per drug.</td></tr>
+        <tr><td class="mono">D5</td><td><strong>Evidence completeness</strong> — backfill <code>source_doc_id</code> for the 35% of facts with none; carry provenance through evidence compression.</td><td>Makes drill-through universal; closes the citation leak.</td></tr>
+        <tr><td class="mono">D6</td><td><strong>Metric &amp; graph provenance</strong> — stamp source + as-of on materialized-view rows and graph edges.</td><td>Lets metric/graph narratives cite. Removes the biggest ungrounded-prose risk.</td></tr>
+        <tr><td class="mono">D7</td><td><strong>Resolution backlog drain</strong> — re-run resolution after D2/D4; triage the 76k queue.</td><td>Shrinks the growing debt; improves every downstream link.</td></tr>
+        <tr><td class="mono">D8</td><td><strong>Empty strategic tables</strong> — wire patents (FTO) + pricing (NADAC).</td><td>Unblocks patent-cliff + pricing intelligence (DR-2).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="foot">
+    Claude Code · 05 Jun · figures from one read-only Railway probe + 4 code sweeps · supersedes intelligence-layer-diagnosis.html where marked ·
+    companions: SPEC_DATA_001_data_layer_remediation.md (build spec) · data-agent-playbook.md (parallel-agent method) ·
+    reminder: rotate the Railway Postgres password.
+  </div>
+
+</div>
+</body>
+</html>
