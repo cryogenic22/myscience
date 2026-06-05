@@ -70,10 +70,14 @@ def load_vocabulary(db) -> list[VocabEntry]:
         entries.setdefault(key, VocabEntry(nm, nm.lower(), etype, str(eid)))
 
     # Drugs carry brand_name + generic_name (no single 'name' column); both
-    # map to the same drug id so either spelling in the text resolves.
+    # map to the same drug id so either spelling in the text resolves. Exclude
+    # soft-deleted dup rows (RC1) so events resolve onto the canonical entity,
+    # not a merged duplicate.
     try:
         for row in db.fetch_all(
-            "SELECT id, brand_name, generic_name FROM drugs"
+            "SELECT id, brand_name, generic_name FROM drugs "
+            "WHERE record_status IS NULL "
+            "OR record_status NOT IN ('merged','superseded','excluded')"
         ) or []:
             _add(row.get("brand_name"), "drug", row.get("id"))
             _add(row.get("generic_name"), "drug", row.get("id"))
@@ -82,7 +86,9 @@ def load_vocabulary(db) -> list[VocabEntry]:
 
     try:
         for row in db.fetch_all(
-            "SELECT id, name FROM companies WHERE name IS NOT NULL"
+            "SELECT id, name FROM companies WHERE name IS NOT NULL "
+            "AND (record_status IS NULL "
+            "OR record_status NOT IN ('merged','superseded','excluded'))"
         ) or []:
             _add(row.get("name"), "company", row.get("id"))
     except Exception as exc:  # pragma: no cover - defensive
@@ -120,6 +126,46 @@ def resolve_from_text(text: str, vocab: list[VocabEntry]) -> Optional[tuple[str,
         if re.search(rf"\b{re.escape(entry.name_lower)}\b", haystack):
             return (entry.entity_type, entry.entity_id, entry.name)
     return None
+
+
+def derive_primary_from_drug_id(db, *, limit: Optional[int] = None) -> dict:
+    """D2-additive: ground events that already have a (canonical) drug_id.
+
+    ~96% of NULL-primary_entity_id events are recalls that carry a drug_id but
+    were never given a primary_entity_id. Deriving primary_entity_id := drug_id
+    for events whose drug is canonical (not merged/superseded) grounds the bulk
+    of the gap with zero new resolution. Additive + idempotent (only touches
+    NULL primary_entity_id rows pointing at a live drug). Merged-drug events are
+    left for consolidation (a destructive step, deferred).
+    """
+    # Set-based UPDATE…RETURNING: one statement grounds tens of thousands of
+    # recalls without per-row round-trips. Bounded by a CTE when a limit is given.
+    limit_cte = f"LIMIT {int(limit)}" if limit else ""
+    target_cte = f"""
+        WITH target AS (
+            SELECT m.id, m.drug_id, d.generic_name
+              FROM market_events m
+              JOIN drugs d ON d.id = m.drug_id
+             WHERE m.primary_entity_id IS NULL
+               AND m.drug_id IS NOT NULL
+               AND (d.record_status IS NULL
+                    OR d.record_status NOT IN ('merged','superseded','excluded'))
+             {limit_cte}
+        )
+    """
+    rows = db.fetch_all(
+        target_cte
+        + """
+        UPDATE market_events m
+           SET primary_entity_id = t.drug_id,
+               primary_entity_type = 'drug',
+               primary_entity_name = COALESCE(m.primary_entity_name, t.generic_name)
+          FROM target t
+         WHERE m.id = t.id
+        RETURNING 1
+        """
+    ) or []
+    return {"scanned": len(rows), "grounded": len(rows)}
 
 
 def backfill_orphaned_events(

@@ -4,6 +4,7 @@ from __future__ import annotations
 from services.event_entity_resolver import (
     VocabEntry,
     backfill_orphaned_events,
+    derive_primary_from_drug_id,
     load_vocabulary,
     resolve_from_text,
 )
@@ -137,3 +138,34 @@ class TestBackfill:
         params = db.updates[0]
         assert params[1] == "company"
         assert params[3] is None               # no drug_id for company matches
+
+
+class _UpdateReturningDB:
+    """Fake DB for the set-based UPDATE…RETURNING path; returns N rows and
+    captures the SQL so we can assert the canonical-only guard."""
+    def __init__(self, returned_rows):
+        self._rows = returned_rows
+        self.sql_seen: list[str] = []
+
+    def fetch_all(self, sql, params=None):
+        self.sql_seen.append(sql)
+        return self._rows
+
+
+class TestDerivePrimaryFromDrugId:
+    """D2-additive: ground events that already carry a canonical drug_id."""
+
+    def test_derives_primary_entity_from_drug_id(self):
+        db = _UpdateReturningDB([{"?column?": 1}, {"?column?": 1}])
+        stats = derive_primary_from_drug_id(db, limit=10)
+        assert stats == {"scanned": 2, "grounded": 2}
+        # one set-based statement, guarding against merged drug rows
+        sql = db.sql_seen[0].lower()
+        assert "update market_events" in sql
+        assert "record_status" in sql and "merged" in sql
+        assert "primary_entity_id is null" in sql  # additive/idempotent
+
+    def test_empty_when_nothing_to_ground(self):
+        db = _UpdateReturningDB([])
+        stats = derive_primary_from_drug_id(db)
+        assert stats == {"scanned": 0, "grounded": 0}
