@@ -140,8 +140,29 @@ FRESHNESS_SLA_DAYS: dict[SourceType, tuple[str, str, int]] = {
     SourceType.OPENFDA_LABELS:      ("drug_labels", "retrieved_at", 14),
     SourceType.SEC_EDGAR:           ("companies", "updated_at", 14),
     SourceType.OPENFDA_FAERS:       ("adverse_events", "retrieved_at", 14),
-    SourceType.EMA:                 ("regulatory_milestones", "retrieved_at", 14),
+    # EMA stores EU CTIS trials as TRIAL records into clinical_trials with
+    # source_api='ema' (NOT regulatory_milestones — that table is Orange
+    # Book's). The (table,col,days) SLA shape can't filter by source_api, so
+    # flow here reflects the shared clinical_trials table; the connector's
+    # per-run records_inserted (E2E in the scorecard) is the true EMA signal.
+    SourceType.EMA:                 ("clinical_trials", "last_verified_at", 14),
     SourceType.NEWS:                ("market_events", "retrieved_at", 2),
     SourceType.CHEMBL:              ("bioactivities", "retrieved_at", 14),
+    SourceType.OPEN_TARGETS:        ("molecular_targets", "retrieved_at", 14),
+    SourceType.PUBCHEM:             ("drugs", "updated_at", 14),
+    SourceType.NADAC:               ("drug_pricing", "retrieved_at", 14),
     SourceType.MESH_ONTOLOGY:       ("therapeutic_areas", "updated_at", 45),
+}
+
+# Sources whose APIs are confirmed dead / have no live source feed. They stay
+# scheduled (cheap, self-healing if the source returns) but their connector
+# returns 0 rows by design, so the scorecard reports them as DEFERRED rather
+# than RED — distinguishing "we gave up" from "it silently broke". Each entry
+# carries the reproduced reason so the verdict is auditable.
+KNOWN_DEFERRED_SOURCES: dict[SourceType, str] = {
+    SourceType.NADAC: (
+        "CMS NADAC endpoint (data.medicaid.gov/resource/4j6z-xnwq) returns "
+        "HTTP 404 - CMS migrated platforms in 2025/26; no live feed and no "
+        "rows in drug_pricing. Needs a new source URL before it can flow."
+    ),
 }
