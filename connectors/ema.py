@@ -88,12 +88,18 @@ class EMAConnector(BaseConnector):
         return records
 
     def _search_euctr(self, drug_name: str, since: Optional[datetime] = None) -> list[RawRecord]:
-        """Search EU CTIS (Clinical Trials Information System) for a drug."""
+        """Search EU CTIS (Clinical Trials Information System) for a drug.
+
+        The public CTIS API paginates from page **1** (page 0 returns an empty
+        result set — the original silent-zero cause) and returns records keyed
+        ctNumber / ctTitle / ctStatus / trialPhase / sponsor, which we map onto
+        the canonical EMA trial fields the normalizer expects.
+        """
         import requests as _req
         records = []
         body = {
             "searchCriteria": {"containAll": drug_name},
-            "pagination": {"page": 0, "size": 50},
+            "pagination": {"page": 1, "size": 100},
         }
 
         try:
@@ -112,35 +118,39 @@ class EMAConnector(BaseConnector):
             results = data.get("data", [])
 
             for trial in results[:100]:  # cap per drug
-                eudra_ct = trial.get("eudract_number", trial.get("id", ""))
-                if not eudra_ct:
+                ct_number = trial.get("ctNumber") or trial.get("eudract_number") or trial.get("id", "")
+                if not ct_number:
                     continue
+
+                sponsor = trial.get("sponsor", "")
+                if isinstance(sponsor, dict):
+                    sponsor = sponsor.get("name", "")
 
                 record = RawRecord(
                     record_type=RecordType.TRIAL,
-                    external_id=eudra_ct,
+                    external_id=ct_number,
                     source_name="EU Clinical Trials Register",
                     provenance=Provenance(
                         source_type=self.source_type(),
                         api_endpoint=EUCTR_API_URL,
-                        query_params=params,
+                        query_params=body,
                         retrieved_at=datetime.now(timezone.utc),
                         raw_response_hash=self._hash_payload(trial),
                     ),
                     data={
-                        "eudract_number": eudra_ct,
-                        "official_title": trial.get("title", trial.get("full_title", "")),
-                        "sponsor_name": trial.get("sponsor", {}).get("name", "") if isinstance(trial.get("sponsor"), dict) else trial.get("sponsor_name", ""),
-                        "status": trial.get("trial_status", trial.get("status", "")),
+                        "eudract_number": ct_number,
+                        "official_title": trial.get("ctTitle") or trial.get("shortTitle", ""),
+                        "sponsor_name": sponsor,
+                        "status": str(trial.get("ctStatus", "")),
                         "phase": self._extract_phase(trial),
-                        "conditions": trial.get("medical_conditions", trial.get("conditions", "")),
+                        "conditions": trial.get("conditions", ""),
                         "drug_name": drug_name,
-                        "start_date": trial.get("start_date", ""),
+                        "start_date": trial.get("startDateEU", ""),
                         "country": "EU",
                         "region": "Europe",
                     },
                     identifiers={
-                        "eudract_number": eudra_ct,
+                        "eudract_number": ct_number,
                         "drug_name": drug_name,
                     },
                 )
@@ -152,7 +162,7 @@ class EMAConnector(BaseConnector):
 
     def _extract_phase(self, trial: dict) -> str:
         """Extract clinical trial phase from EMA data."""
-        phase = trial.get("phase", trial.get("trial_phase", ""))
+        phase = trial.get("trialPhase") or trial.get("phase") or trial.get("trial_phase", "")
         if isinstance(phase, str):
             if "IV" in phase or "4" in phase:
                 return "Phase 4"
