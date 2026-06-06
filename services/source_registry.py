@@ -48,6 +48,31 @@ LATENCY_FLOOR_MS = 24 * 3600 * 1000  # 24 hours
 # License renewal window: within this many days of renewal, score degrades linearly
 LICENSE_RENEWAL_WINDOW_DAYS = 30
 
+# Canonical seed metadata for `seed_defaults`. Keyed by SourceType.value (the
+# same source_id stamped on evidence_records). Tier reflects authority/coverage
+# (1 = regulatory/registry gold; 2 = curated literature/ontology; 3 = derived
+# /enrichment); kind reflects license posture. No invented source names — every
+# key is a member of connectors.base.SourceType.
+_SOURCE_SEED_META: dict[str, dict] = {
+    "clinical_trials_gov": {"display_name": "ClinicalTrials.gov", "tier": 1, "kind": "free"},
+    "fda_orange_book":     {"display_name": "FDA Orange Book", "tier": 1, "kind": "free"},
+    "fda_shortages":       {"display_name": "FDA Drug Shortages", "tier": 1, "kind": "free"},
+    "sec_edgar":           {"display_name": "SEC EDGAR", "tier": 1, "kind": "free"},
+    "openfda_faers":       {"display_name": "openFDA FAERS", "tier": 1, "kind": "free"},
+    "openfda_labels":      {"display_name": "openFDA Labels (SPL)", "tier": 1, "kind": "free"},
+    "ema":                 {"display_name": "European Medicines Agency", "tier": 1, "kind": "free"},
+    "nadac":               {"display_name": "NADAC (CMS Pricing)", "tier": 1, "kind": "free"},
+    "pubmed":              {"display_name": "PubMed", "tier": 2, "kind": "free"},
+    "pmc":                 {"display_name": "PubMed Central", "tier": 2, "kind": "free"},
+    "mesh_ontology":       {"display_name": "MeSH Ontology", "tier": 2, "kind": "free"},
+    "chembl":              {"display_name": "ChEMBL", "tier": 2, "kind": "free"},
+    "pubchem":             {"display_name": "PubChem", "tier": 2, "kind": "free"},
+    "open_targets":        {"display_name": "Open Targets", "tier": 2, "kind": "free"},
+    "pharma_news":         {"display_name": "Pharma News", "tier": 3, "kind": "free"},
+    "user_document":       {"display_name": "User Document", "tier": 3, "kind": "internal"},
+    "user_url":            {"display_name": "User URL", "tier": 3, "kind": "internal"},
+}
+
 
 # ────────────────────────────────────────────────────────────────────
 # Domain dataclasses
@@ -559,6 +584,57 @@ class SourceRegistryService:
             d["computed_at"] = r["computed_at"].isoformat() if r.get("computed_at") else None
             out.append(d)
         return out
+
+    @staticmethod
+    def seed_defaults(db, *, only_in_use: bool = True) -> list[str]:
+        """Seed the registry from the canonical connector source set.
+
+        Closes the C6 attribution gap: the Learning Service's source EWMA can
+        only update sources that EXIST in `sources`, but the registry shipped
+        empty. We populate it from `connectors.base.SourceType` (the canonical
+        enum — no invented names) so decision→source attribution has a target.
+
+        Display name / tier / kind come from `_SOURCE_SEED_META`; anything not
+        listed falls back to a tier-3 free source. Idempotent via
+        `SourceRegistryService.register` (existing source_id → no-op).
+
+        `only_in_use=True` (default) restricts seeding to source_ids that
+        actually appear in `evidence_records`, so we don't register dormant
+        connectors. Returns the list of source_ids that now exist (seeded or
+        pre-existing).
+        """
+        from connectors.base import SourceType
+
+        in_use: Optional[set[str]] = None
+        if only_in_use:
+            try:
+                rows = db.fetch_all(
+                    "SELECT DISTINCT source_id FROM evidence_records WHERE source_id IS NOT NULL",
+                    (),
+                ) or []
+                in_use = {r["source_id"] for r in rows if r.get("source_id")}
+            except Exception as exc:
+                logger.warning("seed_defaults: evidence_records scan failed: %s", exc)
+                in_use = None  # fall back to seeding all enum members
+
+        seeded: list[str] = []
+        for st in SourceType:
+            sid = st.value
+            if in_use is not None and sid not in in_use:
+                continue
+            meta = _SOURCE_SEED_META.get(sid, {"display_name": sid, "tier": 3, "kind": "free"})
+            try:
+                SourceRegistryService.register(
+                    db,
+                    source_id=sid,
+                    display_name=meta["display_name"],
+                    tier=meta["tier"],
+                    kind=meta["kind"],
+                )
+                seeded.append(sid)
+            except Exception as exc:
+                logger.warning("seed_defaults: register %s failed: %s", sid, exc)
+        return seeded
 
     @staticmethod
     def health_summary(db) -> dict:

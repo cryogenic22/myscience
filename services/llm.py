@@ -355,6 +355,98 @@ def _get_system_prompt(intent: str, format_hint: str | None = None) -> str:
         base = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
     return base + "\n\n" + _CITATION_PROTOCOL
 
+
+# ── C1 depth: prompt-versioned synthesis ───────────────────────────
+#
+# Every synthesis system prompt is registered in `prompt_registry` so each
+# llm_call_log row can carry a non-null prompt_id (the Learning Service
+# attributes calibration to specific prompt versions). The registered
+# `content` is the EXACT text shipped to the model — `_get_system_prompt`
+# output (base prompt + citation protocol) — so the registry row is a
+# faithful audit of what was sent.
+
+# Prompt-registry name prefix; one prompt per intent key in SYSTEM_PROMPTS.
+SYNTHESIS_PROMPT_PREFIX = "synthesis."
+
+# Process-local cache: (intent) -> prompt_id. Avoids a registry round-trip on
+# every synthesis call. Populated lazily by _resolve_prompt_id / registration.
+_SYNTHESIS_PROMPT_ID_CACHE: dict[str, str] = {}
+
+
+def _synthesis_prompt_name(intent: str, format_hint: str | None = None) -> str:
+    """Registry name for the system prompt actually used for this call.
+    Mirrors _get_system_prompt's selection (table → tabular, else intent or
+    default), so the logged prompt_id matches the shipped text 1:1."""
+    if format_hint == "table":
+        key = "tabular"
+    else:
+        key = intent if intent in SYSTEM_PROMPTS else "default"
+    return f"{SYNTHESIS_PROMPT_PREFIX}{key}"
+
+
+def register_synthesis_prompts(db) -> dict[str, str]:
+    """Register every synthesis system prompt in `prompt_registry` (idempotent).
+
+    Reuses `PromptRegistry.register` — same (name, content) returns the
+    existing row, different content bumps the version. Returns a mapping of
+    registry name -> prompt_id and primes the process-local cache.
+
+    Safe to call repeatedly (e.g. on startup); no-op when content unchanged.
+    """
+    from services.llm_gateway import PromptRegistry
+
+    out: dict[str, str] = {}
+    for key in SYNTHESIS_PROMPTS_KEYS:
+        name = f"{SYNTHESIS_PROMPT_PREFIX}{key}"
+        # The shipped text for this key = the base prompt + citation protocol.
+        # For "tabular" the format_hint path is what selects it; passing the
+        # key as intent reproduces the same content for every non-table key.
+        content = (SYSTEM_PROMPTS[key] + "\n\n" + _CITATION_PROTOCOL)
+        try:
+            prompt = PromptRegistry.register(
+                db,
+                name=name,
+                content=content,
+                purpose=f"LLMSynthesizer system prompt for intent={key!r}",
+            )
+            out[name] = str(prompt.prompt_id)
+            _SYNTHESIS_PROMPT_ID_CACHE[key] = str(prompt.prompt_id)
+        except Exception:
+            logger.warning("register_synthesis_prompts failed for %s", name, exc_info=True)
+    return out
+
+
+SYNTHESIS_PROMPTS_KEYS = tuple(SYSTEM_PROMPTS.keys())
+
+
+def _resolve_synthesis_prompt_id(db, intent: str, format_hint: str | None = None) -> Optional[str]:
+    """Resolve the prompt_id for the system prompt used by this synthesis call.
+
+    Order: process cache → registry lookup by latest version → lazy register.
+    Returns None only when no db handle or every path fails (logging then
+    falls back to a null prompt_id, exactly as before C1).
+    """
+    if db is None:
+        return None
+    key = "tabular" if format_hint == "table" else (intent if intent in SYSTEM_PROMPTS else "default")
+    cached = _SYNTHESIS_PROMPT_ID_CACHE.get(key)
+    if cached:
+        return cached
+    name = f"{SYNTHESIS_PROMPT_PREFIX}{key}"
+    try:
+        from services.llm_gateway import PromptRegistry
+        existing = PromptRegistry.get_latest(db, name)
+        if existing:
+            _SYNTHESIS_PROMPT_ID_CACHE[key] = str(existing.prompt_id)
+            return str(existing.prompt_id)
+        # Not registered yet — register on demand so the very first call logs
+        # a non-null prompt_id rather than waiting for a startup hook.
+        register_synthesis_prompts(db)
+        return _SYNTHESIS_PROMPT_ID_CACHE.get(key)
+    except Exception:
+        logger.debug("prompt_id resolution failed for %s", name, exc_info=True)
+        return None
+
 RESEARCH_SYSTEM_PROMPT = """You are preparing a decision-support research brief for a pharmaceutical leadership team.
 
 Rules:
@@ -563,25 +655,52 @@ class LLMSynthesizer:
         latency_ms: int,
         succeeded: bool,
         error=None,
+        prompt_id: Optional[str] = None,
     ) -> None:
-        """C1: persist one llm_call_log row via the shared telemetry helper.
-        Fire-and-forget — telemetry must never break synthesis. No-op when no
-        db handle was injected (preserves DB-free unit tests)."""
+        """C1: persist one llm_call_log row. Fire-and-forget — telemetry must
+        never break synthesis. No-op when no db handle was injected (preserves
+        DB-free unit tests).
+
+        C1 depth: when `prompt_id` is provided (resolved from the prompt
+        registry) the row carries it, so the Learning Service can attribute
+        calibration to a specific prompt version. When it's None we fall back
+        to the shared `log_llm_call` helper (prompt_id stays NULL — old
+        behaviour)."""
         if self._db is None:
             return
         try:
-            from services.llm_telemetry import log_llm_call, _est_tokens
-            log_llm_call(
-                self._db,
-                caller=caller,
-                model=model,
-                prompt_version=getattr(self.config.llm, "ctx_mode", "ctx"),
-                user_id=None,
-                latency_ms=latency_ms,
-                prompt_tokens=_est_tokens(prompt_text),
-                completion_tokens=_est_tokens(completion_text or ""),
-                succeeded=succeeded,
-                error_message=(str(error)[:500] if error else None),
+            from services.llm_telemetry import (
+                log_llm_call, _est_tokens, _estimate_cost_usd,
+            )
+            prompt_tokens = _est_tokens(prompt_text)
+            completion_tokens = _est_tokens(completion_text or "")
+            if prompt_id is None:
+                log_llm_call(
+                    self._db,
+                    caller=caller,
+                    model=model,
+                    prompt_version=getattr(self.config.llm, "ctx_mode", "ctx"),
+                    user_id=None,
+                    latency_ms=latency_ms,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    succeeded=succeeded,
+                    error_message=(str(error)[:500] if error else None),
+                )
+                return
+            # prompt-versioned insert (mirrors LLMGateway.invoke's row shape)
+            cost = _estimate_cost_usd(model, prompt_tokens, completion_tokens)
+            self._db.execute(
+                """INSERT INTO llm_call_log
+                       (caller, model, prompt_version, user_id, latency_ms,
+                        prompt_tokens, completion_tokens, cost_estimate_usd,
+                        succeeded, error_message, prompt_id)
+                   VALUES (%s, %s, %s, %s::uuid, %s, %s, %s, %s, %s, %s, %s::uuid)""",
+                [
+                    caller, model, getattr(self.config.llm, "ctx_mode", "ctx"),
+                    None, latency_ms, prompt_tokens, completion_tokens, cost,
+                    succeeded, (str(error)[:500] if error else None), prompt_id,
+                ],
             )
         except Exception:
             logger.debug("llm _log_call failed", exc_info=True)
@@ -735,6 +854,9 @@ class LLMSynthesizer:
         _t0 = _time.perf_counter()
         _last_err = None
         _prompt_text = system_prompt + "\n" + context
+        # C1 depth: resolve the prompt_id for the exact system prompt used, so
+        # the llm_call_log row carries a non-null prompt_id.
+        _prompt_id = _resolve_synthesis_prompt_id(self._db, intent, format_hint)
         for model in models:
             try:
                 response = client.chat.completions.create(
@@ -753,7 +875,7 @@ class LLMSynthesizer:
                         caller=f"llm.synthesize:{intent}", model=model,
                         prompt_text=_prompt_text, completion_text=narrative,
                         latency_ms=int((_time.perf_counter() - _t0) * 1000),
-                        succeeded=True,
+                        succeeded=True, prompt_id=_prompt_id,
                     )
                     # Post-synthesis validation
                     source_nums = _extract_source_numbers(metrics, evidence_snippets)
@@ -772,7 +894,7 @@ class LLMSynthesizer:
             caller=f"llm.synthesize:{intent}", model=(models[-1] if models else None),
             prompt_text=_prompt_text, completion_text=None,
             latency_ms=int((_time.perf_counter() - _t0) * 1000),
-            succeeded=False, error=_last_err,
+            succeeded=False, error=_last_err, prompt_id=_prompt_id,
         )
         return fallback_narrative
 
