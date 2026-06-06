@@ -242,6 +242,14 @@ except Exception as _e:
     logger.error("Failed to import forge router (DF-1/DF-2): %s", _e)
     _FORGE_ROUTER_OK = False
 
+# Track I — Eval Harness: scores the system vs the Forge gold set (own /eval prefix)
+try:
+    from api.routes import eval as eval_route
+    _EVAL_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import eval router (Track I): %s", _e)
+    _EVAL_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -390,6 +398,8 @@ def create_app() -> FastAPI:
         all_routers.append(playbooks_route.router)   # DI-5 — /playbooks (own prefix)
     if _FORGE_ROUTER_OK:
         all_routers.append(forge_route.router)       # DF-1/DF-2 — /forge (own prefix)
+    if _EVAL_ROUTER_OK:
+        all_routers.append(eval_route.router)        # Track I — /eval (own prefix)
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
