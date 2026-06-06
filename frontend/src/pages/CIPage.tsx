@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Activity, Target, BookOpen,
-  ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase, HelpCircle,
+  ShieldAlert, LineChart, BrainCircuit, CheckSquare, Briefcase, HelpCircle, Hammer,
 } from 'lucide-react';
 import { PRODUCT_NAME } from '../brand';
 import IntelligenceTab, { type IntelView } from '../components/ci/IntelligenceTab';
@@ -32,6 +32,7 @@ import WarRoomsList from '../components/ci/war/WarRoomsList';
 import DecisionsTab from '../components/ci/decisions/DecisionsTab';
 import BriefsTab from '../components/ci/decisions/BriefsTab';
 import InsightsTab from '../components/ci/InsightsTab';
+import ForgeTab from '../components/forge/ForgeTab';
 import EngagementsTab from '../components/ci/EngagementsTab';
 import EngagementDetailContainer from '../components/ci/EngagementDetailContainer';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
@@ -47,7 +48,7 @@ import { CockpitMobileNav } from '../components/layout/CockpitMobileNav';
 
 type TabKey =
   | 'inbox' | 'digest' | 'signals' | 'watchlist' | 'kbq' | 'dossier' | 'engagements'
-  | 'rooms' | 'decisions' | 'insights' | 'reviewer';
+  | 'rooms' | 'decisions' | 'insights' | 'forge' | 'reviewer';
 
 // IX-2 — map a legacy feed tab key to the consolidated Intelligence view.
 function viewFromTab(tab: TabKey): IntelView {
@@ -75,6 +76,9 @@ const ALL_TABS: Array<{
   { key: 'engagements', label: 'Engagements', icon: Briefcase },
   { key: 'decisions',   label: 'Decisions', icon: CheckSquare },
   { key: 'insights',    label: 'Insights', icon: LineChart },
+  // DF — Domain Forge: the SME teaches the system what matters (playable
+  // elicitation → versioned answer playbooks).
+  { key: 'forge',       label: 'Forge', icon: Hammer },
   { key: 'reviewer',    label: 'Reviewer', icon: BrainCircuit, enterprise: true },
 ];
 
@@ -85,7 +89,7 @@ const NAV_GROUPS: Array<{ label: string; keys: TabKey[] }> = [
   { label: 'Sense',  keys: ['digest', 'watchlist', 'kbq'] },
   { label: 'Engage', keys: ['dossier', 'rooms', 'engagements'] },
   { label: 'Act',    keys: ['decisions'] },
-  { label: 'Learn',  keys: ['insights'] },
+  { label: 'Learn',  keys: ['insights', 'forge'] },
   { label: 'Admin',  keys: ['reviewer'] },
 ];
 
@@ -375,6 +379,7 @@ export default function CIPage() {
         {tab === 'insights' && (
           <InsightsTab onOpenDecision={(id) => navigate(`/ci/decisions/${id}`)} />
         )}
+        {tab === 'forge' && <ForgeTab />}
         {tab === 'reviewer' && isEnterprise && (
           <SignalsTab
             reviewerMode
