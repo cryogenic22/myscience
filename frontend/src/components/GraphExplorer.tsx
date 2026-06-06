@@ -32,6 +32,7 @@ import KnowledgeGraph from './KnowledgeGraph';
 import GraphContextMenu from './graph/GraphContextMenu';
 import { NODE_COLORS } from './graph/graph-constants';
 import { Drawer } from './ui/Drawer';
+import ProvenanceCaption, { graphEdgeProvenanceCaption } from './canvas/ProvenanceCaption';
 
 const ENTITY_CONFIG: Record<string, { icon: ReactNode; color: string; label: string }> = {
   drug: { icon: <PillIcon size={14} />, color: NODE_COLORS.drug, label: 'Drug' },
@@ -458,6 +459,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           linkType: edge.link_type,
           confidence: edge.confidence,
           via: edge.via || edge.source || 'Knowledge graph linkage',
+          provenance: graphEdgeProvenanceCaption(edge),
           direction: outgoing ? 'to' : 'from',
           otherId,
           otherLabel: otherNode?.label ?? otherId,
@@ -1280,6 +1282,11 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                     <div className="mt-2 flex items-start gap-1.5 text-[11px] text-ink-3">
                       <Link2 size={12} className="mt-0.5 shrink-0" />
                       <span className="break-all">{/https?:\/\//.test(row.via) ? row.via : displayName(row.via)}</span>
+                    </div>
+                  )}
+                  {row.provenance && (
+                    <div className="mt-1.5">
+                      <ProvenanceCaption {...row.provenance} />
                     </div>
                   )}
                 </div>

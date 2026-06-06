@@ -197,4 +197,51 @@ describe('CanvasPanel', () => {
     // Context tab should be visible
     expect(screen.getByText('Context')).toBeInTheDocument();
   });
+
+  it('renders the decomposition matrix when data carries one', () => {
+    const data = makeQueryResponse({
+      decomposition_matrix: {
+        playbook_id: 'glp1',
+        intent: 'compare',
+        entities: [
+          { entity_id: 'sema', entity_type: 'drug', label: 'Semaglutide' },
+          { entity_id: 'tirz', entity_type: 'drug', label: 'Tirzepatide' },
+        ],
+        dimensions: [
+          { key: 'efficacy', label: 'Efficacy', sub_question: 'How effective?', routes: [], required: true, weight: 0.8 },
+        ],
+        cells: [
+          { dimension: 'efficacy', entity_id: 'sema', sub_question: 'How effective?', coverage: 'covered',
+            facts: [{ id: 'f1', predicate: 'clinical_trial', claim: 'STEP 1: 14.9%', fact_class: 'corporate', source_label: 'fact_emitter', source_url: null, confidence: 0.9 }],
+            routes_executed: [], routes_skipped: [] },
+          { dimension: 'efficacy', entity_id: 'tirz', sub_question: 'How effective?', coverage: 'gap',
+            facts: [], routes_executed: [], routes_skipped: [] },
+        ],
+        coverage_summary: { efficacy: 'covered' },
+        gaps: ['efficacy'],
+        synthesis: {},
+      },
+    });
+    render(
+      <CanvasPanel intent="compare" data={data} tableData={null} visualizations={null} loading={false} />
+    );
+    expect(screen.getByTestId('decomposition-matrix')).toBeInTheDocument();
+    expect(screen.getByText(/STEP 1: 14.9%/)).toBeInTheDocument();
+    expect(screen.getByText(/gap — no facts in KB/i)).toBeInTheDocument();
+  });
+
+  it('surfaces metric provenance caption when rows carry _provenance', () => {
+    const tableData = makeTableData({
+      rows: [
+        { name: 'Semaglutide', score: 85, _provenance: { source: 'mv_drug_pipeline_strength', derivation: 'phase-weighted', computed_at: '2026-06-01T00:00:00Z', record_basis: 12, realtime_fallback: false } },
+      ],
+    });
+    render(
+      <CanvasPanel intent="pipeline" data={makeQueryResponse()} tableData={tableData} visualizations={null} loading={false} />
+    );
+    const caps = screen.getAllByTestId('provenance-caption');
+    expect(caps.length).toBeGreaterThan(0);
+    expect(caps[0].textContent).toMatch(/as of/i);
+    expect(caps[0].textContent).toMatch(/2026-06-01/);
+  });
 });

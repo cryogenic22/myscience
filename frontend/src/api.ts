@@ -173,6 +173,9 @@ export interface GraphEdge {
   confidence: number;
   via: string;
   source?: string;
+  /** D6 — where this edge came from + the as-of date, so edge claims are citeable. */
+  provenance_source?: string | null;
+  as_of?: string | null;
 }
 
 export interface GraphPathEdge {
@@ -209,6 +212,64 @@ export interface QueryResponse {
   metrics_context: Record<string, unknown>;
   entity_focus: Record<string, unknown>[];
   provenance_summary: Record<string, unknown>;
+  /** DI-3 — structured decomposition (entities × dimensions, grounded cells). */
+  decomposition_matrix?: DecompositionMatrix;
+}
+
+/* ── DI-3 decomposition matrix (entities × dimensions, grounded cells) ── */
+
+/** Coverage of a single cell / dimension: enough facts, some, or none. */
+export type CoverageState = 'covered' | 'thin' | 'gap';
+
+/** A single grounded fact inside a matrix cell — citeable. */
+export interface MatrixFact {
+  id: string;
+  predicate: string;
+  claim: string;
+  /** Helix fact-class (R/C/S/I/X); maps onto the FactClassGlyph palette. */
+  fact_class: string;
+  source_label: string;
+  source_url?: string | null;
+  confidence?: number | null;
+}
+
+export interface MatrixDimension {
+  key: string;
+  label: string;
+  sub_question: string;
+  routes: string[];
+  required: boolean;
+  weight: number;
+}
+
+export interface MatrixCell {
+  dimension: string;
+  entity_id: string;
+  sub_question: string;
+  coverage: CoverageState;
+  facts: MatrixFact[];
+  routes_executed: string[];
+  routes_skipped: string[];
+}
+
+export interface DecompositionMatrix {
+  playbook_id: string;
+  intent: string;
+  entities: Array<{ entity_id: string; entity_type?: string; label: string }>;
+  dimensions: MatrixDimension[];
+  cells: MatrixCell[];
+  coverage_summary: Record<string, CoverageState>;
+  gaps: string[];
+  synthesis: Record<string, unknown>;
+}
+
+/** D6 — provenance block stamped onto every materialized-view metric row. */
+export interface MetricProvenance {
+  source: string;
+  derivation: string;
+  computed_at: string;
+  record_basis?: number | null;
+  realtime_fallback?: boolean;
 }
 
 export interface VisualizationPoint {
