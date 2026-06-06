@@ -5,8 +5,10 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import type { TableData, VisualizationSpec, QueryResponse, EvidenceItem, PersonaAnalysis } from '../../api';
+import type { TableData, VisualizationSpec, QueryResponse, EvidenceItem, PersonaAnalysis, MetricProvenance } from '../../api';
 import { DataTable as SortableDataTable, type DataTableColumn } from '../ui/DataTable';
+import DecompositionMatrix from './DecompositionMatrix';
+import ProvenanceCaption, { metricProvenanceCaption } from './ProvenanceCaption';
 
 interface CanvasPanelProps {
   intent: string | null;
@@ -60,18 +62,20 @@ export default function CanvasPanel({
   const hasEvidence = Boolean(data?.evidence?.length);
   const hasPersonas = Boolean(personaAnalyses?.length);
   const hasConfDimensions = Boolean(confidenceAssessment?.by_dimension && Object.keys(confidenceAssessment.by_dimension).length > 0);
-  const hasContent = hasTable || hasViz || hasEntities || hasEvidence || hasPersonas;
+  const matrix = data?.decomposition_matrix;
+  const hasMatrix = Boolean(matrix && matrix.dimensions.length > 0 && matrix.entities.length > 0);
+  const hasContent = hasTable || hasViz || hasEntities || hasEvidence || hasPersonas || hasMatrix;
 
   // Determine which tabs have content
   const visibleTabs = useMemo(() => {
     const tabHasContent: Record<CanvasTabKey, boolean> = {
       summary: hasContent, // Summary always shows if anything is available
-      data: hasTable || hasViz,
+      data: hasTable || hasViz || hasMatrix,
       entities: hasEntities || hasEvidence,
       context: hasPersonas || hasConfDimensions || Boolean(confidenceAssessment),
     };
     return CANVAS_TABS.filter(t => tabHasContent[t.key]);
-  }, [hasContent, hasTable, hasViz, hasEntities, hasEvidence, hasPersonas, hasConfDimensions, confidenceAssessment]);
+  }, [hasContent, hasTable, hasViz, hasMatrix, hasEntities, hasEvidence, hasPersonas, hasConfDimensions, confidenceAssessment]);
 
   const [activeTab, setActiveTab] = useState<CanvasTabKey>('summary');
 
@@ -222,6 +226,7 @@ export default function CanvasPanel({
                 tableData={hasTable ? tableData! : null}
                 visualizations={hasViz ? visualizations! : null}
                 entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
+                matrix={hasMatrix ? matrix! : null}
                 onViewInGraph={onViewInGraph}
               />
             )}
@@ -230,6 +235,7 @@ export default function CanvasPanel({
               <DataTab
                 tableData={hasTable ? tableData! : null}
                 visualizations={hasViz ? visualizations! : null}
+                matrix={hasMatrix ? matrix! : null}
                 onViewInGraph={onViewInGraph}
               />
             )}
@@ -277,6 +283,7 @@ function SummaryTab({
   tableData,
   visualizations,
   entities,
+  matrix,
   onViewInGraph,
 }: {
   intent: string | null;
@@ -284,6 +291,7 @@ function SummaryTab({
   tableData: TableData | null;
   visualizations: VisualizationSpec[] | null;
   entities: Record<string, unknown>[] | null;
+  matrix: QueryResponse['decomposition_matrix'] | null;
   onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }) {
   const summaryTable = tableData
@@ -294,6 +302,11 @@ function SummaryTab({
 
   return (
     <>
+      {matrix && (
+        <Section title="Decomposition">
+          <DecompositionMatrix matrix={matrix} />
+        </Section>
+      )}
       {summaryTable && summaryTable.rows.length > 0 && (
         <Section title="Data">
           <DataTable tableData={summaryTable} onRowClick={makeRowClickHandler(onViewInGraph)} />
@@ -317,14 +330,21 @@ function SummaryTab({
 function DataTab({
   tableData,
   visualizations,
+  matrix,
   onViewInGraph,
 }: {
   tableData: TableData | null;
   visualizations: VisualizationSpec[] | null;
+  matrix: QueryResponse['decomposition_matrix'] | null;
   onViewInGraph?: (entity: { id: string; type: string; label: string }) => void;
 }) {
   return (
     <>
+      {matrix && (
+        <Section title="Decomposition">
+          <DecompositionMatrix matrix={matrix} />
+        </Section>
+      )}
       {tableData && tableData.rows.length > 0 && (
         <Section title="Data">
           <DataTable tableData={tableData} onRowClick={makeRowClickHandler(onViewInGraph)} />
@@ -531,12 +551,20 @@ function DataTable({
   const [showAll, setShowAll] = useState(false);
   const display = showAll ? tableData.rows : tableData.rows.slice(0, 12);
 
-  const columns: DataTableColumn[] = tableData.columns.map((col) => ({
-    key: col.key,
-    label: col.label,
-    sortable: true,
-    align: col.type === 'number' ? 'right' as const : 'left' as const,
-  }));
+  // D6 — metric rows carry a `_provenance` block (source · derivation · as-of).
+  // Surface the first one as a caption so the table's numbers are citeable.
+  const metricProv = metricProvenanceCaption(
+    tableData.rows.find(r => r._provenance)?._provenance as MetricProvenance | undefined,
+  );
+
+  const columns: DataTableColumn[] = tableData.columns
+    .filter(col => col.key !== '_provenance')
+    .map((col) => ({
+      key: col.key,
+      label: col.label,
+      sortable: true,
+      align: col.type === 'number' ? 'right' as const : 'left' as const,
+    }));
 
   return (
     <div>
@@ -562,6 +590,12 @@ function DataTable({
         onRowClick={onRowClick}
         maxHeight={showAll ? '600px' : '320px'}
       />
+
+      {metricProv && (
+        <div style={{ marginTop: '8px' }}>
+          <ProvenanceCaption {...metricProv} />
+        </div>
+      )}
 
       {tableData.rows.length > 12 && !showAll && (
         <button
