@@ -2714,3 +2714,269 @@ export const commentsApi = {
       return r.json();
     }),
 };
+
+// ── Domain Forge (DF-1/DF-2) ────────────────────────────────────────
+// The playable SME elicitation loop: fetch a grounded round, submit a
+// constrained pick/rank, get a quality-gated score + whether the dimension was
+// PROMOTED (consensus) or FLAGGED (proposal only). Mirrors the /forge contract
+// in api/routes/forge.py exactly.
+
+/** One candidate analytical dimension in a round's constrained option set. */
+export interface ForgeRoundOption {
+  key: string;
+  label: string;
+  routes: string[];
+}
+
+/** A real entity pair the round compares (from the drugs spine). */
+export interface ForgeRoundEntity {
+  entity_id: string;
+  entity_type?: string;
+  label: string;
+}
+
+export interface ForgeRoundPayload {
+  entities: ForgeRoundEntity[];
+  options: ForgeRoundOption[];
+  instructions: string;
+}
+
+/** A persisted Domain Forge round (the prompt + its constrained option set). */
+export interface ForgeRound {
+  id: string;
+  session_id: string;
+  round_type: string;
+  playbook_id: string;
+  intent: string;
+  prompt: string;
+  payload: ForgeRoundPayload;
+  status: 'open' | 'answered' | string;
+  created_by: string | null;
+  created_at: string | null;
+  answered_at?: string | null;
+}
+
+/** The dimension the SME's top pick was forged into. */
+export interface ForgeElicitedDimension {
+  key: string;
+  label: string;
+  sub_question: string;
+  routes: string[];
+  required: boolean;
+  weight: number;
+}
+
+export interface ForgeValidation {
+  valid: boolean;
+  errors: string[];
+}
+
+/** promoted = consensus met + valid → applied to a new playbook version;
+ *  flagged = lone / dissenting / invalid → recorded as a proposal only. */
+export type ForgeConsensusState = 'promoted' | 'flagged';
+
+export interface ForgeConsensus {
+  state: ForgeConsensusState;
+  agree_count: number;
+  threshold: number;
+}
+
+export interface ForgeScore {
+  id?: string;
+  eval_item_id?: string | null;
+  session_id?: string;
+  sme_id?: string | null;
+  points: number;
+  reason: string;
+  created_at?: string | null;
+}
+
+export interface ForgeEvalItem {
+  id: string;
+  round_id: string | null;
+  session_id: string;
+  playbook_id: string;
+  intent: string;
+  prompt: string;
+  answer: { selected?: string[]; ranking?: string[] };
+  sme_id: string | null;
+  validation: ForgeValidation;
+  consensus_state: ForgeConsensusState;
+  promoted_version: number | null;
+  created_at: string | null;
+}
+
+/** The result of submitting an answer — the scored, gated outcome. */
+export interface ForgeAnswerResult {
+  round_id: string;
+  dimension: ForgeElicitedDimension;
+  validation: ForgeValidation;
+  consensus: ForgeConsensus;
+  playbook_version: number | null;
+  eval_item: ForgeEvalItem;
+  score: ForgeScore;
+}
+
+export interface ForgeSessionSummary {
+  session_id: string;
+  rounds: number;
+  rounds_answered: number;
+  eval_items: number;
+  promoted: number;
+  score: number;
+}
+
+export const forgeApi = {
+  /** Generate a grounded "What matters?" round from real DB entities. */
+  createRound: (
+    sessionId: string,
+    opts: { intent?: string; playbookId?: string; entities?: ForgeRoundEntity[] } = {},
+  ): Promise<ForgeRound> =>
+    fetch(`${BASE}/forge/rounds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        session_id: sessionId,
+        intent: opts.intent ?? 'compare',
+        playbook_id: opts.playbookId ?? 'compare.drug_x_drug',
+        entities: opts.entities ?? null,
+      }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  getRound: (roundId: string): Promise<ForgeRound> =>
+    fetch(`${BASE}/forge/rounds/${encodeURIComponent(roundId)}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /** Submit the SME's constrained answer. `ranking[0]` is the top pick. */
+  submitAnswer: (
+    roundId: string,
+    answer: { selected: string[]; ranking: string[] },
+    smeId?: string,
+  ): Promise<ForgeAnswerResult> =>
+    fetch(`${BASE}/forge/rounds/${encodeURIComponent(roundId)}/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ selected: answer.selected, ranking: answer.ranking, sme_id: smeId ?? null }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  session: (sessionId: string): Promise<ForgeSessionSummary> =>
+    fetch(`${BASE}/forge/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  evalItems: (opts: { playbookId?: string; sessionId?: string } = {}): Promise<ForgeEvalItem[]> => {
+    const q = new URLSearchParams();
+    if (opts.playbookId) q.set('playbook_id', opts.playbookId);
+    if (opts.sessionId) q.set('session_id', opts.sessionId);
+    const qs = q.toString();
+    return fetch(`${BASE}/forge/eval-items${qs ? `?${qs}` : ''}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).eval_items ?? [];
+    });
+  },
+};
+
+// ── Playbook authoring (DI-5) ───────────────────────────────────────
+// CRUD + versioning + rollback over runtime-editable Answer Playbooks. The
+// live forge play loop grows these; this surface browses + audits them.
+
+export interface PlaybookRoute { kind: string; value: string; }
+
+export interface PlaybookDimension {
+  key: string;
+  label: string;
+  sub_question: string;
+  /** Routes serialise as "kind:value" strings, e.g. "predicate:adverse_event". */
+  routes: string[];
+  required: boolean;
+  weight: number;
+}
+
+export interface PlaybookDoc {
+  id: string;
+  pack: string;
+  trigger: Record<string, unknown>;
+  dimensions: PlaybookDimension[];
+  synthesis: Record<string, unknown>;
+}
+
+export interface PlaybookMeta {
+  version: number | null;
+  author: string | null;
+  active: boolean;
+  tenant_scope?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** A playbook list entry: the doc + meta + whether it is DB-backed or seed. */
+export interface PlaybookListItem {
+  playbook: PlaybookDoc;
+  meta: PlaybookMeta;
+  source: 'db' | 'seed';
+}
+
+export interface PlaybookDetail {
+  playbook: PlaybookDoc;
+  meta: PlaybookMeta;
+}
+
+export interface PlaybookVersion {
+  version: number;
+  action: 'create' | 'update' | 'rollback' | 'delete' | string;
+  snapshot: PlaybookDoc;
+  diff: Record<string, { from: unknown; to: unknown }>;
+  author: string | null;
+  note: string | null;
+  rolled_back_from: number | null;
+  created_at: string | null;
+}
+
+export const playbooksApi = {
+  list: (): Promise<PlaybookListItem[]> =>
+    fetch(`${BASE}/playbooks`, { headers: { ...authHeaders() } }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).playbooks ?? [];
+    }),
+
+  get: (playbookId: string): Promise<PlaybookDetail> =>
+    fetch(`${BASE}/playbooks/${encodeURIComponent(playbookId)}`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  versions: (playbookId: string): Promise<PlaybookVersion[]> =>
+    fetch(`${BASE}/playbooks/${encodeURIComponent(playbookId)}/versions`, {
+      headers: { ...authHeaders() },
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return (await r.json()).versions ?? [];
+    }),
+
+  rollback: (playbookId: string, targetVersion: number, note?: string): Promise<PlaybookDetail> =>
+    fetch(`${BASE}/playbooks/${encodeURIComponent(playbookId)}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ target_version: targetVersion, note: note ?? null }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+};
