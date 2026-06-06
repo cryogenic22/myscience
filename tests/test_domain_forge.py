@@ -98,6 +98,14 @@ def _make_db():
         # rich drugs for prompt gen — return two fixed drugs
         if "from drugs" in s and "count(f.id)" in s:
             return None  # this path uses fetch_all
+        # critique cell (DF-5 ④): a real machine-generated fact
+        if "from facts f" in s and "object_value" in s and params:
+            return {
+                "fact_id": "fact-1", "predicate": params[0],
+                "object_value": {"emitter": "mechanisms", "mechanism": "GLP-1 receptor agonist"},
+                "fact_class": "reference", "entity_id": "d-sema",
+                "entity_label": "semaglutide",
+            }
         # forge_rounds insert
         if "insert into forge_rounds" in s and "returning" in s:
             rid = _nid("round")
@@ -185,6 +193,31 @@ def _make_db():
                 {"entity_id": "d-sema", "label": "semaglutide", "nf": 1023},
                 {"entity_id": "d-tirz", "label": "tirzepatide", "nf": 431},
             ]
+        # candidate signals for signal_or_noise (DF-5 ②)
+        if "from signals" in s and "headline" in s and "impact_tier" in s:
+            return [
+                {"signal_id": "sig-1", "headline": "Phase 3 primary endpoint missed",
+                 "summary": "REDEFINE-2 missed", "primary_entity_name": "CagriSema",
+                 "primary_entity_type": "drug", "kbq_tags": ["clinical"],
+                 "impact_tier": "high", "confidence_tier": "high",
+                 "created_at": datetime.now(timezone.utc)},
+                {"signal_id": "sig-2", "headline": "Boxed warning added",
+                 "summary": "Thyroid C-cell tumors", "primary_entity_name": "liraglutide",
+                 "primary_entity_type": "drug", "kbq_tags": ["clinical"],
+                 "impact_tier": "high", "confidence_tier": "med",
+                 "created_at": datetime.now(timezone.utc)},
+                {"signal_id": "sig-3", "headline": "Quarterly IR call scheduled",
+                 "summary": "Routine", "primary_entity_name": "Novo Nordisk",
+                 "primary_entity_type": "company", "kbq_tags": ["financial"],
+                 "impact_tier": "low", "confidence_tier": "low",
+                 "created_at": datetime.now(timezone.utc)},
+            ]
+        # routing consensus (DF-5 ③): distinct SMEs by stored consensus_key
+        if "distinct sme_id from forge_eval_items" in s and "consensus_key" in s:
+            pid, ckey = params[0], params[1]
+            return [{"sme_id": e["sme_id"]} for e in evals
+                    if e["playbook_id"] == pid
+                    and e["answer"].get("consensus_key") == ckey]
         if "distinct sme_id from forge_eval_items" in s and "ranking" in s and "->'ranking'->>0" in s:
             pid, key = params[0], params[1]
             return [{"sme_id": e["sme_id"]} for e in evals
@@ -464,3 +497,240 @@ class TestApiRoundTrip:
         c.post(f"/forge/rounds/{rid}/answer", headers=ed, json={"ranking": ["mechanism"]})
         r = c.post(f"/forge/rounds/{rid}/answer", headers=ed, json={"ranking": ["mechanism"]})
         assert r.status_code == 409
+
+
+# ════════════════════════════════════════════════════════════════════
+# DF-5 — more round types: prompt generation (grounded, never fabricates)
+# ════════════════════════════════════════════════════════════════════
+
+class TestDF5PromptGeneration:
+    _SIGNALS = [
+        {"signal_id": "s1", "headline": "Phase 3 missed", "entity_name": "X"},
+        {"signal_id": "s2", "headline": "Boxed warning", "entity_name": "Y"},
+        {"signal_id": "s3", "headline": "IR call", "entity_name": "Z"},
+    ]
+
+    def test_signal_or_noise_grounded(self):
+        from services.domain_forge.prompts import generate_signal_or_noise_round
+        spec = generate_signal_or_noise_round(MagicMock(), signals=self._SIGNALS)
+        assert spec["round_type"] == "signal_or_noise"
+        assert len(spec["payload"]["signals"]) == 3
+        assert {r["key"] for r in spec["payload"]["reasons"]}  # constrained reasons
+
+    def test_signal_or_noise_too_few_raises(self):
+        from services.domain_forge.prompts import generate_signal_or_noise_round
+        with pytest.raises(ValueError):
+            generate_signal_or_noise_round(MagicMock(), signals=self._SIGNALS[:2])
+
+    def test_routing_round_grounded_and_routable(self):
+        from services.domain_forge.prompts import generate_routing_round
+        from services.domain_intelligence.playbook import Route
+        from services.domain_intelligence.validation import validate_route
+        spec = generate_routing_round(
+            MagicMock(), dimension_key="safety", entities=_TWO_DRUGS[:1])
+        assert spec["round_type"] == "routing"
+        assert spec["payload"]["dimension"]["key"] == "safety"
+        # every offered route must validate against the live ledger vocabulary
+        for o in spec["payload"]["options"]:
+            assert validate_route(Route.parse(o["key"])) is None, o["key"]
+
+    def test_routing_unknown_dimension_raises(self):
+        from services.domain_forge.prompts import generate_routing_round
+        with pytest.raises(ValueError):
+            generate_routing_round(MagicMock(), dimension_key="not_a_dim",
+                                   entities=_TWO_DRUGS[:1])
+
+    def test_critique_round_grounded_in_real_fact(self):
+        from services.domain_forge.prompts import generate_critique_round
+        db, _ = _make_db()
+        spec = generate_critique_round(db, predicate="mechanism_of_action")
+        assert spec["round_type"] == "critique"
+        assert spec["payload"]["cell"]["fact_id"]
+        assert "semaglutide" in spec["prompt"]
+        assert {g["key"] for g in spec["payload"]["grades"]} == {"correct", "partial", "wrong"}
+
+
+# ════════════════════════════════════════════════════════════════════
+# DF-5 ② — Signal or noise? (materiality label)
+# ════════════════════════════════════════════════════════════════════
+
+class TestDF5SignalOrNoise:
+    def test_persists_materiality_label_and_score(self):
+        from services.domain_forge import ForgeEngine
+        db, store = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="signal_or_noise")
+        res = eng.submit_answer(
+            db, rnd["id"],
+            {"signal_id": "sig-1", "reason": "clinical_readout"}, sme_id="sme-1")
+        assert res["validation"]["valid"] is True
+        assert res["label"]["signal_id"] == "sig-1"
+        assert res["consensus"]["state"] == "labelled"
+        assert res["playbook_version"] is None  # no pack edit
+        # a gold eval item + a labelling score persist
+        assert len(store["evals"]) == 1
+        assert store["evals"][0]["consensus_state"] == "labelled"
+        assert res["score"]["points"] == 5
+
+    def test_signal_outside_candidate_set_rejected(self):
+        from services.domain_forge import ForgeEngine, InvalidAnswer
+        db, _ = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="signal_or_noise")
+        with pytest.raises(InvalidAnswer):
+            eng.submit_answer(db, rnd["id"],
+                              {"signal_id": "ghost", "reason": "clinical_readout"})
+
+    def test_invalid_reason_rejected(self):
+        from services.domain_forge import ForgeEngine, InvalidAnswer
+        db, _ = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="signal_or_noise")
+        with pytest.raises(InvalidAnswer):
+            eng.submit_answer(db, rnd["id"],
+                              {"signal_id": "sig-1", "reason": "vibes"})
+
+
+# ════════════════════════════════════════════════════════════════════
+# DF-5 ③ — Where does the answer live? (routing → pack edit, consensus)
+# ════════════════════════════════════════════════════════════════════
+
+class TestDF5Routing:
+    def test_lone_routing_answer_flagged_not_applied(self):
+        from services.domain_forge import ForgeEngine
+        db, store = _make_db()
+        eng = ForgeEngine(consensus_threshold=2)
+        rnd = eng.create_round(db, session_id="s1", round_type="routing",
+                               dimension_key="safety")
+        res = eng.submit_answer(
+            db, rnd["id"],
+            {"selected": ["predicate:adverse_event", "predicate:safety_signal"]},
+            sme_id="sme-1")
+        assert res["validation"]["valid"] is True
+        assert res["consensus"]["state"] == "flagged"
+        assert res["playbook_version"] is None
+        assert "dossier.drug" not in store["playbooks"]
+        assert res["score"]["points"] == 3  # valid pending
+
+    def test_two_smes_same_routes_promote_dimension(self):
+        from services.domain_forge import ForgeEngine
+        db, store = _make_db()
+        eng = ForgeEngine(consensus_threshold=2)
+        routes = ["predicate:adverse_event", "predicate:safety_signal"]
+        r1 = eng.create_round(db, session_id="s1", round_type="routing",
+                              dimension_key="safety")
+        eng.submit_answer(db, r1["id"], {"selected": routes}, sme_id="sme-1")
+        # SME 2 picks the SAME route set (order-independent) → consensus → promote
+        r2 = eng.create_round(db, session_id="s2", round_type="routing",
+                              dimension_key="safety")
+        res2 = eng.submit_answer(db, r2["id"],
+                                 {"selected": list(reversed(routes))}, sme_id="sme-2")
+        assert res2["consensus"]["state"] == "promoted"
+        assert res2["playbook_version"] is not None
+        pb = store["playbooks"].get("dossier.drug")
+        assert pb is not None
+        safety = next(d for d in pb["dimensions"] if d["key"] == "safety")
+        assert set(safety["routes"]) == set(routes)
+        assert res2["score"]["points"] == 10
+
+    def test_unroutable_selection_outside_options_rejected(self):
+        from services.domain_forge import ForgeEngine, InvalidAnswer
+        db, _ = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="routing",
+                               dimension_key="safety")
+        with pytest.raises(InvalidAnswer):
+            eng.submit_answer(db, rnd["id"],
+                              {"selected": ["predicate:totally_made_up"]}, sme_id="a")
+
+    def test_empty_routing_selection_rejected(self):
+        from services.domain_forge import ForgeEngine, InvalidAnswer
+        db, _ = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="routing",
+                               dimension_key="safety")
+        with pytest.raises(InvalidAnswer):
+            eng.submit_answer(db, rnd["id"], {"selected": []}, sme_id="a")
+
+
+# ════════════════════════════════════════════════════════════════════
+# DF-5 ④ — Grade the machine (accuracy label)
+# ════════════════════════════════════════════════════════════════════
+
+class TestDF5Critique:
+    def test_grade_persists_accuracy_label_and_score(self):
+        from services.domain_forge import ForgeEngine
+        db, store = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="critique")
+        res = eng.submit_answer(
+            db, rnd["id"], {"grade": "partial", "correction": "dual GIP/GLP-1"},
+            sme_id="sme-1")
+        assert res["validation"]["valid"] is True
+        assert res["label"]["grade"] == "partial"
+        assert res["label"]["fact_id"] == "fact-1"
+        assert res["consensus"]["state"] == "labelled"
+        assert len(store["evals"]) == 1
+        assert res["score"]["points"] == 5
+
+    def test_invalid_grade_rejected(self):
+        from services.domain_forge import ForgeEngine, InvalidAnswer
+        db, _ = _make_db()
+        eng = ForgeEngine()
+        rnd = eng.create_round(db, session_id="s1", round_type="critique")
+        with pytest.raises(InvalidAnswer):
+            eng.submit_answer(db, rnd["id"], {"grade": "meh"}, sme_id="a")
+
+
+# ════════════════════════════════════════════════════════════════════
+# DF-5 — engine dispatch + API for the new round types
+# ════════════════════════════════════════════════════════════════════
+
+class TestDF5Dispatch:
+    def test_unknown_round_type_raises(self):
+        from services.domain_forge import ForgeEngine
+        db, _ = _make_db()
+        with pytest.raises(ValueError):
+            ForgeEngine().create_round(db, session_id="s1", round_type="bogus")
+
+    def test_api_play_signal_or_noise_end_to_end(self):
+        db, _ = _make_db()
+        c = _client(db)
+        ed = _hdr(_login(c, "editor@test.io"))
+        r = c.post("/forge/rounds", headers=ed,
+                   json={"session_id": "api-sn", "round_type": "signal_or_noise"})
+        assert r.status_code == 201, r.text
+        rid = r.json()["id"]
+        r = c.post(f"/forge/rounds/{rid}/answer", headers=ed,
+                   json={"signal_id": "sig-1", "reason": "clinical_readout",
+                         "sme_id": "sme-x"})
+        assert r.status_code == 200, r.text
+        assert r.json()["eval_item"]["consensus_state"] == "labelled"
+        assert r.json()["score"]["points"] == 5
+
+    def test_api_play_routing_end_to_end(self):
+        db, _ = _make_db()
+        c = _client(db)
+        ed = _hdr(_login(c, "editor@test.io"))
+        r = c.post("/forge/rounds", headers=ed,
+                   json={"session_id": "api-rt", "round_type": "routing",
+                         "dimension_key": "safety"})
+        assert r.status_code == 201, r.text
+        rid = r.json()["id"]
+        r = c.post(f"/forge/rounds/{rid}/answer", headers=ed,
+                   json={"selected": ["predicate:adverse_event"], "sme_id": "sme-x"})
+        assert r.status_code == 200, r.text
+        assert r.json()["validation"]["valid"] is True
+
+    def test_api_play_critique_end_to_end(self):
+        db, _ = _make_db()
+        c = _client(db)
+        ed = _hdr(_login(c, "editor@test.io"))
+        r = c.post("/forge/rounds", headers=ed,
+                   json={"session_id": "api-cr", "round_type": "critique"})
+        assert r.status_code == 201, r.text
+        rid = r.json()["id"]
+        r = c.post(f"/forge/rounds/{rid}/answer", headers=ed,
+                   json={"grade": "correct", "sme_id": "sme-x"})
+        assert r.status_code == 200, r.text
+        assert r.json()["label"]["grade"] == "correct"
