@@ -23,6 +23,16 @@ from services.domain_intelligence.playbook import (
     Route,
     get_playbook_registry,
 )
+from services.domain_intelligence.validation import (
+    PlaybookValidationError,
+    validate_playbook,
+    validate_route,
+)
+from services.domain_intelligence.authoring import (
+    PlaybookAuthoringService,
+    PlaybookConflict,
+    PlaybookNotFound,
+)
 
 __all__ = [
     "Dimension",
@@ -30,4 +40,11 @@ __all__ = [
     "PlaybookRegistry",
     "Route",
     "get_playbook_registry",
+    # DI-5 — SME authoring
+    "PlaybookValidationError",
+    "validate_playbook",
+    "validate_route",
+    "PlaybookAuthoringService",
+    "PlaybookConflict",
+    "PlaybookNotFound",
 ]
