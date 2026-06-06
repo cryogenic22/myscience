@@ -84,10 +84,15 @@ class OpenTargetsConnector(BaseConnector):
                     continue
 
                 drug_id = drug_data.get("id", "")
-                targets = drug_data.get("linkedTargets", {}).get("rows", [])
+                # API v4 (2026): drug→target now lives under
+                # mechanismsOfAction.rows[].targets[], not the retired
+                # `linkedTargets` field. _extract_targets handles both shapes.
+                targets = self._extract_targets(drug_data)
 
                 for target in targets[:10]:
                     target_id = target.get("id", "")
+                    if not target_id:
+                        continue
                     target_data = self._fetch_target_associations(target_id)
                     if target_data:
                         records.append(self._make_record(drug_name, drug_id, target_data))
@@ -97,6 +102,29 @@ class OpenTargetsConnector(BaseConnector):
 
         logger.info("Open Targets connector fetched %d records", len(records))
         return records
+
+    @staticmethod
+    def _extract_targets(drug_data: dict) -> list[dict]:
+        """Pull the unique target rows from a drug-detail response.
+
+        Tolerant of both the current v4 shape
+        (``mechanismsOfAction.rows[].targets[]``) and the legacy
+        ``linkedTargets.rows[]`` shape, so the connector keeps working across
+        an API schema change instead of silently fetching zero records.
+        """
+        seen: dict[str, dict] = {}
+        # Current shape: mechanismsOfAction → rows → targets
+        for moa in (drug_data.get("mechanismsOfAction", {}) or {}).get("rows", []) or []:
+            for tgt in moa.get("targets", []) or []:
+                tid = tgt.get("id", "")
+                if tid and tid not in seen:
+                    seen[tid] = {"id": tid, "approvedSymbol": tgt.get("approvedSymbol", "")}
+        # Legacy fallback
+        for tgt in (drug_data.get("linkedTargets", {}) or {}).get("rows", []) or []:
+            tid = tgt.get("id", "")
+            if tid and tid not in seen:
+                seen[tid] = {"id": tid, "approvedSymbol": tgt.get("approvedSymbol", "")}
+        return list(seen.values())
 
     def _search_drug(self, drug_name: str) -> Optional[dict]:
         """Search Open Targets for a drug by name."""
@@ -131,8 +159,9 @@ class OpenTargetsConnector(BaseConnector):
         import requests
         query = (
             '{ drug(chemblId: "' + drug_id + '") { '
-            'id name drugType maximumClinicalTrialPhase '
-            'linkedTargets { count rows { id approvedSymbol } } } }'
+            'id name drugType maximumClinicalStage '
+            'mechanismsOfAction { rows { mechanismOfAction actionType '
+            'targets { id approvedSymbol } } } } }'
         )
         try:
             resp = requests.post(OT_API_URL, json={"query": query}, timeout=15)
@@ -140,7 +169,8 @@ class OpenTargetsConnector(BaseConnector):
                 return None
             data = resp.json()
             if "errors" in data:
-                return {"id": drug_id, "name": drug_name, "linkedTargets": {"count": 0, "rows": []}}
+                logger.warning("Open Targets drug-detail GraphQL error: %s", data["errors"][:1])
+                return {"id": drug_id, "name": drug_name, "mechanismsOfAction": {"rows": []}}
             return data.get("data", {}).get("drug")
         except Exception as e:
             logger.debug("Open Targets drug details failed for %s: %s", drug_id, e)

@@ -59,9 +59,58 @@ class DataPipelineScheduler:
         """Signal the scheduler to stop."""
         self._stop_event.set()
 
+    # Hours an etl_runs row may stay RUNNING before the reaper treats it as an
+    # orphan from a killed process and marks it FAILED. The pipeline always
+    # sets a terminal status in its try/except, so a row older than this that is
+    # still RUNNING means the process died mid-run (Railway restart / proxy
+    # drop). Mirrors scripts.connector_health.STUCK_RUNNING_HOURS.
+    STUCK_RUNNING_HOURS = 12
+
+    def reap_stuck_runs(self, db: "Database", hours: int | None = None) -> int:
+        """Mark orphaned RUNNING etl_runs (older than `hours`) as FAILED.
+
+        Idempotent + additive: only touches rows still RUNNING past the
+        threshold, so re-running is a no-op once they're reaped. Without this a
+        process kill leaves a permanent RUNNING row that makes the source look
+        perpetually stuck in the health scorecard and can mislead the
+        incremental-since cursor. Returns the number reaped.
+        """
+        hours = hours or self.STUCK_RUNNING_HOURS
+        try:
+            rows = db.fetch_all(
+                """
+                UPDATE etl_runs
+                SET status = 'FAILED',
+                    completed_at = NOW(),
+                    error_message = COALESCE(error_message,
+                        'reaped: stuck RUNNING >' || %s || 'h (process killed mid-run)')
+                WHERE status = 'RUNNING'
+                  AND started_at < NOW() - (%s || ' hours')::interval
+                RETURNING id
+                """,
+                [hours, hours],
+            )
+            n = len(rows) if rows else 0
+            if n:
+                logger.warning("Reaped %d stuck-RUNNING etl_runs (>%dh)", n, hours)
+            return n
+        except Exception:
+            logger.exception("reap_stuck_runs failed")
+            return 0
+
     def run_now(self) -> dict[str, str]:
         """Run all connectors once in order, then post-run tasks. Returns source -> status map."""
         results = {}
+        # Clear orphaned RUNNING rows from prior killed processes first so the
+        # incremental-since cursor and the health scorecard see clean state.
+        reap_db = Database(app_config.db.dsn)
+        reap_db.connect()
+        try:
+            reaped = self.reap_stuck_runs(reap_db)
+            if reaped:
+                results["reaped_stuck_runs"] = str(reaped)
+        finally:
+            reap_db.close()
         for source_type in RUN_ORDER:
             name = source_type.value
             try:

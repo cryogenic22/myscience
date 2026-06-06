@@ -1,26 +1,37 @@
 #!/usr/bin/env python
-"""Connector health report (D1) — the one command the team runs each morning.
+"""Connector health & sync-verification scorecard (D1).
 
-For every scheduled source it prints: target-table row count, newest-row age,
-freshness SLA, OVER-SLA flag, and the last ETL run's terminal status + error.
-It is the antidote to the silent-failure mode that let openFDA Labels/FAERS go
-105 days stale while logging SUCCESS (0 rows fetched) — staleness is judged on
-*newest row age vs SLA*, not on the run's self-reported status.
+The one command the team runs each morning. For every scheduled source it
+scores four dimensions and rolls them into a RED / AMBER / GREEN verdict:
+
+  FLOW      — target-table row count + newest-row age vs the per-source SLA.
+              The antidote to the silent-failure mode that let openFDA
+              Labels/FAERS go 105 days stale while logging SUCCESS (staleness
+              is judged on newest-row age, NOT the run's self-reported status).
+  STRENGTH  — volume + the share of rows that resolve onto the entity spine
+              (FK-NULL share). A source that stores rows but never links them
+              is half-broken.
+  SYNC      — is it scheduled? does etl_runs show a recent terminal SUCCESS at
+              the expected cadence, with no stuck-RUNNING orphans?
+  E2E       — does the most-recent run actually persist rows (records_inserted
+              + records_updated > 0), i.e. fetch→store path intact? A run that
+              SUCCEEDs with 0 records every cycle (Open Targets schema drift,
+              NADAC dead endpoint) is the canonical silent zero.
 
 Read-only. Usage:
     python scripts/connector_health.py "<postgres url>"
     DATABASE_URL=... python scripts/connector_health.py
     python scripts/connector_health.py --json   # machine-readable
 
-Exit code is non-zero when any source is OVER SLA or its last run FAILED, so it
-can gate CI / a morning cron.
+Exit code is non-zero when any source is RED (over SLA / no terminal status /
+0 rows when scheduled / last run FAILED), so it can gate CI / a morning cron.
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -31,7 +42,34 @@ import psycopg2.extras
 # putting the repo root on the path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scheduler.config import FRESHNESS_SLA_DAYS  # noqa: E402
+from scheduler.config import (  # noqa: E402
+    CONNECTOR_SCHEDULES,
+    FRESHNESS_SLA_DAYS,
+    KNOWN_DEFERRED_SOURCES,
+)
+
+# How long an etl_runs row may stay RUNNING before we treat it as an orphan
+# left behind by a killed process (Railway restart / proxy drop). The pipeline
+# sets a terminal status in a try/except, so a row older than this that is
+# still RUNNING means the process died mid-run.
+STUCK_RUNNING_HOURS = 12
+
+# Spine-FK columns per target table: lets STRENGTH measure the share of stored
+# rows that actually resolve onto the entity spine. Omitted tables score
+# strength on volume alone.
+SPINE_FK: dict[str, str] = {
+    "clinical_trials": "drug_id",
+    "adverse_events": "drug_id",
+    "drug_labels": "drug_id",
+    "pubmed_articles": "drug_id",
+    "pmc_articles": "pubmed_id",
+    "market_events": "primary_entity_id",
+    "bioactivities": "drug_id",
+    "regulatory_milestones": "drug_id",
+}
+
+
+# ── Pure verdict primitives (unit-testable, no DB) ──
 
 
 @dataclass
@@ -47,6 +85,36 @@ class SourceHealth:
     last_run_at: Optional[str]
     last_error: Optional[str]
     healthy: bool
+
+
+@dataclass
+class SourceScore:
+    """Full four-dimension scorecard row for one source."""
+    source: str
+    table: str
+    scheduled: bool
+    deferred: bool
+    # flow
+    rows: int = 0
+    age_days: Optional[float] = None
+    sla_days: int = 0
+    flow: str = "RED"
+    # strength
+    linked_pct: Optional[float] = None      # share of rows resolving onto spine
+    strength: str = "RED"
+    # sync
+    last_run_status: Optional[str] = None
+    last_run_at: Optional[str] = None
+    runs_7d: int = 0
+    stuck_running: int = 0
+    sync: str = "RED"
+    # e2e
+    last_inserted: Optional[int] = None
+    last_updated: Optional[int] = None
+    e2e: str = "RED"
+    # roll-up
+    verdict: str = "RED"
+    notes: list[str] = field(default_factory=list)
 
 
 def _age_days(newest: Optional[datetime], now: datetime) -> Optional[float]:
@@ -96,6 +164,80 @@ def evaluate_source_health(
     )
 
 
+def score_flow(rows: int, age_days: Optional[float], sla_days: int) -> str:
+    """GREEN within SLA; AMBER stale but <2x SLA; RED empty or >=2x SLA."""
+    if rows == 0 or age_days is None:
+        return "RED"
+    if age_days <= sla_days:
+        return "GREEN"
+    if age_days <= sla_days * 2:
+        return "AMBER"
+    return "RED"
+
+
+def score_strength(rows: int, linked_pct: Optional[float]) -> str:
+    """GREEN if rows present and >=80% resolve onto the spine (or no FK to
+    measure); AMBER 50-80% linked; RED no rows or <50% linked."""
+    if rows == 0:
+        return "RED"
+    if linked_pct is None:
+        return "GREEN"  # no spine FK to measure — volume-only, not penalised
+    if linked_pct >= 80.0:
+        return "GREEN"
+    if linked_pct >= 50.0:
+        return "AMBER"
+    return "RED"
+
+
+def score_sync(
+    scheduled: bool,
+    last_run_status: Optional[str],
+    runs_7d: int,
+    stuck_running: int,
+) -> str:
+    """RED if scheduled but never ran, last run FAILED, or it has stuck-RUNNING
+    orphans; AMBER if scheduled but no terminal run in the last 7d; GREEN
+    otherwise."""
+    if not scheduled:
+        return "AMBER"
+    status = (last_run_status or "").upper()
+    if not last_run_status:
+        return "RED"
+    if status in {"FAILURE", "FAILED"}:
+        return "RED"
+    if stuck_running > 0:
+        return "RED"
+    if runs_7d == 0:
+        return "AMBER"
+    return "GREEN"
+
+
+def score_e2e(rows: int, last_inserted: Optional[int], last_updated: Optional[int]) -> str:
+    """Did the most-recent run actually move data? GREEN if it inserted/updated
+    rows; AMBER if it processed nothing but the table is non-empty (a quiet
+    cycle is normal for slow sources); RED if the table is empty (never landed
+    anything)."""
+    if rows == 0:
+        return "RED"
+    moved = (last_inserted or 0) + (last_updated or 0)
+    if moved > 0:
+        return "GREEN"
+    return "AMBER"
+
+
+def roll_up(flow: str, strength: str, sync: str, e2e: str, deferred: bool) -> str:
+    """Worst-of the four dimensions, except deferred sources cap at AMBER and
+    are reported as DEFERRED (a documented dead source isn't a regression)."""
+    if deferred:
+        return "DEFERRED"
+    order = {"GREEN": 0, "AMBER": 1, "RED": 2}
+    worst = max((flow, strength, sync, e2e), key=lambda v: order.get(v, 2))
+    return worst
+
+
+# ── DB gather ──
+
+
 def _get_db_url() -> str:
     for a in sys.argv[1:]:
         if a.startswith("postgres"):
@@ -107,6 +249,7 @@ def _get_db_url() -> str:
 
 
 def gather(conn) -> list[SourceHealth]:
+    """Legacy flow-only health list (kept for callers/tests that use it)."""
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     now = datetime.now(timezone.utc)
     out: list[SourceHealth] = []
@@ -142,32 +285,176 @@ def gather(conn) -> list[SourceHealth]:
     return out
 
 
+def gather_scorecard(conn) -> list[SourceScore]:
+    """Full four-dimension scorecard, one row per scheduled source."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    now = datetime.now(timezone.utc)
+    out: list[SourceScore] = []
+
+    for source_type in CONNECTOR_SCHEDULES:
+        source = source_type.value
+        sla = FRESHNESS_SLA_DAYS.get(source_type)
+        deferred = source_type in KNOWN_DEFERRED_SOURCES
+        table = sla[0] if sla else "—"
+        recency_col = sla[1] if sla else None
+        sla_days = sla[2] if sla else 0
+        notes: list[str] = []
+        if deferred:
+            notes.append(KNOWN_DEFERRED_SOURCES[source_type])
+
+        # ── FLOW ──
+        rows, newest = 0, None
+        if sla:
+            try:
+                cur.execute(
+                    f"SELECT count(*) AS n, max({recency_col}) AS newest FROM {table}"
+                )
+                r = cur.fetchone()
+                rows, newest = r["n"], r["newest"]
+            except Exception as e:
+                conn.rollback()
+                notes.append(f"flow query failed: {str(e)[:80]}")
+        age = _age_days(newest, now)
+        flow = score_flow(rows, age, sla_days) if sla else "AMBER"
+        if not sla:
+            notes.append("no freshness SLA registered for this source")
+
+        # ── STRENGTH (spine-FK resolution share) ──
+        linked_pct = None
+        fk = SPINE_FK.get(table)
+        if fk and rows:
+            try:
+                cur.execute(
+                    f"SELECT count(*) FILTER (WHERE {fk} IS NOT NULL)::float "
+                    f"/ NULLIF(count(*),0) * 100 AS pct FROM {table}"
+                )
+                p = cur.fetchone()["pct"]
+                linked_pct = round(p, 1) if p is not None else None
+            except Exception:
+                conn.rollback()
+        strength = score_strength(rows, linked_pct)
+
+        # ── SYNC ──
+        status = run_at = None
+        runs_7d = stuck = 0
+        last_inserted = last_updated = None
+        try:
+            cur.execute(
+                """
+                SELECT status, COALESCE(completed_at, started_at) AS run_at,
+                       records_inserted, records_updated
+                FROM etl_runs WHERE source_name = %s
+                ORDER BY started_at DESC LIMIT 1
+                """,
+                [source],
+            )
+            row = cur.fetchone()
+            if row:
+                status, run_at = row["status"], row["run_at"]
+                last_inserted, last_updated = row["records_inserted"], row["records_updated"]
+        except Exception:
+            conn.rollback()
+        try:
+            cur.execute(
+                """
+                SELECT
+                  count(*) FILTER (
+                    WHERE status='SUCCESS' AND started_at > now() - interval '7 days'
+                  ) AS ok7,
+                  count(*) FILTER (
+                    WHERE status='RUNNING' AND started_at < now() - interval '%s hours'
+                  ) AS stuck
+                FROM etl_runs WHERE source_name = %s
+                """,
+                [STUCK_RUNNING_HOURS, source],
+            )
+            row = cur.fetchone()
+            if row:
+                runs_7d, stuck = row["ok7"], row["stuck"]
+        except Exception:
+            conn.rollback()
+        scheduled = True  # iterating CONNECTOR_SCHEDULES
+        sync = score_sync(scheduled, status, runs_7d, stuck)
+        if stuck:
+            notes.append(f"{stuck} stuck-RUNNING etl_runs (>{STUCK_RUNNING_HOURS}h) - killed mid-run")
+
+        # ── E2E ──
+        e2e = score_e2e(rows, last_inserted, last_updated)
+        if e2e == "AMBER" and not deferred and rows:
+            notes.append("last run moved 0 rows (quiet cycle or silent zero - check)")
+
+        verdict = roll_up(flow, strength, sync, e2e, deferred)
+
+        out.append(
+            SourceScore(
+                source=source,
+                table=table,
+                scheduled=scheduled,
+                deferred=deferred,
+                rows=rows,
+                age_days=age,
+                sla_days=sla_days,
+                flow=flow,
+                linked_pct=linked_pct,
+                strength=strength,
+                last_run_status=status,
+                last_run_at=run_at.isoformat() if run_at else None,
+                runs_7d=runs_7d,
+                stuck_running=stuck,
+                sync=sync,
+                last_inserted=last_inserted,
+                last_updated=last_updated,
+                e2e=e2e,
+                verdict=verdict,
+                notes=notes,
+            )
+        )
+    return out
+
+
+def _cell(v: str) -> str:
+    return {"GREEN": "GRN", "AMBER": "AMB", "RED": "RED", "DEFERRED": "DEF"}.get(v, v)
+
+
 def main() -> None:
     as_json = "--json" in sys.argv
     conn = psycopg2.connect(_get_db_url())
-    healths = gather(conn)
+    scores = gather_scorecard(conn)
     conn.close()
 
     if as_json:
-        print(json.dumps([asdict(h) for h in healths], indent=2))
+        print(json.dumps([asdict(s) for s in scores], indent=2, default=str))
     else:
-        print(f"{'SOURCE':24} {'TABLE':22} {'ROWS':>8} {'AGE':>7} {'SLA':>4}  {'RUN':9} STATUS")
-        print("-" * 90)
-        for h in healths:
-            flag = "OK " if h.healthy else "!! "
-            age = f"{h.age_days}d" if h.age_days is not None else "—"
+        print(
+            f"{'SOURCE':22} {'TABLE':22} {'ROWS':>7} {'AGE':>7} "
+            f"{'FLOW':>5} {'STR':>5} {'SYNC':>5} {'E2E':>5}  VERDICT"
+        )
+        print("-" * 100)
+        for s in scores:
+            age = f"{s.age_days}d" if s.age_days is not None else "—"
+            link = f" link={s.linked_pct}%" if s.linked_pct is not None else ""
             print(
-                f"{flag}{h.source:21} {h.table:22} {h.rows:>8} {age:>7} {h.sla_days:>3}d  "
-                f"{(h.last_run_status or '—'):9} "
-                f"{'OVER_SLA ' if h.over_sla else ''}"
-                f"{('ERR:'+h.last_error) if h.last_error else ''}"
+                f"{s.source:22} {s.table:22} {s.rows:>7} {age:>7} "
+                f"{_cell(s.flow):>5} {_cell(s.strength):>5} {_cell(s.sync):>5} "
+                f"{_cell(s.e2e):>5}  {s.verdict}{link}"
             )
-        bad = [h.source for h in healths if not h.healthy]
-        print("-" * 90)
-        print(f"{len(healths) - len(bad)}/{len(healths)} healthy."
-              + (f" OVER/FAILED: {', '.join(bad)}" if bad else ""))
+            for n in s.notes:
+                print(f"        - {n}")
+        red = [s.source for s in scores if s.verdict == "RED"]
+        deferred = [s.source for s in scores if s.verdict == "DEFERRED"]
+        print("-" * 100)
+        green = sum(1 for s in scores if s.verdict == "GREEN")
+        amber = sum(1 for s in scores if s.verdict == "AMBER")
+        print(
+            f"{green} GREEN · {amber} AMBER · {len(red)} RED · {len(deferred)} DEFERRED "
+            f"(of {len(scores)} scheduled sources)"
+        )
+        if red:
+            print(f"RED: {', '.join(red)}")
+        if deferred:
+            print(f"DEFERRED: {', '.join(deferred)}")
 
-    if any(not h.healthy for h in healths):
+    if any(s.verdict == "RED" for s in scores):
         sys.exit(1)
 
 
