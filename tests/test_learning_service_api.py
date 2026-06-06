@@ -206,19 +206,12 @@ def _make_db(*, decisions=None, signals=None, sources=None, snapshots=None,
                 for sid in snap.get("source_ids", [])
             ]
 
-        # brief evidence_refs path
-        if "from decision_briefs b" in s and params:
-            decision_id = str(params[0])
-            for bid, b in briefs_db.items():
-                if str(b.get("decision_id")) == decision_id:
-                    out = []
-                    for r in (b.get("evidence_refs") or []):
-                        if r.get("type") == "signal":
-                            sig = next((sg for sg in signals_db if str(sg["id"]) == str(r["id"])), None)
-                            if sig and sig.get("source"):
-                                out.append({"source": sig["source"]})
-                    return out
-            return []
+        # signal → evidence_records.source_id path (_sources_for_signal)
+        if "from signals s" in s and "join evidence_records er" in s and params:
+            sig = next((sg for sg in signals_db if str(sg["id"]) == str(params[0])), None)
+            if not sig:
+                return []
+            return [{"source_id": sid} for sid in sig.get("evidence_source_ids", [])]
 
         # find_prompts_in_window
         if "from llm_call_log lcl" in s and "group by" in s:
@@ -383,9 +376,12 @@ def _seed_decisions_with_signals():
         {"source_id": "src-A", "latest_quality_id": None},
         {"source_id": "src-B", "latest_quality_id": None},
     ]
+    # Provenance is signal → evidence_document_ids → evidence_records.source_id
+    # (signals has no `source` column). `evidence_source_ids` is the fake
+    # harness's stand-in for resolving that chain.
     signals = [
-        {"id": "sig-1", "source": "src-A"},
-        {"id": "sig-2", "source": "src-B"},
+        {"id": "sig-1", "evidence_source_ids": ["src-A"]},
+        {"id": "sig-2", "evidence_source_ids": ["src-B"]},
     ]
     decisions = [
         {"id": "dec-1", "calibration_score": 0.9,
@@ -493,8 +489,9 @@ def test_run_records_attribution_method():
     r = client.post("/learning/run", json={}, headers=_hdr(tok))
     body = r.json()
     methods = body["summary"]["attribution_methods"]
-    # All decisions used the source_signal fallback (no evidence_snapshot rows)
-    assert methods.get("decision_source_signal", 0) == 2
+    # All decisions attributed via signal → evidence_records.source_id
+    # (no evidence_snapshot rows seeded).
+    assert methods.get("decision_signal_evidence", 0) == 2
 
 
 def test_get_run_404():

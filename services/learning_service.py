@@ -157,12 +157,41 @@ def find_decisions_with_outcomes(
     return [dict(r) for r in rows]
 
 
+def _sources_for_signal(db, signal_id: str) -> list[str]:
+    """Resolve a signal to the registered source_ids that produced its
+    evidence. The signal carries `evidence_document_ids` (uuid[]) that point
+    at `evidence_records`; each evidence row stamps the canonical `source_id`
+    (a connectors.base.SourceType value). This is the real provenance edge —
+    `signals` has NO `source` column."""
+    try:
+        rows = db.fetch_all(
+            """
+            SELECT DISTINCT er.source_id
+              FROM signals s
+              JOIN evidence_records er
+                ON er.evidence_id = ANY(s.evidence_document_ids)
+             WHERE s.id::text = %s
+               AND er.source_id IS NOT NULL
+            """,
+            (str(signal_id),),
+        )
+        return [r["source_id"] for r in (rows or []) if r.get("source_id")]
+    except Exception as exc:
+        logger.debug("signal→evidence source lookup failed for %s: %s", signal_id, exc)
+        return []
+
+
 def find_source_ids_for_decision(db, decision: dict) -> tuple[list[str], str]:
-    """Returns (source_ids, attribution_method). Tries three paths in order:
+    """Returns (source_ids, attribution_method). Tries paths in order of
+    directness:
 
       1. Evidence-snapshot chain (preferred when SPEC-024 + decision signing wired)
-      2. Brief.evidence_refs fallback (when decision links to a brief)
-      3. signals.source via decision.source_signal_id (last-resort, today's path)
+      2. Decision's seed signal → evidence_records.source_id
+      3. War-room's seed signal → evidence_records.source_id (when the
+         decision itself has no source_signal_id but its war room does)
+
+    NOTE: `signals` has no `source` column — provenance is via
+    `signals.evidence_document_ids → evidence_records.source_id`.
     """
     decision_id = str(decision["id"])
 
@@ -188,39 +217,28 @@ def find_source_ids_for_decision(db, decision: dict) -> tuple[list[str], str]:
     except Exception as exc:
         logger.debug("evidence_snapshot path failed for %s: %s", decision_id, exc)
 
-    # Path 2: brief.evidence_refs fallback (if a brief is linked)
-    try:
-        rows = db.fetch_all(
-            """
-            SELECT DISTINCT s.source
-              FROM decision_briefs b
-              JOIN signals s
-                ON s.id::text = ANY(
-                     SELECT (jsonb_array_elements(b.evidence_refs)->>'id')::text
-                     WHERE jsonb_array_elements(b.evidence_refs)->>'type' = 'signal'
-                   )
-             WHERE b.decision_id::text = %s
-            """,
-            (decision_id,),
-        )
-        sids = [r["source"] for r in (rows or []) if r.get("source")]
-        if sids:
-            return list(dict.fromkeys(sids)), "brief_evidence_refs"
-    except Exception as exc:
-        logger.debug("brief evidence_refs path failed for %s: %s", decision_id, exc)
-
-    # Path 3: signals.source via decision.source_signal_id
+    # Path 2: the decision's seed signal → its evidence sources
     sig_id = decision.get("source_signal_id")
     if sig_id:
+        sids = _sources_for_signal(db, sig_id)
+        if sids:
+            return list(dict.fromkeys(sids)), "decision_signal_evidence"
+
+    # Path 3: the war-room's seed signal → its evidence sources
+    wr_id = decision.get("war_room_id")
+    if wr_id:
         try:
             row = db.fetch_one(
-                "SELECT source FROM signals WHERE id::text = %s",
-                (str(sig_id),),
+                "SELECT source_signal_id FROM war_rooms WHERE id::text = %s",
+                (str(wr_id),),
             )
-            if row and row.get("source"):
-                return [row["source"]], "decision_source_signal"
+            wr_sig = row.get("source_signal_id") if row else None
+            if wr_sig:
+                sids = _sources_for_signal(db, wr_sig)
+                if sids:
+                    return list(dict.fromkeys(sids)), "war_room_signal_evidence"
         except Exception as exc:
-            logger.debug("signal lookup failed for %s: %s", sig_id, exc)
+            logger.debug("war_room signal lookup failed for %s: %s", wr_id, exc)
 
     return [], "no_attribution_path"
 
