@@ -40,8 +40,14 @@ from services.domain_intelligence.validation import (
     validate_playbook,
 )
 from services.domain_forge.prompts import (
+    generate_critique_round,
+    generate_routing_round,
+    generate_signal_or_noise_round,
     generate_what_matters_round,
+    grade_is_valid,
     option_for_key,
+    reason_is_valid,
+    routing_options_for_dimension,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,14 @@ DEFAULT_CONSENSUS_THRESHOLD = 2
 POINTS_PROMOTED = 10
 POINTS_VALID_PENDING = 3
 POINTS_INVALID = 0
+
+# Round types that EDIT the playbook (consensus-gated): a lone answer is flagged,
+# corroboration promotes. Other round types mint a labelling gold item (no pack
+# edit), scored as a valid gold label on submission.
+_PACK_EDITING_ROUND_TYPES = {"what_matters", "routing"}
+
+# Labelling-round point award (a valid gold label — materiality / accuracy).
+POINTS_LABEL = 5
 
 
 class RoundNotFound(Exception):
@@ -97,17 +111,28 @@ class ForgeEngine:
         db: Any,
         *,
         session_id: str,
-        intent: str = "compare",
-        playbook_id: str = "compare.drug_x_drug",
+        round_type: str = "what_matters",
+        intent: Optional[str] = None,
+        playbook_id: Optional[str] = None,
         entities: Optional[list[dict]] = None,
         created_by: Optional[str] = None,
+        **kwargs: Any,
     ) -> dict:
-        """Generate a "What matters?" round FROM real DB entities and persist it.
+        """Generate a round of `round_type` FROM real DB entities and persist it.
 
-        Returns the stored round as a dict. Raises ValueError if the spine has
-        too few real entities to build a grounded compare (never fabricates)."""
-        spec = generate_what_matters_round(
-            db, intent=intent, playbook_id=playbook_id, entities=entities
+        Round types (DF-1 + DF-5):
+          * what_matters    ① pick/rank the dimensions for a real compare.
+          * signal_or_noise ② pick the most material of three real signals.
+          * routing         ③ pick the fact-types/sources to trust for a dimension.
+          * critique        ④ grade a real machine-generated cell.
+
+        Returns the stored round as a dict. Raises ValueError when the DB lacks
+        enough real rows to ground the round (never fabricates). `kwargs` carry
+        round-type-specific params (e.g. dimension_key, predicate, signals).
+        """
+        spec = self._generate_spec(
+            db, round_type=round_type, intent=intent, playbook_id=playbook_id,
+            entities=entities, **kwargs,
         )
         row = db.fetch_one(
             "INSERT INTO forge_rounds "
@@ -124,6 +149,53 @@ class ForgeEngine:
         if not row:
             raise RuntimeError("create_round: insert returned no row")
         return self._round_to_dict(row)
+
+    @staticmethod
+    def _generate_spec(
+        db: Any,
+        *,
+        round_type: str,
+        intent: Optional[str],
+        playbook_id: Optional[str],
+        entities: Optional[list[dict]],
+        **kwargs: Any,
+    ) -> dict:
+        """Dispatch to the round-type generator (all grounded in real DB rows)."""
+        rt = (round_type or "what_matters").strip()
+        if rt == "what_matters":
+            return generate_what_matters_round(
+                db,
+                intent=intent or "compare",
+                playbook_id=playbook_id or "compare.drug_x_drug",
+                entities=entities,
+            )
+        if rt == "signal_or_noise":
+            return generate_signal_or_noise_round(
+                db,
+                intent=intent or "materiality",
+                playbook_id=playbook_id or "materiality.signal_triage",
+                signals=kwargs.get("signals"),
+            )
+        if rt == "routing":
+            return generate_routing_round(
+                db,
+                intent=intent or "dossier",
+                playbook_id=playbook_id or "dossier.drug",
+                dimension_key=kwargs.get("dimension_key", "safety"),
+                entities=entities,
+            )
+        if rt == "critique":
+            return generate_critique_round(
+                db,
+                intent=intent or "critique",
+                playbook_id=playbook_id or "critique.cell_accuracy",
+                predicate=kwargs.get("predicate", "mechanism_of_action"),
+                cell=kwargs.get("cell"),
+            )
+        raise ValueError(
+            f"domain_forge: unknown round_type '{round_type}' "
+            f"(known: what_matters, signal_or_noise, routing, critique)"
+        )
 
     def get_round(self, db: Any, round_id: str) -> Optional[dict]:
         row = db.fetch_one(
@@ -146,10 +218,14 @@ class ForgeEngine:
     ) -> dict:
         """Submit an SME's constrained answer to a round.
 
-        `answer` shape: {"selected": ["key", ...], "ranking": ["key", ...]}.
-        The TOP-ranked (or first selected) dimension is the elicited one.
+        Dispatches by the round's `round_type` (DF-1 + DF-5). Every type runs
+        through the SAME persist-eval-item + score path; pack-editing types
+        (what_matters / routing) additionally validate + consensus-gate a
+        playbook edit, while labelling types (signal_or_noise / critique) mint a
+        gold label scored on submission.
 
-        Returns {eval_item, validation, consensus, score, playbook_version}.
+        Returns {round_id, validation, consensus, playbook_version, eval_item,
+        score, ...}.
         """
         round_row = db.fetch_one(
             "SELECT id, session_id, round_type, playbook_id, intent, prompt, "
@@ -161,6 +237,32 @@ class ForgeEngine:
         if (round_row.get("status") or "open") == "answered":
             raise RoundAlreadyAnswered(f"round already answered: {round_id}")
 
+        rt = (round_row.get("round_type") or "what_matters").strip()
+        if rt == "what_matters":
+            result = self._submit_what_matters(db, round_row, answer, sme_id=sme_id)
+        elif rt == "routing":
+            result = self._submit_routing(db, round_row, answer, sme_id=sme_id)
+        elif rt == "signal_or_noise":
+            result = self._submit_signal_or_noise(db, round_row, answer, sme_id=sme_id)
+        elif rt == "critique":
+            result = self._submit_critique(db, round_row, answer, sme_id=sme_id)
+        else:
+            raise InvalidAnswer(f"unsupported round_type '{rt}'")
+
+        # mark the round answered (one play) — common to every type.
+        db.execute(
+            "UPDATE forge_rounds SET status='answered', answered_at=NOW() WHERE id=%s",
+            [round_id],
+        )
+        result["round_id"] = round_id
+        return result
+
+    # ── round-type handlers ───────────────────────────────────────────────
+
+    def _submit_what_matters(
+        self, db: Any, round_row: dict, answer: dict, *, sme_id: Optional[str],
+    ) -> dict:
+        """① "What matters?" — elicit + consensus-promote a dimension (DF-1/DF-2)."""
         payload = _j(round_row.get("payload"), {})
         allowed_keys = {o["key"] for o in payload.get("options", [])}
         top_key = self._top_dimension_key(answer, allowed_keys)
@@ -178,66 +280,189 @@ class ForgeEngine:
             "required": False,
             "weight": 0.7,
         }
-
-        # 2. VALIDATE the elicited dimension against the current playbook (DF-2).
         validation = self._validate_dimension(db, playbook_id, elicited_dim)
-
-        # 3. CONSENSUS (DF-2): count distinct SMEs (incl. this answer) whose top
-        #    pick is this dimension on this playbook. Promote iff threshold met
-        #    AND valid; otherwise flag as a proposal (not applied).
         agree_count = self._consensus_count(
-            db, playbook_id=playbook_id, dimension_key=top_key,
-            this_sme=sme_id,
+            db, playbook_id=playbook_id, dimension_key=top_key, this_sme=sme_id,
         )
-        promoted_version: Optional[int] = None
-        if validation["valid"] and agree_count >= self.consensus_threshold:
-            promoted_version = self._promote_dimension(
-                db, playbook_id, elicited_dim, author=sme_id
-            )
-            consensus_state = "promoted"
-        else:
-            consensus_state = "flagged"  # lone / dissenting / invalid → proposal only
-
-        # 4. persist the GOLD eval item (prompt → answer).
+        promoted_version, consensus_state = self._maybe_promote(
+            db, playbook_id, elicited_dim, validation, agree_count, author=sme_id,
+        )
         eval_item = self._persist_eval_item(
-            db,
-            round_row=round_row,
-            answer=answer,
-            sme_id=sme_id,
-            validation=validation,
-            consensus_state=consensus_state,
+            db, round_row=round_row, answer=answer, sme_id=sme_id,
+            validation=validation, consensus_state=consensus_state,
             promoted_version=promoted_version,
         )
-
-        # 5. SCORE — gated on validation + consensus (reward correctness).
         score = self._score_answer(
-            db,
-            eval_item_id=eval_item["id"],
-            session_id=round_row["session_id"],
-            sme_id=sme_id,
-            valid=validation["valid"],
+            db, eval_item_id=eval_item["id"], session_id=round_row["session_id"],
+            sme_id=sme_id, valid=validation["valid"],
             promoted=(consensus_state == "promoted"),
         )
-
-        # mark the round answered (one play).
-        db.execute(
-            "UPDATE forge_rounds SET status='answered', answered_at=NOW() WHERE id=%s",
-            [round_id],
-        )
-
         return {
-            "round_id": round_id,
             "dimension": elicited_dim,
             "validation": validation,
             "consensus": {
-                "state": consensus_state,
-                "agree_count": agree_count,
+                "state": consensus_state, "agree_count": agree_count,
                 "threshold": self.consensus_threshold,
             },
             "playbook_version": promoted_version,
             "eval_item": eval_item,
             "score": score,
         }
+
+    def _submit_routing(
+        self, db: Any, round_row: dict, answer: dict, *, sme_id: Optional[str],
+    ) -> dict:
+        """③ "Where does the answer live?" — the SME's trusted route subset edits
+        the dimension's routes (validated + consensus-gated, same engine path).
+
+        `answer` shape: {"selected": ["predicate:x", "source:y", ...]}.
+        Consensus keys on (playbook_id, dimension_key, sorted route set) so two
+        SMEs who choose the SAME route set corroborate; the routes are validated
+        before any pack edit (an unroutable selection → invalid → flagged)."""
+        payload = _j(round_row.get("payload"), {})
+        dim_key = (payload.get("dimension") or {}).get("key", "")
+        dim_label = (payload.get("dimension") or {}).get("label", dim_key)
+        allowed = {o["key"] for o in payload.get("options", [])}
+
+        selected = [str(s).strip() for s in (answer.get("selected") or []) if str(s).strip()]
+        if not selected:
+            raise InvalidAnswer("routing answer selected no routes")
+        bad = [s for s in selected if allowed and s not in allowed]
+        if bad:
+            raise InvalidAnswer(
+                f"route(s) {bad} are not in the round's option set ({sorted(allowed)})"
+            )
+        # Stable, deduped route set (order-independent for consensus).
+        routes = sorted(dict.fromkeys(selected))
+
+        playbook_id = round_row["playbook_id"]
+        edited_dim = {
+            "key": dim_key,
+            "label": dim_label,
+            "sub_question": f"What is {{entity}}'s {dim_label.lower()}?",
+            "routes": routes,
+            "required": False,
+            "weight": 0.7,
+        }
+        validation = self._validate_dimension(db, playbook_id, edited_dim)
+        # Consensus on the (dimension, route-set) the SME proposed.
+        consensus_key = dim_key + "|" + ",".join(routes)
+        agree_count = self._consensus_count_routing(
+            db, playbook_id=playbook_id, consensus_key=consensus_key, this_sme=sme_id,
+        )
+        promoted_version, consensus_state = self._maybe_promote(
+            db, playbook_id, edited_dim, validation, agree_count, author=sme_id,
+        )
+        # Stamp the consensus key onto the persisted answer so a later SME's
+        # identical route-set is counted (one JSONB comparison, no re-derivation).
+        stored_answer = {**answer, "selected": routes, "consensus_key": consensus_key}
+        eval_item = self._persist_eval_item(
+            db, round_row=round_row, answer=stored_answer, sme_id=sme_id,
+            validation=validation, consensus_state=consensus_state,
+            promoted_version=promoted_version,
+        )
+        score = self._score_answer(
+            db, eval_item_id=eval_item["id"], session_id=round_row["session_id"],
+            sme_id=sme_id, valid=validation["valid"],
+            promoted=(consensus_state == "promoted"),
+        )
+        return {
+            "dimension": edited_dim,
+            "validation": validation,
+            "consensus": {
+                "state": consensus_state, "agree_count": agree_count,
+                "threshold": self.consensus_threshold,
+            },
+            "playbook_version": promoted_version,
+            "eval_item": eval_item,
+            "score": score,
+        }
+
+    def _submit_signal_or_noise(
+        self, db: Any, round_row: dict, answer: dict, *, sme_id: Optional[str],
+    ) -> dict:
+        """② "Signal or noise?" — a materiality LABEL (no pack edit). The SME's
+        chosen signal + reason is the gold label; valid → labelling reward.
+
+        `answer` shape: {"signal_id": "...", "reason": "clinical_readout"}."""
+        payload = _j(round_row.get("payload"), {})
+        allowed_signal_ids = {s.get("signal_id") for s in payload.get("signals", [])}
+        chosen = str(answer.get("signal_id") or "").strip()
+        reason = str(answer.get("reason") or "").strip()
+        if not chosen:
+            raise InvalidAnswer("signal-or-noise answer selected no signal")
+        if allowed_signal_ids and chosen not in allowed_signal_ids:
+            raise InvalidAnswer(
+                f"signal '{chosen}' is not in the round's candidate set"
+            )
+        if not reason_is_valid(reason):
+            raise InvalidAnswer(f"reason '{reason}' is not a valid materiality reason")
+        # A materiality label is "valid" when structurally well-formed (a real
+        # signal + a constrained reason). There is no playbook edit, so it mints
+        # a gold label and is scored on submission.
+        validation = {"valid": True, "errors": []}
+        eval_item = self._persist_eval_item(
+            db, round_row=round_row, answer=answer, sme_id=sme_id,
+            validation=validation, consensus_state="labelled", promoted_version=None,
+        )
+        score = self._score_label(
+            db, eval_item_id=eval_item["id"], session_id=round_row["session_id"],
+            sme_id=sme_id, reason="valid materiality label",
+        )
+        return {
+            "label": {"signal_id": chosen, "reason": reason},
+            "validation": validation,
+            "consensus": {"state": "labelled", "agree_count": 1,
+                          "threshold": self.consensus_threshold},
+            "playbook_version": None,
+            "eval_item": eval_item,
+            "score": score,
+        }
+
+    def _submit_critique(
+        self, db: Any, round_row: dict, answer: dict, *, sme_id: Optional[str],
+    ) -> dict:
+        """④ "Grade the machine" — a direct accuracy LABEL on a real cell.
+
+        `answer` shape: {"grade": "correct|partial|wrong", "correction": "..."}."""
+        payload = _j(round_row.get("payload"), {})
+        cell = payload.get("cell") or {}
+        grade = str(answer.get("grade") or "").strip()
+        if not grade_is_valid(grade):
+            raise InvalidAnswer(
+                f"grade '{grade}' is not a valid critique grade "
+                f"(correct / partial / wrong)"
+            )
+        validation = {"valid": True, "errors": []}
+        eval_item = self._persist_eval_item(
+            db, round_row=round_row, answer=answer, sme_id=sme_id,
+            validation=validation, consensus_state="labelled", promoted_version=None,
+        )
+        score = self._score_label(
+            db, eval_item_id=eval_item["id"], session_id=round_row["session_id"],
+            sme_id=sme_id, reason=f"accuracy label: {grade}",
+        )
+        return {
+            "label": {"fact_id": cell.get("fact_id"), "grade": grade,
+                      "correction": str(answer.get("correction") or "")},
+            "validation": validation,
+            "consensus": {"state": "labelled", "agree_count": 1,
+                          "threshold": self.consensus_threshold},
+            "playbook_version": None,
+            "eval_item": eval_item,
+            "score": score,
+        }
+
+    def _maybe_promote(
+        self, db: Any, playbook_id: str, dim: dict, validation: dict,
+        agree_count: int, *, author: Optional[str],
+    ) -> tuple[Optional[int], str]:
+        """Shared promote-or-flag gate for pack-editing rounds: promote the
+        dimension iff it validates AND consensus is met; else flag (not applied)."""
+        if validation["valid"] and agree_count >= self.consensus_threshold:
+            version = self._promote_dimension(db, playbook_id, dim, author=author)
+            return version, "promoted"
+        return None, "flagged"
 
     # ── session / score reads ─────────────────────────────────────────────
 
@@ -374,6 +599,28 @@ class ForgeEngine:
             smes.add(f"__anon__{dimension_key}__pending")
         return len({s for s in smes if s is not None})
 
+    def _consensus_count_routing(
+        self, db: Any, *, playbook_id: str, consensus_key: str,
+        this_sme: Optional[str],
+    ) -> int:
+        """Distinct SMEs who proposed the SAME (dimension, route-set) for a
+        routing round on this playbook, including the answer in flight.
+
+        The consensus key is stored on each routing eval item's answer as
+        `consensus_key` so a route-set match is a single JSONB comparison;
+        distinct-by-sme so one SME cannot manufacture consensus."""
+        rows = db.fetch_all(
+            "SELECT DISTINCT sme_id FROM forge_eval_items "
+            "WHERE playbook_id = %s AND answer->>'consensus_key' = %s",
+            [playbook_id, consensus_key],
+        ) or []
+        smes = {r.get("sme_id") for r in rows}
+        if this_sme is not None:
+            smes.add(this_sme)
+        elif None not in smes:
+            smes.add(f"__anon__{consensus_key}__pending")
+        return len({s for s in smes if s is not None})
+
     def _promote_dimension(
         self, db: Any, playbook_id: str, dim: dict, *, author: Optional[str],
     ) -> Optional[int]:
@@ -438,6 +685,27 @@ class ForgeEngine:
             points, reason = POINTS_PROMOTED, "valid + consensus promoted to playbook"
         else:
             points, reason = POINTS_VALID_PENDING, "valid gold label; awaiting consensus"
+        return self._insert_score(
+            db, eval_item_id=eval_item_id, session_id=session_id, sme_id=sme_id,
+            points=points, reason=reason,
+        )
+
+    def _score_label(
+        self, db: Any, *, eval_item_id: str, session_id: str,
+        sme_id: Optional[str], reason: str,
+    ) -> dict:
+        """Award the labelling reward for a valid gold label (signal_or_noise /
+        critique) — a well-formed label is the deliverable, scored on submission."""
+        return self._insert_score(
+            db, eval_item_id=eval_item_id, session_id=session_id, sme_id=sme_id,
+            points=POINTS_LABEL, reason=reason,
+        )
+
+    def _insert_score(
+        self, db: Any, *, eval_item_id: str, session_id: str,
+        sme_id: Optional[str], points: int, reason: str,
+    ) -> dict:
+        """Idempotent score insert (one row per eval item)."""
         row = db.fetch_one(
             "INSERT INTO forge_scores (eval_item_id, session_id, sme_id, points, reason) "
             "VALUES (%s, %s, %s, %s, %s) "

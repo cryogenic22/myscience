@@ -44,16 +44,35 @@ _engine = ForgeEngine()
 
 class CreateRoundBody(BaseModel):
     session_id: str = Field(min_length=1, max_length=200)
-    intent: str = "compare"
-    playbook_id: str = "compare.drug_x_drug"
-    # Optional explicit entity pairing; otherwise two fact-rich drugs are picked.
+    # DF-5: which game to play. Each is grounded in real DB rows.
+    #   what_matters | signal_or_noise | routing | critique
+    round_type: str = "what_matters"
+    # intent / playbook_id default per round_type when omitted.
+    intent: Optional[str] = None
+    playbook_id: Optional[str] = None
+    # Optional explicit entity pairing; otherwise real entities are picked.
     entities: Optional[list[dict]] = None
+    # Round-type-specific params (all optional, sensible defaults):
+    dimension_key: Optional[str] = None   # routing ③
+    predicate: Optional[str] = None       # critique ④
 
 
 class SubmitAnswerBody(BaseModel):
-    # The SME's constrained answer: ranked / selected dimension keys.
+    """The SME's constrained answer. Shape depends on the round type:
+      * what_matters ① : ranked / selected dimension keys.
+      * routing      ③ : selected route keys.
+      * signal_or_noise ② : signal_id + reason.
+      * critique     ④ : grade (+ optional correction).
+    """
+    # what_matters / routing
     selected: list[str] = Field(default_factory=list)
     ranking: list[str] = Field(default_factory=list)
+    # signal_or_noise
+    signal_id: Optional[str] = None
+    reason: Optional[str] = None
+    # critique
+    grade: Optional[str] = None
+    correction: Optional[str] = None
     sme_id: Optional[str] = None
 
 
@@ -73,14 +92,23 @@ def create_round(
     user: dict = Depends(require_role("uploader")),
     db: Database = Depends(get_db),
 ):
+    # Pass only the round-type params the caller supplied (generators default
+    # the rest); avoids overriding generator defaults with None.
+    extra: dict = {}
+    if body.dimension_key is not None:
+        extra["dimension_key"] = body.dimension_key
+    if body.predicate is not None:
+        extra["predicate"] = body.predicate
     try:
         return _engine.create_round(
             db,
             session_id=body.session_id,
+            round_type=body.round_type,
             intent=body.intent,
             playbook_id=body.playbook_id,
             entities=body.entities,
             created_by=(str(user.get("id")) if user else None),
+            **extra,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -105,11 +133,19 @@ def submit_answer(
     user: dict = Depends(require_role("uploader")),
     db: Database = Depends(get_db),
 ):
+    # One answer envelope covers every round type; the engine reads the fields
+    # relevant to the stored round's round_type.
+    answer = {
+        "selected": body.selected,
+        "ranking": body.ranking,
+        "signal_id": body.signal_id,
+        "reason": body.reason,
+        "grade": body.grade,
+        "correction": body.correction,
+    }
     try:
         return _engine.submit_answer(
-            db, round_id,
-            {"selected": body.selected, "ranking": body.ranking},
-            sme_id=_sme(body.sme_id, user),
+            db, round_id, answer, sme_id=_sme(body.sme_id, user),
         )
     except RoundNotFound as e:
         raise HTTPException(404, str(e))
