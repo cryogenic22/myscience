@@ -256,9 +256,11 @@ def get_emitters() -> dict[str, FactEmitter]:
     from services.fact_emitters.regulatory_milestones import (
         RegulatoryMilestoneEmitter,
     )
+    from services.fact_emitters.trial_outcomes import TrialOutcomeEmitter
 
     emitters: tuple[FactEmitter, ...] = (
         ClinicalTrialEmitter(),
+        TrialOutcomeEmitter(),
         AdverseEventEmitter(),
         DrugLabelEmitter(),
         MechanismEmitter(),

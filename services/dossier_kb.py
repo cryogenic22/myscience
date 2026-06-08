@@ -125,6 +125,9 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "adverse_event":        "clinical_profile",
     # DR-1/DR-3/DR-4 fact-emitter predicates (lifted from entity tables).
     "clinical_trial":       "clinical_profile",
+    # TrialOutcomeEmitter: registry-reported endpoints (trial_outcomes table).
+    # Exact entry (the "efficacy" prefix would route it anyway — kept explicit).
+    "efficacy_endpoint":    "clinical_profile",
     "adverse_event_report": "clinical_profile",
     "label_indication":     "clinical_profile",
     # DR-6 mechanism/target fact-emitter predicates (ChEMBL/MeSH-derived).
