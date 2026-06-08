@@ -114,6 +114,35 @@ class PipelineResult:
         }
 
 
+# Run-level outcome vocabulary (migration 088). Additive to the coarse `status`.
+RUN_OUTCOME_LANDED = "SUCCESS_LANDED"
+RUN_OUTCOME_NO_CHANGE = "SUCCESS_NO_CHANGE"
+RUN_OUTCOME_ZERO_ROWS = "FAILURE_ZERO_ROWS"
+RUN_OUTCOME_PARTIAL = "PARTIAL"
+RUN_OUTCOME_FAILURE = "FAILURE"
+
+
+def classify_run_outcome(
+    success: bool, processed: int, inserted: int, updated: int
+) -> str:
+    """Classify a finished run into the richer outcome vocabulary.
+
+    Pure + deterministic (no DB) so it is a Lane-1 conservation gate. The point
+    is to make the SILENT-ZERO visible: a run that "succeeds" but fetches nothing
+    (the Open Targets / EMA / 105-day-stale signature) is FAILURE_ZERO_ROWS, not
+    a green SUCCESS. A run that fetched rows but changed none is NO_CHANGE (a
+    legitimate quiet cycle), distinct from one that landed fresh data.
+    """
+    if not success:
+        return RUN_OUTCOME_PARTIAL
+    if (inserted or 0) > 0 or (updated or 0) > 0:
+        return RUN_OUTCOME_LANDED
+    if (processed or 0) > 0:
+        return RUN_OUTCOME_NO_CHANGE
+    # processed == 0 on an otherwise-successful run = fetched nothing.
+    return RUN_OUTCOME_ZERO_ROWS
+
+
 class IntegrationPipeline:
     """
     Orchestrates the 5-step data flow for any connector.
@@ -441,11 +470,23 @@ class IntegrationPipeline:
         )
 
     def _finalize_etl_run(self, run_id: str, result: PipelineResult) -> None:
-        """Mark an ETL run as completed."""
+        """Mark an ETL run as completed.
+
+        `status` stays coarse (SUCCESS/PARTIAL) for backward-compatible consumers;
+        `outcome` carries the richer signal (LANDED / NO_CHANGE / ZERO_ROWS) so a
+        silent-zero run is no longer indistinguishable from a healthy one.
+        """
+        outcome = classify_run_outcome(
+            result.success,
+            result.records_processed,
+            result.records_inserted,
+            result.records_updated,
+        )
         self.db.execute(
             """
             UPDATE etl_runs
             SET status = %s,
+                outcome = %s,
                 records_processed = %s,
                 records_inserted = %s,
                 records_updated = %s,
@@ -457,6 +498,7 @@ class IntegrationPipeline:
             """,
             [
                 "SUCCESS" if result.success else "PARTIAL",
+                outcome,
                 result.records_processed,
                 result.records_inserted,
                 result.records_updated,
@@ -472,8 +514,8 @@ class IntegrationPipeline:
         self.db.execute(
             """
             UPDATE etl_runs
-            SET status = 'FAILURE', error_message = %s, completed_at = NOW()
+            SET status = 'FAILURE', outcome = %s, error_message = %s, completed_at = NOW()
             WHERE id = %s
             """,
-            [error_message[:2000], run_id],
+            [RUN_OUTCOME_FAILURE, error_message[:2000], run_id],
         )

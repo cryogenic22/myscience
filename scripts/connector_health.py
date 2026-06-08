@@ -338,10 +338,11 @@ def gather_scorecard(conn) -> list[SourceScore]:
         status = run_at = None
         runs_7d = stuck = 0
         last_inserted = last_updated = None
+        last_outcome = None
         try:
             cur.execute(
                 """
-                SELECT status, COALESCE(completed_at, started_at) AS run_at,
+                SELECT status, outcome, COALESCE(completed_at, started_at) AS run_at,
                        records_inserted, records_updated
                 FROM etl_runs WHERE source_name = %s
                 ORDER BY started_at DESC LIMIT 1
@@ -351,6 +352,7 @@ def gather_scorecard(conn) -> list[SourceScore]:
             row = cur.fetchone()
             if row:
                 status, run_at = row["status"], row["run_at"]
+                last_outcome = row["outcome"]
                 last_inserted, last_updated = row["records_inserted"], row["records_updated"]
         except Exception:
             conn.rollback()
@@ -380,7 +382,16 @@ def gather_scorecard(conn) -> list[SourceScore]:
 
         # ── E2E ──
         e2e = score_e2e(rows, last_inserted, last_updated)
-        if e2e == "AMBER" and not deferred and rows:
+        # Sharpen the 0-row ambiguity with the run outcome (migration 088). A
+        # SUCCESS_NO_CHANGE is a legitimate quiet cycle; a FAILURE_ZERO_ROWS is
+        # the silent-zero bug (fetched nothing under a "success") → escalate.
+        if last_outcome == "FAILURE_ZERO_ROWS" and not deferred:
+            e2e = "RED"
+            notes.append("last run fetched 0 rows (FAILURE_ZERO_ROWS — silent zero, check connector)")
+        elif last_outcome == "SUCCESS_NO_CHANGE":
+            notes.append("last run: no new data (SUCCESS_NO_CHANGE — legitimate quiet cycle)")
+        elif e2e == "AMBER" and not deferred and rows:
+            # pre-088 rows carry no outcome; keep the old ambiguous note.
             notes.append("last run moved 0 rows (quiet cycle or silent zero - check)")
 
         verdict = roll_up(flow, strength, sync, e2e, deferred)
