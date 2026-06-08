@@ -1,0 +1,51 @@
+name: Operational Health (Lane 2 — live)
+
+# Lane 2: the OPERATIONAL health gate. Runs the LIVE conservation invariants
+# (connector freshness/SLA, FK-orphan ceilings, evidence floor, 0-row anomalies)
+# against the production DB on a schedule and on release — NOT on PRs.
+#
+# Rationale: the dominant failure here (feeds going 105 days stale while logging
+# SUCCESS) is a RUNTIME failure no PR gate could ever catch. This is where it
+# lives. A live source being down is an operational alert, not a reason to block
+# an unrelated PR.
+#
+# Requires repo secret DATABASE_URL (the Railway Postgres URL). Without it the
+# job FAILS LOUDLY (it must not silently skip — a skipped health gate is the same
+# vacuous-green this whole effort exists to kill).
+# See .claude/rules/conservation-gates.md.
+
+on:
+  schedule:
+    - cron: '30 6 * * *'   # daily 06:30 UTC, after the nightly connector runs
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+jobs:
+  operational-health:
+    runs-on: ubuntu-latest
+    name: Live connector health + conservation invariants
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Fail loudly if DATABASE_URL is absent (no silent skip)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set — the operational health gate cannot run."
+            echo "A health gate that skips is a vacuous green. Add the secret in repo settings."
+            exit 1
+          fi
+      - name: Connector health (SLA / freshness / stuck-runs; exits non-zero on RED)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/connector_health.py
+      - name: Live conservation invariants (NULL%, orphan ceilings, evidence floor)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m pytest tests/test_schema_completeness.py -v --no-header
