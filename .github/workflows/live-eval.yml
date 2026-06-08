@@ -1,0 +1,66 @@
+name: Live Eval (Lane 2 — real system quality)
+
+# Lane 2: the TRUE answer-quality bar. The PR `benchmark` gate only smoke-tests
+# the SCORER against synthetic known-good responses; it cannot catch the real
+# system getting worse. This job runs the REAL deployed system against the golden
+# queries, scores the real answers, and checks them against a committed baseline.
+#
+# Operational (needs a live system) => scheduled + dispatch + release, NEVER a PR
+# gate. A quality regression here is an alert, not a reason to block an unrelated
+# PR. It fails LOUDLY if the deployment URL is unset or unreachable — a skipped
+# quality gate is the same vacuous green this whole effort exists to kill.
+#
+# Requires repo variable MZ_PROD_URL = the live deployment base URL.
+# See .claude/rules/conservation-gates.md.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # daily 07:00 UTC, after the connector + health runs
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-latest
+    name: Live answer-quality eval (vs prod)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fail loudly if MZ_PROD_URL is absent (no silent skip)
+        env:
+          MZ_PROD_URL: ${{ vars.MZ_PROD_URL }}
+        run: |
+          if [ -z "$MZ_PROD_URL" ]; then
+            echo "::error::repo variable MZ_PROD_URL is not set — the live-eval gate cannot run."
+            echo "A quality gate that skips is a vacuous green. Set it under Settings > Variables."
+            exit 1
+          fi
+
+      - name: Capture real responses + score vs baseline
+        env:
+          MZ_PROD_URL: ${{ vars.MZ_PROD_URL }}
+        # --regression-limit is the primary signal (trend-relative vs the committed
+        # baseline); --threshold is an absolute floor. The script also fails loud
+        # if too few queries return a real response (dead deployment).
+        run: |
+          python -m benchmark.live_eval \
+            --url "$MZ_PROD_URL" \
+            --baseline benchmark/reports/live-eval-baseline.json \
+            --threshold 60 \
+            --regression-limit 10 \
+            --output benchmark/reports/live-captured.json
+
+      - name: Upload live-eval report + capture
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-eval-report
+          path: |
+            benchmark/reports/ci-*.json
+            benchmark/reports/live-captured.json

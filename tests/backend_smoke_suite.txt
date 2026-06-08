@@ -40,6 +40,10 @@ tests/test_signals_api.py
 tests/test_ctx_corpus.py
 tests/test_ctx_evidence.py
 
+# eval harness (scorer + live-eval orchestration, mocked — DB-free)
+tests/test_ci_benchmark.py
+tests/test_live_eval.py
+
 # entity resolution + domain intelligence + misc pure logic
 tests/test_entity_resolver_cascade.py
 tests/test_domain_intelligence_playbook.py
