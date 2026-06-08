@@ -49,13 +49,16 @@ SURFACEABLE_EMITTER_PREDICATES = {
 
 # Documented FK-orphan ceilings (NULL-fk share). Set just above the verified
 # post-fix levels so a real regression trips them but normal drift doesn't.
+# Monotonic ratchet — only ever tighten, after a real fix is verified on prod.
+# Re-baselined 8 Jun 2026 against prod truth (probe pasted in PR): the old
+# ceilings tolerated 3–1000x slack and so caught no realistic regression.
 ORPHAN_CEILINGS = {
-    "pubmed_articles.drug_id": 0.30,        # post-D4 ~15%
-    "market_events.primary_entity_id": 0.45,  # post-D2 ~29%
-    "bioactivities.drug_id": 0.95,          # legacy unlinked rows remain; new rows link
-    "clinical_trials.drug_id": 0.15,
-    "adverse_events.drug_id": 0.10,
-    "facts.source_doc_id": 0.10,            # D5 done — backfilled to ~0% NULL
+    "pubmed_articles.drug_id": 0.20,        # prod 16.3% (was 0.30)
+    "market_events.primary_entity_id": 0.06,  # prod 3.5% (was 0.45 — 13x slack)
+    "bioactivities.drug_id": 0.95,          # legacy unlinked rows remain; loop #6 links them
+    "clinical_trials.drug_id": 0.10,        # prod 7.8% (was 0.15)
+    "adverse_events.drug_id": 0.06,         # prod 3.2% (was 0.10)
+    "facts.source_doc_id": 0.01,            # prod 0.01% (was 0.10 — 1000x slack)
 }
 
 
@@ -84,6 +87,34 @@ def test_every_scheduled_source_has_an_sla():
     """Every source with a freshness SLA names a target table + recency column."""
     for source, (table, col, days) in FRESHNESS_SLA_DAYS.items():
         assert table and col and days > 0, source
+
+
+# A regression share (orphan fraction) that each ceiling MUST reject. These sit
+# well above verified prod truth but well below the slack the pre-8-Jun ceilings
+# tolerated — so this test fails on a loosened ceiling and passes on the ratcheted
+# one. It is the structural tripwire that keeps the ratchet monotonic: an agent
+# can no longer quietly widen a ceiling back to "tolerate everything" to go green
+# (principle #1, don't edit the bar to pass). DB-free → runs in Lane 1 (PR-hard).
+REGRESSION_SHARES = {
+    "facts.source_doc_id": 0.05,            # was tolerated by old 0.10
+    "market_events.primary_entity_id": 0.15,  # was tolerated by old 0.45
+    "pubmed_articles.drug_id": 0.25,        # was tolerated by old 0.30
+    "clinical_trials.drug_id": 0.13,        # was tolerated by old 0.15
+    "adverse_events.drug_id": 0.08,         # was tolerated by old 0.10
+}
+
+
+@pytest.mark.parametrize("label", sorted(REGRESSION_SHARES))
+def test_orphan_ceiling_rejects_a_regression(label):
+    """Each ratcheted ceiling is strict enough to reject a documented regression
+    share. Guards against silently loosening the bar (Goodhart) — fails closed if
+    a ceiling drifts back above what it must catch."""
+    regression = REGRESSION_SHARES[label]
+    ceiling = ORPHAN_CEILINGS[label]
+    assert ceiling < regression, (
+        f"{label} ceiling {ceiling:.0%} would TOLERATE a {regression:.0%} orphan "
+        f"share — too loose to catch a real linkage regression"
+    )
 
 
 # ─────────────────────────── live-DB invariants ───────────────────────────
@@ -154,8 +185,8 @@ def test_fk_orphan_share_under_ceiling(conn, label):
 @live
 def test_fact_ledger_has_evidence_floor(conn):
     """A meaningful share of ledger facts carry an evidence link (source_doc_id),
-    so the dossier can drill through. Floor raised to 0.90 after the D5 backfill
-    (scripts/backfill_evidence.py) — live NULL share is ~0%."""
+    so the dossier can drill through. Floor ratcheted 0.90 -> 0.98 (8 Jun 2026)
+    after re-verifying prod: live NULL share is ~0.01% (1/13461)."""
     n_null, total = _scalar(
         conn,
         "SELECT count(*) FILTER (WHERE source_doc_id IS NULL), count(*) "
@@ -164,7 +195,7 @@ def test_fact_ledger_has_evidence_floor(conn):
     if total == 0:
         pytest.skip("ledger empty")
     with_evidence = 1 - (n_null / total)
-    assert with_evidence >= 0.90, f"only {with_evidence:.0%} of facts have evidence links"
+    assert with_evidence >= 0.98, f"only {with_evidence:.0%} of facts have evidence links"
 
 
 @live
