@@ -149,6 +149,13 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "epidemiology":         "disease_and_patient",
     "revenue":              "commercial_operational",
     "sales_guidance":       "commercial_operational",
+    # DR-Financial: SEC XBRL company financials (company_financials) lifted by
+    # FinancialEmitter. "financial_metric" matches no prefix rule, so it needs
+    # an exact entry to land in the commercial domain instead of the catch-all.
+    "financial_metric":     "commercial_operational",
+    # DR-Financial: corporate transactions (deals) lifted by DealEmitter. The
+    # "deal" prefix below already routes here, but an exact entry documents it.
+    "deal_announced":       "competitive",
     # L7 / Tier 2: product-level net sales from uploaded earnings docs (and,
     # later, warehouse/syndicated connectors). Starts with "product", so it
     # needs an exact entry — the "sales" prefix rule below would miss it.

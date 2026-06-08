@@ -246,6 +246,7 @@ def get_emitters() -> dict[str, FactEmitter]:
     from services.fact_emitters.clinical_trials import ClinicalTrialEmitter
     from services.fact_emitters.competition import CompetitionEmitter
     from services.fact_emitters.drug_labels import DrugLabelEmitter
+    from services.fact_emitters.financial import DealEmitter, FinancialEmitter
     from services.fact_emitters.literature import LiteratureEmitter
     from services.fact_emitters.mechanisms import (
         BioactivityEmitter,
@@ -260,6 +261,8 @@ def get_emitters() -> dict[str, FactEmitter]:
         BioactivityEmitter(),
         LiteratureEmitter(),
         CompetitionEmitter(),
+        FinancialEmitter(),
+        DealEmitter(),
     )
     return {e.name: e for e in emitters}
 
