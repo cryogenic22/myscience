@@ -113,10 +113,16 @@ class ClinicalTrialEmitter(FactEmitter):
         if not drug_id or not trial_id:
             return []
         claim = build_claim(row)
+        # A trial's existence is valid FROM when it starts, open-ended (a
+        # completed trial remains a fact about the drug). Using completion_date
+        # as valid_from dated ongoing/recruiting trials in the FUTURE, so
+        # facts_as_of(now) silently hid them (a recruiting Phase-3 trial that
+        # completes in 2027 is real *today*). Prefer start_date; fall back to a
+        # completion date only when the start is unknown. valid_to stays open.
         valid_from = (
-            coerce_dt(row.get("completion_date"))
+            coerce_dt(row.get("start_date"))
             or coerce_dt(row.get("primary_completion_date"))
-            or coerce_dt(row.get("start_date"))
+            or coerce_dt(row.get("completion_date"))
         )
         object_value = {
             "description": claim,
