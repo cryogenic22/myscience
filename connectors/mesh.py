@@ -37,6 +37,12 @@ logger = logging.getLogger(__name__)
 
 MESH_BASE = "https://id.nlm.nih.gov/mesh"
 SPARQL_URL = f"{MESH_BASE}/sparql"
+# The Virtuoso triplestore stores RDF resource URIs under the *http* scheme and
+# segregates descriptor data into the default `…/mesh` graph. SPARQL matches URIs
+# by exact string, so queries must use this http base and name the graph — using
+# the https REST base (MESH_BASE) silently matches nothing.
+MESH_RESOURCE_BASE = "http://id.nlm.nih.gov/mesh"
+MESH_DEFAULT_GRAPH = "http://id.nlm.nih.gov/mesh"
 
 
 class MeSHConnector(BaseConnector):
@@ -340,12 +346,22 @@ class MeSHConnector(BaseConnector):
             return None
 
     def _fetch_children(self, parent_mesh_id: str) -> list[str]:
-        """Fetch child descriptor IDs via SPARQL broaderDescriptor."""
+        """Fetch child descriptor IDs via SPARQL broaderDescriptor.
+
+        Three things are load-bearing and were previously wrong (which made this
+        return zero children for every seed — the ontology never grew past its
+        hand-picked seeds):
+          * ``FROM <…/mesh>`` scopes the query to the default descriptor graph;
+            without it the store returns no bindings.
+          * the descriptor is addressed with the ``http`` resource scheme
+            (``MESH_RESOURCE_BASE``), not the ``https`` REST base — SPARQL URI
+            matching is exact-string.
+          * no ``meshv:active`` filter (that predicate suppressed all rows).
+        """
         query = f"""
             PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
-            SELECT DISTINCT ?d WHERE {{
-                ?d meshv:broaderDescriptor <{MESH_BASE}/{parent_mesh_id}> .
-                ?d meshv:active true .
+            SELECT DISTINCT ?d FROM <{MESH_DEFAULT_GRAPH}> WHERE {{
+                ?d meshv:broaderDescriptor <{MESH_RESOURCE_BASE}/{parent_mesh_id}> .
             }}
         """
         try:
