@@ -3,10 +3,18 @@
 ## Quick Start
 Read these before writing ANY code:
 1. This file (architecture + conventions)
-2. `.claude/rules/anti-slop.md` — 577 utilities cataloged, DO NOT duplicate
-3. `.claude/rules/test-requirements.md` — testing patterns
-4. `specs/SPEC_001_autonomous_research_engine.md` — CTX pipeline architecture
-5. `specs/SPEC_002_frontend_ux_revamp.md` — UI design system
+2. **`.claude/rules/conservation-gates.md`** — the harness floor (DoD, two-lane gates, protected surface). Binds **every** role + sub-agent.
+3. `.claude/rules/anti-slop.md` — 577 utilities cataloged, DO NOT duplicate
+4. `.claude/rules/test-requirements.md` — testing patterns
+5. `specs/SPEC_001_autonomous_research_engine.md` — CTX pipeline architecture
+6. `specs/SPEC_002_frontend_ux_revamp.md` — UI design system
+
+## ⛔ Conservation Gates — the floor (every role: builder · data · devops · reviewer)
+> **The one line:** never let "the job ran" or "the build passed" equal "the product is healthy." Full doctrine: **`.claude/rules/conservation-gates.md`**.
+- **Four principles:** (1) don't edit the bar to pass — the success surface is `protected-surface.txt`, route bar-changes through the owner; (2) conservation before correctness — no silent row/field/provenance drop (soft-delete or record it); (3) no vacuous green — a gate that checks nothing fails closed; (4) structural floor (CI + CODEOWNERS/branch protection) over discipline (hooks/docs).
+- **Two lanes:** Lane 1 deterministic = PR-hard (`conservation-gate.yml`); Lane 2 operational/live = scheduled + release (`operational-health.yml`, needs `DATABASE_URL` secret). A live source being down must never red a PR.
+- **DoD:** RED→GREEN with **pasted** output (never claim from memory / fabricate a figure); Lane-1 green; no conservation regression; no protected-surface edit-to-pass; for data work a real prod probe; an **independent** reviewer pass (`/review-gate`).
+- **New hard gate ⇒ add its definition to `protected-surface.txt` + regenerate CODEOWNERS in the same change** (`python scripts/gen_codeowners.py`).
 
 ## Architecture
 

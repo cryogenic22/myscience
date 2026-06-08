@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Advisory authorship-boundary hook (harness Step 2).
+#
+# Blocks a *builder* role from editing the protected surface (the bar). This is
+# the advisory CEILING — bypassable with `git push`/`commit --no-verify` by
+# design. The real structural FLOOR is CODEOWNERS + branch protection on these
+# same paths (owner action, server-side). See protected-surface.txt.
+#
+# It only engages for builder/worktree agents (MZ_ACTOR_ROLE=builder); the owner
+# and ordinary commits pass through untouched. Set it in a builder agent's env:
+#   export MZ_ACTOR_ROLE=builder
+# Enable the hooks once per clone:  git config core.hooksPath .githooks
+#
+# The protected surface is read from the SINGLE source of truth
+# (protected-surface.txt); if it is missing we FAIL CLOSED.
+set -euo pipefail
+
+# Only constrains the builder role. Owner / spec-author / ordinary commits pass.
+[ "${MZ_ACTOR_ROLE:-owner}" != "builder" ] && exit 0
+
+root="$(git rev-parse --show-toplevel)"
+list="$root/protected-surface.txt"
+if [ ! -f "$list" ]; then
+  echo "BLOCKED: protected-surface.txt missing — cannot determine the protected surface (fail-closed)." >&2
+  exit 1
+fi
+
+# Build an anchored regex from the single source of truth.
+#   trailing '/'  -> directory prefix match (^path/)
+#   otherwise     -> exact file            (^path$)
+pattern=''
+while IFS= read -r raw || [ -n "$raw" ]; do
+  line="${raw%%#*}"
+  line="$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  [ -z "$line" ] && continue
+  esc="$(printf '%s' "$line" | sed -e 's/[.[\*^$()+?{}|/]/\\&/g')"
+  case "$line" in
+    */) pattern="${pattern:+$pattern|}^${esc}" ;;
+    *)  pattern="${pattern:+$pattern|}^${esc}\$" ;;
+  esac
+done < "$list"
+
+if [ -z "$pattern" ]; then
+  echo "BLOCKED: protected-surface.txt defines no paths (fail-closed)." >&2
+  exit 1
+fi
+
+violations="$(git diff --cached --name-only | grep -E "($pattern)" || true)"
+if [ -n "$violations" ]; then
+  echo "BLOCKED: a builder may not modify the success-definition surface (protected-surface.txt):" >&2
+  echo "$violations" | sed 's/^/  - /' >&2
+  echo "" >&2
+  echo "Route this change through the owner: open a PR describing why the bar must move," >&2
+  echo "and let the owner amend it (CODEOWNERS review). Emergency override: --no-verify." >&2
+  exit 1
+fi
+exit 0

@@ -1,0 +1,23 @@
+# GENERATED FILE — do not edit by hand.
+# Source of truth: protected-surface.txt · Regenerate: python scripts/gen_codeowners.py
+# These paths are the success-definition surface (the BAR). Changes require the
+# owner's review so a builder cannot quietly weaken its own gate.
+
+/tests/test_conservation_gates.py @cryogenic22
+/tests/test_schema_completeness.py @cryogenic22
+/tests/test_schema_drift_fix.py @cryogenic22
+/scripts/connector_health.py @cryogenic22
+/scheduler/config.py @cryogenic22
+/benchmark/golden_queries.json @cryogenic22
+/services/evaluation/ @cryogenic22
+/frontend/scripts/assert-typecheck-nonvacuous.mjs @cryogenic22
+/frontend/__tests__/harness/ @cryogenic22
+/.github/workflows/ @cryogenic22
+/.claude/rules/ @cryogenic22
+/CLAUDE.md @cryogenic22
+/requirements.txt @cryogenic22
+/frontend/package.json @cryogenic22
+/protected-surface.txt @cryogenic22
+/.github/CODEOWNERS @cryogenic22
+/.githooks/ @cryogenic22
+/scripts/gen_codeowners.py @cryogenic22

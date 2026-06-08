@@ -3,6 +3,12 @@
 *Author: Claude Code · 2026-06-05 · Pairs with `specs/SPEC_DATA_001_data_layer_remediation.md`
 and `docs/data-sense-layer-status.html`.*
 
+> **BIND FIRST: `.claude/rules/conservation-gates.md`** — the harness floor for every role.
+> Your "verified against the real DB or it doesn't ship" rule below IS Principle 2 (conservation
+> before correctness). The conservation invariants (freshness SLA, FK-orphan ceilings, evidence
+> floor) are **yours to strengthen** via an owner-reviewed change — never loosen to pass. New
+> connector ⇒ add a `FRESHNESS_SLA_DAYS` entry ⇒ Lane 2 (`operational-health.yml`) covers it.
+
 > This is the **method**, not the work. It encodes how to investigate and fix the Market Zero
 > data/sense layer so a separate agent (or engineer) can run a data workstream in parallel without
 > stepping on the product/UX loops. Read it once, then run the loop. Internalize one rule above all:

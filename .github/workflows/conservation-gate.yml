@@ -1,0 +1,77 @@
+name: Conservation Gate (Lane 1 — deterministic)
+
+# Lane 1: PR-HARD, deterministic, NO live dependencies. Encodes the logic that
+# makes silent data degradation illegal (fact_class loss, 0-fact-dup resolution,
+# predicate invisibility) + the no-vacuous-green typecheck guard.
+#
+# Live/population checks (NULL%, freshness) deliberately live in the scheduled
+# operational-health gate — a source being down must never red a PR.
+# See .claude/rules/conservation-gates.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-conservation:
+    runs-on: ubuntu-latest
+    name: Backend conservation invariants (DB-free)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Conservation gates + schema-completeness pure invariants (live tests auto-skip)
+        # No DATABASE_URL is set, so the live-DB invariants skip; the deterministic
+        # ones are HARD. A skip is not a pass for the population checks — those run
+        # on the scheduled gate.
+        run: |
+          python -m pytest \
+            tests/test_conservation_gates.py \
+            tests/test_schema_completeness.py \
+            tests/test_dossier_kb.py \
+            -q --no-header
+
+  frontend-no-vacuous-typecheck:
+    runs-on: ubuntu-latest
+    name: Frontend typecheck (no vacuous green)
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm ci
+      # HARD: the vacuous-green bug (root tsconfig checks nothing) is fixed and
+      # these prove the typecheck targets the real config and collects >0 files.
+      - name: Assert the typecheck is not vacuous (>0 files)
+        run: node scripts/assert-typecheck-nonvacuous.mjs
+      - name: No-vacuous-green config guard
+        run: npx vitest run __tests__/harness/no-vacuous-typecheck.test.ts
+      # REPORT-ONLY until the pre-existing type debt is cleared. 79 errors as of
+      # 2026-06-08 (measured). Surfaced, not hidden — and NOT hard, so it can't
+      # block unrelated PRs on legacy debt (which would just train --no-verify).
+      # EXPIRY 2026-07-08: by then either flip to HARD (debt cleared) or the
+      # expiry check below fails the job, forcing a decision (no silent ossifying).
+      - name: Real typecheck (report-only, expiring allowance)
+        continue-on-error: true
+        run: npm run typecheck
+      - name: Tolerated-error allowance must not ossify (expiry guard)
+        run: |
+          python3 - <<'PY'
+          import datetime, sys
+          expiry = datetime.date(2026, 7, 8)
+          today = datetime.date.today()
+          if today > expiry:
+              print(f"::error::Typecheck report-only allowance expired {expiry}. "
+                    f"Clear the type debt and flip the gate to HARD, or move the expiry with a reason.")
+              sys.exit(1)
+          print(f"Typecheck allowance valid until {expiry} ({(expiry-today).days}d left).")
+          PY

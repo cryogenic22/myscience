@@ -1,0 +1,49 @@
+# Protected surface — the BAR (success-definition surface).
+#
+# Builder / worktree agents must NOT edit these to make their own work pass.
+# Blocked by a hard gate, the cheap move is to edit the gate — this list closes
+# that. Bar-changes route through the OWNER (a CCR-equivalent note in the PR),
+# never a silent self-edit. (#179 already showed bar/system drift.)
+#
+# This file is the SINGLE SOURCE OF TRUTH:
+#   - .githooks/pre-commit reads it (advisory ceiling; bypassable with --no-verify)
+#   - .github/CODEOWNERS is generated from it (scripts/gen_codeowners.py) and is
+#     the structural floor once branch protection requires CODEOWNERS review
+#   - tests/test_protected_surface_sync.py proves the three never drift
+#
+# Format: a trailing '/' means a directory prefix; otherwise an exact file path.
+# Lines starting with '#' and blank lines are ignored.
+
+# ── Conservation & schema gate definitions (Lane 1 + Lane 2) ──
+tests/test_conservation_gates.py
+tests/test_schema_completeness.py
+tests/test_schema_drift_fix.py
+
+# ── Operational health rules + freshness thresholds ──
+scripts/connector_health.py
+scheduler/config.py
+
+# ── Eval gold set + scorers (the measured bar) ──
+benchmark/golden_queries.json
+services/evaluation/
+
+# ── No-vacuous-green guards ──
+frontend/scripts/assert-typecheck-nonvacuous.mjs
+frontend/__tests__/harness/
+
+# ── CI gate workflows ──
+.github/workflows/
+
+# ── Operating rules inherited by every session + sub-agent ──
+.claude/rules/
+CLAUDE.md
+
+# ── Dependency / build config that affects verdicts ──
+requirements.txt
+frontend/package.json
+
+# ── The boundary apparatus itself (fail-closed if any of these go missing) ──
+protected-surface.txt
+.github/CODEOWNERS
+.githooks/
+scripts/gen_codeowners.py
