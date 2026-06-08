@@ -54,6 +54,25 @@ describe('StandaloneDossierTab', () => {
     await waitFor(() => expect(screen.getByTestId('dossier-preview-error')).toBeInTheDocument());
   });
 
+  it('L7: shows an unresolved-asset banner when the asset was not found', async () => {
+    (dossierPreviewApi.get as any).mockResolvedValue({
+      ...snap('drug:totallyunknown'), fact_count: 0, resolution: 'unresolved', resolved: false,
+    });
+    render(<StandaloneDossierTab />);
+    fireEvent.change(screen.getByTestId('dossier-asset-input'), { target: { value: 'totallyunknown' } });
+    fireEvent.click(screen.getByTestId('dossier-build'));
+    await waitFor(() => expect(screen.getByTestId('dossier-preview-unresolved')).toBeInTheDocument());
+    expect(screen.getByTestId('dossier-preview-unresolved')).toHaveTextContent('wasn’t found');
+  });
+
+  it('L7: does NOT show the unresolved banner for a resolved asset', async () => {
+    (dossierPreviewApi.get as any).mockResolvedValue({ ...snap(), resolution: 'exact', resolved: true });
+    render(<StandaloneDossierTab />);
+    fireEvent.click(screen.getByTestId('dossier-build'));
+    await waitFor(() => expect(screen.getByTestId('dossier-preview-ready')).toBeInTheDocument());
+    expect(screen.queryByTestId('dossier-preview-unresolved')).not.toBeInTheDocument();
+  });
+
   it('offers Promote to engagement once a dossier is built', async () => {
     (dossierPreviewApi.get as any).mockResolvedValue(snap());
     const onPromote = vi.fn();

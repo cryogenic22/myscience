@@ -136,6 +136,22 @@ export default function StandaloneDossierTab({ onPromote, initialAsset }: Props)
         </div>
       )}
 
+      {snapshot && snapshot.resolved === false && (
+        <div
+          data-testid="dossier-preview-unresolved"
+          style={{
+            margin: 'var(--space-4) 0', padding: 'var(--space-4)',
+            border: '1px solid var(--color-amber, #b8860b)', borderRadius: 8,
+            background: 'var(--color-amber-soft, rgba(184,134,11,0.08))',
+            fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--color-ink-2)',
+          }}
+        >
+          <strong>"{snapshot.focal_asset}" wasn’t found.</strong> This dossier is empty
+          because the asset name didn’t resolve to a known entity — not because the
+          entity has no data. Check the spelling, or try the generic/brand name.
+        </div>
+      )}
+
       {snapshot && (
         <div data-testid="dossier-preview-ready">
           <EngagementDossierPage
