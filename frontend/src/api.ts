@@ -2414,6 +2414,11 @@ export interface DossierSnapshotDTO {
   domains: DossierDomainDTO[];
   assembled_by: string;
   assembled_at: string | null;
+  /** L7: how the focal asset resolved (id|exact|alias|normalized|fuzzy|unresolved). */
+  resolution?: string;
+  /** L7: false when the asset wasn't found — an empty dossier because the name is
+   * unknown, NOT because the entity has no data. The UI distinguishes the two. */
+  resolved?: boolean;
 }
 
 export interface DossierVersionDTO {

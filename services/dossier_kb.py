@@ -304,6 +304,14 @@ class DossierSnapshot:
     version: Optional[int] = None
     assembled_by: str = "system"
     assembled_at: Optional[datetime] = None
+    # L7: how the focal asset resolved (id|exact|alias|normalized|fuzzy|unresolved).
+    # 'unresolved' means the dossier is empty because the asset wasn't found, NOT
+    # because the entity has no data — the UI surfaces these very differently.
+    resolution: Optional[str] = None
+
+    @property
+    def resolved(self) -> bool:
+        return self.resolution != "unresolved"
 
     def to_dict(self) -> dict:
         return {
@@ -318,6 +326,8 @@ class DossierSnapshot:
             "assembled_by": self.assembled_by,
             "assembled_at": self.assembled_at.isoformat()
                 if isinstance(self.assembled_at, datetime) else self.assembled_at,
+            "resolution": self.resolution,
+            "resolved": self.resolved,
         }
 
     def gaps(self, include_thin: bool = False) -> list[dict]:
@@ -663,45 +673,41 @@ _RESOLVE_TABLE: dict[str, tuple[str, str]] = {
 }
 
 
-def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
-    """Resolve an engagement asset ref ('drug:wegovy') to the (subject_type,
-    canonical_id) the facts ledger is keyed by.
+@dataclass(frozen=True)
+class ResolvedAsset:
+    """The outcome of resolving an asset ref, with HOW it matched so callers can
+    surface an honest 'unresolved asset' state instead of a silent-empty dossier."""
 
-    The facts ledger stores drug subjects by the drugs.id UUID (A1 finding:
-    market_events.drug_id → facts.subject_entity_id), so a raw slug never
-    matches. Resolve the slug to the canonical id first:
-      1. already a UUID → use as-is
-      2. exact name match (drugs: generic_name OR brand_name; others: name)
-      3. entity_aliases exact match
-      4. unresolved → fall back to the raw slug (caller still gets a valid,
-         if empty, dossier — graceful degradation, never a crash)
+    subject_type: str
+    subject_id: str
+    matched_via: str  # id | exact | alias | normalized | fuzzy | unresolved
 
-    DUPLICATE HANDLING (ci-data-quality-integration-audit, 2 Jun): the drugs
-    table holds many duplicate rows per generic (semaglutide ×17, tirzepatide
-    ×2, valsartan ×23). A plain ``LIMIT 1`` picked a winner by table order, so
-    'tirzepatide' could land on a 0-fact/0-trial duplicate while 'semaglutide'
-    landed on the rich one — different drugs collapsing into empty/look-alike
-    dossiers. We now rank candidate drug rows by data richness (facts +
-    clinical trials) and pick the richest, so the resolved id is the one that
-    actually carries the dossier's evidence. Non-destructive; the proper fix is
-    drug-entity consolidation (A6, supervised).
-    """
-    subject_type, ident = parse_asset_ref(asset)
-    if not ident:
-        return (subject_type, ident)
-    if _looks_like_uuid(ident):
-        return (subject_type, ident)
+    @property
+    def resolved(self) -> bool:
+        return self.matched_via != "unresolved"
 
+
+# Fuzzy (pg_trgm) tables: (table, name_col, brand_col|None). Only drug/company —
+# the entities a user types by hand and mistypes; trials/MoAs are picked from UI.
+_FUZZY_TABLE: dict[str, tuple[str, str, Optional[str]]] = {
+    "drug": ("drugs", "generic_name", "brand_name"),
+    "company": ("companies", "name", None),
+}
+# trigram similarity floor for a fuzzy match. 0.45 catches single-char typos
+# (semaglutid→semaglutide ≈ 0.77, empagliflozn→empagliflozin ≈ 0.69) while
+# staying well above unrelated-name noise.
+_FUZZY_THRESHOLD = 0.45
+
+
+def _exact_lookup(db, subject_type: str, ident: str) -> Optional[str]:
+    """Exact name match → canonical id, or None. Drugs also match brand_name and
+    rank duplicate rows by data richness (RC1) so the evidence-owning row wins."""
     table_info = _RESOLVE_TABLE.get(subject_type)
     if table_info is None:
-        return (subject_type, ident)
+        return None
     table, name_col = table_info
-
-    # Exact name match. Drugs also match brand_name (the demo case: 'wegovy').
     try:
         if subject_type == "drug":
-            # Rank duplicate matches by data richness so the id that owns the
-            # facts/trials wins, not whichever row the table returns first.
             row = db.fetch_one(
                 "SELECT d.id::text AS id, "
                 "  (SELECT count(*) FROM facts f "
@@ -726,11 +732,14 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
                 [ident],
             )
         if row and row.get("id"):
-            return (subject_type, str(row["id"]))
+            return str(row["id"])
     except Exception:
-        logger.exception("resolve_asset_to_subject: name lookup failed for %s", asset)
+        logger.exception("resolve: exact lookup failed for %s:%s", subject_type, ident)
+    return None
 
-    # entity_aliases fallback (alias_text → resolved entity id of this type).
+
+def _alias_lookup(db, subject_type: str, ident: str) -> Optional[str]:
+    """entity_aliases exact match → canonical id, or None."""
     try:
         arow = db.fetch_one(
             "SELECT entity_id::text AS id FROM entity_aliases "
@@ -738,13 +747,128 @@ def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
             [ident, subject_type],
         )
         if arow and arow.get("id"):
-            return (subject_type, str(arow["id"]))
+            return str(arow["id"])
     except Exception:
-        logger.debug("resolve_asset_to_subject: alias lookup failed", exc_info=True)
+        logger.debug("resolve: alias lookup failed", exc_info=True)
+    return None
 
-    # Unresolved — return the raw slug. Dossier will be empty but valid.
-    logger.info("resolve_asset_to_subject: unresolved asset %r (using raw slug)", asset)
-    return (subject_type, ident)
+
+def _normalize_ident(subject_type: str, ident: str) -> Optional[str]:
+    """Clean a noisy mention ('Ozempic (semaglutide)', 'tirzepatide injection',
+    'Wegovy 2.4mg') to its core name via the pharma mention normalizers. Returns
+    the normalized form only if it actually differs from the input."""
+    try:
+        if subject_type == "drug":
+            from domain.pharma.mention_normalizer import normalize_drug_mention
+            n = normalize_drug_mention(ident)
+        elif subject_type == "company":
+            from domain.pharma.mention_normalizer import normalize_company_mention
+            n = normalize_company_mention(ident)
+        else:
+            return None
+    except Exception:
+        logger.debug("resolve: mention normalize failed", exc_info=True)
+        return None
+    n = (n or "").strip()
+    if not n or n.lower() == ident.lower():
+        return None
+    return n
+
+
+def _fuzzy_lookup(db, subject_type: str, ident: str) -> Optional[str]:
+    """Trigram-similarity match for typos/variants, gated by _FUZZY_THRESHOLD and
+    (for drugs) ranked by richness. Degrades to None if pg_trgm is unavailable."""
+    info = _FUZZY_TABLE.get(subject_type)
+    if info is None or not ident:
+        return None
+    try:
+        if subject_type == "drug":
+            row = db.fetch_one(
+                "SELECT d.id::text AS id, "
+                "  GREATEST(similarity(LOWER(d.generic_name), LOWER(%s)), "
+                "           similarity(LOWER(COALESCE(d.brand_name, '')), LOWER(%s))) AS sim, "
+                "  (SELECT count(*) FROM facts f "
+                "     WHERE f.subject_entity_type = 'drug' "
+                "       AND f.subject_entity_id = d.id::text "
+                "       AND f.superseded_by IS NULL) "
+                "  + (SELECT count(*) FROM clinical_trials ct "
+                "       WHERE ct.drug_id = d.id) AS richness "
+                "FROM drugs d "
+                "WHERE d.record_status IS DISTINCT FROM 'merged' "
+                "  AND d.record_status IS DISTINCT FROM 'superseded' "
+                "  AND (similarity(LOWER(d.generic_name), LOWER(%s)) >= %s "
+                "    OR similarity(LOWER(COALESCE(d.brand_name, '')), LOWER(%s)) >= %s) "
+                "ORDER BY sim DESC, richness DESC, d.id "
+                "LIMIT 1",
+                [ident, ident, ident, _FUZZY_THRESHOLD, ident, _FUZZY_THRESHOLD],
+            )
+        else:
+            row = db.fetch_one(
+                "SELECT id::text AS id, similarity(LOWER(name), LOWER(%s)) AS sim "
+                "FROM companies "
+                "WHERE similarity(LOWER(name), LOWER(%s)) >= %s "
+                "ORDER BY sim DESC, id LIMIT 1",
+                [ident, ident, _FUZZY_THRESHOLD],
+            )
+        if row and row.get("id"):
+            return str(row["id"])
+    except Exception:
+        logger.debug("resolve: fuzzy lookup unavailable for %s", subject_type, exc_info=True)
+    return None
+
+
+def resolve_asset(db, asset: str) -> ResolvedAsset:
+    """Resolve an asset ref ('drug:wegovy') to the canonical id the facts ledger
+    is keyed by, recording HOW it matched. Cascade (cheap → expensive):
+
+      1. already a UUID                                   → matched_via='id'
+      2. exact name (drugs: generic_name OR brand_name,
+         richness-ranked; others: name)                  → 'exact'
+      3. entity_aliases exact                             → 'alias'
+      4. normalized mention retry (2+3 on the cleaned
+         name: 'Ozempic (semaglutide)'→'ozempic')        → 'normalized'
+      5. trigram fuzzy (typo/variant tolerance)           → 'fuzzy'
+      6. unresolved → raw slug (valid-but-empty dossier;  → 'unresolved'
+         the caller surfaces this honestly, never crashes)
+
+    Steps 4–5 are the L7 addition: an unknown brand or a noisy/mistyped name used
+    to fall straight through to a silent-empty dossier. Now they resolve, and a
+    genuine miss is *flagged* (resolved=False) instead of looking like 'no data'.
+    """
+    subject_type, ident = parse_asset_ref(asset)
+    if not ident:
+        return ResolvedAsset(subject_type, ident, "unresolved")
+    if _looks_like_uuid(ident):
+        return ResolvedAsset(subject_type, ident, "id")
+
+    hid = _exact_lookup(db, subject_type, ident)
+    if hid:
+        return ResolvedAsset(subject_type, hid, "exact")
+
+    hid = _alias_lookup(db, subject_type, ident)
+    if hid:
+        return ResolvedAsset(subject_type, hid, "alias")
+
+    norm = _normalize_ident(subject_type, ident)
+    if norm:
+        hid = _exact_lookup(db, subject_type, norm) or _alias_lookup(db, subject_type, norm)
+        if hid:
+            return ResolvedAsset(subject_type, hid, "normalized")
+
+    for cand in [ident] + ([norm] if norm else []):
+        hid = _fuzzy_lookup(db, subject_type, cand)
+        if hid:
+            return ResolvedAsset(subject_type, hid, "fuzzy")
+
+    logger.info("resolve_asset: unresolved asset %r (using raw slug)", asset)
+    return ResolvedAsset(subject_type, ident, "unresolved")
+
+
+def resolve_asset_to_subject(db, asset: str) -> tuple[str, str]:
+    """Back-compat tuple wrapper over :func:`resolve_asset` — returns just
+    (subject_type, subject_id). Existing callers are unchanged."""
+    r = resolve_asset(db, asset)
+    return (r.subject_type, r.subject_id)
 
 
 # ── DB-backed orchestration ────────────────────────────────────────
@@ -855,7 +979,8 @@ def assemble_dossier_for_asset(
 
     # Resolve the asset slug to the canonical id the facts ledger is keyed by
     # (B2/PB-E01). The raw slug never matched, so dossiers were always empty.
-    subject_type, subject_id = resolve_asset_to_subject(db, asset)
+    resolved = resolve_asset(db, asset)
+    subject_type, subject_id = resolved.subject_type, resolved.subject_id
     try:
         facts = facts_as_of(db, subject_type, subject_id, as_of=as_of)
     except Exception:
@@ -902,6 +1027,7 @@ def assemble_dossier_for_asset(
         coverage_score=coverage_score,
         fact_count=fact_count,
         assembled_by=assembled_by,
+        resolution=resolved.matched_via,
     )
 
 

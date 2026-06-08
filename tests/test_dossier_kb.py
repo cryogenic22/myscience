@@ -197,6 +197,98 @@ def test_resolve_ranks_duplicate_drug_rows_by_richness():
     assert "clinical_trials" in s and "facts" in s
 
 
+# ── L7: normalized-retry + fuzzy fallback + resolution status ──────────────
+
+
+class _FuzzyDB:
+    """Fake DB supporting the L7 cascade. exact/alias as _ResolveDB; plus a fuzzy
+    branch (SQL contains 'similarity') keyed by by_fuzzy: lowercased input → id."""
+
+    def __init__(self, by_name=None, by_alias=None, by_fuzzy=None):
+        self.by_name = by_name or {}
+        self.by_alias = by_alias or {}
+        self.by_fuzzy = by_fuzzy or {}
+
+    def fetch_one(self, sql, params=None):
+        s = (sql or "").lower()
+        if "similarity" in s:  # fuzzy branch — must be checked before 'from drugs'
+            hit = self.by_fuzzy.get(str(params[0]).lower())
+            return {"id": hit, "sim": 0.8, "richness": 9} if hit else None
+        if "from entity_aliases" in s:
+            hit = self.by_alias.get(str(params[0]).lower())
+            return {"id": hit[1]} if hit and hit[0] == params[1] else None
+        # exact name (drugs or other entity tables)
+        hit = self.by_name.get(str(params[0]).lower())
+        return {"id": hit} if hit else None
+
+
+def test_resolve_normalized_retry_strips_brand_parenthetical():
+    """'Ozempic (semaglutide)' must resolve via the normalized retry (→'ozempic')
+    instead of silently returning an empty dossier."""
+    db = _FuzzyDB(by_name={"ozempic": "id-ozempic"})
+    r = kb.resolve_asset(db, "drug:Ozempic (semaglutide)")
+    assert (r.subject_type, r.subject_id) == ("drug", "id-ozempic")
+    assert r.matched_via == "normalized"
+    assert r.resolved is True
+
+
+def test_resolve_normalized_retry_strips_dosage_form():
+    """'tirzepatide injection' → 'tirzepatide' via normalize."""
+    db = _FuzzyDB(by_name={"tirzepatide": "id-tirz"})
+    r = kb.resolve_asset(db, "drug:tirzepatide injection")
+    assert r.subject_id == "id-tirz"
+    assert r.matched_via == "normalized"
+
+
+def test_resolve_fuzzy_catches_typo():
+    """A single-char typo resolves via the trigram fuzzy fallback."""
+    db = _FuzzyDB(by_fuzzy={"semaglutid": "id-sema"})
+    r = kb.resolve_asset(db, "drug:semaglutid")
+    assert r.subject_id == "id-sema"
+    assert r.matched_via == "fuzzy"
+
+
+def test_resolve_unresolved_is_flagged_not_silent():
+    """A genuine miss is FLAGGED (resolved=False, matched_via='unresolved'), so
+    the UI can say 'asset not found' instead of showing an empty-looking dossier."""
+    db = _FuzzyDB()
+    r = kb.resolve_asset(db, "drug:totallyunknownmolecule")
+    assert r.matched_via == "unresolved"
+    assert r.resolved is False
+    assert r.subject_id == "totallyunknownmolecule"  # raw slug, graceful
+
+
+def test_resolve_exact_still_wins_and_is_labelled():
+    db = _FuzzyDB(by_name={"semaglutide": "id-sema"})
+    r = kb.resolve_asset(db, "drug:semaglutide")
+    assert r.matched_via == "exact"
+    assert r.subject_id == "id-sema"
+
+
+def test_uuid_passthrough_labelled_id():
+    uuid = "15b2232d-b931-4c1a-9aaa-000000000001"
+    r = kb.resolve_asset(_FuzzyDB(), f"drug:{uuid}")
+    assert r.matched_via == "id" and r.subject_id == uuid
+
+
+def test_snapshot_to_dict_exposes_resolution():
+    """The standalone dossier payload must carry resolution/resolved so the
+    frontend can render the unresolved state."""
+    snap = kb.DossierSnapshot(
+        engagement_id=None, focal_asset="drug:foo", domains=[],
+        coverage_score=0.0, fact_count=0, resolution="unresolved",
+    )
+    d = snap.to_dict()
+    assert d["resolution"] == "unresolved"
+    assert d["resolved"] is False
+    # a resolved snapshot defaults sensibly
+    snap2 = kb.DossierSnapshot(
+        engagement_id=None, focal_asset="drug:bar", domains=[],
+        coverage_score=0.5, fact_count=3, resolution="exact",
+    )
+    assert snap2.to_dict()["resolved"] is True
+
+
 # ── Pure: build_domains ────────────────────────────────────────────
 
 
