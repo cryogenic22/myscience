@@ -31,7 +31,9 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt   # pytest for the live conservation invariants
       - name: Fail loudly if DATABASE_URL is absent (no silent skip)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
