@@ -71,7 +71,6 @@ export default function DialoguePanel({
   onSend,
   onEntityClick,
   isLoading,
-  collapsed,
   onToggle,
 }: DialoguePanelProps) {
   const [inputValue, setInputValue] = useState('');

@@ -14,7 +14,7 @@
  * Headless: takes data via props, calls back via the on* handlers. The
  * page-level component wires it.
  */
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────
 

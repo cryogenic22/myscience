@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
 import { SensingFeed } from './SensingFeed';
 
 interface Props {
@@ -13,9 +12,7 @@ function hasToken(): boolean {
   return !!window.localStorage.getItem('mz_auth_token');
 }
 
-export default function InboxTab({
-  onOpenDecision, onOpenWarRoom, onOpenInsights,
-}: Props) {
+export default function InboxTab(_props: Props) {
   const authed = hasToken();
 
   if (!authed) {

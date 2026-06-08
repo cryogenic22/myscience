@@ -10,7 +10,7 @@
  *
  * Headless — props in, callbacks out. Routing layer wires the API.
  */
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // Mirrors services/priority_matrix.py
 export const DOSSIER_DOMAINS = [

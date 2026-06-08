@@ -22,7 +22,7 @@ vi.mock('../../brand', () => ({
 
 // Mock KnowledgeGraph (canvas-based) — export default
 vi.mock('../KnowledgeGraph', () => ({
-  default: (props: Record<string, unknown>) => (
+  default: (_props: Record<string, unknown>) => (
     <div data-testid="knowledge-graph">
       <canvas data-testid="graph-canvas" />
     </div>

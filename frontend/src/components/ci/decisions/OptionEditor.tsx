@@ -16,14 +16,6 @@ interface Props {
   onRemove?: () => void | Promise<void>;
 }
 
-const EMPTY: DecisionBriefOptionInput = {
-  label: '',
-  description: null,
-  predicted_outcome: null,
-  cost_estimate: null,
-  risk_notes: null,
-};
-
 export default function OptionEditor({
   mode,
   initial,

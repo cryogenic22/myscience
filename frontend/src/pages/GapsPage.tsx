@@ -11,7 +11,7 @@
  *
  * Headless. Theme-aware.
  */
-import { ReactNode, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────
 

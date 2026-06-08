@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  X, ChevronDown, ChevronRight, BookOpen, ExternalLink,
+  X, ChevronDown, ChevronRight, BookOpen,
   FileText, FlaskConical, Users, Tag, Sparkles, Loader,
 } from 'lucide-react';
 import { api, type LiteratureDocument, type LiteratureSection, type SimilarArticle } from '../api';

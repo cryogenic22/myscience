@@ -13,7 +13,7 @@
  *
  * Headless. Theme-aware via CSS vars.
  */
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ export interface EngagementDossierPageProps {
   onJumpToDomain: (domain: DossierDomain) => void;
   /** PB-UX03: receives the full fact so the provenance panel can show its chain. */
   onOpenFact: (fact: Fact) => void;
-  onMarkComplete: () => void;
+  onMarkComplete?: () => void;
 }
 
 // ── Atoms ──────────────────────────────────────────────────────────
@@ -702,6 +702,7 @@ export function EngagementDossierPage(props: EngagementDossierPageProps) {
       </div>
 
       {/* Footer */}
+      {onMarkComplete && (
       <footer
         style={{
           display: 'flex',
@@ -730,6 +731,7 @@ export function EngagementDossierPage(props: EngagementDossierPageProps) {
           Mark stage complete →
         </button>
       </footer>
+      )}
     </main>
   );
 }

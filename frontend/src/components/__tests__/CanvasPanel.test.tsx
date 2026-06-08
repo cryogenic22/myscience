@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CanvasPanel from '../canvas/CanvasPanel';
 import type { QueryResponse, TableData, VisualizationSpec, PersonaAnalysis } from '../../api';
@@ -48,7 +48,7 @@ function makeTableData(overrides: Partial<TableData> = {}): TableData {
   return {
     title: 'Test Table',
     columns: [
-      { key: 'name', label: 'Name', type: 'string' },
+      { key: 'name', label: 'Name', type: 'text' },
       { key: 'score', label: 'Score', type: 'number' },
     ],
     rows: [
@@ -179,9 +179,10 @@ describe('CanvasPanel', () => {
       {
         persona: 'analyst',
         display_name: 'Market Analyst',
+        analysis: 'Test narrative',
         confidence: 0.82,
         key_findings: ['Strong pipeline', 'Growing market share'],
-        narrative: 'Test narrative',
+        data_gaps: [],
       },
     ];
     render(

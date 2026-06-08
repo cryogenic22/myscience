@@ -17,7 +17,6 @@ import {
 import {
   api,
   type CatalogBrowseResponse,
-  type CatalogDataset,
   type CatalogEntity,
   type CatalogEntityDetail,
   type CatalogStats,
@@ -741,7 +740,6 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [stats, setStats] = useState<CatalogStats | null>(null);
-  const [datasets, setDatasets] = useState<CatalogDataset[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   // Filter + browse state
@@ -818,14 +816,13 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
     if (initial) setLoading(true);
     else setRefreshing(true);
     try {
-      const [h, s, d] = await Promise.all([
+      const [h, s] = await Promise.all([
         api.health(),
         api.catalogStats().catch(() => null),
         api.catalogDatasets().catch(() => ({ datasets: [], count: 0 })),
       ]);
       setHealth(h);
       setStats(s);
-      setDatasets(d.datasets);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -846,9 +843,6 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
       .then(res => setFeatured(res.results))
       .catch(() => setFeatured([]));
   }, []);
-
-  // Determine browse entity type from filter
-  const browseEntityType = activeFilter === 'all' ? 'drug' : activeFilter === 'sources' ? '' : activeFilter;
 
   // Load browse data
   const loadBrowse = useCallback(async () => {
@@ -947,9 +941,6 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
   /* ── Derived ── */
   const totalPages = browseData ? Math.ceil(browseData.total / browseData.limit) : 0;
   const showSources = activeFilter === 'sources';
-
-  // Determine featured entity types for display
-  const featuredEntityType = activeFilter === 'all' ? 'drug' : activeFilter;
 
   /* ── Render ── */
   return (

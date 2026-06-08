@@ -339,7 +339,8 @@ export default function NewWorkspace() {
               nodes: response.data.graph_context.nodes || [],
               edges: response.data.graph_context.edges || [],
             };
-            const centerId = response.data?.entity_focus?.[0]?.entity_id;
+            const rawCenterId = response.data?.entity_focus?.[0]?.entity_id;
+            const centerId = rawCenterId != null ? String(rawCenterId) : undefined;
             setGraphData(filterGraphData(raw, centerId));
           }
 

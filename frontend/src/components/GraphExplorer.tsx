@@ -27,7 +27,7 @@ import {
   type GraphNode,
   type GraphPathResponse,
 } from '../api';
-import { displayName, LINK_TYPE_LABELS, SOURCE_LABELS, isUUID } from '../brand';
+import { displayName, isUUID } from '../brand';
 import KnowledgeGraph from './KnowledgeGraph';
 import GraphContextMenu from './graph/GraphContextMenu';
 import { NODE_COLORS } from './graph/graph-constants';
@@ -500,7 +500,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
   const objectiveTypeHint = useMemo(() => {
     if (!selectedEntity || activeObjective.preferredTypes.length === 0) return null;
-    if (activeObjective.preferredTypes.includes(selectedEntity.type)) return null;
+    if ((activeObjective.preferredTypes as readonly string[]).includes(selectedEntity.type)) return null;
     return `Tip: ${activeObjective.label} works best with ${activeObjective.preferredTypes.map(prettyType).join(', ')} anchors.`;
   }, [activeObjective, selectedEntity]);
 

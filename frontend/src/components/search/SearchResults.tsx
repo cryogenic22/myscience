@@ -355,8 +355,8 @@ function SearchResultCard({
     .slice(0, mode === 'cards' ? 4 : 2);
 
   // Enriched search fields (graceful degradation — only render when present)
-  const connectionCounts = (result as Record<string, unknown>).connection_counts as Record<string, number> | undefined;
-  const influenceScore = (result as Record<string, unknown>).influence_score as number | undefined;
+  const connectionCounts = result.connection_counts;
+  const influenceScore = result.influence_score;
 
   const compact = mode === 'list';
 
@@ -417,7 +417,7 @@ function SearchResultCard({
                   >
                     {cfg.label}
                   </span>
-                  {result.entity_type === 'literature' && result.metadata?.has_full_text && (
+                  {result.entity_type === 'literature' && Boolean(result.metadata?.has_full_text) && (
                     <span style={{
                       fontSize: '10px', fontWeight: 600, padding: '2px 6px',
                       borderRadius: '8px',
@@ -544,7 +544,7 @@ function SearchResultCard({
             >
               {cfg.label}
             </span>
-            {result.entity_type === 'literature' && result.metadata?.has_full_text && (
+            {result.entity_type === 'literature' && Boolean(result.metadata?.has_full_text) && (
               <span style={{
                 fontSize: '10px', fontWeight: 600, padding: '2px 6px',
                 borderRadius: '8px',

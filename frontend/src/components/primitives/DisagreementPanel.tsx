@@ -1,4 +1,3 @@
-import React from 'react';
 import { HeroCard } from './HeroCard';
 import { ConfidenceBadge } from './ConfidenceBadge';
 

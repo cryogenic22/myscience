@@ -14,7 +14,7 @@ vi.mock('../v2/ConfidenceBar', () => ({
   default: ({ value }: { value: number }) => <div data-testid="confidence-bar">{Math.round(value * 100)}%</div>,
 }));
 vi.mock('../v2/Button', () => ({
-  default: ({ children, onClick, icon, title, 'aria-label': ariaLabel, ...rest }: React.PropsWithChildren<{ onClick?: () => void; icon?: React.ReactNode; title?: string; 'aria-label'?: string }>) => (
+  default: ({ children, onClick, icon, title, 'aria-label': ariaLabel }: React.PropsWithChildren<{ onClick?: () => void; icon?: React.ReactNode; title?: string; 'aria-label'?: string }>) => (
     <button onClick={onClick} title={title} aria-label={ariaLabel}>{icon}{children}</button>
   ),
 }));
@@ -94,6 +94,7 @@ function makeDetail(): CatalogEntityDetail {
         target_entity_id: 'trial-1',
         target_entity_type: 'trial',
         link_type: 'INVESTIGATES',
+        confidence: 0.9,
         provenance_source: 'clinical_trials_gov',
         source_label: 'Erlotinib',
         target_label: 'NCT001',
@@ -104,6 +105,7 @@ function makeDetail(): CatalogEntityDetail {
         target_entity_id: 'drug-123',
         target_entity_type: 'drug',
         link_type: 'OWNS',
+        confidence: 0.95,
         provenance_source: 'fda_orange_book',
         source_label: 'Roche',
         target_label: 'Erlotinib',
@@ -112,6 +114,7 @@ function makeDetail(): CatalogEntityDetail {
     editable_fields: [],
     change_log: [],
     tags: [],
+    aliases: [],
   } as CatalogEntityDetail;
 }
 

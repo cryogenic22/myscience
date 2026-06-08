@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, X, Loader2, Network } from 'lucide-react';
+import { Search, X, Loader2 } from 'lucide-react';
 import { api, type GraphEdge, type GraphNode, type SearchResult } from '../api';
 import TopBar from '../components/layout/TopBar';
 import type { TopBarTab } from '../components/layout/TopBar';
@@ -237,15 +237,6 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
     }
     return counts;
   }, [visibleResults]);
-
-  const uniqueSources = useMemo(() => {
-    const set = new Set<string>();
-    for (const result of results) {
-      const source = result.provenance?.source_api;
-      if (source) set.add(String(source));
-    }
-    return set.size;
-  }, [results]);
 
   const resultInsights = useMemo(() => {
     if (visibleResults.length === 0) {

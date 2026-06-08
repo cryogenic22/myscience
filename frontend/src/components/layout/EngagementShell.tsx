@@ -15,7 +15,7 @@
  *   - current: noop
  *   - skip-ahead: disabled (no click handler fires)
  */
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // Mirrors services/engagement.py STAGE_ORDER exactly.
 export const LIFECYCLE_STAGES = [
