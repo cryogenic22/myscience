@@ -1,11 +1,19 @@
-# AGENTS.md — Multi-Agent Protocol for Market Zero
+# AGENTS.md — Backend ↔ Frontend API Protocol for Market Zero
 
-This repo is built by **two AI agents working in parallel**, each owning one half
-of the stack. This document defines roles, boundaries, and the communication
-protocol so neither steps on the other.
+> **⚠️ Lanes & coordination moved.** As of 2026-06-08 there are **three** agent
+> lanes (two backend + one frontend), not two. Lane ownership, the worktree
+> isolation convention, and the live coordination board now live in
+> **`docs/COORDINATION.md`** — read that first. This file is retained for the
+> still-valid **backend↔frontend API contract** (the OpenAPI/changelog protocol
+> in §3–§4) and the frontend mandate (§7); treat its "two agents" framing in
+> §1–§2 as superseded by COORDINATION.md.
 
-> If you are an AI agent reading this for the first time, **read it end-to-end
-> before writing any code.** Then read `CLAUDE.md` for project-wide conventions.
+This document defines the API contract, communication protocol, and the
+frontend/backend boundary so the lanes don't step on each other.
+
+> If you are an AI agent reading this for the first time, read
+> **`docs/COORDINATION.md`** (lanes), then `CLAUDE.md` (conventions), then this
+> file (the API contract) before writing any code.
 
 ---
 
