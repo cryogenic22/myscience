@@ -77,16 +77,29 @@ def _validate(kind: str, confidence: float, valid_from, valid_to,
         raise InvalidFact("anticipatory facts require valid_from")
 
 
+# NOTE: the governance columns (source_reliability … trust_score) are appended
+# but written with COALESCE defaults so OLD callers (which don't pass them) and a
+# pre-090 DB both keep working — the governance keys simply arrive as NULL and the
+# DB column defaults / the score_fact wrapper fill them. Lane-1's
+# test_facts_as_of_select_carries_fact_class guards that fact_class stays in the
+# canonical select-list below.
 _INSERT_SQL = """
     INSERT INTO facts (
         kind, predicate, subject_entity_type, subject_entity_id, object_value,
         valid_from, valid_to, asserted_at, source_doc_id, confidence,
-        created_by, tenant_scope, fact_class
+        created_by, tenant_scope, fact_class,
+        source_reliability, extraction_confidence, resolver_confidence,
+        freshness_at, review_status, schema_version, trust_score
     ) VALUES (
         %(kind)s, %(predicate)s, %(subject_entity_type)s, %(subject_entity_id)s,
         %(object_value)s::jsonb, %(valid_from)s, %(valid_to)s,
         COALESCE(%(asserted_at)s, NOW()), %(source_doc_id)s, %(confidence)s,
-        %(created_by)s, %(tenant_scope)s, %(fact_class)s
+        %(created_by)s, %(tenant_scope)s, %(fact_class)s,
+        %(source_reliability)s, %(extraction_confidence)s, %(resolver_confidence)s,
+        %(freshness_at)s,
+        COALESCE(%(review_status)s, 'unreviewed'),
+        COALESCE(%(schema_version)s, 1),
+        %(trust_score)s
     )
     RETURNING id
 """
@@ -108,12 +121,37 @@ def assert_fact(
     created_by: str = "system",
     tenant_scope: Optional[str] = None,
     fact_class: str = DEFAULT_FACT_CLASS,
+    resolver_conf: Optional[float] = None,
 ) -> str:
-    """Insert a fact; returns its id. Validates the ledger invariants."""
+    """Insert a fact; returns its id. Validates the ledger invariants.
+
+    Agent Readiness Layer (090): governance/trust metadata
+    (source_reliability, extraction_confidence, resolver_confidence,
+    freshness_at, review_status, schema_version, trust_score) is computed
+    at write time via ``fact_governance.score_fact`` — default-safe, so
+    existing callers need no change. Pass ``resolver_conf`` when the caller
+    knows how confidently the subject entity was resolved.
+    """
     import json
     import uuid
 
     _validate(kind, confidence, valid_from, valid_to, fact_class=fact_class)
+
+    # Compute governance from the about-to-be-written fact (pure, no DB).
+    from services.fact_governance import score_fact
+
+    gov = score_fact(
+        {
+            "fact_class": fact_class,
+            "created_by": created_by,
+            "confidence": confidence,
+            "valid_from": valid_from,
+            "created_at": asserted_at,
+            "object_value": object_value or {},
+        },
+        resolver_conf=resolver_conf,
+    )
+
     row = {
         "kind": kind,
         "predicate": predicate,
@@ -128,6 +166,14 @@ def assert_fact(
         "created_by": created_by,
         "tenant_scope": tenant_scope,
         "fact_class": fact_class,
+        # Governance (090) — computed, never cosmetic.
+        "source_reliability": gov.source_reliability,
+        "extraction_confidence": gov.extraction_confidence,
+        "resolver_confidence": gov.resolver_confidence,
+        "freshness_at": gov.freshness_at,
+        "review_status": gov.review_status,
+        "schema_version": gov.schema_version,
+        "trust_score": gov.trust_score,
     }
     try:
         res = db.fetch_one(_INSERT_SQL, row) if hasattr(db, "fetch_one") else None
@@ -153,7 +199,9 @@ def supersede_fact(db, old_fact_id: str, **new_fact_kwargs) -> str:
 _SELECT_SUBJECT_SQL = """
     SELECT id, kind, predicate, subject_entity_type, subject_entity_id,
            object_value, valid_from, valid_to, asserted_at, source_doc_id,
-           confidence, created_by, superseded_by, tenant_scope, fact_class
+           confidence, created_by, superseded_by, tenant_scope, fact_class,
+           source_reliability, extraction_confidence, resolver_confidence,
+           freshness_at, review_status, schema_version, trust_score
       FROM facts
      WHERE subject_entity_type = %s AND subject_entity_id = %s
        {predicate_clause}

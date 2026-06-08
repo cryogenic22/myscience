@@ -252,6 +252,10 @@ class DossierFact:
     fact_class: str          # one of VALID_FACT_CLASSES
     source_label: str
     source_url: Optional[str] = None   # PB-E05: drill-through to the source
+    # Agent Readiness Layer (090): trust metadata surfaced so the UI/agent can
+    # show the computed composite + review state alongside each fact.
+    trust_score: Optional[float] = None
+    review_status: Optional[str] = None
 
     def to_dict(self) -> dict:
         # camelCase to match the frontend Fact interface exactly.
@@ -263,6 +267,10 @@ class DossierFact:
         }
         if self.source_url:
             d["sourceUrl"] = self.source_url
+        if self.trust_score is not None:
+            d["trustScore"] = self.trust_score
+        if self.review_status:
+            d["reviewStatus"] = self.review_status
         return d
 
 
@@ -450,12 +458,22 @@ def _fact_to_dossier_fact(fact: dict) -> DossierFact:
     # object_value) so the dossier UI can drill through to the source record.
     ov = fact.get("object_value")
     source_url = ov.get("source_url") if isinstance(ov, dict) else None
+    # Agent Readiness Layer (090): carry the computed trust composite + review
+    # state through so the UI/agent can render confidence + governance per fact.
+    trust_score = fact.get("trust_score")
+    try:
+        trust_score = float(trust_score) if trust_score is not None else None
+    except (TypeError, ValueError):
+        trust_score = None
+    review_status = fact.get("review_status") or None
     return DossierFact(
         id=str(fact.get("id") or ""),
         claim=claim,
         fact_class=cls,
         source_label=source_label,
         source_url=source_url or None,
+        trust_score=trust_score,
+        review_status=review_status,
     )
 
 
@@ -1026,6 +1044,8 @@ def _row_to_snapshot(row: dict) -> DossierSnapshot:
                 fact_class=_coerce_fact_class(f.get("factClass")),
                 source_label=f.get("sourceLabel", ""),
                 source_url=f.get("sourceUrl") or None,
+                trust_score=f.get("trustScore"),
+                review_status=f.get("reviewStatus") or None,
             )
             for f in (d.get("facts") or [])
         ]
