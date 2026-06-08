@@ -1,11 +1,16 @@
 """Capture live API responses for offline CI evaluation.
 
-Sends each golden query to the running API, captures the response,
-and saves the paired (query_id, response) list as JSON.
+Sends each golden query to the system, captures the response, and saves the
+paired (query_id, response) list as JSON. Two capture modes share one loop:
+
+  * HTTP   — POST /chat against a running deployment (the scheduled live-eval
+             job uses this against prod).
+  * in-process — boot create_app() + TestClient and call /chat directly. Used to
+             produce an honest baseline from an owned DB without depending on a
+             reachable public URL.
 
 Usage:
-    python -m benchmark.capture_responses --url https://myscience-production.up.railway.app \
-                                          --golden benchmark/golden_queries.json \
+    python -m benchmark.capture_responses --url https://<deployment> \
                                           --output benchmark/captured_responses.json
 """
 
@@ -15,10 +20,94 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import Callable, Tuple
 
 from benchmark.eval_runner import DEFAULT_GOLDEN
 
 logger = logging.getLogger(__name__)
+
+# A poster takes (question, session_id) and returns (status_code, body, latency_ms).
+Poster = Callable[[str, str], Tuple[int, dict, float]]
+
+
+def http_poster(base_url: str, timeout: float = 90.0) -> Poster:
+    """A poster that POSTs /chat to a running deployment."""
+    import requests
+
+    url = base_url.rstrip("/")
+
+    def post(question: str, session_id: str) -> Tuple[int, dict, float]:
+        t0 = time.monotonic()
+        resp = requests.post(
+            f"{url}/chat",
+            json={"question": question, "session_id": session_id},
+            timeout=timeout,
+        )
+        latency = (time.monotonic() - t0) * 1000
+        if resp.status_code == 200:
+            return resp.status_code, resp.json(), latency
+        return resp.status_code, {"error": f"HTTP {resp.status_code}"}, latency
+
+    return post
+
+
+def in_process_poster() -> Poster:
+    """A poster that calls /chat in-process via TestClient (no network/uvicorn).
+
+    Requires DATABASE_URL + OPENAI_API_KEY in the environment — it runs the real
+    chat handler against whatever DB is configured.
+    """
+    from fastapi.testclient import TestClient
+
+    from api.app import create_app
+
+    client = TestClient(create_app())
+
+    def post(question: str, session_id: str) -> Tuple[int, dict, float]:
+        t0 = time.monotonic()
+        resp = client.post("/chat", json={"question": question, "session_id": session_id})
+        latency = (time.monotonic() - t0) * 1000
+        if resp.status_code == 200:
+            return resp.status_code, resp.json(), latency
+        return resp.status_code, {"error": f"HTTP {resp.status_code}"}, latency
+
+    return post
+
+
+def run_capture(
+    queries: list[dict],
+    poster: Poster,
+    output_path: str = "",
+) -> Tuple[str, list[dict]]:
+    """Run *poster* over *queries* and persist the captured responses.
+
+    Returns (output_path, captured). Per-query errors are captured (not raised)
+    so one failure doesn't abort the run — the caller decides whether the overall
+    capture is healthy (see live_eval, which fails loud on too many errors).
+    """
+    captured: list[dict] = []
+    for q in queries:
+        qid = q["id"]
+        question = q.get("question", "")
+        if not question:
+            logger.warning("Skipping empty question: %s", qid)
+            continue
+        try:
+            status, body, latency = poster(question, f"capture-{qid}")
+            captured.append({"query_id": qid, "response": body, "latency_ms": round(latency, 1)})
+            if status == 200:
+                logger.info("[%s] captured (%.0fms): %s", qid, latency, question[:50])
+            else:
+                logger.warning("[%s] HTTP %d: %s", qid, status, question[:50])
+        except Exception as e:  # noqa: BLE001 — record, don't abort the batch
+            logger.error("[%s] error: %s", qid, e)
+            captured.append({"query_id": qid, "response": {"error": str(e)}, "latency_ms": 0})
+
+    out = output_path or str(Path(DEFAULT_GOLDEN).parent / "captured_responses.json")
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(captured, f, indent=2)
+    logger.info("Captured %d/%d responses -> %s", len(captured), len(queries), out)
+    return out, captured
 
 
 def capture_responses(
@@ -26,69 +115,11 @@ def capture_responses(
     golden_path: str = "",
     output_path: str = "",
 ) -> str:
-    """Capture live API responses for offline evaluation.
-
-    Args:
-        base_url: Running API base URL (e.g. http://localhost:8020).
-        golden_path: Path to golden queries JSON.
-        output_path: Where to write the captured responses.
-
-    Returns:
-        Path to the saved captured responses file.
-    """
-    import requests
-
+    """Capture live API responses over HTTP (back-compat entry point)."""
     gp = golden_path or str(DEFAULT_GOLDEN)
     with open(gp, "r", encoding="utf-8") as f:
         queries = json.load(f)
-
-    out = output_path or str(Path(gp).parent / "captured_responses.json")
-    captured: list[dict] = []
-    url = base_url.rstrip("/")
-
-    for q in queries:
-        qid = q["id"]
-        question = q.get("question", "")
-        if not question:
-            logger.warning("Skipping empty question: %s", qid)
-            continue
-
-        try:
-            t0 = time.monotonic()
-            resp = requests.post(
-                f"{url}/chat",
-                json={"question": question, "session_id": f"capture-{qid}"},
-                timeout=60,
-            )
-            latency = (time.monotonic() - t0) * 1000
-
-            if resp.status_code == 200:
-                captured.append({
-                    "query_id": qid,
-                    "response": resp.json(),
-                    "latency_ms": round(latency, 1),
-                })
-                logger.info("[%s] captured (%.0fms): %s", qid, latency, question[:50])
-            else:
-                logger.warning("[%s] HTTP %d: %s", qid, resp.status_code, question[:50])
-                captured.append({
-                    "query_id": qid,
-                    "response": {"error": f"HTTP {resp.status_code}"},
-                    "latency_ms": round(latency, 1),
-                })
-
-        except Exception as e:
-            logger.error("[%s] error: %s", qid, e)
-            captured.append({
-                "query_id": qid,
-                "response": {"error": str(e)},
-                "latency_ms": 0,
-            })
-
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(captured, f, indent=2)
-
-    logger.info("Captured %d/%d responses -> %s", len(captured), len(queries), out)
+    out, _ = run_capture(queries, http_poster(base_url), output_path)
     return out
 
 
