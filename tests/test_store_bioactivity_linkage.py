@@ -85,9 +85,10 @@ def test_insert_writes_drug_id_and_target_id():
     act_inserts = [e for e in db.executed if "insert into bioactivities" in e[0].lower()]
     assert len(act_inserts) == 1
     params = act_inserts[0][1]
-    # params order: id, drug_id, target_id, chembl_activity_id, ...
+    # params order: id, drug_id, target_id, molecule_chembl_id, chembl_activity_id, ...
     assert params[1] == "drug-uuid-1"   # drug_id
     assert params[2] is not None         # target_id
+    assert params[3] == "CHEMBL1"        # molecule_chembl_id (offline relink key)
 
 
 def test_reuses_existing_target():
