@@ -135,6 +135,8 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "disease_evidence":     "disease_and_patient",
     "fda_approval_date":    "pipeline_and_macro",
     "regulatory_approval":  "pipeline_and_macro",
+    # DR — regulatory-milestone fact emitter (FDA Drugs@FDA approval timeline).
+    "regulatory_milestone": "pipeline_and_macro",
     "regulatory_setback":   "pipeline_and_macro",
     "patent_event":         "pipeline_and_macro",
     "supply_disruption":    "pipeline_and_macro",
