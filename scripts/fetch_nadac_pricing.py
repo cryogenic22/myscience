@@ -23,7 +23,17 @@ from db import Database
 
 logger = logging.getLogger(__name__)
 
-NADAC_API_URL = "https://data.medicaid.gov/resource/4j6z-xnwq.json"
+# CMS migrated off the legacy Socrata endpoint (data.medicaid.gov/resource/
+# 4j6z-xnwq.json now 404s, 2025/26). The live source is the DKAN datastore
+# query API for the rolling "NADAC 2026" weekly dataset (verified 2026-06-08:
+# 666k rows, fields ndc / ndc_description / nadac_per_unit / effective_date /
+# as_of_date / pricing_unit / classification_for_rate_setting). The dataset id
+# rolls each year — bump NADAC_DATASET_ID when CMS publishes the next year's
+# weekly reference dataset (discover via the /api/1/search?fulltext=NADAC list).
+NADAC_DATASET_ID = "fbb83258-11c7-47f5-8b18-5f8e79f7e704"  # "NADAC 2026"
+NADAC_API_URL = (
+    f"https://data.medicaid.gov/api/1/datastore/query/{NADAC_DATASET_ID}/0"
+)
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_LIMIT = 5000
 
@@ -224,19 +234,30 @@ def match_drug_name(db: Database, drug_name: str) -> Optional[str]:
 
 def fetch_nadac_page(offset: int = 0, page_size: int = DEFAULT_PAGE_SIZE,
                      since_date: str = "2026-01-01") -> list[dict]:
-    """Fetch one page of NADAC data from the CMS API."""
+    """Fetch one page of NADAC data from the live CMS DKAN datastore API.
+
+    The DKAN query API returns ``{"results": [...], "count": N, ...}`` (unlike
+    the legacy Socrata endpoint's flat array) and takes ``limit`` / ``offset``
+    plus an optional ``conditions`` filter. We unwrap ``results`` so the rest of
+    the pipeline (parse → match → store) is unchanged.
+    """
     import requests
 
     params = {
-        "$where": f"as_of_date > '{since_date}'",
-        "$limit": str(page_size),
-        "$offset": str(offset),
-        "$order": "as_of_date DESC",
+        "limit": str(page_size),
+        "offset": str(offset),
+        "conditions[0][property]": "effective_date",
+        "conditions[0][operator]": ">",
+        "conditions[0][value]": since_date,
     }
 
     resp = requests.get(NADAC_API_URL, params=params, timeout=30)
     resp.raise_for_status()
-    return resp.json()
+    payload = resp.json()
+    if isinstance(payload, dict):
+        return payload.get("results", []) or []
+    # Defensive: a flat array (legacy shape) still works.
+    return payload if isinstance(payload, list) else []
 
 
 def store_pricing_record(db: Database, record: dict[str, Any], drug_id: Optional[str]) -> None:

@@ -117,6 +117,8 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "wac_usd_monthly":      "pricing_and_access",
     "pricing_intent":       "pricing_and_access",
     "net_price":            "pricing_and_access",
+    # DR-2 pricing fact-emitter predicate (CMS NADAC acquisition cost).
+    "nadac_per_unit":       "pricing_and_access",
     "trial_result":         "clinical_profile",
     "efficacy_outcome":     "clinical_profile",
     "safety_signal":        "clinical_profile",

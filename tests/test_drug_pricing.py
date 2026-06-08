@@ -416,3 +416,94 @@ class TestPricingAPI:
         result = get_latest_prices(db=db)
         assert result["count"] == 2
         assert len(result["results"]) == 2
+
+
+# ============================================================
+# TestNadacConnector — live DKAN datastore endpoint shape
+# ============================================================
+
+class TestNadacConnector:
+    """Verify the NadacConnector handles the live CMS DKAN query API.
+
+    CMS moved off the legacy Socrata flat-array endpoint; the live datastore
+    query API wraps rows in a ``results`` envelope. The connector must unwrap
+    it and skip — but COUNT, never silently lose — rows with no price/NDC.
+    """
+
+    def _resp(self, payload, status=200):
+        m = MagicMock()
+        m.status_code = status
+        m.json.return_value = payload
+        return m
+
+    def test_uses_live_datastore_endpoint(self):
+        from connectors.nadac import NADAC_API_URL
+        # No longer the dead Socrata resource.
+        assert "resource/4j6z-xnwq" not in NADAC_API_URL
+        assert "datastore/query" in NADAC_API_URL
+
+    def test_unwraps_results_envelope(self):
+        from connectors.nadac import NadacConnector
+
+        envelope = {
+            "results": [
+                {
+                    "ndc": "00169-4150-13",
+                    "ndc_description": "SEMAGLUTIDE 1MG/0.75ML PEN",
+                    "nadac_per_unit": "89.1234",
+                    "as_of_date": "2026-01-07",
+                    "effective_date": "2026-01-07",
+                    "pricing_unit": "ML",
+                },
+            ],
+            "count": 1,
+        }
+        conn = NadacConnector(target_overrides={"limit": 1000})
+        with patch.object(conn, "_fetch_with_retry",
+                          return_value=self._resp(envelope)):
+            records = conn.fetch()
+
+        assert len(records) == 1
+        rec = records[0]
+        assert rec.external_id == "00169-4150-13"
+        assert rec.data["price_type"] == "nadac"
+        assert rec.data["unit_price"] == pytest.approx(89.1234)
+        assert rec.provenance.source_type.value == "nadac"
+
+    def test_skips_no_price_rows_without_dropping_silently(self):
+        from connectors.nadac import NadacConnector
+
+        envelope = {
+            "results": [
+                {  # has price — kept
+                    "ndc": "00169-4150-13",
+                    "ndc_description": "SEMAGLUTIDE 1MG PEN",
+                    "nadac_per_unit": "89.1234",
+                    "as_of_date": "2026-01-07",
+                    "pricing_unit": "ML",
+                },
+                {  # no price — skipped (counted, not crashed)
+                    "ndc": "00000-0000-00",
+                    "ndc_description": "NO PRICE DRUG",
+                    "nadac_per_unit": None,
+                    "as_of_date": "2026-01-07",
+                    "pricing_unit": "EA",
+                },
+            ],
+            "count": 2,
+        }
+        conn = NadacConnector(target_overrides={"limit": 1000})
+        with patch.object(conn, "_fetch_with_retry",
+                          return_value=self._resp(envelope)):
+            records = conn.fetch()
+        # Only the priced row becomes a record; the connector did not raise.
+        assert len(records) == 1
+
+    def test_empty_results_returns_empty(self):
+        from connectors.nadac import NadacConnector
+
+        conn = NadacConnector(target_overrides={"limit": 1000})
+        with patch.object(conn, "_fetch_with_retry",
+                          return_value=self._resp({"results": [], "count": 0})):
+            records = conn.fetch()
+        assert records == []
