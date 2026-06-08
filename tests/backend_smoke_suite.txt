@@ -1,0 +1,49 @@
+# Backend unit smoke — the curated DB-free behavioral core run by the
+# "Backend unit smoke (DB-free)" required gate (.github/workflows/backend-unit-smoke.yml).
+#
+# Curation rule: every file here MUST be deterministic, DB-free (passes with no
+# DATABASE_URL), and fast. The whole-tree collection smoke separately guards that
+# all 3500+ tests still IMPORT; this list guards that the core logic still PASSES.
+#
+# Do NOT empty or gut this list to go green — test_backend_smoke_suite_is_honest
+# fails closed below a minimum count (principle #3, no vacuous green). Add new
+# pure-logic suites here as they land; never add a suite that needs a live DB.
+#
+# One path per line; blank lines and #-comments ignored.
+
+# conservation / schema floor (also covered by the conservation gate; kept here so
+# the smoke is independently meaningful)
+tests/test_conservation_gates.py
+tests/test_schema_completeness.py
+tests/test_dossier_kb.py
+tests/test_protected_surface_sync.py
+
+# fact ledger + emitters (the data-substrate core)
+tests/test_facts_ledger.py
+tests/test_fact_class.py
+tests/test_fact_emitters.py
+tests/test_fact_emitters_dr3_dr4.py
+tests/test_fact_emitters_dr6.py
+tests/test_fact_emitters_dr7.py
+tests/test_competition_emitter.py
+tests/test_product_sales_facts.py
+tests/test_document_facts_dr9p2.py
+
+# knowledge surface: kbq, signals, intelligence feed
+tests/test_kbq_views.py
+tests/test_kbq_route.py
+tests/test_fact_signals_sl07.py
+tests/test_intelligence_feed.py
+tests/test_signals_api.py
+
+# ctx pipeline core
+tests/test_ctx_corpus.py
+tests/test_ctx_evidence.py
+
+# entity resolution + domain intelligence + misc pure logic
+tests/test_entity_resolver_cascade.py
+tests/test_domain_intelligence_playbook.py
+tests/test_clean_drug_names.py
+tests/test_compound_intent.py
+tests/test_concept_registry.py
+tests/test_citation_validation.py

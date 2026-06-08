@@ -6,6 +6,8 @@
 /tests/test_conservation_gates.py @cryogenic22
 /tests/test_schema_completeness.py @cryogenic22
 /tests/test_schema_drift_fix.py @cryogenic22
+/tests/backend_smoke_suite.txt @cryogenic22
+/tests/test_backend_smoke_manifest.py @cryogenic22
 /scripts/connector_health.py @cryogenic22
 /scheduler/config.py @cryogenic22
 /benchmark/golden_queries.json @cryogenic22
