@@ -253,9 +253,14 @@ def get_emitters() -> dict[str, FactEmitter]:
         MechanismEmitter,
     )
     from services.fact_emitters.pricing import PricingEmitter
+    from services.fact_emitters.regulatory_milestones import (
+        RegulatoryMilestoneEmitter,
+    )
+    from services.fact_emitters.trial_outcomes import TrialOutcomeEmitter
 
     emitters: tuple[FactEmitter, ...] = (
         ClinicalTrialEmitter(),
+        TrialOutcomeEmitter(),
         AdverseEventEmitter(),
         DrugLabelEmitter(),
         MechanismEmitter(),
@@ -265,6 +270,7 @@ def get_emitters() -> dict[str, FactEmitter]:
         FinancialEmitter(),
         DealEmitter(),
         PricingEmitter(),
+        RegulatoryMilestoneEmitter(),
     )
     return {e.name: e for e in emitters}
 

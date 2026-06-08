@@ -77,9 +77,32 @@ class TestClinicalTrialMapping:
         assert f.object_value["source_url"].endswith("NCT05646706")
         assert f.evidence_text  # DR-5: attestable snippet present
 
-    def test_completion_date_drives_valid_from(self):
+    def test_start_date_drives_valid_from(self):
+        # Existence begins at start_date (open-ended), NOT completion_date.
+        # (Was previously asserted as completion_date — that encoded a bug that
+        # silently hid ongoing/future-completing trials under facts_as_of(now).)
         f = ClinicalTrialEmitter().row_to_facts(_trial())[0]
-        assert f.valid_from == datetime(2020, 3, 1, tzinfo=timezone.utc)
+        assert f.valid_from == datetime(2018, 6, 1, tzinfo=timezone.utc)
+        assert f.valid_to is None  # open-ended: a completed trial stays a fact
+
+    def test_ongoing_trial_with_future_completion_is_visible_as_of_now(self):
+        # Regression: a recruiting Phase-3 trial that completes in the future
+        # must be valid AS-OF today (valid_from = its past start_date), not
+        # hidden behind a future completion_date.
+        from datetime import timedelta
+        from services.facts_ledger import _valid_at
+        now = datetime.now(timezone.utc)
+        past_start = (now - timedelta(days=400))
+        future_completion = (now + timedelta(days=400))
+        f = ClinicalTrialEmitter().row_to_facts(_trial(
+            status="RECRUITING",
+            start_date=past_start.date(),
+            completion_date=future_completion.date(),
+            primary_completion_date=future_completion.date(),
+        ))[0]
+        assert f.valid_from.date() == past_start.date()
+        fact_row = {"valid_from": f.valid_from, "valid_to": f.valid_to, "superseded_by": None}
+        assert _valid_at(fact_row, now) is True  # would be False under the old bug
 
     def test_row_without_drug_id_emits_nothing(self):
         assert ClinicalTrialEmitter().row_to_facts(_trial(drug_id=None)) == []
