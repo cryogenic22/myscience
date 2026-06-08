@@ -24,7 +24,9 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt   # pytest for the conservation invariants
       - name: Conservation gates + schema-completeness pure invariants (live tests auto-skip)
         # No DATABASE_URL is set, so the live-DB invariants skip; the deterministic
         # ones are HARD. A skip is not a pass for the population checks — those run
