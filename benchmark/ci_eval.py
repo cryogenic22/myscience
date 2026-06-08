@@ -235,26 +235,59 @@ def run_ci_eval(
 
 
 def _build_synthetic_responses(queries: list[dict]) -> list[dict]:
-    """Build minimal synthetic responses so the offline scorer can run.
+    """Build a COMPLETE synthetic "known-good" response per golden query.
 
-    Each response echoes back the expected intent and entities with
-    placeholder narrative — useful for CI smoke-testing the scorer itself.
+    This mode smoke-tests the SCORER, not the system: a correct, fully-formed
+    response (right intent + entities, required terms, enough evidence, valid
+    [N] citations) SHOULD score high. So the offline `--threshold` is a
+    scorer-integrity regression net — if the scoring logic breaks, a known-good
+    input drops below the bar. (The REAL system-quality eval needs captured live
+    responses via `--responses` / benchmark.capture_responses — a scheduled job,
+    not a PR gate, since it needs a live system.)
+
+    Earlier this builder emitted EMPTY evidence and no citations, so citation /
+    factual / completeness were structurally capped (~73% composite) and the
+    gate was perpetually red against a 75% bar it could never reach. Populating
+    evidence + citations from the golden `expected` fixes that without touching
+    the threshold (the bar) or the gold set.
     """
     responses: list[dict] = []
     for q in queries:
         expected = q.get("expected", {})
         entities = expected.get("entities", [])
         must_mention = expected.get("must_mention", [])
+        min_evidence = expected.get("min_evidence", 0) or 0
+        min_citations = expected.get("min_citations", 0) or 0
         intent = q.get("intent", "general")
 
-        # Build entity_focus from expected entities
         entity_focus = [
             {"label": e, "entity_type": "entity", "id": f"synth-{e}"}
             for e in entities
         ]
 
-        # Build a narrative that mentions expected terms
-        parts = [f"**{e}**" for e in entities] + must_mention
+        # Enough evidence to satisfy min_evidence AND back every citation. Each
+        # item's content echoes the must_mention terms so any numbers the
+        # narrative cites also appear in a source (factual verification).
+        n_evidence = max(min_evidence, min_citations, 1 if (entities or must_mention) else 0)
+        ev_content = " ".join(must_mention) if must_mention else "Synthetic supporting evidence."
+        evidence = [
+            {
+                "id": f"synth-ev-{i + 1}",
+                "title": f"Synthetic source {i + 1}",
+                "content": ev_content,
+                "source_type": "synthetic",
+            }
+            for i in range(n_evidence)
+        ]
+
+        # Cite the first up-to-min_citations evidence items — always valid
+        # (1..len(evidence)), so the citation scorer rewards a known-good answer.
+        n_cite = min(min_citations, n_evidence)
+        citation_str = " ".join(f"[{i + 1}]" for i in range(n_cite))
+
+        parts = [f"**{e}**" for e in entities] + list(must_mention)
+        if citation_str:
+            parts.append(citation_str)
         narrative = " ".join(parts) if parts else "No specific data available."
 
         responses.append({
@@ -263,7 +296,7 @@ def _build_synthetic_responses(queries: list[dict]) -> list[dict]:
                 "intent": intent,
                 "narrative": narrative,
                 "data": {
-                    "evidence": [],
+                    "evidence": evidence,
                     "entity_focus": entity_focus,
                     "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
                     "metrics_context": {},
