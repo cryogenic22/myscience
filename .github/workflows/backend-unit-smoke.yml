@@ -1,0 +1,48 @@
+name: Backend Unit Smoke
+
+# A fast, deterministic, DB-free backend gate — part of the structural floor
+# (principle #4). Two layers:
+#   1. Whole-tree collection smoke: every test in tests/ must still IMPORT. This
+#      catches a broken shared import / missing symbol across the whole backend
+#      in seconds, without running anything.
+#   2. Behavioral core: the curated DB-free suites listed in
+#      tests/backend_smoke_suite.txt must PASS. Guarded against being gutted to a
+#      vacuous green by tests/test_backend_smoke_manifest.py.
+#
+# Live/population checks deliberately live in operational-health.yml — a DB being
+# down must never red a PR. See .claude/rules/conservation-gates.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-unit-smoke:
+    runs-on: ubuntu-latest
+    name: Backend unit smoke (DB-free)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      # Layer 1 — import smoke across the whole suite (no DATABASE_URL set).
+      - name: Collection smoke (every test imports)
+        run: python -m pytest --collect-only -q tests/
+
+      # The manifest must be honest before we trust it to define the gate.
+      - name: Smoke manifest guard
+        run: python -m pytest tests/test_backend_smoke_manifest.py -q --no-header
+
+      # Layer 2 — the curated DB-free behavioral core must pass.
+      - name: Behavioral core (DB-free)
+        run: |
+          SUITES=$(grep -vE '^[[:space:]]*(#|$)' tests/backend_smoke_suite.txt)
+          echo "Running smoke suites:"; echo "$SUITES"
+          python -m pytest $SUITES -q --no-header
