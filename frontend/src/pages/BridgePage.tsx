@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Activity, Star, Layers, Swords, BookOpen, Rewind,
-  Telescope, Bot, FileText,
+  Telescope, Bot,
 } from 'lucide-react';
 import { ThemeToggle } from '../components/primitives/ThemeToggle';
 import MomentView from '../components/helix/MomentView';
 import {
-  signalsApi, decisionBriefsApi, bridgeApi,
+  signalsApi, bridgeApi,
   type Signal,
 } from '../api';
 import {

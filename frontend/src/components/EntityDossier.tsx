@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, CheckCircle, X, Edit3, MessageSquare, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Edit3, MessageSquare, RefreshCw } from 'lucide-react';
 import { api, type CatalogEntityDetail, type EntityLink } from '../api';
 import { displayName, isUUID, QUALITY_CHECK_LABELS, SOURCE_LABELS, ENTITY_TYPE_LABELS } from '../brand';
 
@@ -614,7 +614,7 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
       })()}
 
       {/* Data provenance */}
-      {(entity.source_api || entity.retrieved_at) && (
+      {Boolean(entity.source_api || entity.retrieved_at) && (
         <section>
           <div style={{
             fontSize: '11px', fontWeight: 600, textTransform: 'uppercase',
@@ -629,13 +629,13 @@ export default function EntityDossier({ detail, editing, onEditField, onSave, on
             gap: '4px 12px',
             fontSize: '12px',
           }}>
-            {entity.source_api && (
+            {Boolean(entity.source_api) && (
               <>
                 <span style={{ color: 'var(--color-ink-4)' }}>Source</span>
                 <span style={{ color: 'var(--color-ink-2)' }}>{SOURCE_LABELS[String(entity.source_api)] ?? String(entity.source_api)}</span>
               </>
             )}
-            {entity.retrieved_at && (
+            {Boolean(entity.retrieved_at) && (
               <>
                 <span style={{ color: 'var(--color-ink-4)' }}>Retrieved</span>
                 <span style={{ color: 'var(--color-ink-2)' }}>{shortDate(String(entity.retrieved_at))}</span>

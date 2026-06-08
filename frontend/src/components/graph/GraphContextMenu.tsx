@@ -24,12 +24,12 @@ const MENU_ITEMS = [
   },
   {
     id: 'dossier',
-    labelFn: (name: string) => `Generate dossier`,
+    labelFn: (_name: string) => `Generate dossier`,
     questionFn: (name: string) => `Generate a dossier on ${name}`,
   },
   {
     id: 'compare',
-    labelFn: (name: string) => `Compare with\u2026`,
+    labelFn: (_name: string) => `Compare with\u2026`,
     questionFn: (name: string) => `Compare ${name} with `,
   },
 ] as const;

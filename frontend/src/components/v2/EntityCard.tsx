@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import EntityDot from './EntityDot';
 import ConfidenceBar from './ConfidenceBar';
 import Badge from './Badge';

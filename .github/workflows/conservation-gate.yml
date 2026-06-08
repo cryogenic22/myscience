@@ -57,23 +57,9 @@ jobs:
         run: node scripts/assert-typecheck-nonvacuous.mjs
       - name: No-vacuous-green config guard
         run: npx vitest run __tests__/harness/no-vacuous-typecheck.test.ts
-      # REPORT-ONLY until the pre-existing type debt is cleared. 79 errors as of
-      # 2026-06-08 (measured). Surfaced, not hidden — and NOT hard, so it can't
-      # block unrelated PRs on legacy debt (which would just train --no-verify).
-      # EXPIRY 2026-07-08: by then either flip to HARD (debt cleared) or the
-      # expiry check below fails the job, forcing a decision (no silent ossifying).
-      - name: Real typecheck (report-only, expiring allowance)
-        continue-on-error: true
+      # HARD as of 2026-06-08: the pre-existing type debt (79 errors) was cleared,
+      # so the real typecheck is now a blocking gate. No type-weakening was used
+      # to get here (no any / @ts-ignore / eslint-disable). If this fails, fix the
+      # type error — do not reintroduce a report-only allowance without an expiry.
+      - name: Real typecheck (HARD)
         run: npm run typecheck
-      - name: Tolerated-error allowance must not ossify (expiry guard)
-        run: |
-          python3 - <<'PY'
-          import datetime, sys
-          expiry = datetime.date(2026, 7, 8)
-          today = datetime.date.today()
-          if today > expiry:
-              print(f"::error::Typecheck report-only allowance expired {expiry}. "
-                    f"Clear the type debt and flip the gate to HARD, or move the expiry with a reason.")
-              sys.exit(1)
-          print(f"Typecheck allowance valid until {expiry} ({(expiry-today).days}d left).")
-          PY

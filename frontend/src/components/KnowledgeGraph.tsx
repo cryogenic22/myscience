@@ -16,14 +16,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphEdge, GraphNode } from '../api';
-import { ENTITY_TYPE_LABELS, LINK_TYPE_LABELS } from '../brand';
+import { ENTITY_TYPE_LABELS } from '../brand';
 import {
   NODE_COLORS as ENTITY_TYPE_COLORS,
   EDGE_COLORS as LINK_TYPE_COLORS,
-  EDGE_LABELS,
-  NODE_TYPE_LABELS,
-  GRAPH_BG,
-  GRAPH_TEXT,
 } from './graph/graph-constants';
 
 // Edge categories for the legend grouping
@@ -393,7 +389,6 @@ export default function KnowledgeGraph({
     });
 
     const nodeMap = new Map(simNodes.map((n) => [n.entity_id, n]));
-    const presentTypes = new Set(simNodes.map((n) => n.entity_type));
 
     // Viewport transform
     const toScreen = (worldX: number, worldY: number) => {

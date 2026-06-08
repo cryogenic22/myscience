@@ -4,7 +4,6 @@ import {
   BookOpen,
   Building2,
   Target,
-  Filter,
 } from 'lucide-react';
 import {
   ENTITY_TYPES,
@@ -46,10 +45,6 @@ interface SearchFiltersProps {
 export default function SearchFilters({
   activeTypes,
   onTypeToggle,
-  sortMode,
-  onSortChange,
-  viewMode,
-  onViewChange,
   therapeuticAreaOptions,
   selectedTherapeuticAreas,
   onTherapeuticAreaToggle,

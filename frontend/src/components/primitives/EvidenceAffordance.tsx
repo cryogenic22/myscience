@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface EvidenceData {
@@ -14,7 +14,7 @@ export interface EvidenceAffordanceProps {
   evidenceData: EvidenceData;
 }
 
-export function EvidenceAffordance({ claimId, evidenceData }: EvidenceAffordanceProps) {
+export function EvidenceAffordance({ evidenceData }: EvidenceAffordanceProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (

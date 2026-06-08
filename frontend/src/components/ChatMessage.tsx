@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronRight, ExternalLink, Download } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -807,7 +807,7 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number) => [`${value.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
+                formatter={(value: number | undefined) => [`${(value ?? 0).toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
               />
               <Legend
                 iconType="circle"
@@ -821,8 +821,8 @@ function VisualizationCard({ spec }: { spec: VisualizationSpec }) {
               <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} angle={-20} textAnchor="end" />
               <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip
-                formatter={(value: number) => [`${value.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
-                labelFormatter={(label: string) => `${label}`}
+                formatter={(value: number | undefined) => [`${(value ?? 0).toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']}
+                labelFormatter={(label: ReactNode) => `${label ?? ''}`}
               />
               <Legend
                 iconType="rect"

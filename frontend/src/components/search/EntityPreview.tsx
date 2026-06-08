@@ -228,7 +228,6 @@ export default function EntityPreview({
   onPrevResult,
   onNextResult,
   onAskInChat,
-  onExploreNode,
   linkedGraphLoading,
   linkedGraphError,
   linkedNeighbors,

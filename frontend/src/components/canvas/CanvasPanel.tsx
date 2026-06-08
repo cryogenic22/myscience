@@ -221,8 +221,6 @@ export default function CanvasPanel({
           >
             {currentTab === 'summary' && (
               <SummaryTab
-                intent={intent}
-                confValue={confValue}
                 tableData={hasTable ? tableData! : null}
                 visualizations={hasViz ? visualizations! : null}
                 entities={hasEntities ? (data!.entity_focus ?? []) as Record<string, unknown>[] : null}
@@ -278,16 +276,12 @@ function makeRowClickHandler(
 
 /* ── Summary tab: intent + confidence + first 5 rows + first viz + first 3 entities ── */
 function SummaryTab({
-  intent,
-  confValue,
   tableData,
   visualizations,
   entities,
   matrix,
   onViewInGraph,
 }: {
-  intent: string | null;
-  confValue: number | null | undefined;
   tableData: TableData | null;
   visualizations: VisualizationSpec[] | null;
   entities: Record<string, unknown>[] | null;
@@ -638,7 +632,7 @@ function VizCard({ spec }: { spec: VisualizationSpec }) {
                   <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
+              <Tooltip formatter={(v: number | undefined) => [`${(v ?? 0).toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
             </PieChart>
           ) : (
@@ -657,7 +651,7 @@ function VizCard({ spec }: { spec: VisualizationSpec }) {
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
+              <Tooltip formatter={(v: number | undefined) => [`${(v ?? 0).toLocaleString()} ${spec.value_unit ?? ''}`.trim(), '']} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="var(--color-accent)" />
             </BarChart>
           )}
@@ -713,7 +707,7 @@ function EntityGrid({ entities, onViewInGraph }: { entities: Record<string, unkn
               </span>
             </div>
             <div className="mt-2 flex items-center gap-2" style={{ paddingLeft: '16px' }}>
-              {onViewInGraph && e.entity_id && (
+              {onViewInGraph && Boolean(e.entity_id) && (
                 <button
                   type="button"
                   onClick={() => onViewInGraph({ id: String(e.entity_id), type, label })}

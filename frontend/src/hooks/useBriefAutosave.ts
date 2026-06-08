@@ -26,7 +26,7 @@ async function persistDraft(briefId: string, doc: unknown): Promise<void> {
   //     headers: { 'Content-Type': 'application/json', ...authHeaders() },
   //     body: JSON.stringify({ doc }),
   //   });
-  if (typeof console !== 'undefined' && process?.env?.NODE_ENV !== 'test') {
+  if (typeof console !== 'undefined' && import.meta.env.MODE !== 'test') {
     // eslint-disable-next-line no-console
     console.debug('[BriefAutosave] would POST', briefId, doc);
   }
