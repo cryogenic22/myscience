@@ -74,6 +74,7 @@ NUL
 !docs/UI_CHANGELOG.md
 !docs/AGENT_BACKLOG.md
 !docs/PRODUCT_BACKLOG.md
+!docs/COORDINATION.md
 !docs/archive/**/*.md
 !feedback/**/*.md
 !design-review-output/**/*.md

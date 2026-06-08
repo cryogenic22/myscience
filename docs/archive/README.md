@@ -17,6 +17,13 @@ pointing readers to the canonical replacement.
 | `superseded-specs/` | Specs SPEC_001–SPEC_018 superseded by the SPEC-021+ series. Plus drafts (HARNESS_AUDIT, SESSION_REPORT, EXECUTION_PLAN, etc.) |
 | `legacy-backlogs/` | The four files SPEC-042 replaced with `docs/PRODUCT_BACKLOG.md` |
 
+### Added 2026-06-08
+- `AGENT_BACKLOG.md` — the old cross-agent board (last live 2026-05-11). It
+  assumed one backend + one frontend agent and had no convention for two
+  concurrent backend sessions, which caused a real collision (a MeSH fix swept
+  into an unrelated PR, #190). **Superseded by `docs/COORDINATION.md`.** A
+  redirect stub remains at `docs/AGENT_BACKLOG.md`.
+
 If you need to revive an archived doc, copy it back to its original
 path and delete the redirect header. Or, more usefully, file a
 `PB-NNN` row in `docs/PRODUCT_BACKLOG.md` capturing what's live now
