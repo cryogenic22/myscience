@@ -25,6 +25,9 @@ jobs:
   operational-health:
     runs-on: ubuntu-latest
     name: Live connector health + conservation invariants
+    permissions:
+      contents: read
+      issues: write   # open/update/close the connector-health tracking issue
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,3 +54,40 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m pytest tests/test_schema_completeness.py -v --no-header
+
+      # --- Alerting: push RED rot into a single idempotent tracking issue ---
+      # Runs even when the health step above failed (RED) — that's the case we
+      # most want to alert on. The gate's pass/fail is unchanged; this is an
+      # additional notification, not a new bar.
+      - name: Capture connector health (JSON)
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # --json still exits non-zero on RED; we only want its output here.
+        run: python scripts/connector_health.py --json > health.json || true
+
+      - name: Render health alert
+        if: always()
+        id: alert
+        run: python scripts/health_alert.py --input health.json --body-out body.md --as-of "$(date -u +%FT%TZ)"
+
+      - name: Open / update / close the tracking issue (idempotent)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Connector health: degraded sources"
+          EXISTING=$(gh issue list --state open --json number,title \
+            --jq ".[] | select(.title==\"$TITLE\") | .number" | head -1)
+          if [ "${{ steps.alert.outputs.should_alert }}" = "true" ]; then
+            if [ -n "$EXISTING" ]; then
+              gh issue edit "$EXISTING" --body-file body.md
+              echo "updated tracking issue #$EXISTING"
+            else
+              gh issue create --title "$TITLE" --body-file body.md
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "✅ Connector health recovered — all active sources GREEN. Closing."
+            gh issue close "$EXISTING"
+            echo "closed recovered issue #$EXISTING"
+          fi
