@@ -276,8 +276,7 @@ class TestCitationGrounding:
         assert mock_llm.synthesize.called
         snippets = mock_llm.synthesize.call_args.kwargs.get("evidence_snippets")
         assert snippets, "LLM must receive non-empty evidence_snippets"
-        # Count fed to the validator must cover the snippets the frontend shows
-        assert len(snippets) == len(mock_llm.synthesize.call_args.kwargs.get("evidence_snippets"))
+        assert all(isinstance(s, str) and s.strip() for s in snippets)
 
     def test_snippet_count_matches_evidence_count(self, handler, mock_llm):
         """evidence_count passed to the LLM == len(data.evidence) so citation
