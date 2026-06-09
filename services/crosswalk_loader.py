@@ -94,6 +94,67 @@ def _resolve_richest_drug(db: Database, name: str) -> dict | None:
     )
 
 
+def persist_crosswalk_record(
+    db, *, internal_entity_id: str, external_system: str, external_id: str,
+    label: str, rec, source_version: str,
+    method: str = "external_source_crosswalk",
+    internal_entity_type: str = "molecule",
+    apply: bool = True,
+) -> dict:
+    """Persist ONE governed CrosswalkRecord (idempotent upsert on the natural key)
+    and, for an ACCEPTED ``atc`` mapping, enrich ``drugs.atc_codes``. Records EVERY
+    verdict (incl. rejected) so the decision is auditable, never silently dropped;
+    only an accepted ATC mapping touches the drug spine (append-only, dup-guarded).
+
+    Shared by the SME-seed loader and the bulk RxNav loader (L1b-ii) so there is
+    one governed write path, not two drifting copies. Returns
+    {review_status, action, written, backfilled, accepted}."""
+    review_status = _review_status_for(rec.action)
+    accepted = _should_backfill_spine(rec)
+    spine = accepted and external_system == "atc"
+    out = {"review_status": review_status, "action": rec.action,
+           "written": 0, "backfilled": 0, "accepted": accepted}
+    if not apply:
+        out["written"] = 1
+        out["backfilled"] = 1 if spine else 0
+        return out
+
+    db.execute(
+        """
+        INSERT INTO crosswalk_records
+            (internal_entity_id, internal_entity_type, external_system, external_id,
+             external_label, mapping_relation, mapping_scope, mapping_confidence,
+             mapping_method, ambiguity_flags, source_version, review_status, action)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (internal_entity_id, external_system, external_id) DO UPDATE SET
+            mapping_relation = EXCLUDED.mapping_relation,
+            mapping_scope = EXCLUDED.mapping_scope,
+            mapping_confidence = EXCLUDED.mapping_confidence,
+            ambiguity_flags = EXCLUDED.ambiguity_flags,
+            review_status = EXCLUDED.review_status,
+            action = EXCLUDED.action,
+            source_version = EXCLUDED.source_version,
+            updated_at = NOW()
+        """,
+        [str(internal_entity_id), internal_entity_type, external_system, external_id,
+         label, rec.relation, rec.scope, rec.confidence, method, rec.flags or [],
+         source_version, review_status, rec.action],
+    )
+    out["written"] = 1
+
+    if spine:
+        db.execute(
+            """
+            UPDATE drugs SET atc_codes = array_append(COALESCE(atc_codes, '{}'), %s),
+                             updated_at = NOW()
+            WHERE id = %s AND NOT (%s = ANY(COALESCE(atc_codes, '{}')))
+            """,
+            [external_id, str(internal_entity_id), external_id],
+        )
+        out["backfilled"] = 1
+    return out
+
+
 def load_atc_seeds(db: Database, pack: dict, apply: bool = False) -> Counter:
     stats: Counter = Counter()
     for seed in seed_atc_mappings(pack):
@@ -116,47 +177,13 @@ def load_atc_seeds(db: Database, pack: dict, apply: bool = False) -> Counter:
             stats["would_backfill"] += 1 if backfill else 0
             continue
 
-        # crosswalk_records — record EVERY governed verdict (incl. rejected, so the
-        # decision is auditable, never silently dropped). Idempotent on the natural
-        # key, but a re-classified mapping UPDATES the governed fields (drift is
-        # recorded, not masked by DO NOTHING).
-        db.execute(
-            """
-            INSERT INTO crosswalk_records
-                (internal_entity_id, internal_entity_type, external_system, external_id,
-                 external_label, mapping_relation, mapping_scope, mapping_confidence,
-                 mapping_method, ambiguity_flags, source_version, review_status, action)
-            VALUES (%s, 'molecule', 'atc', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (internal_entity_id, external_system, external_id) DO UPDATE SET
-                mapping_relation = EXCLUDED.mapping_relation,
-                mapping_scope = EXCLUDED.mapping_scope,
-                mapping_confidence = EXCLUDED.mapping_confidence,
-                ambiguity_flags = EXCLUDED.ambiguity_flags,
-                review_status = EXCLUDED.review_status,
-                action = EXCLUDED.action,
-                source_version = EXCLUDED.source_version,
-                updated_at = NOW()
-            """,
-            [str(drug["id"]), seed["atc_l5"], label, rec.relation, rec.scope,
-             rec.confidence, "external_source_crosswalk", rec.flags or [],
-             SOURCE_VERSION, review_status, rec.action],
-        )
-        stats["records_written"] += 1
+        res = persist_crosswalk_record(
+            db, internal_entity_id=drug["id"], external_system="atc",
+            external_id=seed["atc_l5"], label=label, rec=rec,
+            source_version=SOURCE_VERSION, apply=True)
+        stats["records_written"] += res["written"]
         stats[f"verdict_{rec.action}"] += 1
-
-        # drugs.atc_codes — ONLY enrich the spine when the engine ACCEPTED the
-        # mapping. A rejected/quarantined/pending mapping is recorded above but must
-        # never touch the drug spine. Append-only, dup-guarded, never overwrites.
-        if backfill:
-            db.execute(
-                """
-                UPDATE drugs SET atc_codes = array_append(COALESCE(atc_codes, '{}'), %s),
-                                 updated_at = NOW()
-                WHERE id = %s AND NOT (%s = ANY(COALESCE(atc_codes, '{}')))
-                """,
-                [seed["atc_l5"], str(drug["id"]), seed["atc_l5"]],
-            )
-            stats["spine_backfilled"] += 1
+        stats["spine_backfilled"] += res["backfilled"]
     return stats
 
 
