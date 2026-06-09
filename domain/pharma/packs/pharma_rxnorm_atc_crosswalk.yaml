@@ -1,0 +1,151 @@
+# pharma_rxnorm_atc_crosswalk.yaml
+#
+# Crosswalk contract between the internal pharma ontology, RxNorm and ATC.
+# Machine-consumable form of the SME spec (docs/pharmcore_atc.md) — consumed by
+# services/ontology_crosswalk.py.
+#
+# Design rule (firm): RxNorm = clinical-drug identity normalisation; ATC = class
+# reasoning ONLY. Mappings ENRICH the internal ontology as evidence-backed records;
+# they NEVER overwrite internal entity identity. A mapping carries an explicit
+# relation (exact/narrower/broader/related/inferred/rejected), scope and confidence.
+# Many-to-many is never silently collapsed. Bridge path is RxNorm -> internal -> ATC
+# (ATC is never the primary drug resolver). Load RxCUI from RxNorm releases.
+pack:
+  id: pharma.rxnorm_atc_crosswalk.v0_1
+  name: RxNorm / ATC Crosswalk
+  domain: pharma_intelligence
+  owner: ontology_steward
+  status: draft
+  version: 0.1
+
+# RxNorm term type -> internal target. relation/scope are the DEFAULTS; the engine
+# downgrades/penalises per flags below.
+rxnorm_tty:
+  IN:   {entity_type: molecule,                      scope: substance_level,            relation: exact}
+  PIN:  {entity_type: molecule_variant,              scope: precise_substance_level,    relation: exact}
+  MIN:  {entity_type: component_set,                 scope: combination_component_level, relation: exact}
+  BN:   {entity_type: brand_name,                    scope: branded_product_level,      relation: related}
+  SCD:  {entity_type: product_configuration,         scope: configuration_level,        relation: exact}
+  SBD:  {entity_type: branded_product_configuration, scope: branded_configuration_level, relation: exact}
+  GPCK: {entity_type: product_pack,                  scope: pack_level,                 relation: exact}
+  BPCK: {entity_type: branded_product_pack,          scope: branded_pack_level,         relation: exact}
+  DF:   {entity_type: dose_form,                     scope: dose_form_attribute,        relation: exact}
+
+# ATC level -> internal target. Note relations: classes are broader/related, only
+# L4 (drug_class) is exact; L5 is a substance CLASSIFICATION, not product identity.
+atc_level:
+  1: {entity_type: therapeutic_area, scope: therapeutic_area_level, relation: broader_than_external}
+  2: {entity_type: therapeutic_subgroup, scope: therapeutic_area_level, relation: related}
+  3: {entity_type: drug_class, scope: drug_class_level, relation: related}
+  4: {entity_type: drug_class, scope: drug_class_level, relation: exact}
+  5: {entity_type: molecule, scope: substance_level, relation: related}
+
+# Explainable crosswalk confidence (SME §5). final = base + boosts - penalties.
+confidence:
+  base:
+    exact_identifier_loaded_from_source: 0.98
+    exact_name_plus_term_type_match: 0.92
+    approved_alias_match: 0.88
+    hierarchy_rollup: 0.85
+    model_suggested_name_match: 0.65
+    fuzzy_only: 0.50
+  boosts:
+    source_curated_crosswalk: 0.05
+    human_curator_approved: 0.10
+    multiple_source_agreement: 0.05
+    exact_ingredient_and_class_alignment: 0.05
+  penalties:
+    many_to_many_mapping: 0.20
+    combination_product: 0.20
+    route_or_formulation_dependency: 0.15
+    brand_reuse_or_market_specificity: 0.15
+    ingredient_salt_or_precise_ingredient_conflict: 0.15
+    atc_level_too_broad_for_task: 0.20
+    rxnorm_too_specific_for_reverse: 0.10
+    stale_external_release: 0.10
+  bands:                         # [min, max] -> action
+    approved_auto: 0.95          # >= : auto if no critical flags + not many-to-many + current source
+    approved_with_audit: 0.85    # >= : auto with audit if no critical flags
+    review_required: 0.50        # >= : steward review
+    rejected_or_quarantined: 0.0 # <0.50
+
+# Force review/quarantine — never auto over these (SME §5).
+critical_flags:
+  - RXNORM_ATC_MANY_TO_MANY
+  - ATC_TOO_BROAD_FOR_EXACT_MATCH
+  - RXNORM_TOO_SPECIFIC_FOR_REVERSE_MATCH
+  - COMBINATION_COMPONENT_AMBIGUITY
+  - BRAND_MARKET_AMBIGUITY
+  - PRECISE_INGREDIENT_CONFLICT
+  - ROUTE_FORMULATION_DEPENDENT_CLASSIFICATION
+  - PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE
+  - PRICING_REQUIRES_CONFIGURATION_NOT_ATC
+  - PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS
+
+# Bridge patterns the engine MUST refuse (SME §4). Keyed by (from, to) intent.
+forbidden_bridges:
+  - {from_system: atc, from_level: 4, to_target: exact_product, flag: ATC_TOO_BROAD_FOR_EXACT_MATCH}
+  - {from_system: atc, from_level: 5, to_target: brand, flag: ATC_TOO_BROAD_FOR_EXACT_MATCH}
+  - {from_system: atc, to_target: pricing_configuration, flag: PRICING_REQUIRES_CONFIGURATION_NOT_ATC}
+  - {from_system: atc, to_target: payer_policy_product, flag: PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS}
+  - {from_system: rxnorm, from_tty: BN, to_target: market_authorisation, flag: BRAND_MARKET_AMBIGUITY}
+  - {from_system: rxnorm, from_tty: SCD, to_target: atc_exact_reverse, flag: RXNORM_TOO_SPECIFIC_FOR_REVERSE_MATCH}
+  - {from_system: rxnorm, from_tty: SBD, to_target: atc_exact_reverse, flag: RXNORM_TOO_SPECIFIC_FOR_REVERSE_MATCH}
+
+# Seed examples for smoke tests (RxCUI loaded from RxNorm at L1b, not hand-kept).
+seed_examples:
+  semaglutide:  {atc_l5: A10BJ06, atc_l4: A10BJ, atc_l4_label: "GLP-1 analogues"}
+  tirzepatide:  {atc_l5: A10BX16, atc_l4: A10BX, atc_l4_label: "Other blood glucose lowering drugs, excl. insulins"}
+  metformin:    {atc_l5: A10BA02, atc_l4: A10BA, atc_l4_label: "Biguanides"}
+  empagliflozin: {atc_l5: A10BK03, atc_l4: A10BK, atc_l4_label: "SGLT2 inhibitors"}
+  dapagliflozin: {atc_l5: A10BK01, atc_l4: A10BK, atc_l4_label: "SGLT2 inhibitors"}
+
+# Permanent eval golden set (SME §9) — runs on every crosswalk/pack change.
+eval_cases:
+  - id: rxnorm_scd_not_same_as_atc_level5_001
+    candidate: {from_system: rxnorm, tty: SCD, to_target: atc_exact_reverse}
+    expect_relation: rejected
+    expect_flags: [RXNORM_TOO_SPECIFIC_FOR_REVERSE_MATCH]
+    expect_action: rejected_or_quarantined
+    gold_reason: "SCD has ingredient+strength+dose_form; ATC L5 is substance-level."
+  - id: atc_level4_not_exact_product_001
+    candidate: {from_system: atc, level: 4, to_target: exact_product}
+    expect_relation: rejected
+    expect_flags: [ATC_TOO_BROAD_FOR_EXACT_MATCH]
+    expect_action: rejected_or_quarantined
+    gold_reason: "A10BJ is a GLP-1 analogue class, not an exact product."
+  - id: atc_level5_is_substance_class_not_brand_001
+    candidate: {from_system: atc, level: 5, to_target: brand, atc_code: A10BJ06}
+    expect_relation: rejected
+    expect_flags: [ATC_TOO_BROAD_FOR_EXACT_MATCH]
+    expect_action: rejected_or_quarantined
+    gold_reason: "A10BJ06 identifies semaglutide classification, not brand/strength/pack."
+  - id: atc_to_pricing_forbidden_001
+    candidate: {from_system: atc, level: 5, to_target: pricing_configuration}
+    expect_relation: rejected
+    expect_flags: [PRICING_REQUIRES_CONFIGURATION_NOT_ATC]
+    expect_action: rejected_or_quarantined
+    gold_reason: "Pricing needs configuration + market + pack + effective date; ATC cannot supply these."
+  - id: atc_class_not_payer_class_001
+    candidate: {from_system: atc, level: 4, to_target: payer_policy_product}
+    expect_relation: rejected
+    expect_flags: [PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS]
+    expect_action: rejected_or_quarantined
+    gold_reason: "Payer policy class language may not match ATC boundaries; needs payer evidence."
+  - id: rxnorm_in_to_molecule_exact_001
+    candidate: {from_system: rxnorm, tty: IN, to_target: molecule, method: exact_identifier}
+    expect_relation: exact
+    expect_scope: substance_level
+    expect_action: approved_auto
+    gold_reason: "Ingredient RxCUI loaded from source maps exactly to the molecule."
+  - id: atc_level4_to_drug_class_exact_001
+    candidate: {from_system: atc, level: 4, to_target: drug_class, method: atc_hierarchy}
+    expect_relation: exact
+    expect_scope: drug_class_level
+    gold_reason: "ATC L4 is the pharmacological drug-class level — exact for class membership."
+  - id: rxnorm_min_combination_many_to_many_001
+    candidate: {from_system: rxnorm, tty: MIN, to_target: component_set, many_to_many: true}
+    expect_relation: related
+    expect_flags: [RXNORM_ATC_MANY_TO_MANY, COMBINATION_COMPONENT_AMBIGUITY]
+    expect_action: review_required
+    gold_reason: "Combination concepts are many-to-many; component + combo ATC mappings kept separate."
