@@ -1,0 +1,109 @@
+# pharma_semantic_resolution.yaml
+#
+# Domain pack for resolving ambiguous pharma entities extracted from structured,
+# semi-structured and unstructured sources. Authored from the domain expert's
+# spec (docs/domain_pack_raw.md) — this is the machine-consumed configuration the
+# semantic-resolution engine loads at runtime (domain/pharma/packs/loader.py).
+#
+# Design principle: resolve entities at the HIGHEST SAFE level supported by
+# evidence. Never collapse ingredient / product / configuration / market / regimen
+# into a single drug match. Preserve ambiguity rather than force false certainty.
+pack:
+  id: pharma.semantic_resolution.v0_1
+  domain: pharma_intelligence
+  owner: domain_steward_pharma
+  status: draft
+  version: 0.1
+
+# Lexicon — overridable term tables consumed by drug_mention_parser.DrugLexicon.
+lexicon:
+  formulations:
+    [tablet, tablets, capsule, capsules, injection, injectable, solution,
+     suspension, cream, ointment, gel, patch, patches, inhaler, spray, drops,
+     suppository, powder, granules, syrup, elixir, emulsion, lotion, foam,
+     implant, pen, prefilled, pre-filled, autoinjector, auto-injector, vial,
+     ampoule, cartridge, device]
+  routes:
+    [oral, subcutaneous, intramuscular, intravenous, ophthalmic, nasal, topical,
+     rectal, sublingual, buccal, transdermal, inhalation, infusion, subcut, sc,
+     iv, im, po]
+  release_qualifiers:
+    [extended-release, extended release, delayed-release, delayed release,
+     immediate-release, immediate release, modified-release, sustained-release,
+     controlled-release, er, xr, sr, cr, dr, ir, xl]
+  salt_tokens:
+    [hydrochloride, hcl, sodium, potassium, calcium, sulfate, sulphate,
+     phosphate, maleate, mesylate, besylate, tartrate, succinate, fumarate,
+     citrate, acetate, hydrate, anhydrous, monohydrate, dihydrate]
+  regimen:
+    "once weekly": once_weekly
+    weekly: once_weekly
+    "once daily": once_daily
+    daily: once_daily
+    "twice daily": twice_daily
+    bid: twice_daily
+    titration: titration
+    "loading dose": loading_dose
+    "maintenance dose": maintenance
+    maintenance: maintenance
+    "starter pack": starter_pack
+    starter: starter_pack
+    "sample pack": sample_pack
+  context:
+    "not currently taking": negation
+    "not taking": negation
+    discontinued: negation
+    stopped: negation
+    "switched from": switch
+    "switched to": switch
+    switch: switch
+    "increased to": dose_change
+    "decreased to": dose_change
+    increased: dose_change
+    supplied: supply
+    dispensed: supply
+  # brand -> canonical generic / combination. Extend per market in a market pack.
+  brands:
+    ozempic: semaglutide
+    wegovy: semaglutide
+    rybelsus: semaglutide
+    mounjaro: tirzepatide
+    zepbound: tirzepatide
+    entresto: sacubitril/valsartan
+
+# Policy — consumed by services.semantic_resolution.ResolutionPolicy.
+policy:
+  # Confidence bands (domain_pack_raw.md §7 + YAML_pack1 confidence_bands).
+  auto_resolve_threshold: 0.85      # strong: auto_resolve_with_audit
+  auto_resolve_strict: 0.95         # deterministic: auto_approve
+  do_not_resolve_below: 0.50
+  min_margin_over_second: 0.15
+  low_source_reliability: 0.5
+  # Use-case merge policy — flip per use-case (commercial vs epidemiology).
+  collapse_salt: false
+  collapse_release: false
+  distinguish_market: true
+  distinguish_formulation: true
+  distinguish_route: true
+  # Components that exist ONLY as a combination (mono mention may resolve to the
+  # combo without MONO_COMBO_AMBIGUITY). Curated; grown by steward decisions.
+  combo_only_components: [sacubitril, lcz696]
+  # Explainable confidence weights (domain_pack_raw.md §7 positive_evidence_scores).
+  weights:
+    ingredient: 3.0
+    text_similarity: 1.0
+    ontology_support: 1.0
+    brand_generic: 1.0
+    formulation: 1.0
+    route: 1.0
+    strength: 1.5
+    concentration: 1.5
+    volume_pack: 0.5
+    market: 0.5
+    source_reliability: 1.0
+    extraction_quality: 0.5
+
+# Critical flags — force escalation, never auto-resolve (domain_pack_raw.md §8).
+critical_flags:
+  [MONO_COMBO_AMBIGUITY, DOSE_VOLUME_CONFUSION, FORM_ROUTE_CONFLICT,
+   FORMULATION_CONFLICT, CONTRADICTORY_EVIDENCE]

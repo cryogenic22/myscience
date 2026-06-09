@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Governed Semantic Resolution — Domain-Pack Architecture</title>
+<style>
+  :root{
+    --bg:#0d0f12; --panel:#15181d; --panel2:#1b1f26; --line:#2a2f38;
+    --ink:#e8e6e1; --mut:#9aa1ac; --dim:#6b7280;
+    --R:#6B7AB8; --C:#F26C0D; --S:#1E8A99; --I:#9C5D8A; --X:#8B7355;
+    --ok:#3FB984; --warn:#E0A33E; --bad:#D9656B;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"DM Sans",-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:56px 28px 120px}
+  h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.01em;line-height:1.15}
+  h1{font-size:40px;margin:0 0 8px}
+  .sub{color:var(--mut);font-size:18px;margin:0 0 8px}
+  .meta{color:var(--dim);font-size:13px;font-family:ui-monospace,Menlo,monospace;margin-bottom:36px}
+  h2{font-size:26px;margin:50px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:18px;margin:26px 0 9px;color:#d7d3ca}
+  p{color:#cfd3da;margin:12px 0}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--panel2);padding:1px 6px;border-radius:4px;color:#d7d3ca}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:16px 0}
+  .lead{font-size:18px;color:#dfe2e7}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .tag{display:inline-block;font-family:ui-monospace,monospace;font-size:11px;padding:2px 7px;border-radius:5px;border:1px solid var(--line)}
+  .bad{color:var(--bad);border-color:#52323a}.ok{color:var(--ok);border-color:#244a3c}.warn{color:var(--warn);border-color:#4d3f24}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-family:ui-monospace,monospace}
+  .R{background:rgba(107,122,184,.16);color:#9aa6d6}.C{background:rgba(242,108,13,.15);color:#f0975a}
+  .S{background:rgba(30,138,153,.16);color:#52b6c4}.I{background:rgba(156,93,138,.16);color:#c189b3}
+  .flow{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:16px 0;font-family:ui-monospace,monospace;font-size:12.5px}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+  .step.hot{border-color:var(--C);color:#f0975a}
+  .arr{color:var(--dim)}
+  pre{background:#0a0c0f;border:1px solid var(--line);border-radius:10px;padding:15px 17px;overflow:auto;font-size:12px;color:#cdd2da}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .kicker{font-family:ui-monospace,monospace;font-size:12px;color:var(--S);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+  ul{color:#cfd3da}li{margin:5px 0}
+  .ph{border-left:3px solid var(--line);padding-left:15px;margin:13px 0}
+  .ph.done{border-color:var(--ok)}.ph.next{border-color:var(--C)}.ph.later{border-color:var(--dim)}
+  .src{font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Market Zero · Data lane · integrated design</div>
+  <h1>Governed Semantic Resolution</h1>
+  <p class="sub">A domain-pack architecture for identity-level-aware, explainable, steward-governed resolution — reconciling the red-team challenge, the data-intelligence strategy, Domain Forge, and the SME's pack specs.</p>
+  <p class="meta">Supersedes the standalone Phase-1 note · branch <code>claude/data/semantic-resolution</code></p>
+
+  <div class="card lead">
+    <strong>The thesis, restated with the SME.</strong> A "match" is not one thing. The system must never be allowed
+    to mark something <em>resolved</em> without stating <em>at what level</em> and <em>what it is still uncertain about</em>.
+    The SME's verdict is decisive: this belongs in a <strong>versioned, SME-authorable domain pack</strong>, not hidden
+    in resolver code — because the pack controls not just what matches, but what may become a Fact, what must become a
+    Gap, and what must be routed to a steward. The engine is generic; the pharma judgement is data.
+  </div>
+
+  <h2>1 · Source documents → one design</h2>
+  <table>
+    <tr><th>Document</th><th>Role in this design</th></tr>
+    <tr><td>Red-team challenge</td><td>The acceptance standard: no false merges across levels, preserve partial matches, explain everything, surface ambiguity, learn, regression-test every fix</td></tr>
+    <tr><td><code>domain_pack_raw.md</code> (SME)</td><td><strong>Canonical spec</strong> — identity levels, attribute typing, flag vocabulary, confidence weights/bands, source profiles, fact contracts, stewardship UI, eval suite, learning loop. Directive: split into 7 packs, not one swamp</td></tr>
+    <tr><td><code>YAML_pack1.md</code> (SME)</td><td>The three foundational packs — <em>source contracts</em>, <em>fact/signal/gap object contracts</em>, <em>confidence/stewardship/eval</em> — plus the build <em>sequencing</em></td></tr>
+    <tr><td>data-intelligence-strategy</td><td>The spine <code>Source→Evidence→Extraction→Resolution+Ontology→Fact→Signal→Insight→Gap→Scenario→Decision→Learning</code>; resolution gates what becomes a Fact</td></tr>
+    <tr><td>domain-forge (gamified SME)</td><td>The maintenance loop: round ④ "same or different?" → pack edit + gold label + validation, never silent overwrite</td></tr>
+  </table>
+
+  <h2>2 · The domain-pack suite (the architecture)</h2>
+  <p>Seven packs; a generic engine consumes them. The SME's sequencing is explicit — <em>foundations before therapy
+  packs</em> ("beautiful upstairs, no foundations" otherwise).</p>
+  <table>
+    <tr><th>#</th><th>Pack</th><th>Owns</th><th>Maps to</th><th>State</th></tr>
+    <tr><td>1</td><td><code>pharma_core</code></td><td>entity types, ontology spine, identity levels, canonical IDs</td><td>Loop 1 (ontology)</td><td><span class="tag warn">spec</span></td></tr>
+    <tr><td>2</td><td><code>pharma_semantic_resolution</code></td><td>matching/disambiguation rules, lexicon, policy, combo-only</td><td>this engine</td><td><span class="tag ok">built</span></td></tr>
+    <tr><td>3</td><td><code>pharma_source_contracts</code></td><td>trust tiers A–D, allowed_uses, must_capture, may_emit, review_triggers</td><td>Loop 10</td><td><span class="tag warn">spec</span></td></tr>
+    <tr><td>4</td><td><code>pharma_fact_signal_gap_contracts</code></td><td>Evidence/Fact/Signal/Insight/Gap/CalibrationEvent contracts</td><td>Loops 5·6·9</td><td><span class="tag warn">spec</span></td></tr>
+    <tr><td>5</td><td><code>pharma_confidence_stewardship_eval</code></td><td>confidence dims, bands, queues, curator UI, eval, learning</td><td>Loop 11</td><td><span class="tag warn">spec</span></td></tr>
+    <tr><td>6</td><td><code>obesity_metabolic_playbooks</code></td><td>therapy-area dimensions, mechanisms, endpoints, comparators</td><td>Domain Forge</td><td><span class="tag">later</span></td></tr>
+    <tr><td>7</td><td><code>eval_semantic_resolution</code></td><td>red-team golden cases (runs on every change)</td><td>this engine</td><td><span class="tag ok">built</span></td></tr>
+  </table>
+  <p class="src">Packs 2 and 7 are authored and engine-wired in this branch. Packs 1/3/4/5 are SME-specified and map onto already-planned data-lane loops; pack 6 is sequenced last per the SME.</p>
+
+  <h2>3 · The engine (generic runtime, pack-configured)</h2>
+  <div class="flow">
+    <span class="step hot">parse → typed attrs</span><span class="arr">→</span>
+    <span class="step">candidates / level</span><span class="arr">→</span>
+    <span class="step hot">compare (4-valued)</span><span class="arr">→</span>
+    <span class="step hot">score (explainable)</span><span class="arr">→</span>
+    <span class="step hot">flag</span><span class="arr">→</span>
+    <span class="step hot">route auto/review/escalate</span><span class="arr">→</span>
+    <span class="step">persist</span><span class="arr">→</span>
+    <span class="step">learn</span>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Preserve, don't strip</h3>
+      <p><code>drug_mention_parser</code> turns text into typed <code>Quantity</code> (strength·concentration·volume·
+      activity), formulation, route (with <em>inferred</em> flag), combo components, salt/release, regimen &amp; context
+      flags — and always keeps <code>original_text</code>. The legacy normalizer did the opposite (stripped them).</p>
+    </div>
+    <div class="card">
+      <h3>Four-valued comparison</h3>
+      <p>Each attribute is <span class="pill S">confirmed</span> <span class="pill R">inferred</span>
+      <span class="pill I">missing</span> <span class="pill C">contradictory</span> / irrelevant. Missing ≠
+      contradictory — a strengthless candidate yields a <em>partial</em> ingredient-level match, not a false one.</p>
+    </div>
+    <div class="card">
+      <h3>Identity levels (canonical)</h3>
+      <p><code>ingredient_level → product_level → configuration_level → market_authorisation_level</code>, plus
+      <code>regimen_level</code> for treatment instructions that are <em>not</em> identity. Level is capped by the
+      attributes actually confirmed; a contradiction caps it at ingredient.</p>
+    </div>
+    <div class="card">
+      <h3>Explainable confidence + routing</h3>
+      <p>A 14-dimension breakdown (weights from the pack) minus ambiguity/risk penalties. Critical flags
+      (mono-combo, dose-volume, form/route, contradiction) force <span class="tag bad">escalate</span>; soft flags →
+      <span class="tag warn">review</span>; only a clean high-margin match → <span class="tag ok">auto</span>.</p>
+    </div>
+  </div>
+  <p>Everything pharma-specific is in the pack. Example — the same engine, two use-cases, by config alone:</p>
+  <pre>policy:                          # commercial use-case          | epidemiology use-case
+  collapse_salt: false           #   keep salt forms distinct    |   true (roll up to ingredient)
+  distinguish_market: true       #   US ≠ EU product             |   false
+  combo_only_components:         #   sacubitril resolves to combo without a flag…
+    [sacubitril, lcz696]         #   …metformin does NOT (it is normally standalone) → flagged</pre>
+
+  <h2>4 · Bringing sources together (integration + ontology)</h2>
+  <p class="lead">Integration is <strong>attribute union with per-source provenance against a shared identity graph</strong>,
+  not "pick the best string". Different sources know a drug at different levels; the ontology supplies the join keys.</p>
+  <table>
+    <tr><th>Source</th><th>Knows at level</th><th>Cross-walk key</th></tr>
+    <tr><td>ClinicalTrials.gov</td><td>ingredient / combination</td><td>NCT, intervention name</td></tr>
+    <tr><td>FDA SPL labels</td><td>configuration / brand / market(US)</td><td>RxCUI, set_id</td></tr>
+    <tr><td>FAERS</td><td>ingredient (messy)</td><td>generic name → UNII</td></tr>
+    <tr><td>ChEMBL</td><td>substance / salt</td><td>UNII, molecule ChEMBL id</td></tr>
+    <tr><td>NADAC / pricing</td><td>configuration / pack</td><td>NDC, GTIN</td></tr>
+    <tr><td>RxNorm / ATC (ontology)</td><td>the spine — all levels</td><td>IN·MIN·SCD·SBD term types</td></tr>
+  </table>
+  <ul>
+    <li><strong>Resolve to the right node</strong> at the most specific level the mention's attributes confirm.</li>
+    <li><strong>Union, don't overwrite</strong> — each (entity, attribute) keeps its asserting sources + reliability;
+      agreement raises confidence, a gap-fill enriches.</li>
+    <li><strong>Contradiction → flag, never silent-merge</strong> (SPL "subcutaneous" vs another "oral" → <code>FORM_ROUTE_CONFLICT</code>
+      to a steward). This is the hook for the contradiction engine (Loop 8).</li>
+    <li><strong>Use-case decides roll-up</strong> via the policy — the modular contract.</li>
+  </ul>
+
+  <h2>5 · Confidence, stewardship &amp; the curator UI (from YAML_pack1)</h2>
+  <p>The SME's confidence/stewardship pack is authoritative for bands, queues and the curator surface — it converges
+  with the data-trust observability loop (Loop 11):</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Confidence bands</h3>
+      <p><code>deterministic ≥0.97</code> (exact id) → auto · <code>strong ≥0.90</code> → auto-with-audit ·
+      <code>usable 0.75–0.90</code> → review if client-facing · <code>ambiguous 0.50–0.75</code> → human review ·
+      <code>weak &lt;0.50</code> → do-not-resolve. Never auto over a critical flag.</p>
+    </div>
+    <div class="card">
+      <h3>Stewardship queues</h3>
+      <p>Routed by flag: <em>entity-resolution</em> (mono-combo, configuration, acronym), <em>fact-quality</em>
+      (contradiction, missing attr), <em>access-pricing</em> (price-without-pack/market), <em>scenario-impact</em>
+      (probability Δ&gt;5pp, recommendation). Owners are SME roles.</p>
+    </div>
+    <div class="card">
+      <h3>Curator UI contract</h3>
+      <p>Extraction context · proposed resolution + level · attribute-comparison table · confidence breakdown ·
+      alternatives (why-not) · lineage (evidence/extraction/resolver/model/pack ids) · downstream impact ·
+      one-click approve/reject/split/merge/remap/create-canonical/add-alias/open-gap.</p>
+    </div>
+    <div class="card">
+      <h3>Learning loop (Domain Forge)</h3>
+      <p>Every steward correction creates ≥1 of: alias / exclusion / ontology edge / source-contract update /
+      threshold change / <strong>gold eval case</strong> / regression test. Never a silent pack overwrite; promotion
+      gated on eval-pass + owner approval + rollback.</p>
+    </div>
+  </div>
+
+  <h2>6 · Build sequencing (the SME's order)</h2>
+  <div class="ph done">
+    <h3>Phase 1 — Engine + semantic-resolution pack <span class="tag ok">shipped (this branch)</span></h3>
+    <ul>
+      <li><code>drug_mention_parser.py</code> (typed, attribute-preserving) + <code>semantic_resolution.py</code>
+        (levels, 4-valued comparison, 14-dim confidence, canonical flags, auto/review/escalate).</li>
+      <li><code>packs/pharma_semantic_resolution.yaml</code> + <code>packs/eval_semantic_resolution.yaml</code> +
+        <code>packs/loader.py</code> — the engine is pack-driven; behaviour is data.</li>
+      <li><strong>66 tests</strong> incl. a data-driven runner over the YAML golden set (all red-team categories).</li>
+    </ul>
+  </div>
+  <div class="ph next">
+    <h3>Phase 2 — Foundational contract packs + wiring <span class="tag warn">next loops</span></h3>
+    <ul>
+      <li><code>pharma_source_contracts</code> (Loop 10) → trust tier drives <code>source_reliability</code>.</li>
+      <li><code>pharma_fact_signal_gap_contracts</code> (Loops 5·6·9) → the Fact carries <code>resolution_level</code>,
+        <code>resolver_audit_id</code>, contradiction index; Gap + CalibrationEvent become first-class.</li>
+      <li><code>pharma_confidence_stewardship_eval</code> (Loop 11) → bands, queues, curator UI substrate.</li>
+      <li>Migration: persist <code>ResolutionDecision</code>; wire the parser into <code>entity_resolver.py</code> so
+        ingest attaches level + attributes + flags and routes to the queues. RxNorm/ATC/UNII cross-walk ingest.</li>
+    </ul>
+  </div>
+  <div class="ph later">
+    <h3>Phase 3 — Therapy playbooks + curator cockpit <span class="tag">later</span></h3>
+    <ul>
+      <li><code>obesity_metabolic_playbooks</code> (GLP-1/GIP/amylin, weight-loss/HbA1c/MACE endpoints, titration, access).</li>
+      <li>Curator UI (frontend lane) on the contract above; Domain Forge round ④ feeds pack edits + gold labels.</li>
+    </ul>
+  </div>
+
+  <h2>7 · Acceptance self-check</h2>
+  <table>
+    <tr><th>Red-team standard</th><th>Status</th></tr>
+    <tr><td>Avoid false merges across identity levels</td><td><span class="tag ok">yes</span> — level capped by confirmed attributes</td></tr>
+    <tr><td>Preserve partial matches without overclaiming</td><td><span class="tag ok">yes</span> — missing ≠ contradictory</td></tr>
+    <tr><td>Explain every match</td><td><span class="tag ok">yes</span> — 14-dim breakdown + reason + rejected candidates</td></tr>
+    <tr><td>Surface ambiguity before contamination</td><td><span class="tag ok">yes</span> — canonical flags + escalate/review</td></tr>
+    <tr><td>Mono-vs-combo (the headline trap)</td><td><span class="tag ok">yes</span> — owner-preference + pack combo-only, reconciled with Loop 2</td></tr>
+    <tr><td>Learn from steward decisions</td><td><span class="tag warn">Phase 2/3</span> — loop + contract designed</td></tr>
+    <tr><td>Regression test per corrected edge case</td><td><span class="tag ok">yes</span> — YAML golden set is the template</td></tr>
+  </table>
+  <p class="src" style="margin-top:36px">Honest status: Phase 1 is a pure, pack-configured engine with an exhaustive red-team
+  suite. It is not yet wired into the live ingest path or backed by persistence — that is Phase 2, and it slots onto
+  the already-planned data-lane loops (5·6·9·10·11) rather than inventing new scope.</p>
+</div>
+</body>
+</html>
