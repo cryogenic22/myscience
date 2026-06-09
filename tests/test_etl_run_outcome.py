@@ -51,3 +51,39 @@ def test_handles_none_counts_defensively():
     """Counts may arrive as None from a partially-populated result; must not raise."""
     assert classify_run_outcome(True, None, None, None) == RUN_OUTCOME_ZERO_ROWS
     assert classify_run_outcome(True, 5, None, None) == RUN_OUTCOME_NO_CHANGE
+
+
+# ============================================================
+# Incremental quiet-window vs broken-empty (openFDA FAERS/labels false-RED fix).
+# A source that has landed before, fetched incrementally, returning 0 is a
+# legitimate no-change window (FAERS lags months; labels rarely change) — NOT a
+# failure. Staleness stays a connector_health Lane-2 verdict (migration 088), so
+# this does not re-hide the 105-day-stale disease.
+# ============================================================
+
+def test_incremental_zero_with_history_is_no_change_not_failure():
+    out = classify_run_outcome(True, 0, 0, 0, incremental=True, has_history=True)
+    assert out == RUN_OUTCOME_NO_CHANGE
+
+
+def test_full_fetch_zero_is_still_failure_regardless_of_history():
+    """A non-incremental (full) fetch returning 0 is genuinely broken."""
+    assert classify_run_outcome(True, 0, 0, 0, incremental=False, has_history=True) == RUN_OUTCOME_ZERO_ROWS
+
+
+def test_incremental_zero_without_history_is_failure():
+    """A source that has NEVER landed, fetched incrementally, returning 0 is broken
+    (never-landed), not a quiet window."""
+    assert classify_run_outcome(True, 0, 0, 0, incremental=True, has_history=False) == RUN_OUTCOME_ZERO_ROWS
+
+
+def test_default_params_preserve_legacy_behavior():
+    """Old call sites (no incremental/history) keep the strict silent-zero verdict."""
+    assert classify_run_outcome(True, 0, 0, 0) == RUN_OUTCOME_ZERO_ROWS
+
+
+def test_incremental_no_change_does_not_mask_landed_or_partial():
+    # landed still wins over the quiet-window path
+    assert classify_run_outcome(True, 0, 5, 0, incremental=True, has_history=True) == RUN_OUTCOME_LANDED
+    # a failed run is still PARTIAL even if incremental+history
+    assert classify_run_outcome(False, 0, 0, 0, incremental=True, has_history=True) == RUN_OUTCOME_PARTIAL
