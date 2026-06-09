@@ -148,6 +148,13 @@ def classify_run_outcome(
     staleness (a feed that *should* have new data but doesn't) stays a
     connector_health Lane-2 verdict comparing table-age to the SLA (migration 088).
     Defaults are False so legacy call sites keep the strict silent-zero verdict.
+
+    Tradeoff (named, accepted): for an incremental+has_history source these two
+    sources now lean on the FLOW (table-age vs SLA) backstop for breakage
+    detection rather than per-run E2E flagging — a real break is caught when the
+    table ages past SLA (RED at ~2×SLA) instead of on the next run. That is the
+    right call here (these sources emit ~30 false REDs/week and a 0-row fetch
+    writes no rows, so retrieved_at does not advance and FLOW still ages).
     """
     if not success:
         return RUN_OUTCOME_PARTIAL
@@ -504,8 +511,11 @@ class IntegrationPipeline:
                 [source_name, exclude_run_id, RUN_OUTCOME_LANDED],
             )
             return bool(row)
-        except Exception:  # defensive: never let the health-classification query
-            logger.debug("has-landed-before check failed for %s", source_name, exc_info=True)
+        except Exception:  # defensive: a health-classification query hiccup must
+            # not crash run finalization. Fail CLOSED → no history → ZERO_ROWS
+            # (the strict verdict), and log loudly (not debug) since a failing
+            # health query is itself worth seeing.
+            logger.warning("has-landed-before check failed for %s", source_name, exc_info=True)
             return False
 
     def _finalize_etl_run(

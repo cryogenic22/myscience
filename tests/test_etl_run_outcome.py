@@ -87,3 +87,42 @@ def test_incremental_no_change_does_not_mask_landed_or_partial():
     assert classify_run_outcome(True, 0, 5, 0, incremental=True, has_history=True) == RUN_OUTCOME_LANDED
     # a failed run is still PARTIAL even if incremental+history
     assert classify_run_outcome(False, 0, 0, 0, incremental=True, has_history=True) == RUN_OUTCOME_PARTIAL
+
+
+# ============================================================
+# _source_has_landed_before (DB-read path) — the has_history signal + fail-closed.
+# ============================================================
+
+class _StubDB:
+    def __init__(self, row=None, raises=False):
+        self._row, self._raises = row, raises
+        self.last_params = None
+
+    def fetch_one(self, sql, params=None):
+        if self._raises:
+            raise RuntimeError("db down")
+        self.last_params = params
+        return self._row
+
+
+def _bare_pipeline(db):
+    """A pipeline instance without the heavy __init__ (we only test one method)."""
+    from integration.pipeline import IntegrationPipeline
+    p = IntegrationPipeline.__new__(IntegrationPipeline)
+    p.db = db
+    return p
+
+
+def test_source_has_landed_before_true_when_prior_landed():
+    p = _bare_pipeline(_StubDB(row={"?column?": 1}))
+    assert p._source_has_landed_before("openfda_faers", "run-1") is True
+    assert "openfda_faers" in p.db.last_params and "run-1" in p.db.last_params
+
+
+def test_source_has_landed_before_false_when_never_landed():
+    assert _bare_pipeline(_StubDB(row=None))._source_has_landed_before("x", "run-1") is False
+
+
+def test_source_has_landed_before_fails_closed_on_db_error():
+    """A health-query error must fail CLOSED (no history -> strict ZERO_ROWS)."""
+    assert _bare_pipeline(_StubDB(raises=True))._source_has_landed_before("x", "run-1") is False
