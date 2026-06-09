@@ -1,0 +1,114 @@
+# eval_semantic_resolution.yaml
+#
+# Permanent red-team golden set for semantic resolution. Every corrected edge
+# case becomes a row here and runs on every resolver / parser / pack change
+# (domain_pack_raw.md §9 + YAML_pack1 eval_pack). Domain Forge round ④ ("same or
+# different?") appends cases here; the loader + test_semantic_resolution_eval.py
+# execute them. Schema mirrors the expert's eval_pack required fields.
+pack:
+  id: pharma.eval.semantic_resolution.v0_1
+  version: 0.1
+
+cases:
+  # --- kind: pair — two mentions, same ingredient but NOT same configuration ---
+  - eval_id: semaglutide_volume_vs_strength_001
+    kind: pair
+    raw_mentions: ["semaglutide 2.5 mL", "semaglutide 5.0 mL"]
+    expect_same_ingredient: true
+    expect_same_configuration: false
+    differ_on: volume
+    gold_reason: "mL is volume. It cannot be treated as dose strength or concentration."
+
+  - eval_id: semaglutide_concentration_001
+    kind: pair
+    raw_mentions: ["semaglutide 2.5 mg/mL", "semaglutide 5.0 mg/mL"]
+    expect_same_ingredient: true
+    expect_same_configuration: false
+    differ_on: concentration
+    gold_reason: "Concentration is different from dose strength and fill volume."
+
+  - eval_id: semaglutide_strength_vs_volume_unit_001
+    kind: pair
+    raw_mentions: ["semaglutide 2.5 mg", "semaglutide 2.5 mL"]
+    expect_same_ingredient: true
+    expect_same_configuration: false
+    differ_on: strength_vs_volume
+    gold_reason: "2.5 mg (strength) and 2.5 mL (volume) are different attribute kinds."
+
+  # --- kind: resolve — raw mention + candidate set + expected governance ---
+  - eval_id: mono_combo_metformin_001
+    kind: resolve
+    raw_input: "metformin"
+    candidates:
+      - {entity_id: combo, name: "metformin/sitagliptin",
+         components: [metformin, sitagliptin], is_combination: true,
+         is_standalone_substance: false, source_reliability: 0.9, richness: 200}
+    expected_flags: [MONO_COMBO_AMBIGUITY]
+    expected_action: escalate
+    should_auto_resolve: false
+    gold_reason: "A normally-standalone ingredient must not silently map to a combination."
+
+  - eval_id: combo_sacubitril_001
+    kind: resolve
+    raw_input: "sacubitril"
+    candidates:
+      - {entity_id: combo, name: "valsartan/sacubitril",
+         components: [valsartan, sacubitril], is_combination: true,
+         is_standalone_substance: false, source_reliability: 0.9, richness: 200}
+    forbidden_flags: [MONO_COMBO_AMBIGUITY]
+    gold_reason: "sacubitril is pack-marked combo-only (Entresto); resolving to the combo is sanctioned."
+
+  - eval_id: mono_resolves_to_owner_001
+    kind: resolve
+    raw_input: "sacubitril"
+    candidates:
+      - {entity_id: combo, name: "valsartan/sacubitril",
+         components: [valsartan, sacubitril], is_combination: true,
+         is_standalone_substance: false, source_reliability: 0.9, richness: 200}
+      - {entity_id: owner, name: "sacubitril", components: [sacubitril],
+         is_standalone_substance: true, source_reliability: 0.9, richness: 5}
+    expected_entity_id: owner
+    expected_level: ingredient_level
+    gold_reason: "When a standalone owner exists it wins; the mono resolves to it, not the combo."
+
+  - eval_id: volume_not_strength_001
+    kind: resolve
+    raw_input: "semaglutide 2.5 mL"
+    candidates:
+      - {entity_id: sema, name: semaglutide, components: [semaglutide],
+         is_standalone_substance: true, source_reliability: 0.9, richness: 400}
+    expected_flags: [VOLUME_NOT_STRENGTH]
+    should_auto_resolve: false
+    gold_reason: "A bare fill-volume cannot resolve a product configuration; review required."
+
+  - eval_id: formulation_route_conflict_001
+    kind: resolve
+    raw_input: "metformin oral tablet"
+    candidates:
+      - {entity_id: inj, name: metformin, components: [metformin],
+         formulation: injection, route: intravenous, source_reliability: 0.9, richness: 10}
+    expected_flags: [FORMULATION_CONFLICT]
+    expected_action: escalate
+    should_auto_resolve: false
+    gold_reason: "Same molecule across different formulation/route is not the same clinical product."
+
+  - eval_id: context_not_product_001
+    kind: resolve
+    raw_input: "not currently taking metformin"
+    candidates:
+      - {entity_id: m, name: metformin, components: [metformin],
+         source_reliability: 0.9, richness: 50}
+    expected_flags: [CONTEXT_NOT_PRODUCT]
+    should_auto_resolve: false
+    gold_reason: "A negation is a treatment event, not a product-identity assertion."
+
+  - eval_id: clean_ingredient_auto_001
+    kind: resolve
+    raw_input: "semaglutide"
+    candidates:
+      - {entity_id: sema, name: semaglutide, components: [semaglutide],
+         is_standalone_substance: true, source_reliability: 0.9, richness: 400}
+    expected_entity_id: sema
+    expected_level: ingredient_level
+    should_auto_resolve: true
+    gold_reason: "A clean, unambiguous, well-sourced ingredient match auto-resolves."
