@@ -96,6 +96,33 @@ def test_value_not_a_subset_returns_none():
     assert link is None
 
 
+def test_lone_component_with_existing_mono_row_does_not_combo_link():
+    """Defense-in-depth: a bare mono name that HAS its own drug row must NOT be
+    linked to a combo via single-element subset match (the metformin hazard)."""
+    db = MockResolverDB()
+    db.add_fetch_one("from drugs", {"?column?": 1})  # a standalone mono row exists
+    db.add_fetch_all("richness", [
+        {"id": "metformin-combo", "generic_name": "metformin/sitagliptin", "richness": 99},
+    ])
+    link = _resolver(db)._combo_component_lookup("generic_name", "metformin")
+    assert link is None
+
+
+def test_lone_component_without_mono_row_still_combo_links():
+    """sacubitril (no standalone mono row -> fetch_one None) still resolves."""
+    db = MockResolverDB()  # fetch_one default None == no mono row
+    db.add_fetch_all("richness", _SACUBITRIL_COMBOS)
+    link = _resolver(db)._combo_component_lookup("generic_name", "sacubitril")
+    assert link is not None
+    assert link.entity_id == "rich-entresto"
+
+
+def test_brand_name_id_key_ignored():
+    db = MockResolverDB()
+    db.add_fetch_all("richness", _SACUBITRIL_COMBOS)
+    assert _resolver(db)._combo_component_lookup("brand_name", "entresto") is None
+
+
 def test_no_candidate_combos_returns_none():
     db = MockResolverDB()
     db.add_fetch_all("richness", [])

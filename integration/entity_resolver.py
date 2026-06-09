@@ -477,7 +477,9 @@ class EntityResolver:
         component set (subset match), then picks the richest (facts + trials)
         active candidate — agreeing with resolve_asset_to_subject's richness rank.
         """
-        if id_key not in ("generic_name", "brand_name"):
+        # generic_name only — the query reads drugs.generic_name; brand strings
+        # are not generic substrings, so a brand id_key has no business here.
+        if id_key != "generic_name":
             return None
         value = (value or "").strip()
         if len(value) < 3:
@@ -486,6 +488,28 @@ class EntityResolver:
         want = _combo_components(value)
         if not want:
             return None
+
+        # Defense-in-depth for a lone component: a single-element `want` is a
+        # subset of EVERY combo containing it (e.g. "metformin" ⊆ dozens of
+        # combos). Linking a bare mono name to an arbitrary combo would be wrong.
+        # The normal cascade catches such names via fuzzy on their own mono row;
+        # only fall through to a combo here when NO standalone mono row owns the
+        # name (the genuine "sacubitril exists only as Entresto" case). This makes
+        # the ordering guarantee explicit rather than ordering-only.
+        if len(want) == 1:
+            comp = next(iter(want))
+            mono = self.db.fetch_one(
+                """
+                SELECT 1 FROM drugs
+                WHERE LOWER(generic_name) = %s
+                  AND (record_status IS NULL
+                       OR record_status NOT IN ('merged', 'superseded', 'excluded'))
+                LIMIT 1
+                """,
+                [comp],
+            )
+            if mono:
+                return None
 
         # Cheap prefilter: candidate combos must contain the longest component as
         # a substring AND look like a combination (carry a combo delimiter). The
