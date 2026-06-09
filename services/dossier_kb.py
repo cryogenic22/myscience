@@ -134,6 +134,13 @@ _PREDICATE_DOMAIN: dict[str, str] = {
     "fda_approval_date":    "pipeline_and_macro",
     "regulatory_approval":  "pipeline_and_macro",
     "regulatory_setback":   "pipeline_and_macro",
+    # L2 development-lens emitter predicates (derived from clinical_trials
+    # phase+status). "approval" is already prefix-routable, but list all three
+    # so the development_success playbook's routes resolve explicitly and the
+    # phase_transition / discontinuation predicates don't fall to wargame_specific.
+    "phase_transition":     "pipeline_and_macro",
+    "discontinuation":      "pipeline_and_macro",
+    "approval_event":       "pipeline_and_macro",
     "patent_event":         "pipeline_and_macro",
     "supply_disruption":    "pipeline_and_macro",
     "ma_deal":              "competitive",
