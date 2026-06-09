@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -33,6 +34,29 @@ from domain.pharma.mention_normalizer import (
 from integration.normalizer import NormalizedRecord
 
 logger = logging.getLogger(__name__)
+
+
+# Delimiters that separate the active ingredients of a combination drug name,
+# e.g. "valsartan/sacubitril", "sacubitril and valsartan", "metformin + sitagliptin".
+_COMBO_DELIM_RE = re.compile(r"\s*(?:/|\+|&|,|\band\b|\bplus\b|\bwith\b)\s*", re.IGNORECASE)
+
+
+def _combo_components(name: str) -> set[str]:
+    """Split a (possibly combination) drug name into its normalized component set.
+
+    "sacubitril and valsartan" -> {"sacubitril", "valsartan"}
+    "valsartan/sacubitril"     -> {"sacubitril", "valsartan"}
+    "sacubitril"               -> {"sacubitril"}
+
+    Each component is run through normalize_drug_mention to strip dosage/form/marks
+    so the two sides compare on base compound names.
+    """
+    out: set[str] = set()
+    for part in _COMBO_DELIM_RE.split(name or ""):
+        cleaned = normalize_drug_mention(part)
+        if cleaned and len(cleaned) >= 3:
+            out.add(cleaned.lower())
+    return out
 
 
 # ============================================================
@@ -211,6 +235,28 @@ class EntityResolver:
 
         return resolved
 
+    def resolve_drug_mention(
+        self, value: str, source_type: SourceType
+    ) -> Optional[ResolvedLink]:
+        """DB-only drug resolution for backfills (no NormalizedRecord needed).
+
+        Mirrors the ingest cascade for a drug name minus the embedding/LLM/
+        auto-create strategies (which need an OpenAI client / credible source):
+        alias -> fuzzy -> combo-component. Used by
+        scripts/backfill_orphan_drug_links.py to recover rows that orphaned
+        before the combo-component fallback existed.
+        """
+        value = (value or "").strip()
+        if not value:
+            return None
+        link = self._alias_lookup("drug", value, source_type)
+        if link:
+            return link
+        link = self._fuzzy_lookup("generic_name", value)
+        if link:
+            return link
+        return self._combo_component_lookup("generic_name", value)
+
     def _resolve_single(
         self, id_key: str, id_value: Any, record: NormalizedRecord
     ) -> Optional[ResolvedLink]:
@@ -246,6 +292,16 @@ class EntityResolver:
                 link = self._llm_lookup(id_key, str(id_value), record)
                 if link:
                     return link
+
+            # Strategy 5b: Combo-component fallback. A drug searched by a mono
+            # component name (e.g. "sacubitril") or a reordered combo name only
+            # exists as a combination row (e.g. "valsartan/sacubitril"); trigram
+            # fuzzy cannot bridge that gap. Fires only after fuzzy/embedding/LLM
+            # miss, so a component with its own mono row (e.g. "valsartan")
+            # resolves to the mono row first and never reaches here.
+            link = self._combo_component_lookup(id_key, str(id_value))
+            if link:
+                return link
 
             # Strategy 6: Auto-create entity
             if self.auto_create_enabled:
@@ -401,6 +457,87 @@ class EntityResolver:
                     candidates=candidates,
                 ),
             )
+        return None
+
+    # ============================================================
+    # Strategy 5b: Combo-component fallback
+    # ============================================================
+
+    def _combo_component_lookup(self, id_key: str, value: str) -> Optional[ResolvedLink]:
+        """Resolve a drug name to the richest active combination drug that
+        contains it as a component.
+
+        Handles two failure modes that trigram fuzzy cannot:
+          - a mono component ("sacubitril") whose drug only exists as a combo
+            ("valsartan/sacubitril"),
+          - a combo expressed with a different delimiter/order
+            ("sacubitril and valsartan" vs "valsartan/sacubitril").
+
+        Matches only when EVERY component of `value` is present in the candidate's
+        component set (subset match), then picks the richest (facts + trials)
+        active candidate — agreeing with resolve_asset_to_subject's richness rank.
+        """
+        if id_key not in ("generic_name", "brand_name"):
+            return None
+        value = (value or "").strip()
+        if len(value) < 3:
+            return None
+
+        want = _combo_components(value)
+        if not want:
+            return None
+
+        # Cheap prefilter: candidate combos must contain the longest component as
+        # a substring AND look like a combination (carry a combo delimiter). The
+        # delimiter clause prevents matching a mono row that merely contains the
+        # substring.
+        longest = max(want, key=len)
+        candidates = self.db.fetch_all(
+            """
+            SELECT id, generic_name,
+                   (SELECT count(*) FROM facts f
+                      WHERE f.subject_entity_id = drugs.id::text)
+                 + (SELECT count(*) FROM clinical_trials ct
+                      WHERE ct.drug_id = drugs.id) AS richness
+            FROM drugs
+            WHERE (record_status IS NULL
+                   OR record_status NOT IN ('merged', 'superseded', 'excluded'))
+              AND generic_name ILIKE %s
+              AND (generic_name LIKE '%%/%%'
+                   OR generic_name LIKE '%%+%%'
+                   OR generic_name ILIKE '%% and %%'
+                   OR generic_name ILIKE '%% plus %%'
+                   OR generic_name LIKE '%%&%%')
+            ORDER BY richness DESC
+            LIMIT 25
+            """,
+            ["%" + longest + "%"],
+        )
+
+        for cand in candidates:
+            have = _combo_components(cand.get("generic_name") or "")
+            if want and want.issubset(have):
+                cand_name = cand.get("generic_name") or ""
+                return ResolvedLink(
+                    entity_type="drug",
+                    entity_id=str(cand["id"]),
+                    matched_via="combo_component",
+                    confidence=0.85,
+                    matched_value=value,
+                    trace=ResolutionTrace(
+                        raw_value=value,
+                        entity_type="drug",
+                        method="combo_component",
+                        confidence=0.85,
+                        reasoning=(
+                            f"'{value}' components {sorted(want)} are a subset of "
+                            f"combination drug '{cand_name}'; selected richest active "
+                            f"row (richness={cand.get('richness')})."
+                        ),
+                        candidates=[ResolutionCandidate(
+                            str(cand["id"]), cand_name, 0.85, "combo_component")],
+                    ),
+                )
         return None
 
     # ============================================================
