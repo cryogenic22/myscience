@@ -20,11 +20,14 @@ Loop L1b; this engine is the governed core they feed.
 
 from __future__ import annotations
 
+import logging
 import pathlib
 from dataclasses import dataclass, field
 from typing import Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 _PACK_PATH = (pathlib.Path(__file__).parent.parent
               / "domain" / "pharma" / "packs" / "pharma_rxnorm_atc_crosswalk.yaml")
@@ -269,3 +272,49 @@ def classify(c: CrosswalkCandidate, pack: Optional[dict] = None) -> CrosswalkRec
         flags=flags, action=action,
         reason=f"{target_label}->{c.to_target}: relation={relation}, scope={scope}, "
                f"conf={final}" + (f", flags={flags}" if flags else ""))
+
+
+# ============================================================
+# Read path — crosswalk evidence for a resolved entity
+# ============================================================
+
+_ONTOLOGY_CODES_SQL = """
+    SELECT external_system, external_id, external_label,
+           mapping_relation, mapping_scope, mapping_confidence
+      FROM crosswalk_records
+     WHERE internal_entity_id = %s
+       AND record_status = 'active'
+       AND (valid_to IS NULL OR valid_to > now())
+       AND mapping_relation <> 'rejected'
+     ORDER BY mapping_confidence DESC NULLS LAST
+"""
+
+
+def fetch_ontology_codes(db, internal_entity_id: str) -> list[dict]:
+    """Active, non-rejected crosswalk records for an entity, as the dict shape
+    CandidateEntity.ontology_codes / ontology_support_score expect:
+    {system, code, label, relation, scope, confidence}.
+
+    Read-only. Returns [] on any DB error (the resolver degrades to the neutral
+    ontology_support rather than failing the whole resolution)."""
+    try:
+        rows = db.fetch_all(_ONTOLOGY_CODES_SQL, [str(internal_entity_id)])
+    except Exception:
+        logger.exception("fetch_ontology_codes failed for %s", internal_entity_id)
+        return []
+    out: list[dict] = []
+    for r in rows or []:
+        conf = r.get("mapping_confidence")
+        try:
+            conf = float(conf) if conf is not None else 0.0
+        except (TypeError, ValueError):
+            conf = 0.0
+        out.append({
+            "system": r.get("external_system"),
+            "code": r.get("external_id"),
+            "label": r.get("external_label"),
+            "relation": r.get("mapping_relation"),
+            "scope": r.get("mapping_scope"),
+            "confidence": conf,
+        })
+    return out
