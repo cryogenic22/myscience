@@ -138,7 +138,7 @@ def mock_db():
     db.set_results("drugs", MOCK_DRUGS)
     db.set_results("companies", MOCK_COMPANIES)
     db.set_results("clinical_trials", MOCK_TRIALS)
-    db.set_results("mechanisms", MOCK_MECHANISMS)
+    db.set_results("mechanisms_of_action", MOCK_MECHANISMS)
     return db
 
 
@@ -377,3 +377,58 @@ class TestHydrationIntegration:
             from ctxpack.core.entity_graph import EntityGraph
             graph = EntityGraph.from_document(result.document)
             assert len(graph.to_dict()) >= 0  # May be empty on small test data, but shouldn't crash
+
+
+# ── L1: live schema-drift regression net (DB-gated) ──
+#
+# The corpus SQL silently drifted off the schema (mechanisms -> mechanisms_of_action,
+# company_name -> name, nct_id/title/enrollment renamed) so PharmaCorpusBuilder.pack()
+# crashed -> get_unified_handler() returned None -> EVERY chat fell back to the legacy
+# handler. The unit tests above use a MockDB and could not catch that. These run each
+# export query against the real DB and assert it EXECUTES and yields the keys the
+# corpus builder reads, so the drift can't recur unnoticed.
+import os as _os
+
+import pytest as _pytest
+
+_DB_URL = _os.environ.get("DATABASE_URL")
+_live = _pytest.mark.skipif(not _DB_URL, reason="DATABASE_URL not set — live corpus gate skipped")
+
+
+@_pytest.fixture(scope="module")
+def _live_builder():
+    from db import Database
+    from services.ctx_corpus import PharmaCorpusBuilder
+    return PharmaCorpusBuilder(Database(_DB_URL))
+
+
+@_live
+def test_export_drugs_executes_against_real_schema(_live_builder):
+    drugs = _live_builder.export_drugs(limit=5)
+    assert drugs, "export_drugs returned nothing against prod"
+    row = drugs[0]
+    for k in ("name", "mechanism", "company", "therapeutic_area", "id"):
+        assert k in row, f"missing key {k}"
+
+
+@_live
+def test_export_companies_and_mechanisms_execute(_live_builder):
+    assert _live_builder.export_companies(), "export_companies empty"
+    assert _live_builder.export_mechanisms(), "export_mechanisms empty"
+
+
+@_live
+def test_export_trials_executes(_live_builder):
+    trials = _live_builder.export_trials()
+    assert trials, "export_trials empty"
+    for k in ("nct_id", "title", "phase", "status", "drug_name"):
+        assert k in trials[0], f"missing key {k}"
+
+
+@_live
+def test_pack_builds_unified_corpus(_live_builder):
+    """pack() must succeed end-to-end — this is exactly what get_unified_handler
+    calls; if it raises, the unified handler is dead and chat falls back to legacy."""
+    import tempfile
+    result = _live_builder.pack(tempfile.mkdtemp())
+    assert result.entity_count > 0, "corpus packed 0 entities"
