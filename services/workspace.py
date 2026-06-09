@@ -5,10 +5,27 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
+
+
+def _json_default(obj):
+    """json.dumps fallback for DB-sourced values it can't serialize natively.
+
+    psycopg2's RealDictCursor returns numeric columns as ``Decimal`` and
+    timestamps as ``datetime``; a payload built from such rows (e.g. a gap-
+    research result) otherwise raised ``TypeError: Object of type Decimal is not
+    JSON serializable`` and crashed ``complete_research_job``. Coerce faithfully:
+    Decimal -> float (JSON has no decimal type), datetime/date -> ISO 8601.
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 class ChatWorkspaceService:
@@ -29,7 +46,7 @@ class ChatWorkspaceService:
         sid = session_id or str(uuid4())
         summary_value = summary or self._infer_summary(transcript)
         now = datetime.now(timezone.utc).isoformat()
-        transcript_json = json.dumps(transcript)
+        transcript_json = json.dumps(transcript, default=_json_default)
 
         existing = self.db.fetch_one(
             "SELECT id::text AS id FROM chat_sessions WHERE id::text = %s AND scope_key = %s LIMIT 1",
@@ -143,7 +160,7 @@ class ChatWorkspaceService:
 
     def create_research_job(self, *, scope_key: str, question: str, options: dict) -> dict:
         job_id = str(uuid4())
-        options_json = json.dumps(options or {})
+        options_json = json.dumps(options or {}, default=_json_default)
         self.db.execute(
             """
             INSERT INTO deep_research_jobs (id, scope_key, question, options, status)
@@ -222,7 +239,7 @@ class ChatWorkspaceService:
         )
 
     def complete_research_job(self, *, job_id: str, payload: dict) -> None:
-        payload_json = json.dumps(payload or {})
+        payload_json = json.dumps(payload or {}, default=_json_default)
         self.db.execute(
             """
             UPDATE deep_research_jobs
