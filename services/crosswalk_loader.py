@@ -96,7 +96,7 @@ def _resolve_richest_drug(db: Database, name: str) -> dict | None:
 
 def persist_crosswalk_record(
     db, *, internal_entity_id: str, external_system: str, external_id: str,
-    label: str, rec, source_version: str,
+    external_label: str, rec, source_version: str,
     method: str = "external_source_crosswalk",
     internal_entity_type: str = "molecule",
     apply: bool = True,
@@ -137,7 +137,7 @@ def persist_crosswalk_record(
             updated_at = NOW()
         """,
         [str(internal_entity_id), internal_entity_type, external_system, external_id,
-         label, rec.relation, rec.scope, rec.confidence, method, rec.flags or [],
+         external_label, rec.relation, rec.scope, rec.confidence, method, rec.flags or [],
          source_version, review_status, rec.action],
     )
     out["written"] = 1
@@ -179,7 +179,7 @@ def load_atc_seeds(db: Database, pack: dict, apply: bool = False) -> Counter:
 
         res = persist_crosswalk_record(
             db, internal_entity_id=drug["id"], external_system="atc",
-            external_id=seed["atc_l5"], label=label, rec=rec,
+            external_id=seed["atc_l5"], external_label=label, rec=rec,
             source_version=SOURCE_VERSION, apply=True)
         stats["records_written"] += res["written"]
         stats[f"verdict_{rec.action}"] += 1

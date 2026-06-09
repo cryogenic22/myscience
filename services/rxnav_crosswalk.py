@@ -158,7 +158,8 @@ def load_rxnav_crosswalk(db, *, limit: Optional[int] = None, apply: bool = False
                 rec = classify(build_rxnorm_ingredient_candidate(onto["rxcui_in"]), pack)
                 res = persist_crosswalk_record(
                     db, internal_entity_id=drug["id"], external_system="rxnorm",
-                    external_id=onto["rxcui_in"], label=f"RxNorm IN {onto['rxcui_in']} ({name})",
+                    external_id=onto["rxcui_in"],
+                    external_label=f"RxNorm IN {onto['rxcui_in']} ({name})",
                     rec=rec, source_version=SOURCE_VERSION,
                     method="exact_identifier", apply=apply)
                 stats["rxnorm_written"] += res["written"]
@@ -170,7 +171,7 @@ def load_rxnav_crosswalk(db, *, limit: Optional[int] = None, apply: bool = False
                 rec = classify(build_rxnav_atc_candidate(atc["code"], atc["level"], pack), pack)
                 res = persist_crosswalk_record(
                     db, internal_entity_id=drug["id"], external_system="atc",
-                    external_id=atc["code"], label=f"{atc['code']} ({atc['label']})",
+                    external_id=atc["code"], external_label=f"{atc['code']} ({atc['label']})",
                     rec=rec, source_version=SOURCE_VERSION, apply=apply)
                 stats["atc_written"] += res["written"]
                 stats["atc_spine_backfilled"] += res["backfilled"]
