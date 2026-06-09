@@ -242,6 +242,56 @@ class TestMetricsIntegration:
             assert "rows" in result["table_data"]
 
 
+# ── 7b. Citations / Evidence grounding (L2) ──
+
+class TestCitationGrounding:
+    """The unified path must emit structured evidence so the frontend can
+    resolve [N] citations, AND feed numbered snippets to the LLM so its
+    citations survive validate_citations (evidence_count > 0).
+
+    Regression: the resurrected handler hardcoded `evidence: []`, which both
+    blanked the frontend citation cards and forced validate_citations to strip
+    EVERY [N] marker (evidence_count=0). See roadmap L2.
+    """
+
+    def test_evidence_is_populated_from_sections(self, handler):
+        result = handler.handle("Tell me about semaglutide")
+        evidence = result["data"]["evidence"]
+        assert isinstance(evidence, list)
+        assert len(evidence) > 0, "evidence must be populated from retrieved CTX sections"
+
+    def test_evidence_items_have_frontend_shape(self, handler):
+        result = handler.handle("Tell me about semaglutide")
+        assert result["data"]["evidence"], "non-vacuous: must have items to shape-check"
+        for item in result["data"]["evidence"]:
+            # Shape expected by frontend EvidenceItem + CitationRef
+            assert set(item) >= {
+                "source", "entity_type", "entity_id", "content", "relevance", "provenance"
+            }
+            assert isinstance(item["content"], str) and item["content"].strip()
+
+    def test_llm_receives_numbered_evidence_snippets(self, handler, mock_llm):
+        """Without this, validate_citations(evidence_count=0) strips all [N]."""
+        handler.handle("Tell me about semaglutide")
+        assert mock_llm.synthesize.called
+        snippets = mock_llm.synthesize.call_args.kwargs.get("evidence_snippets")
+        assert snippets, "LLM must receive non-empty evidence_snippets"
+        # Count fed to the validator must cover the snippets the frontend shows
+        assert len(snippets) == len(mock_llm.synthesize.call_args.kwargs.get("evidence_snippets"))
+
+    def test_snippet_count_matches_evidence_count(self, handler, mock_llm):
+        """evidence_count passed to the LLM == len(data.evidence) so citation
+        indices [1..N] the LLM may emit all resolve in the frontend array."""
+        result = handler.handle("Tell me about semaglutide")
+        snippets = mock_llm.synthesize.call_args.kwargs.get("evidence_snippets") or []
+        assert len(snippets) == len(result["data"]["evidence"])
+
+    def test_provenance_total_matches_evidence(self, handler):
+        result = handler.handle("Tell me about semaglutide")
+        summary = result["data"]["provenance_summary"]
+        assert summary["total_evidence_items"] == len(result["data"]["evidence"])
+
+
 # ── 8. Provenance ──
 
 class TestProvenance:

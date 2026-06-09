@@ -18,6 +18,81 @@ from services.ctx_pipeline import CTXQueryPipeline, QueryPlan, RetrievalResult, 
 
 logger = logging.getLogger(__name__)
 
+# Max evidence items surfaced to the frontend / fed to the LLM as numbered
+# snippets. Kept aligned with the legacy dossier path (10) so citation indices
+# [1..N] always resolve in the frontend evidence array.
+_MAX_EVIDENCE = 10
+
+# CTX section-name prefix → frontend entity_type.
+_SECTION_TYPE_PREFIXES = {
+    "DRUG": "drug",
+    "COMPANY": "company",
+    "TRIAL": "trial",
+    "MECHANISM": "mechanism",
+    "LITERATURE": "literature",
+    "EVENT": "event",
+    "THERAPEUTIC_AREA": "therapeutic_area",
+    "INVESTIGATOR": "investigator",
+    "PATENT": "patent",
+}
+
+
+def _parse_section_name(name: str) -> tuple[str, str]:
+    """Map a CTX section name (e.g. ``DRUG-SEMAGLUTIDE``) → (entity_type, label)."""
+    if not name:
+        return "context", ""
+    if "-" in name:
+        prefix, rest = name.split("-", 1)
+        entity_type = _SECTION_TYPE_PREFIXES.get(prefix.upper(), prefix.lower())
+        return entity_type, rest.lower().replace("-", " ")
+    return "context", name.lower()
+
+
+def _sections_to_evidence(retrieval: RetrievalResult) -> list[dict]:
+    """Convert hydrated CTX sections into frontend EvidenceItem dicts.
+
+    The unified path retrieves text sections rather than the QueryEngine's
+    structured EvidenceItem objects, so we lift each section into the same
+    shape (source/entity_type/entity_id/content/relevance/provenance) the
+    frontend ``CitationRef`` expects. The list order IS the citation order:
+    ``[N]`` in the narrative resolves to ``evidence[N-1]``.
+    """
+    from ctxpack.core.serializer import serialize_section
+
+    source = retrieval.sources_queried[0] if retrieval.sources_queried else "ctx_hydration"
+    items: list[dict] = []
+    for section in retrieval.ctx_sections[:_MAX_EVIDENCE]:
+        name = getattr(section, "name", "") or ""
+        entity_type, label = _parse_section_name(name)
+        content = "\n".join(serialize_section(section)).strip()
+        if not content:
+            continue
+        items.append(
+            {
+                "source": source,
+                "entity_type": entity_type,
+                "entity_id": name,
+                "content": content,
+                "relevance": 1.0,
+                "provenance": {
+                    "source": "ctx",
+                    "section": name,
+                    "entity_type": entity_type,
+                    "label": label,
+                },
+            }
+        )
+    return items
+
+
+def _count_by_source(evidence_items: list[dict]) -> dict[str, int]:
+    """Tally evidence items per source for the provenance summary."""
+    counts: dict[str, int] = {}
+    for item in evidence_items:
+        src = item.get("source", "ctx_hydration")
+        counts[src] = counts.get(src, 0) + 1
+    return counts
+
 
 class UnifiedChatHandler:
     """Unified chat handler using staged CTX pipeline.
@@ -68,6 +143,13 @@ class UnifiedChatHandler:
         # ── Stage 2: Retrieve ──
         retrieval = self.pipeline.retrieve(plan)
 
+        # Lift retrieved sections into structured evidence items. This is the
+        # citation backbone: the frontend resolves [N] → evidence[N-1], and the
+        # same snippets (numbered) are fed to the LLM so validate_citations sees
+        # evidence_count > 0 and keeps the [N] markers instead of stripping them.
+        evidence_items = _sections_to_evidence(retrieval)
+        evidence_snippets = [it["content"] for it in evidence_items]
+
         # Augment with metrics for specific intents
         metrics_data = self._fetch_metrics(plan)
 
@@ -87,16 +169,13 @@ class UnifiedChatHandler:
                     metrics_lines.append(f"  - {', '.join(parts)}")
             context_text += "\n\n" + "\n".join(metrics_lines)
 
-        # Build grounded system prompt
-        system_prompt = self.pipeline.build_system_prompt(intent=plan.intent)
-        if memory_context:
-            system_prompt = f"CONVERSATION MEMORY:\n{memory_context}\n\n{system_prompt}"
-
         # Build fallback narrative from retrieved data
         fallback = self._build_fallback(plan, retrieval, reasoning, metrics_data)
 
-        # Call LLM with grounded context
-        narrative = self._synthesize(plan, context_text, system_prompt, fallback, reasoning)
+        # Call LLM with grounded, numbered evidence so citations validate.
+        narrative = self._synthesize(
+            plan, fallback, evidence_snippets, metrics_data, memory_context,
+        )
 
         # ── Guard check ──
         guard_result = self.pipeline.check_response(narrative, context_text)
@@ -111,7 +190,7 @@ class UnifiedChatHandler:
             "intent": plan.intent,
             "data": {
                 "question": plan.original_question,
-                "evidence": [],
+                "evidence": evidence_items,
                 "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
                 "metrics_context": metrics_data or {},
                 "entity_focus": [
@@ -119,8 +198,8 @@ class UnifiedChatHandler:
                     for e in plan.entities_detected
                 ],
                 "provenance_summary": {
-                    "total_evidence_items": len(retrieval.ctx_sections),
-                    "by_source": {s: 1 for s in retrieval.sources_queried},
+                    "total_evidence_items": len(evidence_items),
+                    "by_source": _count_by_source(evidence_items),
                 },
             },
             "table_data": table_data,
@@ -166,33 +245,34 @@ class UnifiedChatHandler:
     def _synthesize(
         self,
         plan: QueryPlan,
-        context: str,
-        system_prompt: str,
         fallback: str,
-        reasoning: ReasoningResult,
+        evidence_snippets: list[str],
+        metrics_data: dict,
+        memory_context: Optional[str] = None,
     ) -> str:
-        """Call LLM with grounded context, fall back on failure."""
+        """Call the LLM with grounded, numbered evidence; fall back on failure.
+
+        All intents route through ``synthesize`` so every path feeds the LLM the
+        same numbered ``evidence_snippets`` (the intent selects the persona via
+        the system prompt). This is what lets ``validate_citations`` keep the
+        ``[N]`` markers — the specialized ``synthesize_comparison`` dropped
+        snippets entirely, which is why compare emitted 0 citations.
+        """
         if not self.llm:
             return fallback
 
+        extra_context = (
+            f"CONVERSATION MEMORY:\n{memory_context}" if memory_context else None
+        )
         try:
-            # Route to appropriate LLM method based on intent
-            if plan.intent == "compare":
-                return self.llm.synthesize_comparison(
-                    entity_names=plan.entities_detected,
-                    fallback_narrative=fallback,
-                )
-            elif plan.intent == "dossier":
-                return self.llm.synthesize_dossier(
-                    fallback_narrative=fallback,
-                )
-            else:
-                return self.llm.synthesize(
-                    question=plan.original_question,
-                    intent=plan.intent,
-                    extra_context=context,
-                    fallback_narrative=fallback,
-                )
+            return self.llm.synthesize(
+                question=plan.original_question,
+                intent=plan.intent,
+                metrics=metrics_data or None,
+                evidence_snippets=evidence_snippets,
+                extra_context=extra_context,
+                fallback_narrative=fallback,
+            )
         except Exception as e:
             logger.warning("LLM synthesis failed: %s, using fallback", e)
             return fallback
