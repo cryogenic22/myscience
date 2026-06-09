@@ -18,27 +18,33 @@ pack:
   status: draft
   version: 0.1
 
-# RxNorm term type -> internal target. relation/scope are the DEFAULTS; the engine
-# downgrades/penalises per flags below.
+# RxNorm term type -> internal target. relation/scope are DEFAULTS; the engine
+# downgrades/penalises per flags below. `allowed_targets` is the ALLOWLIST of
+# intents this source concept may legitimately assert — any other to_target is
+# refused (a substance concept can never assert a price; a brand can never assert
+# a market authorisation). This is what stops the cardinal sins, not just the
+# enumerated forbidden_bridges below.
 rxnorm_tty:
-  IN:   {entity_type: molecule,                      scope: substance_level,            relation: exact}
-  PIN:  {entity_type: molecule_variant,              scope: precise_substance_level,    relation: exact}
-  MIN:  {entity_type: component_set,                 scope: combination_component_level, relation: exact}
-  BN:   {entity_type: brand_name,                    scope: branded_product_level,      relation: related}
-  SCD:  {entity_type: product_configuration,         scope: configuration_level,        relation: exact}
-  SBD:  {entity_type: branded_product_configuration, scope: branded_configuration_level, relation: exact}
-  GPCK: {entity_type: product_pack,                  scope: pack_level,                 relation: exact}
-  BPCK: {entity_type: branded_product_pack,          scope: branded_pack_level,         relation: exact}
-  DF:   {entity_type: dose_form,                     scope: dose_form_attribute,        relation: exact}
+  IN:   {entity_type: molecule,                      scope: substance_level,            relation: exact,   allowed_targets: [molecule]}
+  PIN:  {entity_type: molecule_variant,              scope: precise_substance_level,    relation: exact,   allowed_targets: [molecule_variant, molecule]}
+  MIN:  {entity_type: component_set,                 scope: combination_component_level, relation: exact,  allowed_targets: [component_set]}
+  BN:   {entity_type: brand_name,                    scope: branded_product_level,      relation: related, allowed_targets: [brand_name, brand_alias]}
+  SCD:  {entity_type: product_configuration,         scope: configuration_level,        relation: exact,   allowed_targets: [product_configuration, configuration, exact_product]}
+  SBD:  {entity_type: branded_product_configuration, scope: branded_configuration_level, relation: exact,  allowed_targets: [branded_product_configuration, configuration, brand]}
+  GPCK: {entity_type: product_pack,                  scope: pack_level,                 relation: exact,   allowed_targets: [product_pack, pack]}
+  BPCK: {entity_type: branded_product_pack,          scope: branded_pack_level,         relation: exact,   allowed_targets: [branded_product_pack, pack]}
+  DF:   {entity_type: dose_form,                     scope: dose_form_attribute,        relation: exact,   allowed_targets: [dose_form]}
 
-# ATC level -> internal target. Note relations: classes are broader/related, only
-# L4 (drug_class) is exact; L5 is a substance CLASSIFICATION, not product identity.
+# ATC level -> internal target. Classes are broader/related, only L4 (drug_class)
+# is exact; L5 is a substance CLASSIFICATION, NOT product identity. allowed_targets
+# deliberately EXCLUDES every identity-grade intent (brand, configuration, pack,
+# market_authorisation, exact_product, pricing, payer) — ATC is class reasoning only.
 atc_level:
-  1: {entity_type: therapeutic_area, scope: therapeutic_area_level, relation: broader_than_external}
-  2: {entity_type: therapeutic_subgroup, scope: therapeutic_area_level, relation: related}
-  3: {entity_type: drug_class, scope: drug_class_level, relation: related}
-  4: {entity_type: drug_class, scope: drug_class_level, relation: exact}
-  5: {entity_type: molecule, scope: substance_level, relation: related}
+  1: {entity_type: therapeutic_area,    scope: therapeutic_area_level, relation: broader_than_external, allowed_targets: [therapeutic_area]}
+  2: {entity_type: therapeutic_subgroup, scope: therapeutic_area_level, relation: related,             allowed_targets: [therapeutic_subgroup, therapeutic_area]}
+  3: {entity_type: drug_class,          scope: drug_class_level,       relation: related,              allowed_targets: [drug_class, therapeutic_area]}
+  4: {entity_type: drug_class,          scope: drug_class_level,       relation: exact,                allowed_targets: [drug_class]}
+  5: {entity_type: molecule,            scope: substance_level,        relation: related,              allowed_targets: [molecule, drug_class, therapeutic_area]}
 
 # Explainable crosswalk confidence (SME §5). final = base + boosts - penalties.
 confidence:
@@ -69,7 +75,9 @@ confidence:
     review_required: 0.50        # >= : steward review
     rejected_or_quarantined: 0.0 # <0.50
 
-# Force review/quarantine — never auto over these (SME §5).
+# Force review/quarantine — never auto over these (SME §5). Each flag below is
+# raisable by an engine code path (allowlist violation, forbidden bridge, a
+# many_to_many/combination/precise/route candidate field) — no vacuous flag.
 critical_flags:
   - RXNORM_ATC_MANY_TO_MANY
   - ATC_TOO_BROAD_FOR_EXACT_MATCH
@@ -81,6 +89,7 @@ critical_flags:
   - PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE
   - PRICING_REQUIRES_CONFIGURATION_NOT_ATC
   - PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS
+  - TARGET_EXCEEDS_SOURCE_IDENTITY_GRADE   # allowlist catch-all
 
 # Bridge patterns the engine MUST refuse (SME §4). Keyed by (from, to) intent.
 forbidden_bridges:

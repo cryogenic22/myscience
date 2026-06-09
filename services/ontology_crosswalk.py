@@ -64,6 +64,10 @@ class CrosswalkCandidate:
     stale_source: bool = False
     curator_approved: bool = False
     multi_source: bool = False
+    precise_ingredient_conflict: bool = False   # salt/precise-ingredient changes identity
+    route_formulation_dependent: bool = False   # classification depends on route/form
+    source_curated: bool = False                # mapping from a curated crosswalk source
+    ingredient_class_aligned: bool = False       # ingredient + class agree (boost)
 
 
 @dataclass
@@ -113,9 +117,36 @@ _METHOD_BASE = {
 }
 
 
-def _base_score(conf: dict, method: str) -> float:
+def _base_score(conf: dict, method: str) -> tuple[float, bool]:
+    """Return (base_score, method_known). An unrecognised method degrades to
+    fuzzy_only AND reports method_known=False so the caller can flag it (a typo'd
+    method must not silently masquerade as a fuzzy match)."""
     key = _METHOD_BASE.get(method, method)
-    return conf["base"].get(key, conf["base"]["fuzzy_only"])
+    if key in conf["base"]:
+        return conf["base"][key], True
+    return conf["base"]["fuzzy_only"], False
+
+
+# Intents that assert product/identity grade — an ATC (class) source can never
+# legitimately supply these, so the allowlist refuses them with a precise flag.
+_IDENTITY_GRADE_TARGETS = {
+    "exact_product", "brand", "product_configuration", "configuration",
+    "branded_product_configuration", "market_authorisation", "pack",
+    "product_pack", "branded_product_pack",
+}
+
+
+def _allowlist_violation_flag(c: CrosswalkCandidate) -> str:
+    """The critical flag for a to_target the source concept may not assert."""
+    if c.to_target == "pricing_configuration":
+        return "PRICING_REQUIRES_CONFIGURATION_NOT_ATC"
+    if c.to_target == "payer_policy_product":
+        return "PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS"
+    if c.from_system == "atc" and c.to_target in _IDENTITY_GRADE_TARGETS:
+        return "PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE"
+    if c.from_system == "atc":
+        return "ATC_TOO_BROAD_FOR_EXACT_MATCH"
+    return "TARGET_EXCEEDS_SOURCE_IDENTITY_GRADE"
 
 
 def classify(c: CrosswalkCandidate, pack: Optional[dict] = None) -> CrosswalkRecord:
@@ -149,17 +180,39 @@ def classify(c: CrosswalkCandidate, pack: Optional[dict] = None) -> CrosswalkRec
             reason=f"Unknown external concept: {target_label}.")
     relation, scope = m["relation"], m["scope"]
 
+    # 2b. Allowlist gate — relation/scope come from the source concept, but the
+    # to_target INTENT must be one the source may legitimately assert. A substance
+    # concept cannot assert a price; an ATC class cannot assert a product. This
+    # (not just the enumerated forbidden_bridges) is what stops the cardinal sins.
+    allowed = m.get("allowed_targets")
+    if allowed is not None and c.to_target not in allowed:
+        flag = _allowlist_violation_flag(c)
+        return CrosswalkRecord(
+            relation="rejected", scope=None, confidence=0.0,
+            confidence_breakdown={"allowlist_violation": flag, "allowed_targets": allowed},
+            flags=[flag], action="rejected_or_quarantined",
+            reason=f"{target_label} may not assert to_target='{c.to_target}' "
+                   f"(allowed: {allowed}): {flag}.")
+
     # 3. Confidence: base (by method) + boosts - penalties.
     method = c.method or _default_method(c)
-    base = _base_score(conf, method)
+    base, method_known = _base_score(conf, method)
     boosts = penalties = 0.0
     bd = {"base": base, "method": method}
+    if not method_known:
+        flags.append("UNKNOWN_MAPPING_METHOD")
 
     def add_pen(key):
         nonlocal penalties
         p = conf["penalties"].get(key, 0.0)
         penalties += p
         bd[f"penalty.{key}"] = -p
+
+    def add_boost(key):
+        nonlocal boosts
+        b = conf["boosts"].get(key, 0.0)
+        boosts += b
+        bd[f"boost.{key}"] = b
 
     if c.many_to_many:
         flags.append("RXNORM_ATC_MANY_TO_MANY")
@@ -168,24 +221,35 @@ def classify(c: CrosswalkCandidate, pack: Optional[dict] = None) -> CrosswalkRec
     if c.combination or c.tty == "MIN":
         flags.append("COMBINATION_COMPONENT_AMBIGUITY")
         add_pen("combination_product")
+        if relation == "exact":
+            relation = "related"  # never assert exact on an ambiguous combination
+    if c.precise_ingredient_conflict:
+        flags.append("PRECISE_INGREDIENT_CONFLICT")
+        add_pen("ingredient_salt_or_precise_ingredient_conflict")
+    if c.route_formulation_dependent:
+        flags.append("ROUTE_FORMULATION_DEPENDENT_CLASSIFICATION")
+        add_pen("route_or_formulation_dependency")
     if c.stale_source:
         add_pen("stale_external_release")
     if c.from_system == "atc" and c.level is not None and c.level <= 3 \
             and c.to_target in ("molecule", "drug_class"):
-        # using a broad ATC level for a more specific internal target
         add_pen("atc_level_too_broad_for_task")
 
     if c.curator_approved:
-        boosts += conf["boosts"]["human_curator_approved"]
-        bd["boost.curator"] = conf["boosts"]["human_curator_approved"]
+        add_boost("human_curator_approved")
     if c.multi_source:
-        boosts += conf["boosts"]["multiple_source_agreement"]
-        bd["boost.multi_source"] = conf["boosts"]["multiple_source_agreement"]
+        add_boost("multiple_source_agreement")
+    if c.source_curated:
+        add_boost("source_curated_crosswalk")
+    if c.ingredient_class_aligned:
+        add_boost("exact_ingredient_and_class_alignment")
 
     final = max(0.0, min(1.0, round(base + boosts - penalties, 4)))
     bd["final"] = final
 
-    # 4. Action from bands + critical-flag cap.
+    # 4. Action from bands + caps. A critical flag or a many-to-many can never
+    # auto; a STALE external release can never reach approved_auto (the pack's
+    # "current source" gate).
     critical = set(pack.get("critical_flags", []))
     has_critical = any(f in critical for f in flags)
     bands = conf["bands"]
@@ -193,7 +257,7 @@ def classify(c: CrosswalkCandidate, pack: Optional[dict] = None) -> CrosswalkRec
         action = "rejected_or_quarantined"
     elif has_critical or c.many_to_many:
         action = "review_required"            # never auto over a critical flag
-    elif final >= bands["approved_auto"]:
+    elif final >= bands["approved_auto"] and not c.stale_source:
         action = "approved_auto"
     elif final >= bands["approved_with_audit"]:
         action = "approved_with_audit"

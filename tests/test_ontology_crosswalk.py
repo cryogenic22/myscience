@@ -64,6 +64,38 @@ def test_rxnorm_brand_to_market_authorisation_is_rejected():
 
 
 # ============================================================
+# Allowlist gate — unenumerated illegal intents must ALSO be refused
+# (these were the holes an independent review found; RED before the allowlist).
+# ============================================================
+
+@pytest.mark.parametrize("from_system,tty,level,to_target,flag", [
+    ("atc", None, 4, "brand", "PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE"),
+    ("atc", None, 4, "market_authorisation", "PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE"),
+    ("atc", None, 4, "product_configuration", "PRODUCT_CONFIGURATION_REQUIRED_BUT_ONLY_ATC_AVAILABLE"),
+    ("atc", None, 3, "molecule", "ATC_TOO_BROAD_FOR_EXACT_MATCH"),
+    ("rxnorm", "IN", None, "pricing_configuration", "PRICING_REQUIRES_CONFIGURATION_NOT_ATC"),
+    ("rxnorm", "IN", None, "payer_policy_product", "PAYER_POLICY_CLASS_NOT_EQUAL_ATC_CLASS"),
+    ("rxnorm", "IN", None, "market_authorisation", "TARGET_EXCEEDS_SOURCE_IDENTITY_GRADE"),
+    ("rxnorm", "BN", None, "product_configuration", "TARGET_EXCEEDS_SOURCE_IDENTITY_GRADE"),
+])
+def test_allowlist_refuses_illegal_intent(from_system, tty, level, to_target, flag):
+    r = classify(CrosswalkCandidate(
+        from_system=from_system, tty=tty, level=level, to_target=to_target,
+        method="exact_identifier"), _PACK)
+    assert r.relation == "rejected", f"{from_system}/{tty or level}->{to_target} must refuse"
+    assert flag in r.flags
+    assert r.action == "rejected_or_quarantined"
+
+
+def test_atc_can_never_create_exact_product_identity():
+    """The cardinal sin: no ATC level may yield a non-rejected identity-grade match."""
+    for level in (1, 2, 3, 4, 5):
+        for target in ("exact_product", "brand", "product_configuration", "market_authorisation", "pricing_configuration"):
+            r = classify(CrosswalkCandidate(from_system="atc", level=level, to_target=target), _PACK)
+            assert r.relation == "rejected", f"ATC L{level}->{target} leaked as {r.relation}"
+
+
+# ============================================================
 # Legal mappings — relation/scope/action
 # ============================================================
 
@@ -109,6 +141,44 @@ def test_confidence_is_explainable_breakdown():
         from_system="rxnorm", tty="IN", to_target="molecule",
         method="exact_identifier_loaded_from_source"), _PACK)
     assert "base" in r.confidence_breakdown and "final" in r.confidence_breakdown
+
+
+def test_stale_source_cannot_auto_approve():
+    """Pack band requires a current source for approved_auto."""
+    r = classify(CrosswalkCandidate(
+        from_system="rxnorm", tty="IN", to_target="molecule",
+        method="exact_identifier", stale_source=True), _PACK)
+    assert r.action == "approved_with_audit", "stale source must not auto-approve"
+
+
+def test_unknown_method_is_flagged_not_silent():
+    r = classify(CrosswalkCandidate(
+        from_system="rxnorm", tty="IN", to_target="molecule", method="totally_made_up"), _PACK)
+    assert "UNKNOWN_MAPPING_METHOD" in r.flags
+
+
+def test_combination_without_m2m_is_not_exact():
+    r = classify(CrosswalkCandidate(
+        from_system="rxnorm", tty="MIN", to_target="component_set"), _PACK)
+    assert r.relation != "exact", "ambiguous combination must not assert exact identity"
+    assert "COMBINATION_COMPONENT_AMBIGUITY" in r.flags
+
+
+def test_precise_ingredient_conflict_raises_flag():
+    r = classify(CrosswalkCandidate(
+        from_system="rxnorm", tty="PIN", to_target="molecule_variant",
+        method="exact_identifier", precise_ingredient_conflict=True), _PACK)
+    assert "PRECISE_INGREDIENT_CONFLICT" in r.flags
+
+
+def test_pharma_core_pack_parses_and_has_levels():
+    import yaml, pathlib
+    p = pathlib.Path(__file__).parent.parent / "domain" / "pharma" / "packs" / "pharma_core.yaml"
+    core = yaml.safe_load(p.read_text(encoding="utf-8"))
+    assert "configuration_level" in core["identity_levels"]
+    # molecule prioritises rxnorm ingredient + ATC L5 for identity/class
+    prio = core["entity_types"]["molecule"]["external_identifier_priority"]
+    assert prio[0] == "rxnorm_ingredient_rxcui" and "atc_level_5_code" in prio
 
 
 # ============================================================
