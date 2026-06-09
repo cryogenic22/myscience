@@ -1,0 +1,79 @@
+# pharma_core.yaml
+#
+# Core pharma ontology spine (condensed machine-consumable form of SME
+# docs/pharmcore_atc.md). Defines identity levels, entity types, external-identifier
+# priority and resolver critical flags. The internal ontology is the source of
+# product intelligence; RxNorm/ATC/MeSH/etc are CROSSWALKS into it, not the
+# ontology itself (see pharma_rxnorm_atc_crosswalk.yaml). Full prose + predicates
+# live in docs/pharmcore_atc.md; this is the part code consumes.
+pack:
+  id: pharma.core.v0_1
+  name: Pharma Core Ontology
+  domain: pharma_intelligence
+  owner: ontology_steward
+  status: draft
+  version: 0.1
+
+# Identity levels (most-specific match is capped by attributes actually confirmed).
+identity_levels:
+  - mention                      # raw extracted span (evidence preserved)
+  - canonical_entity             # internal stable entity
+  - substance_level              # active ingredient
+  - product_level                # product/brand family
+  - configuration_level          # + form/route/strength/concentration/pack
+  - market_authorisation_level   # + regulator/market/indication/approval
+  - regimen_level                # treatment instruction, NOT identity
+
+# Core entity types and the external-identifier priority for each (highest first).
+# RxNorm ingredient + ATC L5 lead for molecule identity/class; ATC is class-only.
+entity_types:
+  molecule:
+    external_identifier_priority:
+      [rxnorm_ingredient_rxcui, atc_level_5_code, mesh_id, chembl_id, pubchem_cid, unii, drugbank_id, internal_entity_id]
+  drug_product:
+    required: [entity_id, preferred_name, product_status, component_molecule_ids]
+    product_types: [single_ingredient, fixed_dose_combination, co_pack, biologic, biosimilar, device_drug_combination, investigational_asset, product_family]
+  product_configuration:
+    required: [configuration_id, product_id, molecule_ids, dose_form, route]
+    critical_distinctions: [strength_is_not_fill_volume, concentration_is_not_dose, route_is_not_formulation, pack_is_not_product]
+    external_ids: [rxnorm_rxcui, ndc_code, ema_product_number, mhra_pl_number]
+  drug_class:
+    class_types: [therapeutic, pharmacological, chemical, mechanism_based, commercial_market_class, payer_policy_class]
+    rule: payer_policy_class_may_not_equal_atc_class
+    external_ids: [atc_code]
+  mechanism: {external_ids: [mesh_id]}
+  target: {external_ids: [gene_id, protein_id]}
+  disease: {external_ids: [mesh_id, icd10_code, icd11_code, snomed_id]}
+  indication: {note: indication_is_not_always_same_as_disease}
+  clinical_trial: {external_ids: [nct_id, eudract_id, ctis_id]}
+  endpoint: {categories: [efficacy, safety, tolerability, biomarker, patient_reported, economic, adherence, utilisation]}
+  company: {external_ids: [cik, lei, ticker], rule: product_ownership_is_time_bounded}
+  payer: {types: [pbm, commercial_plan, medicare, medicaid, national_health_system, hta_body, employer_plan, idn]}
+  formulary: {}
+  market: {types: [country, region, payer_market, regulatory_region, launch_market]}
+  event: {}
+
+# Resolver routing (mirrors semantic_resolution + crosswalk). Auto only when an
+# exact external identifier matches, no critical flags, confidence high, margin clear.
+resolver:
+  auto_resolve_allowed_when: [exact_external_identifier_match, no_critical_ambiguity_flags, confidence_above_0_90, candidate_separation_above_0_15]
+  critical_ambiguity_flags:
+    - MONO_COMBO_AMBIGUITY
+    - BRAND_GENERIC_AMBIGUITY
+    - PRODUCT_CONFIGURATION_UNRESOLVED
+    - DOSE_STRENGTH_VOLUME_CONFUSION
+    - FORM_ROUTE_CONFLICT
+    - CLASS_TO_PRODUCT_OVERREACH
+    - EXTERNAL_CROSSWALK_MANY_TO_MANY
+    - PRODUCT_OWNERSHIP_DATE_MISSING
+    - HIGH_IMPACT_FACT_NEEDS_REVIEW
+
+# External vocabularies and their role (never let a class system resolve identity).
+external_vocabularies:
+  rxnorm: {role: clinical_drug_normalisation, not_for: [regulatory_status, payer_class, market_access, commercial_status, scenario_reasoning]}
+  atc: {role: therapeutic_pharmacological_classification, not_for: [exact_clinical_drug_identity, strength_or_pack_identity, brand_resolution, market_authorisation, payer_restrictions]}
+  mesh: {role: disease_publication_topic_indexing}
+  clinicaltrials_gov: {role: trial_identifier_linkage}
+  pubmed: {role: publication_identifier_linkage}
+  sec_cik: {role: company_filing_identity}
+  regulatory_product_ids: {role: market_authorisation_and_pack_linkage, examples: [fda_application_number, ndc, ema_product_number, mhra_pl_number]}
