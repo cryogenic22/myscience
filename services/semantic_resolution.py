@@ -121,6 +121,11 @@ class CandidateEntity:
     source_reliability: float = 0.7        # trust tier of the candidate's source
     attribute_sources: dict = field(default_factory=dict)
     richness: int = 0                      # facts+trials, tie-breaker
+    # active crosswalk_records anchoring this identity in external ontologies
+    # (RxNorm / ATC). Populated by ontology_crosswalk.fetch_ontology_codes; each
+    # item: {system, code, label, relation, scope, confidence}. Drives
+    # ontology_support in the confidence breakdown.
+    ontology_codes: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -384,6 +389,44 @@ def detect_ambiguity(m: DrugMention, c: CandidateEntity, comparison: dict,
     return flags
 
 
+# No crosswalk evidence → this neutral value (the prior hardcoded placeholder),
+# so the ~1210 drugs without a crosswalk record score exactly as before.
+_ONTOLOGY_NEUTRAL = 0.6
+_ONTOLOGY_MIN_CONFIDENCE = 0.5
+
+
+def ontology_support_score(c: CandidateEntity) -> float:
+    """Grade how strongly external ontologies (RxNorm / ATC) corroborate this
+    candidate's identity, from its active crosswalk records.
+
+    SME rule (docs/pharmcore_atc.md): RxNorm grades clinical-drug *identity*; ATC
+    is class-reasoning ONLY and must never grade exact product identity. So an
+    RxNorm exact/narrower mapping gives full identity support, while an ATC
+    mapping gives only a modest bump above neutral. No evidence → neutral (the
+    prior placeholder), so behaviour is unchanged where the crosswalk is empty.
+    Rejected / low-confidence records contribute nothing (and never penalise)."""
+    best = _ONTOLOGY_NEUTRAL
+    for rec in c.ontology_codes or []:
+        relation = (rec.get("relation") or "").strip().lower()
+        system = (rec.get("system") or "").strip().lower()
+        try:
+            conf = float(rec.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        if relation == "rejected" or conf < _ONTOLOGY_MIN_CONFIDENCE:
+            continue
+        if system == "rxnorm" and relation in ("exact", "narrower"):
+            grade = 1.0                       # identity-grade
+        elif system == "rxnorm":
+            grade = 0.75                      # RxNorm, but not an exact identity
+        elif system == "atc":
+            grade = 0.7                       # class-level ONLY — never identity
+        else:
+            grade = 0.65
+        best = max(best, grade)
+    return best
+
+
 def _score(m: DrugMention, c: CandidateEntity, comparison: dict,
            flags: list, policy: ResolutionPolicy) -> ConfidenceBreakdown:
     b = ConfidenceBreakdown()
@@ -391,7 +434,7 @@ def _score(m: DrugMention, c: CandidateEntity, comparison: dict,
     b.ingredient = 1.0 if rel == "equal" else 0.8 if rel == "subset" else 0.0
     b.text_similarity = 1.0 if c.name and m.normalized_text and \
         m.normalized_text.lower() in c.name.lower() else 0.5
-    b.ontology_support = 0.6  # placeholder until ontology cross-walk wired (Phase 2)
+    b.ontology_support = ontology_support_score(c)
     b.source_reliability = c.source_reliability
     b.extraction_quality = 0.5 if m.context_flags else 0.9
     b._relevant.update({"ingredient", "text_similarity", "ontology_support",
