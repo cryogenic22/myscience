@@ -123,7 +123,12 @@ RUN_OUTCOME_FAILURE = "FAILURE"
 
 
 def classify_run_outcome(
-    success: bool, processed: int, inserted: int, updated: int
+    success: bool,
+    processed: int,
+    inserted: int,
+    updated: int,
+    incremental: bool = False,
+    has_history: bool = False,
 ) -> str:
     """Classify a finished run into the richer outcome vocabulary.
 
@@ -132,6 +137,24 @@ def classify_run_outcome(
     (the Open Targets / EMA / 105-day-stale signature) is FAILURE_ZERO_ROWS, not
     a green SUCCESS. A run that fetched rows but changed none is NO_CHANGE (a
     legitimate quiet cycle), distinct from one that landed fresh data.
+
+    The 0-row case is two-faced, which is why ``incremental`` + ``has_history``
+    exist: an INCREMENTAL fetch against a source that HAS landed before, returning
+    0, is a legitimate no-change window — the source affirmatively had nothing new
+    since the watermark (openFDA FAERS lags by months; drug labels rarely change).
+    That is SUCCESS_NO_CHANGE, not a failure. A FULL fetch returning 0, or an
+    incremental fetch against a source that never landed, is genuinely broken-empty
+    → FAILURE_ZERO_ROWS. Crucially this does NOT re-hide the 105-day-stale disease:
+    staleness (a feed that *should* have new data but doesn't) stays a
+    connector_health Lane-2 verdict comparing table-age to the SLA (migration 088).
+    Defaults are False so legacy call sites keep the strict silent-zero verdict.
+
+    Tradeoff (named, accepted): for an incremental+has_history source these two
+    sources now lean on the FLOW (table-age vs SLA) backstop for breakage
+    detection rather than per-run E2E flagging — a real break is caught when the
+    table ages past SLA (RED at ~2×SLA) instead of on the next run. That is the
+    right call here (these sources emit ~30 false REDs/week and a 0-row fetch
+    writes no rows, so retrieved_at does not advance and FLOW still ages).
     """
     if not success:
         return RUN_OUTCOME_PARTIAL
@@ -139,7 +162,9 @@ def classify_run_outcome(
         return RUN_OUTCOME_LANDED
     if (processed or 0) > 0:
         return RUN_OUTCOME_NO_CHANGE
-    # processed == 0 on an otherwise-successful run = fetched nothing.
+    # processed == 0: legitimate quiet incremental window vs broken-empty.
+    if incremental and has_history:
+        return RUN_OUTCOME_NO_CHANGE
     return RUN_OUTCOME_ZERO_ROWS
 
 
@@ -248,9 +273,11 @@ class IntegrationPipeline:
                     # Persist to dead-letter queue for retry
                     self._dlq_insert(etl_run_id, record, e)
 
-            # Finalize
+            # Finalize. `since is not None` => incremental run, so a 0-row fetch
+            # against a source that has landed before is a quiet window, not a
+            # broken-empty failure.
             result.completed_at = datetime.utcnow()
-            self._finalize_etl_run(etl_run_id, result)
+            self._finalize_etl_run(etl_run_id, result, incremental=since is not None)
 
             # Post-run hooks: staleness check
             run_complete_ctx = HookContext(
@@ -469,18 +496,48 @@ class IntegrationPipeline:
             [run_id, source_type.value, "", "{}"],
         )
 
-    def _finalize_etl_run(self, run_id: str, result: PipelineResult) -> None:
+    def _source_has_landed_before(self, source_name: str, exclude_run_id: str) -> bool:
+        """True if this source has EVER landed rows in a prior run — the signal that
+        a current 0-row incremental fetch is a quiet window, not a never-landed
+        broken source. DB read (kept out of the pure classifier)."""
+        try:
+            row = self.db.fetch_one(
+                """
+                SELECT 1 FROM etl_runs
+                WHERE source_name = %s AND id <> %s
+                  AND (outcome = %s OR COALESCE(records_inserted, 0) > 0)
+                LIMIT 1
+                """,
+                [source_name, exclude_run_id, RUN_OUTCOME_LANDED],
+            )
+            return bool(row)
+        except Exception:  # defensive: a health-classification query hiccup must
+            # not crash run finalization. Fail CLOSED → no history → ZERO_ROWS
+            # (the strict verdict), and log loudly (not debug) since a failing
+            # health query is itself worth seeing.
+            logger.warning("has-landed-before check failed for %s", source_name, exc_info=True)
+            return False
+
+    def _finalize_etl_run(
+        self, run_id: str, result: PipelineResult, incremental: bool = False
+    ) -> None:
         """Mark an ETL run as completed.
 
         `status` stays coarse (SUCCESS/PARTIAL) for backward-compatible consumers;
         `outcome` carries the richer signal (LANDED / NO_CHANGE / ZERO_ROWS) so a
-        silent-zero run is no longer indistinguishable from a healthy one.
+        silent-zero run is no longer indistinguishable from a healthy one. An
+        incremental 0-row run against a source that has landed before is a quiet
+        window (SUCCESS_NO_CHANGE), not a failure — staleness stays Lane-2's job.
         """
+        has_history = incremental and self._source_has_landed_before(
+            result.source_type.value, run_id)
         outcome = classify_run_outcome(
             result.success,
             result.records_processed,
             result.records_inserted,
             result.records_updated,
+            incremental=incremental,
+            has_history=has_history,
         )
         self.db.execute(
             """
