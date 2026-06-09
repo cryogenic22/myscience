@@ -4,9 +4,19 @@ Fetches Medicaid drug pricing data from the CMS open data portal.
 Promotes scripts/fetch_nadac_pricing.py to a full BaseConnector
 as recommended in the lead assessment.
 
-API: https://data.medicaid.gov/resource/4j6z-xnwq.json (legacy, may be deprecated)
-Note: CMS migrated data platforms in 2025-2026. If the primary URL
-returns 404, the connector gracefully returns empty results.
+Source (verified 2026-06-08): the DKAN datastore query API for the rolling
+"NADAC 2026" weekly reference dataset —
+``https://data.medicaid.gov/api/1/datastore/query/<dataset-id>/0`` — which
+returns ``{"results": [...], "count": N, ...}`` with fields ``ndc`` /
+``ndc_description`` / ``nadac_per_unit`` / ``effective_date`` / ``as_of_date`` /
+``pricing_unit`` / ``classification_for_rate_setting``.
+
+CMS migrated off the legacy Socrata endpoint (``/resource/4j6z-xnwq.json`` now
+404s, 2025/26). If the dataset id rolls or the endpoint is unreachable, the
+connector logs the count and returns the records it did parse — it never
+silently swallows rows (conservation #2: dropped/skipped counts are logged).
+The dataset id is shared from ``scripts.fetch_nadac_pricing`` so there is a
+single place to bump it each year.
 """
 
 from __future__ import annotations
@@ -23,11 +33,21 @@ from connectors.base import (
     RecordType,
     SourceType,
 )
-from scripts.fetch_nadac_pricing import extract_drug_name, parse_nadac_record
+from scripts.fetch_nadac_pricing import (
+    NADAC_API_URL,
+    extract_drug_name,
+    parse_nadac_record,
+)
 
 logger = logging.getLogger(__name__)
 
-NADAC_API_URL = "https://data.medicaid.gov/resource/4j6z-xnwq.json"
+
+def _unwrap(payload) -> list[dict]:
+    """The DKAN query API wraps rows in ``results``; the legacy Socrata
+    endpoint returned a flat array. Accept both."""
+    if isinstance(payload, dict):
+        return payload.get("results", []) or []
+    return payload if isinstance(payload, list) else []
 
 
 class NadacConnector(BaseConnector):
@@ -43,7 +63,7 @@ class NadacConnector(BaseConnector):
     def health_check(self) -> HealthCheckResult:
         import requests
         try:
-            resp = requests.get(NADAC_API_URL, params={"$limit": 1}, timeout=10)
+            resp = requests.get(NADAC_API_URL, params={"limit": 1}, timeout=10)
             return HealthCheckResult(
                 source_type=self.source_type(),
                 healthy=resp.status_code == 200,
@@ -59,25 +79,34 @@ class NadacConnector(BaseConnector):
             )
 
     def fetch(self, since: Optional[datetime] = None) -> list[RawRecord]:
-        """Fetch NADAC pricing records, converting to RawRecord for the pipeline."""
+        """Fetch NADAC pricing records, converting to RawRecord for the pipeline.
+
+        Conservation #2: rows that parse to no usable price, or carry no NDC,
+        are *counted* (logged) rather than silently dropped.
+        """
         records: list[RawRecord] = []
         page_size = 1000
         offset = 0
+        skipped_no_price = 0
+        skipped_no_ndc = 0
 
         while offset < self._limit:
             params: dict = {
-                "$limit": min(page_size, self._limit - offset),
-                "$offset": offset,
-                "$order": "as_of_date DESC",
+                "limit": min(page_size, self._limit - offset),
+                "offset": offset,
             }
             if since:
-                params["$where"] = f"as_of_date >= '{since.strftime('%Y-%m-%d')}'"
+                params["conditions[0][property]"] = "effective_date"
+                params["conditions[0][operator]"] = ">="
+                params["conditions[0][value]"] = since.strftime("%Y-%m-%d")
 
             try:
                 resp = self._fetch_with_retry(NADAC_API_URL, params=params)
                 if resp.status_code != 200:
+                    logger.warning("NADAC fetch HTTP %s at offset %d",
+                                   resp.status_code, offset)
                     break
-                api_records = resp.json()
+                api_records = _unwrap(resp.json())
                 if not api_records:
                     break
             except Exception as e:
@@ -87,6 +116,12 @@ class NadacConnector(BaseConnector):
             for raw in api_records:
                 parsed = parse_nadac_record(raw)
                 if not parsed:
+                    skipped_no_price += 1
+                    continue
+                if not parsed.get("ndc_code"):
+                    # RawRecord requires a non-empty external_id — record the
+                    # skip instead of raising / dropping silently.
+                    skipped_no_ndc += 1
                     continue
 
                 record = RawRecord(
@@ -122,7 +157,11 @@ class NadacConnector(BaseConnector):
             if len(api_records) < page_size:
                 break
 
-        logger.info("NADAC connector fetched %d pricing records", len(records))
+        logger.info(
+            "NADAC connector fetched %d pricing records "
+            "(skipped %d no-price, %d no-ndc)",
+            len(records), skipped_no_price, skipped_no_ndc,
+        )
         return records
 
     @staticmethod

@@ -1501,6 +1501,12 @@ class KnowledgeStore:
         drug_id = drug_link.entity_id if drug_link else None
         target_id = self._upsert_target_by_chembl(data, prov)
 
+        # Persist the molecule's own ChEMBL id so a future relink can map
+        # compound -> drug spine offline (scripts/relink_bioactivities.py),
+        # without re-hitting the ChEMBL API. (chembl_id here is the molecule id;
+        # target_chembl_id is the target's — distinct.)
+        molecule_chembl_id = data.get("chembl_id")
+
         row = self.db.fetch_one(
             "SELECT id FROM bioactivities WHERE chembl_activity_id = %s",
             [chembl_activity_id],
@@ -1517,6 +1523,7 @@ class KnowledgeStore:
                 -- only when this run produced no link.
                 SET drug_id = COALESCE(%s, drug_id),
                     target_id = COALESCE(%s, target_id),
+                    molecule_chembl_id = COALESCE(%s, molecule_chembl_id),
                     activity_type = COALESCE(%s, activity_type),
                     activity_value = COALESCE(%s, activity_value),
                     activity_units = COALESCE(%s, activity_units),
@@ -1529,6 +1536,7 @@ class KnowledgeStore:
                 [
                     drug_id,
                     target_id,
+                    molecule_chembl_id,
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),
                     data.get("activity_units") or data.get("standard_units"),
@@ -1548,15 +1556,17 @@ class KnowledgeStore:
             self.db.execute(
                 """
                 INSERT INTO bioactivities
-                    (id, drug_id, target_id, chembl_activity_id, activity_type,
+                    (id, drug_id, target_id, molecule_chembl_id,
+                     chembl_activity_id, activity_type,
                      activity_value, activity_units, assay_type, pchembl_value,
                      assay_description, source_api, retrieved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     new_id,
                     drug_id,
                     target_id,
+                    molecule_chembl_id,
                     chembl_activity_id,
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),
