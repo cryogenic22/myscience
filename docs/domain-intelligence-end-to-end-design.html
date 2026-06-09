@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain Intelligence — End-to-End Design</title>
+<style>
+  :root{--bg:#0d0f12;--panel:#15181d;--panel2:#1b1f26;--line:#2a2f38;--ink:#e8e6e1;
+    --mut:#9aa1ac;--dim:#6b7280;--R:#6B7AB8;--C:#F26C0D;--S:#1E8A99;--I:#9C5D8A;
+    --ok:#3FB984;--warn:#E0A33E;--bad:#D9656B;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"DM Sans",-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto;padding:56px 28px 120px}
+  h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.01em;line-height:1.15}
+  h1{font-size:40px;margin:0 0 8px}.sub{color:var(--mut);font-size:18px;margin:0 0 8px}
+  .meta{color:var(--dim);font-size:13px;font-family:ui-monospace,Menlo,monospace;margin-bottom:36px}
+  h2{font-size:26px;margin:50px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:18px;margin:26px 0 9px;color:#d7d3ca}
+  p{color:#cfd3da;margin:12px 0}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--panel2);padding:1px 6px;border-radius:4px;color:#d7d3ca}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:16px 0}
+  .lead{font-size:18px;color:#dfe2e7}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .tag{display:inline-block;font-family:ui-monospace,monospace;font-size:11px;padding:2px 7px;border-radius:5px;border:1px solid var(--line)}
+  .bad{color:var(--bad);border-color:#52323a}.ok{color:var(--ok);border-color:#244a3c}.warn{color:var(--warn);border-color:#4d3f24}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-family:ui-monospace,monospace}
+  .lane-p{background:rgba(107,122,184,.16);color:#9aa6d6}.lane-d{background:rgba(242,108,13,.15);color:#f0975a}.lane-f{background:rgba(30,138,153,.16);color:#52b6c4}
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:16px 0;font-family:ui-monospace,monospace;font-size:12px}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .step.hot{border-color:var(--C);color:#f0975a}.arr{color:var(--dim)}
+  pre{background:#0a0c0f;border:1px solid var(--line);border-radius:10px;padding:15px 17px;overflow:auto;font-size:12px;color:#cdd2da;white-space:pre}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .kicker{font-family:ui-monospace,monospace;font-size:12px;color:var(--S);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+  ul{color:#cfd3da}li{margin:5px 0}
+  .ph{border-left:3px solid var(--line);padding-left:15px;margin:13px 0}
+  .ph.done{border-color:var(--ok)}.ph.next{border-color:var(--C)}.ph.later{border-color:var(--dim)}
+  .src{font-size:12px;color:var(--dim)}
+  .legend{font-size:12px;color:var(--mut);margin:8px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Market Zero · end-to-end design</div>
+  <h1>Domain Intelligence — the full spine</h1>
+  <p class="sub">How an ask from chat, search, graph or CI is interpreted, decomposed into the right intelligence, retrieved as governed objects, and answered with confidence and gaps — one domain-pack brain driving every surface.</p>
+  <p class="meta">Reconciles chat_domain.md · graph_search_yaml.md · domain_pack_raw.md · YAML_pack1.md · data-intelligence-strategy · with the live code · branch <code>claude/data/domain-intelligence-plan</code></p>
+
+  <div class="card lead">
+    <strong>The SME's diagnosis, in one line.</strong> The system answers like a general medical chatbot — it finds vaguely relevant concepts and pads the room — because it generates an answer <em>before</em> building the analytical scaffold. The fix is not "make the chatbot smarter at writing." It is "make it decompose the need first." <em>"The domain pack is the brain. Search is the hands. Graph is the nervous system. The chatbot is just the mouth — a demotion most chatbots richly deserve."</em>
+  </div>
+
+  <h2>1 · One brain, four surfaces, one spine</h2>
+  <p>Chat, search, graph and the CI app are not four pipelines — they are four <em>entry points</em> to the same domain-pack-driven PLAN stage, which sits on the existing intelligence spine:</p>
+  <div class="flow">
+    <span class="step">Source</span><span class="arr">→</span><span class="step">Evidence</span><span class="arr">→</span><span class="step">Extraction</span><span class="arr">→</span>
+    <span class="step hot">Resolution+Ontology</span><span class="arr">→</span><span class="step">Fact</span><span class="arr">→</span><span class="step">Signal</span><span class="arr">→</span>
+    <span class="step">Insight</span><span class="arr">→</span><span class="step">Gap</span><span class="arr">→</span><span class="step">Scenario</span><span class="arr">→</span><span class="step">Decision</span><span class="arr">→</span><span class="step">Learning</span>
+  </div>
+  <p>Two governed gateways guard the spine, and both are <strong>domain-pack-driven</strong>:</p>
+  <ul>
+    <li><strong>Ingest gateway — semantic resolution</strong> (the prior design, Phase 1 shipped): a mention becomes a governed entity <em>at an identity level</em> with confidence, flags and routing. Decides what may become a Fact.</li>
+    <li><strong>Query gateway — the PLAN stage</strong> (this design): an ask becomes a decomposed, routed, grounded answer-matrix with coverage and gaps. Decides what intelligence the question actually needs.</li>
+  </ul>
+
+  <h2>2 · The pivotal finding: the PLAN stage is ~90% built, unwired</h2>
+  <p class="lead">The SME's "insert a PLAN stage between understand and retrieve" already exists in code — it is just not switched on for the main chat path, and its playbooks are thin.</p>
+  <table>
+    <tr><th>SME asks for</th><th>Lives in code as</th><th>State</th></tr>
+    <tr><td>PLAN stage (decompose before retrieve)</td><td><code>CTXQueryPipeline.plan_decomposition()</code> · <code>domain_intelligence/planner.py</code> <code>DecompositionPlanner.plan()→QuestionMatrix</code></td><td><span class="tag warn">built, NOT wired into UnifiedChatHandler</span></td></tr>
+    <tr><td>Playbook = dimensions + routing</td><td><code>domain_intelligence/playbook.py</code> (Playbook · Dimension · Route predicate/link/source) + YAML seeds</td><td><span class="tag ok">built</span> · <span class="tag warn">only compare/dossier; no success-rate, no personas</span></td></tr>
+    <tr><td>Grounded answer matrix (facts per cell + coverage)</td><td><code>QuestionMatrix</code> · <code>DimensionCell{facts, coverage: gap/thin/covered}</code></td><td><span class="tag ok">built</span></td></tr>
+    <tr><td>Honest gaps stated, not invented</td><td><code>synthesis.py</code> matrix→narrative + <code>coverage_summary()</code></td><td><span class="tag ok">built</span></td></tr>
+    <tr><td>Ambiguity detection ("success rate" = 7 meanings)</td><td><code>chat_handlers/intent.py</code> (flat regex intent)</td><td><span class="tag bad">absent — the core gap</span></td></tr>
+    <tr><td>Persona overlays · answer contract · quality gates</td><td>—</td><td><span class="tag bad">absent</span></td></tr>
+    <tr><td>Governed-object search modes · question-aware graph views</td><td><code>search.py</code> HybridSearch · <code>graph.py</code> GraphTraversal (flat neighbourhood)</td><td><span class="tag warn">retrieval exists; no modes/views/overlays</span></td></tr>
+  </table>
+  <p>So the work is <strong>wire + enrich</strong>, not rebuild. The biggest single lever the SME identifies — wiring <code>plan_decomposition()</code> into <code>UnifiedChatHandler.handle()</code> between <code>understand()</code> and <code>retrieve()</code> — is a small change with outsized effect.</p>
+
+  <h2>3 · The unified domain-pack suite</h2>
+  <p>Every surface is configured by the same pack family. Resolution packs (prior design) + the query/retrieval packs the two new SME docs specify:</p>
+  <table>
+    <tr><th>Pack</th><th>Drives</th><th>Owner lane</th></tr>
+    <tr><td><code>pharma_semantic_resolution</code> + <code>eval</code></td><td>ingest gateway (mention→entity@level)</td><td><span class="pill lane-d">Data</span> ✅ shipped</td></tr>
+    <tr><td><code>pharma_question_playbooks</code></td><td>PLAN stage: question classes, lenses, dimensions, routes, ambiguity policy, persona overlays, answer contract, quality gates</td><td><span class="pill lane-p">Platform</span> wires · <span class="pill lane-d">Data</span> owns predicates</td></tr>
+    <tr><td><code>pharma_search_graph_views</code></td><td>search modes (evidence/fact/signal/gap/scenario) + graph views (lineage/decomposition/entity/competitive/scenario-impact) + overlays</td><td><span class="pill lane-p">Platform</span> + <span class="pill lane-f">Frontend</span></td></tr>
+    <tr><td><code>pharma_source_contracts</code> · <code>fact_signal_gap_contracts</code> · <code>confidence_stewardship</code></td><td>object contracts, trust tiers, bands, curator UI</td><td><span class="pill lane-d">Data</span> (Loops 5/6/9/10/11)</td></tr>
+    <tr><td><code>pharma_core</code> · <code>obesity_metabolic_playbooks</code></td><td>entity/ontology spine · therapy-area dimensions</td><td><span class="pill lane-d">Data</span> / <span class="pill lane-f">Forge</span> (later)</td></tr>
+  </table>
+  <p class="legend">Three config layers, as the SME puts it: <em>question playbook</em> tells the agent what dimensions matter; <em>search-view</em> tells search what objects/predicates/facets/ranking to use; <em>graph-view</em> tells graph what nodes/edges/overlays/expansion to show. The prompt only orchestrates.</p>
+
+  <h2>4 · Query understanding — the PLAN stage in full</h2>
+  <div class="flow">
+    <span class="step">ask (chat/search/graph/CI)</span><span class="arr">→</span>
+    <span class="step hot">intent + persona</span><span class="arr">→</span>
+    <span class="step hot">ambiguity gate</span><span class="arr">→</span>
+    <span class="step">select playbook</span><span class="arr">→</span>
+    <span class="step">decompose → dimensions</span><span class="arr">→</span>
+    <span class="step">route → predicates/links/sources</span><span class="arr">→</span>
+    <span class="step">retrieve governed objects</span><span class="arr">→</span>
+    <span class="step">matrix + coverage + gaps</span><span class="arr">→</span>
+    <span class="step">answer contract</span><span class="arr">→</span>
+    <span class="step">synthesise</span>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>Ambiguity gate (new)</h3>
+      <p>"success rate / effectiveness / best / winning / likely to succeed" → require disambiguation of <em>lens · denominator · timeframe · geography · indication</em>. Default to a multi-lens answer, never a single confident number. This is the missing piece that turns "GLP-1s are effective" into a five-lens scorecard.</p></div>
+    <div class="card"><h3>Persona overlays (new)</h3>
+      <p>Same question, different need: a development lead weights phase-transition + endpoint + failure-modes; an access lead weights coverage + PA + step-edits + geography. The overlay re-prioritises and suppresses dimensions — it does not change the facts.</p></div>
+    <div class="card"><h3>Decompose + route (built)</h3>
+      <p><code>DecompositionPlanner</code> already turns a playbook into a matrix of <code>DimensionCell</code>s, each filled by predicate routes (fact ledger), link routes (graph) and source routes (tables), with a <code>covered/thin/gap</code> state per cell. Reuse verbatim.</p></div>
+    <div class="card"><h3>Answer contract + quality gates (new)</h3>
+      <p>Every serious answer: <em>interpretation · answer-by-lens · evidence table · confidence · gaps · what-would-change-this · next-best-question</em>. Hard fails: rate without denominator, no timeframe, no gap section, evidence blended with interpretation, generic summary with no retrieved facts.</p></div>
+  </div>
+
+  <h2>5 · The data-lane reality check (grounded on prod)</h2>
+  <p class="lead">A perfect decomposition over an empty ledger is just <em>structured</em> emptiness. The PLAN stage routes dimensions to fact-ledger predicates — so the question that actually matters for the data lane is: <strong>for the SME's five success lenses, can the ledger fill them today?</strong></p>
+  <pre>ask_success_rate lens     verdict   ledger rows   lens-specific predicates MISSING on prod
+──────────────────────────────────────────────────────────────────────────────────────────────
+development_success       PARTIAL   4201          phase_transition, discontinuation, approval_event
+trial_endpoint_success    COVERED   4408          —
+regulatory_success        COVERED   1329          —
+market_access_success     GAP          4          formulary_status, prior_authorisation, step_edit, hta_decision
+commercial_success        PARTIAL     20          launch_event, uptake_signal
+                                                   Summary: 2 covered | 2 partial | 1 gap
+  (pasted from scripts/playbook_predicate_coverage.py against prod, this branch)</pre>
+  <p><strong>The honest reading.</strong> Only trial-endpoint and regulatory lenses are truly fillable. <em>development_success looks busy (4201 rows) but every lens-specific predicate is absent</em> — the rows are generic <code>clinical_trial</code> inflation, which the tool deliberately demotes to PARTIAL so a catch-all predicate can't mask a real gap. market-access is an outright gap; commercial is near-empty. So the headline question would decompose into five lenses and render three of them honestly thin — correct behaviour that also pinpoints the data-lane build order. <code>scripts/playbook_predicate_coverage.py</code> makes this a repeatable check (re-run as emitters land).</p>
+  <h3>The data-lane build list this implies</h3>
+  <ul>
+    <li><strong>Phase-transition / discontinuation emitter</strong> (development lens) — from <code>clinical_trials</code> phase + status history. <em>New, high value.</em></li>
+    <li><strong>Payer / access emitter</strong> (access lens) — <code>formulary_status / prior_auth / step_edit</code> facts. Needs a payer-policy source first (the deferred payer ingest). <em>Source-blocked.</em></li>
+    <li><strong>Sales / launch emitter</strong> (commercial lens) — <code>product_sales / launch_event / uptake_signal</code> from filings + launch trackers (the deferred financial/deal emitters, sources mostly empty on prod).</li>
+    <li>These ARE the already-planned loops (latent-data emitters, source-contract registry, the deferred pricing/payer ingest) — now prioritised by what the headline question needs, not by what data happens to be lying around.</li>
+  </ul>
+
+  <h2>6 · Search &amp; graph — governed-object-first, view-driven</h2>
+  <div class="grid">
+    <div class="card"><h3>Search modes (not one box)</h3>
+      <p>Evidence · Fact · Signal · Gap · Scenario — each returns governed objects (not chunks) with <em>why-retrieved</em>, matched dimension, source class, confidence, freshness, review status. <code>HybridSearch</code> already returns governed <code>SearchResult</code>s with provenance; the gap is mode-grouping + dimension binding from the playbook.</p></div>
+    <div class="card"><h3>Graph views (not a hairball)</h3>
+      <p>One graph, five lenses: evidence-lineage · question-decomposition · entity-network · competitive-landscape · scenario-impact. Every edge carries predicate + evidence count + confidence + freshness + review + contradiction — <em>"a graph edge without evidence is just a rumour with a nice line attached."</em> <code>GraphTraversal</code> already carries edge confidence/provenance; the gap is the views + overlays + bounded expansion.</p></div>
+  </div>
+  <p>Decisive rule from the SME: the <strong>question-decomposition graph</strong> (rendered straight from the playbook matrix) replaces the generic entity neighbourhood as the default answer graph. The plan becomes visible.</p>
+
+  <h2>7 · Who builds what</h2>
+  <table>
+    <tr><th>Build</th><th>Lane</th></tr>
+    <tr><td>Wire <code>plan_decomposition()</code> into <code>UnifiedChatHandler</code>; ambiguity gate; persona overlays; answer-contract synthesis; search modes; graph views/overlays</td><td><span class="pill lane-p">Platform</span></td></tr>
+    <tr><td>The predicates/emitters the dimensions route to (phase-transition, payer/access, sales/launch); resolution gateway; source/object/confidence contract packs</td><td><span class="pill lane-d">Data</span></td></tr>
+    <tr><td>Four-panel answer UI (interpretation · matrix · graph · gaps+curator); search/graph rendering; Domain Forge round-④ pack editing</td><td><span class="pill lane-f">Frontend</span></td></tr>
+    <tr><td>Authoring playbooks/lenses/personas/eval cases</td><td>SME via <span class="pill lane-f">Domain Forge</span> → all lanes consume</td></tr>
+  </table>
+
+  <h2>8 · Sequencing (SME MVPs × lanes)</h2>
+  <div class="ph done"><h3>Shipped <span class="tag ok">data lane</span></h3>
+    <ul><li>Semantic-resolution gateway (Phase 1) · combo-orphan recovery · ledger predicate coverage probe (this branch).</li></ul></div>
+  <div class="ph next"><h3>Next — make decomposition non-empty + visible</h3>
+    <ul>
+      <li><span class="pill lane-p">Platform</span> MVP-2: wire <code>plan_decomposition</code> into the chat path + ambiguity gate + <code>ask_success_rate</code> playbook → the question-decomposition panel (SME: "this alone makes it feel 3× smarter").</li>
+      <li><span class="pill lane-d">Data</span>: phase-transition emitter (fills development lens) + prioritise payer/sales sources (fill access/commercial lenses).</li>
+      <li><span class="pill lane-p">Platform</span> MVP-1/3: governed-object search cards + evidence-lineage graph.</li>
+    </ul></div>
+  <div class="ph later"><h3>Later — boardroom-grade</h3>
+    <ul><li>Scenario-impact graph (signal→scenario Δ→decision→gap); competitive-landscape graph; persona overlays; Domain Forge maintenance loop; curator cockpit.</li></ul></div>
+
+  <h2>9 · Why this is the right architecture</h2>
+  <p>Both gateways share one shape — <em>decompose before you answer; preserve uncertainty; explain; route to governed objects; learn from corrections</em> — and one mechanism: <strong>versioned, SME-authorable domain packs</strong> driving a generic engine. Chat, search, graph and CI stop being separate toys and become lenses on the same governed intelligence. The chatbot is demoted to the mouth, and the domain pack is finally the brain.</p>
+  <p class="src" style="margin-top:32px">Honest status: this is the design + a grounded data-lane coverage check. The PLAN infra exists but is unwired (Platform lane to switch on); three of five success-lenses are predicate-gaps (Data lane to fill); the UI is Frontend. Nothing here claims to be wired yet — it sequences the real work across the three lanes against what the headline question actually needs.</p>
+</div>
+</body>
+</html>

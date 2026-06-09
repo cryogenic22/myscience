@@ -1,0 +1,69 @@
+# pharma_question_playbooks.yaml  (PROPOSAL — data-lane authored)
+#
+# The ask_success_rate multi-lens playbook from the SME spec (docs/chat_domain.md),
+# authored in the EXISTING services/domain_intelligence/playbook.py schema so the
+# Platform lane can adopt it as a seed/DB playbook without reshaping. Each lens is
+# a Dimension whose predicate routes are the fact-ledger predicates the lens needs.
+#
+# This file is ALSO the input to scripts/playbook_predicate_coverage.py, which
+# checks — per lens — whether the prod fact ledger can actually fill it, so the
+# data lane builds the emitters the headline question needs (not whatever data
+# happens to be lying around). Lives under domain/pharma/packs/ (data-lane pack
+# suite) as a proposal; it is NOT wired into the live planner seed dir.
+#
+# Beyond the schema below, the SME spec adds three concepts the Platform lane
+# must extend the model with when wiring: ambiguity_policy (lens/denominator/
+# timeframe disambiguation), persona_overlays (re-prioritise dimensions), and an
+# answer_contract (interpretation · by-lens · evidence · confidence · gaps).
+pack:
+  id: pharma.question_playbooks.v0_1
+  domain: pharma_intelligence
+  owner: domain_intelligence_team
+  status: proposal
+  version: 0.1
+
+id: ask_success_rate_therapeutic_area
+pack: pharma
+trigger:
+  intent: ask_success_rate
+  entities: therapeutic_area
+# The disambiguation the ambiguity gate must force before answering a rate.
+ambiguity:
+  trigger_terms: [success rate, effectiveness, performance, winning, best, likely to succeed]
+  clarify_slots: [success_lens, denominator, timeframe, geography, indication]
+  default_behaviour: answer_multi_lens
+synthesis:
+  answer_shape: multi_lens_scorecard
+  must_include: [interpretation, scorecard_by_lens, evidence_table, confidence_and_gaps, next_best_questions]
+  must_never: [rate_without_denominator, collapse_efficacy_into_commercial, news_as_primary_clinical_evidence, invent_missing_dimensions]
+dimensions:
+  - key: development_success
+    label: Clinical development success
+    sub_question: "What proportion of {entity} assets progress through development and approval, by phase and mechanism?"
+    required: true
+    weight: 0.9
+    routes: [predicate:phase_transition, predicate:discontinuation, predicate:approval_event, predicate:clinical_trial]
+  - key: trial_endpoint_success
+    label: Trial endpoint success
+    sub_question: "How often did {entity} trials meet their primary endpoints, in which populations and comparators?"
+    required: true
+    weight: 1.0
+    routes: [predicate:efficacy_endpoint, predicate:trial_result, predicate:safety_signal, predicate:adverse_event]
+  - key: regulatory_success
+    label: Regulatory success
+    sub_question: "Which {entity} assets achieved approval, label expansion or rejection, and on what evidence?"
+    required: true
+    weight: 0.8
+    routes: [predicate:regulatory_approval, predicate:regulatory_milestone, predicate:label_indication, predicate:regulatory_setback]
+  - key: market_access_success
+    label: Market access success
+    sub_question: "How successfully did {entity} achieve coverage and reimbursement with manageable restrictions?"
+    required: false
+    weight: 0.7
+    routes: [predicate:formulary_status, predicate:prior_authorisation, predicate:step_edit, predicate:hta_decision, predicate:pricing_intent]
+  - key: commercial_success
+    label: Commercial and launch success
+    sub_question: "Did {entity} convert approval and evidence into uptake, revenue, share and persistence?"
+    required: false
+    weight: 0.7
+    routes: [predicate:product_sales, predicate:launch_event, predicate:uptake_signal, predicate:supply_disruption, predicate:ma_deal]
