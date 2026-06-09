@@ -46,11 +46,36 @@ def seed_atc_mappings(pack: dict) -> list[dict]:
     return out
 
 
-def build_atc_candidate(atc_l5: str) -> CrosswalkCandidate:
-    """Pure: an ATC L5 code asserting a molecule classification (related, not identity)."""
+def build_atc_candidate(atc_l5: str, source_curated: bool = True) -> CrosswalkCandidate:
+    """Pure: an ATC L5 code asserting a molecule classification (related, not identity).
+
+    source_curated grants the curated-crosswalk boost — true for SME seeds, but the
+    bulk WHO-release path (L1b-ii) must pass False (a raw release code is not curated).
+    """
     return CrosswalkCandidate(
         from_system="atc", level=5, to_target="molecule",
-        method="external_source_crosswalk", external_id=atc_l5, source_curated=True)
+        method="external_source_crosswalk", external_id=atc_l5, source_curated=source_curated)
+
+
+# An action that ACCEPTS the mapping — only these may enrich the drug spine.
+_SPINE_ACTIONS = {"approved_auto", "approved_with_audit"}
+
+
+def _review_status_for(action: str) -> str:
+    """Derive the persisted review_status from the engine's action (faithful, not
+    hardcoded) so a steward queue and the review index reflect reality."""
+    return {
+        "approved_auto": "approved",
+        "approved_with_audit": "machine_only",   # accepted, available for audit
+        "review_required": "pending_review",
+        "rejected_or_quarantined": "rejected",
+    }.get(action, "machine_only")
+
+
+def _should_backfill_spine(rec) -> bool:
+    """A code may only touch drugs.atc_codes when the engine ACCEPTED the mapping
+    (not rejected/quarantined, not merely pending review)."""
+    return rec.relation != "rejected" and rec.action in _SPINE_ACTIONS
 
 
 def _resolve_richest_drug(db: Database, name: str) -> dict | None:
@@ -80,37 +105,58 @@ def load_atc_seeds(db: Database, pack: dict, apply: bool = False) -> Counter:
             continue
 
         rec = classify(build_atc_candidate(seed["atc_l5"]), pack)
+        review_status = _review_status_for(rec.action)
+        backfill = _should_backfill_spine(rec)
         label = f"{seed['atc_l5']} ({seed.get('atc_l4_label')})"
         print(f"  {seed['drug_name']:<14} -> {drug['id']}  {seed['atc_l5']}  "
-              f"relation={rec.relation} conf={rec.confidence} action={rec.action}")
+              f"relation={rec.relation} conf={rec.confidence} action={rec.action} "
+              f"review={review_status} spine={'yes' if backfill else 'NO'}")
         if not apply:
             stats["would_write"] += 1
+            stats["would_backfill"] += 1 if backfill else 0
             continue
 
-        # crosswalk_records — idempotent on (internal, system, external).
+        # crosswalk_records — record EVERY governed verdict (incl. rejected, so the
+        # decision is auditable, never silently dropped). Idempotent on the natural
+        # key, but a re-classified mapping UPDATES the governed fields (drift is
+        # recorded, not masked by DO NOTHING).
         db.execute(
             """
             INSERT INTO crosswalk_records
                 (internal_entity_id, internal_entity_type, external_system, external_id,
                  external_label, mapping_relation, mapping_scope, mapping_confidence,
                  mapping_method, ambiguity_flags, source_version, review_status, action)
-            VALUES (%s, 'molecule', 'atc', %s, %s, %s, %s, %s, %s, %s, %s, 'machine_only', %s)
-            ON CONFLICT (internal_entity_id, external_system, external_id) DO NOTHING
+            VALUES (%s, 'molecule', 'atc', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (internal_entity_id, external_system, external_id) DO UPDATE SET
+                mapping_relation = EXCLUDED.mapping_relation,
+                mapping_scope = EXCLUDED.mapping_scope,
+                mapping_confidence = EXCLUDED.mapping_confidence,
+                ambiguity_flags = EXCLUDED.ambiguity_flags,
+                review_status = EXCLUDED.review_status,
+                action = EXCLUDED.action,
+                source_version = EXCLUDED.source_version,
+                updated_at = NOW()
             """,
             [str(drug["id"]), seed["atc_l5"], label, rec.relation, rec.scope,
              rec.confidence, "external_source_crosswalk", rec.flags or [],
-             SOURCE_VERSION, rec.action],
+             SOURCE_VERSION, review_status, rec.action],
         )
-        # drugs.atc_codes — append, never overwrite, never duplicate.
-        db.execute(
-            """
-            UPDATE drugs SET atc_codes = array_append(COALESCE(atc_codes, '{}'), %s),
-                             updated_at = NOW()
-            WHERE id = %s AND NOT (%s = ANY(COALESCE(atc_codes, '{}')))
-            """,
-            [seed["atc_l5"], str(drug["id"]), seed["atc_l5"]],
-        )
-        stats["written"] += 1
+        stats["records_written"] += 1
+        stats[f"verdict_{rec.action}"] += 1
+
+        # drugs.atc_codes — ONLY enrich the spine when the engine ACCEPTED the
+        # mapping. A rejected/quarantined/pending mapping is recorded above but must
+        # never touch the drug spine. Append-only, dup-guarded, never overwrites.
+        if backfill:
+            db.execute(
+                """
+                UPDATE drugs SET atc_codes = array_append(COALESCE(atc_codes, '{}'), %s),
+                                 updated_at = NOW()
+                WHERE id = %s AND NOT (%s = ANY(COALESCE(atc_codes, '{}')))
+                """,
+                [seed["atc_l5"], str(drug["id"]), seed["atc_l5"]],
+            )
+            stats["spine_backfilled"] += 1
     return stats
 
 
