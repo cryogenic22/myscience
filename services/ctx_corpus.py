@@ -109,14 +109,14 @@ SELECT
     d.id,
     d.generic_name,
     d.brand_name,
-    m.mechanism_name,
-    c.company_name,
-    ta.therapeutic_area,
-    d.approval_status,
+    m.name AS mechanism_name,
+    c.name AS company_name,
+    ta.name AS therapeutic_area,
+    d.marketing_status AS approval_status,
     d.nda_number,
     d.supply_status
 FROM drugs d
-LEFT JOIN mechanisms m ON d.mechanism_id = m.id
+LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
 LEFT JOIN companies c ON d.company_id = c.id
 LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
 ORDER BY d.generic_name
@@ -125,43 +125,43 @@ ORDER BY d.generic_name
 _COMPANIES_SQL = """
 SELECT
     c.id,
-    c.company_name,
+    c.name AS company_name,
     COUNT(DISTINCT d.id) AS drug_count,
-    COUNT(DISTINCT ct.nct_id) AS trial_count,
+    COUNT(DISTINCT ct.id) AS trial_count,
     COALESCE(SUM(mv.pipeline_score), 0) AS pipeline_score_total
 FROM companies c
 LEFT JOIN drugs d ON d.company_id = c.id
 LEFT JOIN clinical_trials ct ON ct.drug_id = d.id
 LEFT JOIN mv_drug_pipeline_strength mv ON mv.drug_id = d.id
-GROUP BY c.id, c.company_name
+GROUP BY c.id, c.name
 ORDER BY pipeline_score_total DESC
 """
 
 _TRIALS_SQL = """
 SELECT
-    ct.nct_id,
-    ct.title,
+    ct.id::text AS nct_id,
+    ct.official_title AS title,
     ct.phase,
     ct.status,
     d.generic_name AS drug_name,
-    ct.enrollment,
+    COALESCE(ct.actual_enrollment, ct.enrollment_target) AS enrollment,
     ct.start_date
 FROM clinical_trials ct
 LEFT JOIN drugs d ON ct.drug_id = d.id
-ORDER BY ct.start_date DESC
+ORDER BY ct.start_date DESC NULLS LAST
 LIMIT 500
 """
 
 _MECHANISMS_SQL = """
 SELECT
     m.id,
-    m.mechanism_name,
+    m.name AS mechanism_name,
     COUNT(DISTINCT d.id) AS drug_count,
-    COUNT(DISTINCT ct.nct_id) AS trial_count
-FROM mechanisms m
+    COUNT(DISTINCT ct.id) AS trial_count
+FROM mechanisms_of_action m
 LEFT JOIN drugs d ON d.mechanism_id = m.id
 LEFT JOIN clinical_trials ct ON ct.drug_id = d.id
-GROUP BY m.id, m.mechanism_name
+GROUP BY m.id, m.name
 ORDER BY drug_count DESC
 """
 
@@ -263,7 +263,7 @@ class PharmaCorpusBuilder:
         # Each file uses {"entity": name, ...fields} format
         for drug in drugs:
             name = drug["name"]
-            safe_name = name.lower().replace(" ", "_").replace("/", "_")[:50]
+            safe_name = self._safe_slug(name)
             self._write_yaml(out / f"drug_{safe_name}.yaml", {
                 "entity": f"DRUG-{name.upper().replace(' ', '-')}",
                 "type": "drug",
@@ -273,7 +273,7 @@ class PharmaCorpusBuilder:
 
         for company in companies:
             name = company["name"]
-            safe_name = name.lower().replace(" ", "_").replace("/", "_")[:50]
+            safe_name = self._safe_slug(name)
             self._write_yaml(out / f"company_{safe_name}.yaml", {
                 "entity": f"COMPANY-{name.upper().replace(' ', '-')}",
                 "type": "company",
@@ -283,7 +283,7 @@ class PharmaCorpusBuilder:
 
         for mech in mechanisms:
             name = mech["name"]
-            safe_name = name.lower().replace(" ", "_").replace("/", "_")[:50]
+            safe_name = self._safe_slug(name)
             self._write_yaml(out / f"mechanism_{safe_name}.yaml", {
                 "entity": f"MECHANISM-{name.upper().replace(' ', '-')[:60]}",
                 "type": "mechanism",
@@ -343,11 +343,67 @@ class PharmaCorpusBuilder:
         return result
 
     @staticmethod
+    def _safe_slug(name: str) -> str:
+        """Filesystem-safe slug for a per-entity filename. Entity names carry
+        characters illegal in Windows paths (" : < > | ? *) and awkward on any
+        FS; keep only [a-z0-9._-], collapse the rest to '_'. (A drug literally
+        named 'Karolinska Cocktail' with a quote crashed pack() on Windows.)"""
+        import re as _re
+        slug = _re.sub(r"[^a-z0-9._-]+", "_", (name or "").lower()).strip("_")
+        return (slug or "unnamed")[:50]
+
+    @staticmethod
+    def _corpus_safe_str(s: str) -> str:
+        """Neutralise characters the ctxpack YAML parser rejects as anchors/
+        aliases/tags. Its naive regex flags ``&word`` / ``*word`` / ``!word``
+        anywhere on a line, and real entity names carry them ("R&D"). The corpus
+        is a DERIVED artifact (the DB keeps the original), so render ID-safe:
+        ``&`` -> "and"; drop a ``*`` / ``!`` that directly precedes a letter."""
+        import re as _re
+        s = s.replace("&", "and")
+        return _re.sub(r"[*!](?=[A-Za-z])", "", s)
+
+    @staticmethod
+    def _plain(obj):
+        """Coerce DB-derived values to plain Python types before YAML dump.
+        psycopg2 returns numerics as Decimal and timestamps as datetime; PyYAML
+        serialises those with a ``!!python/...`` tag that the ctxpack YAML parser
+        rejects — which silently broke pack() and with it the whole unified
+        handler. Decimal -> float, datetime/date -> ISO, str -> corpus-safe."""
+        from decimal import Decimal
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, str):
+            return PharmaCorpusBuilder._corpus_safe_str(obj)
+        if isinstance(obj, dict):
+            return {k: PharmaCorpusBuilder._plain(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [PharmaCorpusBuilder._plain(v) for v in obj]
+        if hasattr(obj, "isoformat"):
+            return obj.isoformat()
+        return obj
+
+    @staticmethod
     def _write_yaml(path: Path, data: Any) -> None:
-        """Write data to YAML file."""
+        """Write data to YAML file.
+
+        The ctxpack YAML parser supports only a restricted subset: no Python
+        tags, no anchors/aliases, no block scalars. So we coerce to plain types
+        (_plain) and force a no-alias dumper, otherwise pack() raises and the
+        unified handler silently dies back to the legacy path.
+        """
+        data = PharmaCorpusBuilder._plain(data)
         if yaml is not None:
+            class _NoAliasDumper(yaml.Dumper):
+                def ignore_aliases(self, data):  # never emit &anchors / *aliases
+                    return True
+
             with open(path, "w", encoding="utf-8") as f:
-                yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                yaml.dump(
+                    data, f, Dumper=_NoAliasDumper,
+                    default_flow_style=False, allow_unicode=True, sort_keys=False,
+                    width=10**9,  # don't wrap long scalars into block style
+                )
         else:
             # Fallback: write as JSON (CTX packer can read JSON too)
             json_path = path.with_suffix(".json")
