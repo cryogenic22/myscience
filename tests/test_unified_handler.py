@@ -291,6 +291,41 @@ class TestCitationGrounding:
         assert summary["total_evidence_items"] == len(result["data"]["evidence"])
 
 
+# ── 7c. Topic resolution + leaders evidence (trust routing) ──
+
+class TestTopicAndLeaders:
+    def test_mechanism_alias_resolves(self, handler):
+        from services.ctx_pipeline import QueryPlan
+        p = QueryPlan(original_question="What companies make GLP-1 drugs?",
+                      resolved_question="", entities_detected=["glp 1"])
+        assert handler._resolve_topic(p) == "Glucagon-Like Peptide"
+
+    def test_topic_falls_back_to_entity(self, handler):
+        from services.ctx_pipeline import QueryPlan
+        p = QueryPlan(original_question="Tell me about semaglutide",
+                      resolved_question="", entities_detected=["semaglutide"])
+        # No mechanism alias / area term → first entity
+        assert handler._resolve_topic(p) == "semaglutide"
+
+    def test_leaders_become_citable_evidence(self, handler):
+        leaders = [
+            {"company_name": "Novo Nordisk", "drug_count": 68, "trial_count": 708},
+            {"company_name": "Eli Lilly", "drug_count": 33, "trial_count": 200},
+        ]
+        ev = handler._leaders_as_evidence(leaders)
+        assert len(ev) == 2
+        assert ev[0]["entity_type"] == "company"
+        assert "Novo Nordisk" in ev[0]["content"] and "68 drugs" in ev[0]["content"]
+        assert set(ev[0]) >= {"source", "entity_type", "entity_id", "content", "relevance", "provenance"}
+
+    def test_company_leaders_question_uses_leaders_prompt(self, handler, mock_llm):
+        """'which companies dominate X' must synthesize with the company-centric
+        prompt, not the mechanism-centric landscape one."""
+        handler.handle("Which companies dominate the diabetes drugs space?")
+        assert mock_llm.synthesize.called
+        assert mock_llm.synthesize.call_args.kwargs.get("intent") == "leaders"
+
+
 # ── 8. Provenance ──
 
 class TestProvenance:

@@ -1,0 +1,23 @@
+{
+  "run_id": "eval-20260610-211041",
+  "timestamp": "2026-06-10T21:10:41.809494+00:00",
+  "total_queries": 12,
+  "overall_score": 0.801,
+  "by_intent": {
+    "landscape": 0.731,
+    "pipeline": 0.753,
+    "dossier": 0.856,
+    "compare": 0.91,
+    "portfolio": 1.0
+  },
+  "by_dimension": {
+    "intent": 0.583,
+    "grounding": 0.825,
+    "factual": 0.713,
+    "completeness": 0.833,
+    "citation": 1.0
+  },
+  "failures": [],
+  "latency_p50": 0,
+  "latency_p95": 0
+}
