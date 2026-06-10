@@ -99,6 +99,54 @@ _PIPELINE_RE = re.compile(
     r'\b(?:pipeline|drug\s+pipeline|phase\s+distribution)\b', re.IGNORECASE
 )
 _PORTFOLIO_RE = re.compile(r'\bportfolio\b', re.IGNORECASE)
+
+# "Which companies dominate X", "who are the leaders in X", "what firms make X"
+# — competitive questions that must route to landscape so the grounded metrics
+# fire (instead of falling through to 'general' and hallucinating a dominant
+# entity). Kept narrow: requires a market-actor noun OR an explicit dominance verb.
+_LEADERS_RE = re.compile(
+    r'\b(?:which|what|who|name)\b[^?]*\b(?:compan(?:y|ies)|players?|makers?|'
+    r'manufacturers?|firms?|leaders?|developers?|vendors?)\b'
+    r'|\b(?:dominate|dominates|dominating|market\s+leaders?|biggest\s+players?|'
+    r'who\s+(?:makes|develops|sells|manufactures|leads?)|leads?\s+the\s+'
+    r'(?:market|space|area|field))\b',
+    re.IGNORECASE,
+)
+# "Phase 3 for X", "in Phase II" → pipeline (unless it's a count question, see below).
+_PHASE_RE = re.compile(r'\bphase\s*(?:1|2|3|4|i{1,3}|iv)\b', re.IGNORECASE)
+# Count/aggregation questions must stay structured even when they mention a phase.
+_COUNT_RE = re.compile(r'\b(?:how many|count|total number|number of)\b', re.IGNORECASE)
+
+# Organisation entities that are research/academic/clinical sponsors, NOT pharma
+# market players. Disease words ("diabetes") keyword-match their names
+# ("Baker Heart and Diabetes Institute") and mislead synthesis. Filtered from
+# entity detection and (in metrics) from company rankings.
+# Word-bounded so partial words don't false-positive (e.g. "Centene",
+# "Centessa", a drug name containing "carb"). Morphological suffixes
+# (institut\w*, universit\w*) catch institute/institutes/university/universities.
+_JUNK_ORG_RE = re.compile(
+    r'\b(?:institut\w*|universit\w*|college|school|foundation|hospital|'
+    r'registry|ministry|department|center|centre|clinic|trust|consortium|'
+    r'society|association|polyclinic)\b'
+    r'|medical\s+cent(?:er|re)|health\s+system',
+    re.IGNORECASE,
+)
+
+
+def _is_junk_org(name: str) -> bool:
+    """True if a section/entity name is a research/academic/clinical org rather
+    than a pharma market player. Used to keep disease-word queries from
+    resolving to e.g. 'Dasman Diabetes Institute'."""
+    return bool(name and _JUNK_ORG_RE.search(name))
+
+
+def is_company_leaders_question(question: str) -> bool:
+    """True for 'which companies dominate/lead/make X' — a company-centric
+    question that needs a company-naming synthesis, not the mechanism-centric
+    landscape persona (which is explicitly instructed NOT to name companies)."""
+    return bool(question and _LEADERS_RE.search(question))
+
+
 _STRUCTURED_PATTERNS = [
     re.compile(r'\b(?:how many|count|total number)\b', re.IGNORECASE),
     re.compile(r'\b(?:average|avg|mean|median)\b', re.IGNORECASE),
@@ -185,6 +233,11 @@ class CTXQueryPipeline:
         matched_sections = self.keyword_index.match(resolved)
         entities = []
         for section_name in matched_sections:
+            # Skip research/academic/clinical orgs — disease words ("diabetes")
+            # keyword-match their names ("...Diabetes Institute") and mislead
+            # synthesis into naming a non-market-player as dominant.
+            if _is_junk_org(section_name):
+                continue
             # Extract entity name from section name (e.g., "DRUG-SEMAGLUTIDE" → "semaglutide")
             if "-" in section_name:
                 entity_name = section_name.split("-", 1)[-1].lower().replace("-", " ")
@@ -218,12 +271,19 @@ class CTXQueryPipeline:
         """Classify question intent."""
         if _COMPARE_RE.search(question):
             return "compare"
+        # "which companies dominate X" / "who leads X" → competitive landscape.
+        # (A count phrasing — "how many companies…" — stays structured.)
+        if _LEADERS_RE.search(question) and not _COUNT_RE.search(question):
+            return "landscape"
         if _LANDSCAPE_RE.search(question):
             return "landscape"
-        if _PIPELINE_RE.search(question):
-            return "pipeline"
         if _PORTFOLIO_RE.search(question):
             return "portfolio"
+
+        # Count questions stay structured even if they mention a phase.
+        is_count = bool(_COUNT_RE.search(question))
+        if _PIPELINE_RE.search(question) or (_PHASE_RE.search(question) and not is_count):
+            return "pipeline"
 
         # Check for structured query patterns
         hits = sum(1 for p in _STRUCTURED_PATTERNS if p.search(question))

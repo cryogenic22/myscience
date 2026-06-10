@@ -1,0 +1,49 @@
+[
+  {"id": "TR01", "intent": "landscape", "question": "Which companies dominate the diabetes drugs space?",
+   "expected": {"entities": [], "must_mention": ["Novo Nordisk"], "must_not_mention": ["Medtronic", "Institute", "Foundation"], "min_evidence": 1, "min_citations": 0},
+   "note": "Category routing. Real leader is Novo Nordisk (109 drugs/584 trials). Must NOT name a device co / research institute as dominant."},
+
+  {"id": "TR02", "intent": "landscape", "question": "Show the competitive landscape for diabetes drugs",
+   "expected": {"entities": [], "must_mention": ["GLP-1"], "must_not_mention": ["No competitive landscape data", "Institute"], "min_evidence": 1, "min_citations": 0},
+   "note": "Must surface real mechanisms (GLP-1/Insulin/DPP-4/SGLT2), not an empty fallback."},
+
+  {"id": "TR03", "intent": "pipeline", "question": "What drugs are in Phase 3 for diabetes?",
+   "expected": {"entities": [], "must_mention": ["diabetes"], "must_not_mention": ["No pipeline data", "Institute"], "min_evidence": 1, "min_citations": 0},
+   "note": "Must not return the empty 'No pipeline data available' fallback for a 759-drug area."},
+
+  {"id": "TR04", "intent": "landscape", "question": "Who are the leaders in obesity drugs?",
+   "expected": {"entities": [], "must_mention": ["Novo Nordisk"], "must_not_mention": ["Medtronic", "Institute"], "min_evidence": 1, "min_citations": 0},
+   "note": "Obesity (141 drugs). Leaders = Novo Nordisk / Eli Lilly (semaglutide, tirzepatide)."},
+
+  {"id": "TR05", "intent": "landscape", "question": "What is the competitive landscape for SGLT2 inhibitors?",
+   "expected": {"entities": [], "must_mention": ["SGLT2"], "must_not_mention": ["Institute"], "min_evidence": 1, "min_citations": 0},
+   "note": "Mechanism-level routing (known-working anchor): SGLT2 has 66 drugs/245 trials."},
+
+  {"id": "TR06", "intent": "landscape", "question": "Which companies make GLP-1 drugs?",
+   "expected": {"entities": [], "must_mention": ["Novo Nordisk"], "must_not_mention": ["Institute", "Foundation"], "min_evidence": 1, "min_citations": 0},
+   "note": "GLP-1 makers include Novo Nordisk and Eli Lilly."},
+
+  {"id": "TR07", "intent": "dossier", "question": "Tell me about a drug called Zorblaxizine",
+   "expected": {"entities": [], "must_mention": ["not"], "must_not_mention": ["Novo Nordisk", "GLP-1", "approved"], "min_evidence": 0, "min_citations": 0},
+   "note": "Nonexistent drug. Must honestly say it wasn't found / no data — NOT invent a profile."},
+
+  {"id": "TR08", "intent": "dossier", "question": "What is the exact US market share percentage of semaglutide?",
+   "expected": {"entities": ["semaglutide"], "must_mention": ["semaglutide"], "must_not_mention": [], "min_evidence": 1, "min_citations": 0},
+   "note": "We hold no market_share facts. Answer must not fabricate a hard %; factual-accuracy scorer guards invented numbers."},
+
+  {"id": "TR09", "intent": "dossier", "question": "Tell me about semaglutide",
+   "expected": {"entities": ["semaglutide"], "must_mention": ["GLP-1", "Novo Nordisk"], "must_not_mention": [], "min_evidence": 3, "min_citations": 2},
+   "note": "Known-good regression anchor — must keep working with grounded citations."},
+
+  {"id": "TR10", "intent": "compare", "question": "Compare semaglutide vs tirzepatide",
+   "expected": {"entities": ["semaglutide", "tirzepatide"], "must_mention": [], "must_not_mention": [], "min_evidence": 1, "min_citations": 1},
+   "note": "Known-good compare anchor (was 0/0 before L2; now 3/3 live)."},
+
+  {"id": "TR11", "intent": "portfolio", "question": "Tell me about Novo Nordisk and its portfolio",
+   "expected": {"entities": ["Novo Nordisk"], "must_mention": ["Novo Nordisk"], "must_not_mention": [], "min_evidence": 1, "min_citations": 1},
+   "note": "Company routing anchor: 109 drugs / 584 trials."},
+
+  {"id": "TR12", "intent": "landscape", "question": "What does the cardiovascular drug landscape look like?",
+   "expected": {"entities": [], "must_mention": [], "must_not_mention": ["No competitive landscape data", "Institute"], "min_evidence": 1, "min_citations": 0},
+   "note": "Cardiovascular Diseases (58 drugs) + Heart Failure (109). Must not return empty."}
+]

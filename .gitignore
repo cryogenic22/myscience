@@ -96,3 +96,9 @@ NUL
 # Temp files
 tmp_*.json
 test_write.txt
+
+# transient eval run artifacts (keep golden_*.json + committed baselines)
+benchmark/reports/ci-eval-*.json
+benchmark/reports/eval-*.json
+benchmark/reports/live-captured-*.json
+benchmark/reports/trust-baseline-*.json

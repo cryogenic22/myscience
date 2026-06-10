@@ -404,6 +404,54 @@ class PharmaMetrics:
             )
             return []
 
+    # Academic / clinical orgs that are NOT pharma market players — excluded
+    # from "who leads" rankings. Word-bounded (\y) to mirror
+    # services.ctx_pipeline._JUNK_ORG_RE and avoid partial-word false positives.
+    _JUNK_ORG_SQL = (
+        r'\y(institut\w*|universit\w*|college|school|foundation|hospital|'
+        r'registry|ministry|department|center|centre|clinic|trust|consortium|'
+        r'society|association|polyclinic)\y'
+        r'|medical\s+cent(er|re)|health\s+system'
+    )
+
+    def top_companies_by_topic(self, topic: Optional[str], limit: int = 8) -> list[dict]:
+        """Companies ranked by # of drugs in a therapeutic area or mechanism class.
+
+        Answers "which companies dominate/lead <area>". Uses the AUTHORITATIVE
+        ``drugs.company_id`` attribution (derived from dominant trial sponsor by
+        the data lane) — NOT raw entity_links sponsorship, which conflates trial
+        sponsors with developers and ranked vaccine makers as GLP-1 leaders.
+        Excludes academic/clinical orgs. Real-time (no MV), bounded by the topic
+        filter + LIMIT.
+        """
+        if not topic:
+            return []
+        try:
+            rows = self.db.fetch_all(
+                """
+                SELECT c.name AS company_name,
+                       COUNT(DISTINCT d.id)  AS drug_count,
+                       COUNT(DISTINCT ct.id) AS trial_count
+                FROM drugs d
+                JOIN companies c ON c.id = d.company_id
+                LEFT JOIN therapeutic_areas ta ON ta.id = d.therapeutic_area_id
+                LEFT JOIN mechanisms_of_action m ON m.id = d.mechanism_id
+                LEFT JOIN clinical_trials ct ON ct.drug_id = d.id
+                WHERE (ta.name ILIKE %s OR m.name ILIKE %s)
+                  AND d.record_status = 'active'
+                  AND c.record_status IS DISTINCT FROM 'superseded'
+                  AND c.name !~* %s
+                GROUP BY c.name
+                ORDER BY drug_count DESC, trial_count DESC
+                LIMIT %s
+                """,
+                [f"%{topic}%", f"%{topic}%", self._JUNK_ORG_SQL, limit],
+            )
+            return stamp_metric_provenance(rows, "top_companies_by_topic", realtime=True)
+        except Exception as exc:
+            logger.warning("top_companies_by_topic unavailable: %s", exc)
+            return []
+
     def refresh(self) -> dict:
         """Refresh all materialized views. Call after pipeline runs or backfills."""
         results = {}

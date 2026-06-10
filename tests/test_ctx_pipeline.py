@@ -100,6 +100,58 @@ class TestUnderstandStage:
         plan = pipeline.understand("How many drugs are in Phase 3?")
         assert plan.intent == "structured_query"
 
+
+class TestTrustRouting:
+    """Category/'who-leads' queries must route to a metric-backed intent so the
+    grounded landscape/pipeline metrics fire — instead of falling to 'general'
+    and hallucinating (the 'Medtronic dominates diabetes' failure).
+    """
+
+    @pytest.mark.parametrize("q", [
+        "Which companies dominate the diabetes drugs space?",
+        "Who are the leaders in obesity drugs?",
+        "What companies make GLP-1 drugs?",
+        "Which firms are the biggest players in oncology?",
+    ])
+    def test_company_leader_queries_route_to_landscape(self, pipeline, q):
+        assert pipeline.understand(q).intent == "landscape"
+
+    def test_phase_query_routes_to_pipeline(self, pipeline):
+        assert pipeline.understand("What drugs are in Phase 3 for diabetes?").intent == "pipeline"
+
+    def test_count_phase_query_stays_structured(self, pipeline):
+        # Regression: a count question that mentions a phase must NOT become pipeline
+        assert pipeline.understand("How many drugs are in Phase 3?").intent == "structured_query"
+
+    def test_count_companies_stays_structured(self, pipeline):
+        # Regression: "how many companies …" is a count, not a leaders/landscape query
+        assert pipeline.understand(
+            "How many companies are developing obesity drugs?"
+        ).intent == "structured_query"
+
+    def test_who_leads_verb_routes_to_landscape(self, pipeline):
+        assert pipeline.understand("Who leads the obesity drug market?").intent == "landscape"
+
+    def test_junk_filter_does_not_flag_partial_words(self):
+        from services.ctx_pipeline import _is_junk_org
+        # Word-bounded: must NOT false-positive on real companies/drugs
+        assert not _is_junk_org("COMPANY-CENTESSA-PHARMACEUTICALS")
+        assert not _is_junk_org("COMPANY-CENTENE")
+        assert not _is_junk_org("ENTITY-DRUG-CARBIDOPA")
+
+    def test_dossier_still_dossier(self, pipeline):
+        assert pipeline.understand("Tell me about semaglutide").intent == "dossier"
+
+    def test_junk_org_helper_flags_academic_sponsors(self):
+        from services.ctx_pipeline import _is_junk_org
+        assert _is_junk_org("ENTITY-COMPANY-BAKER-HEART-AND-DIABETES-INSTITUTE")
+        assert _is_junk_org("COMPANY-DASMAN-DIABETES-INSTITUTE")
+        assert _is_junk_org("University of Colorado, Denver")
+        # Real market players must NOT be flagged
+        assert not _is_junk_org("COMPANY-NOVO-NORDISK")
+        assert not _is_junk_org("ENTITY-DRUG-SEMAGLUTIDE")
+        assert not _is_junk_org("Eli Lilly")
+
     def test_preserves_original_question(self, pipeline):
         plan = pipeline.understand("Tell me about semaglutide")
         assert plan.original_question == "Tell me about semaglutide"

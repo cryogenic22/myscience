@@ -12,9 +12,16 @@ Usage:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
-from services.ctx_pipeline import CTXQueryPipeline, QueryPlan, RetrievalResult, ReasoningResult
+from services.ctx_pipeline import (
+    CTXQueryPipeline,
+    QueryPlan,
+    RetrievalResult,
+    ReasoningResult,
+    is_company_leaders_question,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +126,7 @@ class UnifiedChatHandler:
         self.db = db
         self.engine = engine
         self.enabled = True
+        self._area_vocab_cache: Optional[set[str]] = None
 
     def handle(
         self,
@@ -148,10 +156,20 @@ class UnifiedChatHandler:
         # same snippets (numbered) are fed to the LLM so validate_citations sees
         # evidence_count > 0 and keeps the [N] markers instead of stripping them.
         evidence_items = _sections_to_evidence(retrieval)
-        evidence_snippets = [it["content"] for it in evidence_items]
 
         # Augment with metrics for specific intents
         metrics_data = self._fetch_metrics(plan)
+
+        # Promote company leaders to FIRST-CLASS numbered evidence. The LLM's
+        # primary grounding is evidence_snippets (it is instructed to cite them),
+        # so this is what reliably makes "which companies dominate <area>" name
+        # the real players (Novo Nordisk / Eli Lilly) — extra_context alone was
+        # too weak against the mechanism-focused landscape persona. Prepended so
+        # they lead the citation order, and carried in evidence_items so the
+        # frontend can resolve the same [N] cards.
+        leader_evidence = self._leaders_as_evidence(metrics_data.get("leaders") or [])
+        evidence_items = leader_evidence + evidence_items
+        evidence_snippets = [it["content"] for it in evidence_items]
 
         # ── Stage 3: Reason ──
         reasoning = self.pipeline.reason(plan, retrieval)
@@ -159,10 +177,19 @@ class UnifiedChatHandler:
         # ── Stage 4: Synthesize ──
         context_text = retrieval.render_context()
 
-        # Add metrics to context if available
+        # Render company leaders as a natural-language directive so the LLM names
+        # the actual market players when the question is "which companies dominate
+        # <area>" (the data is otherwise present but the model defaults to
+        # describing mechanisms). This hint goes to BOTH the guard context and
+        # the LLM (via extra_context).
+        leaders_hint = self._render_leaders(metrics_data.get("leaders") or [])
+
+        # Add metrics to the guard context if available
         if metrics_data:
-            metrics_lines = []
+            metrics_lines = [leaders_hint] if leaders_hint else []
             for key, items in metrics_data.items():
+                if key == "leaders":
+                    continue
                 metrics_lines.append(f"\n{key.upper()}:")
                 for item in items[:10]:
                     parts = [f"{k}={v}" for k, v in item.items() if v is not None]
@@ -172,9 +199,16 @@ class UnifiedChatHandler:
         # Build fallback narrative from retrieved data
         fallback = self._build_fallback(plan, retrieval, reasoning, metrics_data)
 
+        # "Which companies dominate X" needs a company-naming persona — the
+        # landscape persona is explicitly told the data is NOT by company, so it
+        # never names the players. Override the synthesis prompt (not plan.intent,
+        # which stays 'landscape' for routing/response/frontend).
+        prompt_intent = "leaders" if is_company_leaders_question(question) else None
+
         # Call LLM with grounded, numbered evidence so citations validate.
         narrative = self._synthesize(
             plan, fallback, evidence_snippets, metrics_data, memory_context,
+            extra_directive=leaders_hint, prompt_intent=prompt_intent,
         )
 
         # ── Guard check ──
@@ -208,28 +242,40 @@ class UnifiedChatHandler:
         }
 
     def _fetch_metrics(self, plan: QueryPlan) -> dict[str, list[dict]]:
-        """Fetch relevant metrics based on intent."""
+        """Fetch relevant metrics based on intent.
+
+        Resolves a therapeutic-area / topic term from the question first (e.g.
+        "diabetes drugs" → topic "diabetes") so category queries reach the
+        grounded metrics instead of being filtered by a noisy detected entity.
+        """
         if not self.metrics_svc:
             return {}
 
-        metrics = {}
+        topic = self._resolve_topic(plan)
+        metrics: dict[str, list[dict]] = {}
 
         if plan.intent == "landscape":
-            # Extract topic for filtering
-            topic = None
-            for entity in plan.entities_detected:
-                topic = entity
-                break
-            segments = self.metrics_svc.competitive_landscape(
-                topic=topic, limit=30,
-            ) if hasattr(self.metrics_svc, 'competitive_landscape') else []
-            if segments:
-                metrics["competitive"] = segments
+            if hasattr(self.metrics_svc, 'competitive_landscape'):
+                segments = self.metrics_svc.competitive_landscape(topic=topic, limit=30)
+                if segments:
+                    metrics["competitive"] = segments
+            # "which companies dominate/lead <area>" — grounded company ranking.
+            if topic and hasattr(self.metrics_svc, 'top_companies_by_topic'):
+                leaders = self.metrics_svc.top_companies_by_topic(topic, limit=8)
+                if leaders:
+                    metrics["leaders"] = leaders
 
         elif plan.intent == "pipeline":
+            kwargs = {"limit": 20}
+            if topic:
+                kwargs["therapeutic_area"] = topic
             pipelines = self.metrics_svc.drug_pipeline_strength(
-                limit=20,
+                **kwargs,
             ) if hasattr(self.metrics_svc, 'drug_pipeline_strength') else []
+            # Area filter can legitimately be empty (sparse mechanism) — retry unfiltered
+            # so the user still gets the broad pipeline rather than a dead end.
+            if not pipelines and topic and hasattr(self.metrics_svc, 'drug_pipeline_strength'):
+                pipelines = self.metrics_svc.drug_pipeline_strength(limit=20)
             if pipelines:
                 metrics["pipeline"] = pipelines
 
@@ -242,6 +288,103 @@ class UnifiedChatHandler:
 
         return metrics
 
+    # ── Therapeutic-area / topic resolution ──
+
+    # Generic tokens in therapeutic_area names that don't identify an area.
+    _AREA_STOP = {
+        "disease", "diseases", "disorder", "disorders", "syndrome", "syndromes",
+        "chronic", "acute", "type", "other", "unspecified", "system", "primary",
+        "secondary", "neoplasm", "neoplasms",  # too broad as a bare topic
+    }
+
+    def _area_vocab(self) -> set[str]:
+        """Disease/area tokens derived from the therapeutic_areas table (data-driven,
+        not hardcoded). e.g. {'diabetes','obesity','hypertension','cardiovascular'}."""
+        if self._area_vocab_cache is not None:
+            return self._area_vocab_cache
+        vocab: set[str] = set()
+        if self.db is not None:
+            try:
+                rows = self.db.fetch_all("SELECT name FROM therapeutic_areas")
+                for r in rows or []:
+                    name = (r.get("name") or "").lower()
+                    for tok in re.split(r"[^a-z0-9]+", name):
+                        if len(tok) >= 5 and tok not in self._AREA_STOP:
+                            vocab.add(tok)
+            except Exception:
+                logger.debug("area vocab load failed", exc_info=True)
+        self._area_vocab_cache = vocab
+        return vocab
+
+    @staticmethod
+    def _leaders_as_evidence(leaders: list[dict]) -> list[dict]:
+        """Turn the top-companies-by-topic ranking into citable evidence items so
+        the LLM (and the frontend citation cards) treat them as primary grounding."""
+        items: list[dict] = []
+        for c in leaders[:6]:
+            name = c.get("company_name")
+            if not name:
+                continue
+            drugs = c.get("drug_count", 0)
+            trials = c.get("trial_count")
+            content = f"{name} — {drugs} drugs in this area"
+            if trials:
+                content += f" across {trials} trials"
+            content += " (market leader by drug count)."
+            items.append({
+                "source": "metrics.top_companies_by_topic",
+                "entity_type": "company",
+                "entity_id": name,
+                "content": content,
+                "relevance": 1.0,
+                "provenance": {"source": "metrics", "metric": "top_companies_by_topic"},
+            })
+        return items
+
+    @staticmethod
+    def _render_leaders(leaders: list[dict]) -> str:
+        """Natural-language market-leaders directive for the LLM (and guard)."""
+        if not leaders:
+            return ""
+        ranked = "; ".join(
+            f"{c.get('company_name')} ({c.get('drug_count', 0)} drugs"
+            + (f", {c.get('trial_count')} trials" if c.get('trial_count') else "")
+            + ")"
+            for c in leaders[:8] if c.get("company_name")
+        )
+        return (
+            "MARKET LEADERS — companies ranked by number of drugs in this area. "
+            f"Name these specific companies in your answer: {ranked}."
+        )
+
+    # Mechanism abbreviations users type → a substring of the canonical
+    # mechanisms_of_action name, so topic ILIKE matches (e.g. "GLP-1" → the
+    # "Glucagon-Like Peptide-1 Receptor Agonists" class).
+    _MECHANISM_ALIASES = {
+        "glp-1": "Glucagon-Like Peptide", "glp1": "Glucagon-Like Peptide",
+        "sglt2": "Sodium-Glucose", "sglt-2": "Sodium-Glucose",
+        "dpp-4": "Dipeptidyl", "dpp4": "Dipeptidyl",
+        "pcsk9": "PCSK9", "tnf": "Tumor Necrosis Factor",
+        "ace inhibitor": "Angiotensin-Converting", "arb": "Angiotensin",
+    }
+
+    def _resolve_topic(self, plan: QueryPlan) -> Optional[str]:
+        """Best metric topic for the question, in priority order:
+        1. a mechanism abbreviation (GLP-1 → 'Glucagon-Like Peptide'),
+        2. a known therapeutic-area term (diabetes, obesity, …),
+        3. the first detected entity.
+        """
+        ql = (plan.original_question or "").lower()
+        for alias, canonical in self._MECHANISM_ALIASES.items():
+            # Word-bounded so "arb" doesn't match "carb", "tnf" doesn't match inside words.
+            if re.search(rf"\b{re.escape(alias)}\b", ql):
+                return canonical
+        tokens = set(re.split(r"[^a-z0-9]+", ql))
+        area_hits = tokens & self._area_vocab()
+        if area_hits:
+            return max(area_hits, key=len)  # longest disease token wins
+        return plan.entities_detected[0] if plan.entities_detected else None
+
     def _synthesize(
         self,
         plan: QueryPlan,
@@ -249,6 +392,8 @@ class UnifiedChatHandler:
         evidence_snippets: list[str],
         metrics_data: dict,
         memory_context: Optional[str] = None,
+        extra_directive: Optional[str] = None,
+        prompt_intent: Optional[str] = None,
     ) -> str:
         """Call the LLM with grounded, numbered evidence; fall back on failure.
 
@@ -257,17 +402,23 @@ class UnifiedChatHandler:
         the system prompt). This is what lets ``validate_citations`` keep the
         ``[N]`` markers — the specialized ``synthesize_comparison`` dropped
         snippets entirely, which is why compare emitted 0 citations.
+
+        ``extra_directive`` (e.g. the market-leaders ranking) is appended to the
+        LLM context so it surfaces company names for "who dominates" questions.
         """
         if not self.llm:
             return fallback
 
-        extra_context = (
-            f"CONVERSATION MEMORY:\n{memory_context}" if memory_context else None
-        )
+        extra_parts = []
+        if memory_context:
+            extra_parts.append(f"CONVERSATION MEMORY:\n{memory_context}")
+        if extra_directive:
+            extra_parts.append(extra_directive)
+        extra_context = "\n\n".join(extra_parts) if extra_parts else None
         try:
             return self.llm.synthesize(
                 question=plan.original_question,
-                intent=plan.intent,
+                intent=prompt_intent or plan.intent,
                 metrics=metrics_data or None,
                 evidence_snippets=evidence_snippets,
                 extra_context=extra_context,
