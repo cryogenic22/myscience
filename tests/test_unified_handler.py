@@ -326,6 +326,34 @@ class TestTopicAndLeaders:
         assert mock_llm.synthesize.call_args.kwargs.get("intent") == "leaders"
 
 
+# ── 7d. PLAN stage (Domain Intelligence decomposition) ──
+
+class TestPlanStage:
+    def test_no_db_means_no_decomposition(self, handler):
+        """Graceful: handler without a db must not crash and must omit/None the
+        decomposition (falls back to the legacy retrieve path)."""
+        result = handler.handle("Tell me about semaglutide")
+        assert result["data"].get("decomposition") in (None, {}, [])
+
+    def test_matrix_to_evidence_shape(self, handler):
+        decomposition = {
+            "cells": [
+                {"dimension": "clinical_efficacy", "entity_id": "d1",
+                 "facts": [{"id": "f1", "claim": "Phase 3 readout positive",
+                            "predicate": "clinical_trial", "fact_class": "outcome"}]},
+            ]
+        }
+        ev = handler._matrix_to_evidence(decomposition)
+        assert len(ev) == 1
+        assert ev[0]["entity_type"] == "fact"
+        assert "Phase 3 readout positive" in ev[0]["content"]
+        assert set(ev[0]) >= {"source", "entity_type", "entity_id", "content", "relevance", "provenance"}
+
+    def test_matrix_to_evidence_empty(self, handler):
+        assert handler._matrix_to_evidence(None) == []
+        assert handler._matrix_to_evidence({"cells": []}) == []
+
+
 # ── 8. Provenance ──
 
 class TestProvenance:
