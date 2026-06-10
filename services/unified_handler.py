@@ -30,6 +30,14 @@ logger = logging.getLogger(__name__)
 # [1..N] always resolve in the frontend evidence array.
 _MAX_EVIDENCE = 10
 
+# Reserved slots for PLAN-derived (matrix) evidence so a large decomposition
+# doesn't evict the retrieved CTX section + leader cards from the citation list.
+_PLAN_EVIDENCE_BUDGET = 6
+
+# Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
+# fan-out (each call is up to ~5 sequential DB round-trips).
+_MAX_PLAN_CANDIDATES = 8
+
 # CTX section-name prefix → frontend entity_type.
 _SECTION_TYPE_PREFIXES = {
     "DRUG": "drug",
@@ -177,8 +185,12 @@ class UnifiedChatHandler:
         # frontend can resolve the same [N] cards.
         leader_evidence = self._leaders_as_evidence(metrics_data.get("leaders") or [])
         # PLAN facts lead (most grounded), then leaders, then retrieved sections.
-        # Capped so the citation list stays resolvable in the frontend.
-        evidence_items = (plan_evidence + leader_evidence + evidence_items)[:_MAX_EVIDENCE + 4]
+        # PLAN evidence is reserved to a budget so a large matrix (a compare can
+        # emit 40+ cell-facts) doesn't evict the CTX section / leader cards. Then
+        # the whole list is capped so the citation list stays resolvable.
+        evidence_items = (
+            plan_evidence[:_PLAN_EVIDENCE_BUDGET] + leader_evidence + evidence_items
+        )[:_MAX_EVIDENCE + 4]
         evidence_snippets = [it["content"] for it in evidence_items]
 
         # ── Stage 3: Reason ──
@@ -345,13 +357,23 @@ class UnifiedChatHandler:
         drug, not a fuzzy-matched combination product."""
         from services.dossier_kb import resolve_asset
 
-        # Candidate terms: clean single tokens from the question + detected labels.
+        # Candidate terms: clean single tokens from the question (these resolve
+        # exact for real drug names) then detected labels. Deduped and capped to
+        # bound the resolve_asset fan-out on the chat hot path.
         ql = (plan.original_question or "").lower()
-        candidates: list[str] = [
+        raw = [
             t for t in re.split(r"[^a-z0-9]+", ql)
             if len(t) >= 5 and t not in self._PLAN_STOP
         ]
-        candidates += list(plan.entities_detected[:6])
+        raw += list(plan.entities_detected[:6])
+        candidates: list[str] = []
+        seen_cand: set[str] = set()
+        for t in raw:
+            key = (t or "").strip().lower()
+            if key and key not in seen_cand:
+                seen_cand.add(key)
+                candidates.append(t)
+        candidates = candidates[:_MAX_PLAN_CANDIDATES]
 
         best: dict[str, tuple[dict, int]] = {}  # entity_id → (entity, priority)
         for name in candidates:

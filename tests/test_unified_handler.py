@@ -353,6 +353,52 @@ class TestPlanStage:
         assert handler._matrix_to_evidence(None) == []
         assert handler._matrix_to_evidence({"cells": []}) == []
 
+    def _stub_handler(self, packed_corpus, mock_llm, mock_metrics):
+        from services.unified_handler import UnifiedChatHandler
+        return UnifiedChatHandler(
+            corpus_doc=packed_corpus.document, l3_doc=packed_corpus.l3_document,
+            llm=mock_llm, metrics_svc=mock_metrics, db=object(),  # non-None db
+        )
+
+    def test_resolve_plan_entities_drops_fuzzy(self, packed_corpus, mock_llm, mock_metrics, monkeypatch):
+        """Only confident (exact/alias/id) matches target the matrix; fuzzy noise
+        (combo products, disease words) is dropped."""
+        import services.dossier_kb as dk
+        from services.ctx_pipeline import QueryPlan
+
+        class RA:
+            def __init__(self, t, i, via): self.subject_type, self.subject_id, self.matched_via = t, i, via
+            @property
+            def resolved(self): return self.matched_via != "unresolved"
+
+        def fake(db, name):
+            n = name.lower()
+            return {
+                "semaglutide": RA("drug", "SEMA", "exact"),
+                "diabetes": RA("drug", "DIAB", "fuzzy"),
+            }.get(n, RA("drug", "", "unresolved"))
+
+        monkeypatch.setattr(dk, "resolve_asset", fake)
+        h = self._stub_handler(packed_corpus, mock_llm, mock_metrics)
+        plan = QueryPlan(original_question="tell me about semaglutide for diabetes",
+                         resolved_question="", entities_detected=["semaglutide"])
+        ids = [e["entity_id"] for e in h._resolve_plan_entities(plan)]
+        assert "SEMA" in ids and "DIAB" not in ids
+
+    def test_plan_skipped_for_company_leaders(self, packed_corpus, mock_llm, mock_metrics, monkeypatch):
+        import services.dossier_kb as dk
+        called = {"n": 0}
+        def fake(db, name):
+            called["n"] += 1
+            raise AssertionError("resolve_asset must not be called for leaders Qs")
+        monkeypatch.setattr(dk, "resolve_asset", fake)
+        h = self._stub_handler(packed_corpus, mock_llm, mock_metrics)
+        from services.ctx_pipeline import QueryPlan
+        plan = QueryPlan(original_question="Which companies dominate the diabetes drugs space?",
+                         resolved_question="", entities_detected=["diabetes"])
+        assert h._plan_decomposition(plan) is None
+        assert called["n"] == 0
+
 
 # ── 8. Provenance ──
 
