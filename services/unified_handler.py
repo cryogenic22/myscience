@@ -30,6 +30,14 @@ logger = logging.getLogger(__name__)
 # [1..N] always resolve in the frontend evidence array.
 _MAX_EVIDENCE = 10
 
+# Reserved slots for PLAN-derived (matrix) evidence so a large decomposition
+# doesn't evict the retrieved CTX section + leader cards from the citation list.
+_PLAN_EVIDENCE_BUDGET = 6
+
+# Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
+# fan-out (each call is up to ~5 sequential DB round-trips).
+_MAX_PLAN_CANDIDATES = 8
+
 # CTX section-name prefix → frontend entity_type.
 _SECTION_TYPE_PREFIXES = {
     "DRUG": "drug",
@@ -157,6 +165,14 @@ class UnifiedChatHandler:
         # evidence_count > 0 and keeps the [N] markers instead of stripping them.
         evidence_items = _sections_to_evidence(retrieval)
 
+        # ── Stage 1.5: PLAN (Domain Intelligence) ──
+        # Decompose the question into a grounded entities×dimensions matrix when a
+        # playbook matches (resolved drug entities). Its per-dimension ledger facts
+        # become first-class citable evidence (the strongest grounding), and the
+        # matrix is surfaced in the response as the frontend 4-panel contract.
+        decomposition = self._plan_decomposition(plan)
+        plan_evidence = self._matrix_to_evidence(decomposition)
+
         # Augment with metrics for specific intents
         metrics_data = self._fetch_metrics(plan)
 
@@ -168,7 +184,13 @@ class UnifiedChatHandler:
         # they lead the citation order, and carried in evidence_items so the
         # frontend can resolve the same [N] cards.
         leader_evidence = self._leaders_as_evidence(metrics_data.get("leaders") or [])
-        evidence_items = leader_evidence + evidence_items
+        # PLAN facts lead (most grounded), then leaders, then retrieved sections.
+        # PLAN evidence is reserved to a budget so a large matrix (a compare can
+        # emit 40+ cell-facts) doesn't evict the CTX section / leader cards. Then
+        # the whole list is capped so the citation list stays resolvable.
+        evidence_items = (
+            plan_evidence[:_PLAN_EVIDENCE_BUDGET] + leader_evidence + evidence_items
+        )[:_MAX_EVIDENCE + 4]
         evidence_snippets = [it["content"] for it in evidence_items]
 
         # ── Stage 3: Reason ──
@@ -225,6 +247,7 @@ class UnifiedChatHandler:
             "data": {
                 "question": plan.original_question,
                 "evidence": evidence_items,
+                "decomposition": decomposition,
                 "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
                 "metrics_context": metrics_data or {},
                 "entity_focus": [
@@ -315,6 +338,124 @@ class UnifiedChatHandler:
                 logger.debug("area vocab load failed", exc_info=True)
         self._area_vocab_cache = vocab
         return vocab
+
+    # ── PLAN stage (Domain Intelligence decomposition) ──
+
+    # Words that are never an entity — skip when resolving question tokens.
+    _PLAN_STOP = {
+        "tell", "about", "what", "which", "compare", "versus", "their", "there",
+        "describe", "pipeline", "trials", "drugs", "drug", "companies", "company",
+        "landscape", "market", "space", "between", "difference", "leaders",
+    }
+    # resolve_asset match-quality priority — prefer confident matches over fuzzy
+    # (fuzzy surfaces combo-product noise like "cagrilintide and semaglutide").
+    _MATCH_PRIORITY = {"id": 0, "exact": 1, "alias": 2, "normalized": 3, "fuzzy": 4}
+
+    def _resolve_plan_entities(self, plan: QueryPlan) -> list[dict]:
+        """Resolve the question's entities to {entity_id, entity_type, label},
+        preferring confident matches (exact/alias) so PLAN targets the canonical
+        drug, not a fuzzy-matched combination product."""
+        from services.dossier_kb import resolve_asset
+
+        # Candidate terms: clean single tokens from the question (these resolve
+        # exact for real drug names) then detected labels. Deduped and capped to
+        # bound the resolve_asset fan-out on the chat hot path.
+        ql = (plan.original_question or "").lower()
+        raw = [
+            t for t in re.split(r"[^a-z0-9]+", ql)
+            if len(t) >= 5 and t not in self._PLAN_STOP
+        ]
+        raw += list(plan.entities_detected[:6])
+        candidates: list[str] = []
+        seen_cand: set[str] = set()
+        for t in raw:
+            key = (t or "").strip().lower()
+            if key and key not in seen_cand:
+                seen_cand.add(key)
+                candidates.append(t)
+        candidates = candidates[:_MAX_PLAN_CANDIDATES]
+
+        best: dict[str, tuple[dict, int]] = {}  # entity_id → (entity, priority)
+        for name in candidates:
+            try:
+                ra = resolve_asset(self.db, name)
+            except Exception:
+                continue
+            if not getattr(ra, "resolved", False):
+                continue
+            prio = self._MATCH_PRIORITY.get(ra.matched_via, 5)
+            cur = best.get(ra.subject_id)
+            if cur is None or prio < cur[1]:
+                best[ra.subject_id] = (
+                    {"entity_id": ra.subject_id, "entity_type": ra.subject_type, "label": name},
+                    prio,
+                )
+        if not best:
+            return []
+        ranked = sorted(best.values(), key=lambda x: x[1])
+        # PLAN only targets CONFIDENT matches (id/exact/alias). Fuzzy is dropped
+        # entirely — it surfaces combo-product noise ("cagrilintide and
+        # semaglutide") and disease words ("diabetes"→some drug), which would
+        # build a matrix for the wrong entity. Fuzzy typos fall back to the
+        # normal dossier path gracefully.
+        confident = [r[0] for r in ranked if r[1] <= 2]
+        return confident[:3]
+
+    def _plan_decomposition(self, plan: QueryPlan) -> Optional[dict]:
+        """Resolve detected entities → ids, build the grounded QuestionMatrix via
+        the DecompositionPlanner, return its dict (frontend contract) or None.
+
+        Fully guarded: no db, no resolvable entity, no matching playbook, or any
+        error → None (caller falls back to the standard retrieve path)."""
+        if self.db is None or not plan.entities_detected:
+            return None
+        # "Which companies dominate X" is a company question, not a per-drug
+        # decomposition — never build a drug matrix for it.
+        if is_company_leaders_question(plan.original_question):
+            return None
+        try:
+            resolved = self._resolve_plan_entities(plan)
+        except Exception:
+            logger.debug("PLAN entity resolution failed", exc_info=True)
+            return None
+        if not resolved:
+            return None
+        try:
+            matrix = self.pipeline.plan_decomposition(plan.intent, resolved, self.db)
+        except Exception:
+            logger.debug("PLAN stage failed", exc_info=True)
+            return None
+        return matrix.to_dict() if matrix is not None else None
+
+    @staticmethod
+    def _matrix_to_evidence(decomposition: Optional[dict]) -> list[dict]:
+        """Lift the matrix's per-dimension grounded facts into citable evidence so
+        synthesis leads with them and the frontend resolves the same [N] cards."""
+        if not decomposition:
+            return []
+        items: list[dict] = []
+        for cell in (decomposition.get("cells") or []):
+            dim = cell.get("dimension", "") or ""
+            ent = cell.get("entity_id", "") or ""
+            label = dim.replace("_", " ").strip()
+            for f in (cell.get("facts") or [])[:3]:
+                claim = f.get("claim")
+                if not claim:
+                    continue
+                items.append({
+                    "source": f"plan:{dim}" if dim else "plan",
+                    "entity_type": "fact",
+                    "entity_id": str(f.get("id") or ent),
+                    "content": f"{label} — {claim}" if label else claim,
+                    "relevance": 1.0,
+                    "provenance": {
+                        "source": "decomposition",
+                        "dimension": dim,
+                        "predicate": f.get("predicate"),
+                        "fact_class": f.get("fact_class"),
+                    },
+                })
+        return items
 
     @staticmethod
     def _leaders_as_evidence(leaders: list[dict]) -> list[dict]:

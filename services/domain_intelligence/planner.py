@@ -162,7 +162,9 @@ def _fact_to_cell_fact(fact: dict) -> dict:
         "fact_class": _coerce_fact_class(fact.get("fact_class")),
         "source_label": f"{created_by}{conf_str}",
         "source_url": source_url or None,
-        "confidence": conf,
+        # float() so the cell dict is JSON-safe for non-FastAPI consumers
+        # (telemetry / json.dumps) — facts_as_of can return a Decimal (cf. #195).
+        "confidence": float(conf) if conf is not None else None,
     }
 
 
