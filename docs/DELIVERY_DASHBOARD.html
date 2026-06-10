@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Zero — Delivery Dashboard</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--border:#2d3748;--text:#d7dde6;--muted:#8b97a8;--accent:#58a6ff;--gold:#e3b341;--green:#3fb950;--red:#f85149;--purple:#bc8cff;--orange:#ffa657;--teal:#39d2c0;--pink:#f778ba}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.5;padding:0 0 70px}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 28px}
+  header{padding:34px 0 22px;background:linear-gradient(180deg,#10182b,var(--bg));border-bottom:1px solid var(--border);margin-bottom:24px}
+  h1{font-size:1.7rem;font-weight:700;letter-spacing:-.4px}h1 .a{color:var(--accent)}
+  .sub{color:var(--muted);font-size:.92rem;margin-top:6px}
+  .updated{margin-top:10px;font-size:.74rem;color:var(--muted)}
+  .updated b{color:var(--green)}
+  h2{font-size:1.12rem;margin:34px 0 12px;color:#fff;display:flex;align-items:center;gap:10px}
+  h2 .ic{font-size:.95rem}
+  h2 small{font-weight:400;font-size:.74rem;color:var(--muted)}
+  /* progress headline */
+  .headline{display:flex;align-items:center;gap:20px;margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 22px}
+  .headline .big{font-size:2.6rem;font-weight:800;color:var(--accent);line-height:1}
+  .headline .meter2{flex:1}
+  .headline .meter2 .bar{height:13px;background:#1c2330;border-radius:99px;overflow:hidden;margin-top:8px}
+  .headline .meter2 .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--accent));border-radius:99px}
+  .headline .meter2 .lbl{font-size:.8rem;color:var(--muted)}
+  .headline .meter2 .lbl b{color:var(--text)}
+  /* KPI strip */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:14px}
+  @media(max-width:960px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
+  .kpi .n{font-size:1.45rem;font-weight:700}
+  .kpi .l{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+  .kpi.good .n{color:var(--green)}.kpi.warn .n{color:var(--orange)}.kpi.info .n{color:var(--accent)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 0;font-size:.76rem;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .sw.done{background:var(--green)}.sw.mid{background:var(--accent)}.sw.pend{background:#3a4555}.sw.risk{background:var(--orange)}
+  /* timeline */
+  .timeline{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+  .tnode{flex:1;min-width:140px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .tnode.done{border-color:var(--green)}.tnode.mid{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .tnode .ph{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .tnode .ti{font-size:.82rem;font-weight:600;margin-top:3px}
+  .tnode .st{font-size:.7rem;margin-top:5px}
+  .tnode .pct{font-size:.66rem;color:var(--muted);margin-top:3px}
+  .st.done{color:var(--green)}.st.mid{color:var(--accent)}.st.pend{color:var(--muted)}
+  .flowline{font-family:Consolas,monospace;font-size:.72rem;color:var(--teal);text-align:center;margin:8px 0 0}
+  /* loop cards */
+  .loops{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:960px){.loops{grid-template-columns:1fr}}
+  .loop{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:15px 17px;border-left:4px solid var(--border)}
+  .loop.done{border-left-color:var(--green)}.loop.mid{border-left-color:var(--accent)}.loop.pend{border-left-color:#3a4555}
+  .loop .lh{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px}
+  .loop .lt{font-size:1rem;font-weight:700}
+  .loop .lt small{color:var(--muted);font-weight:400;font-size:.74rem}
+  .badge{font-size:.66rem;padding:2px 9px;border-radius:99px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
+  .badge.done{background:rgba(63,185,80,.16);color:var(--green)}
+  .badge.mid{background:rgba(88,166,255,.16);color:var(--accent)}
+  .badge.pend{background:rgba(139,151,168,.14);color:var(--muted)}
+  .meter{height:6px;background:#1c2330;border-radius:99px;overflow:hidden;margin:8px 0 11px}
+  .meter i{display:block;height:100%;border-radius:99px}
+  .meter i.done{background:var(--green)}.meter i.mid{background:var(--accent)}
+  .epics{list-style:none;font-size:.83rem}
+  .epics li{padding:4px 0 4px 22px;position:relative;color:var(--text);border-top:1px solid #21283766}
+  .epics li:first-child{border-top:none}
+  .epics li::before{position:absolute;left:0;top:4px;font-size:.8rem}
+  .epics li.done::before{content:"✅"}.epics li.mid::before{content:"🔄"}.epics li.pend::before{content:"⬜"}.epics li.risk::before{content:"⚠️"}
+  .epics li .ev{display:block;color:var(--muted);font-size:.74rem;margin-top:1px}
+  /* product loops */
+  .ploops{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media(max-width:960px){.ploops{grid-template-columns:1fr 1fr}}
+  .ploop{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:12px;border-top:3px solid var(--purple)}
+  .ploop.live{border-top-color:var(--green)}
+  .ploop .pn{font-size:.82rem;font-weight:700;color:var(--purple)}
+  .ploop.live .pn{color:var(--green)}
+  .ploop .pd{font-size:.73rem;color:var(--muted);margin-top:4px;line-height:1.45}
+  .ploop .pst{font-size:.68rem;margin-top:7px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:.83rem;margin-top:6px}
+  th{text-align:left;padding:8px 10px;background:var(--panel2);color:var(--gold);font-weight:600;border-bottom:2px solid var(--border)}
+  td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  .risk-sev{font-size:.66rem;padding:1px 8px;border-radius:99px;font-weight:700}
+  .risk-sev.mit{background:rgba(63,185,80,.16);color:var(--green)}
+  .risk-sev.deb{background:rgba(255,166,87,.16);color:var(--orange)}
+  .risk-sev.open{background:rgba(248,81,73,.16);color:var(--red)}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px}
+  .plan-steps{list-style:none;counter-reset:s;font-size:.85rem;margin-top:8px}
+  .plan-steps li{counter-increment:s;padding:5px 0 5px 30px;position:relative;color:var(--muted)}
+  .plan-steps li::before{content:counter(s);position:absolute;left:0;top:4px;width:20px;height:20px;border-radius:99px;background:var(--panel2);border:1px solid var(--border);color:var(--accent);font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:960px){.two{grid-template-columns:1fr}}
+  .log{font-size:.8rem}
+  .log .e{padding:8px 0;border-bottom:1px solid #21283766;display:flex;gap:12px}
+  .log .d{color:var(--accent);font-family:Consolas,monospace;font-size:.74rem;white-space:nowrap;padding-top:1px}
+  .log .t{color:var(--muted)}.log .t b{color:var(--text)}
+  .note{font-size:.74rem;color:var(--muted);margin-top:8px;font-style:italic}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:.76rem}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Market Zero — <span class="a">Delivery Dashboard</span></h1>
+  <div class="sub">Autonomous pharma intelligence engine · substrate → grounded chat → CI cockpit → self-improving loops · three lanes (Platform · Data · Frontend)</div>
+  <div class="updated">⟳ Last updated: <b>2026-06-10</b> · after Platform <b>L3 trust-routing (PR #208, deployed)</b> · live-eval <b>84.9%</b> · trust-set <b>93.3%</b> · 5/5 CI gates green · updated every few platform loops</div>
+</div></header>
+
+<div class="wrap">
+
+  <!-- HEADLINE PROGRESS -->
+  <div class="headline">
+    <div class="big">~62%</div>
+    <div class="meter2">
+      <div class="lbl">Estimated distance to <b>v1 "trustworthy autonomous engine"</b> — foundations + grounded chat solid; autonomous loops &amp; the Domain-Intelligence factory are the remaining stretch.</div>
+      <div class="bar"><i style="width:62%"></i></div>
+    </div>
+  </div>
+  <div class="note">The 62% is a judgment estimate across the six layers below (weighted by remaining effort). The quality figures (live-eval 84.9%, trust 93.3%) and counts are <b>measured</b>, not estimated.</div>
+
+  <!-- KPI STRIP -->
+  <div class="kpis">
+    <div class="kpi info"><div class="n">84.9%</div><div class="l">Live-eval quality (60 golden Qs)</div></div>
+    <div class="kpi good"><div class="n">93.3%</div><div class="l">Trust-query set (12 Qs)</div></div>
+    <div class="kpi good"><div class="n">5/5</div><div class="l">CI gates green · branch-protected</div></div>
+    <div class="kpi good"><div class="n">3,838</div><div class="l">Tests collected</div></div>
+    <div class="kpi info"><div class="n">19.6k</div><div class="l">Governed facts · 24 predicates</div></div>
+    <div class="kpi good"><div class="n">LIVE</div><div class="l">Deployed · 11 data sources</div></div>
+  </div>
+  <div class="legend">
+    <span><i class="sw done"></i> Complete (verified)</span>
+    <span><i class="sw mid"></i> In progress / partial</span>
+    <span><i class="sw pend"></i> Built-not-wired / pending</span>
+    <span><i class="sw risk"></i> Risk / debt (tracked)</span>
+  </div>
+
+  <!-- DELIVERY STACK -->
+  <h2><span class="ic">🧭</span> Delivery stack — six layers to v1 <small>each % is an estimate of that layer's maturity</small></h2>
+  <div class="timeline">
+    <div class="tnode done"><div class="ph">Layer 1</div><div class="ti">Data substrate</div><div class="st done">✅ mature</div><div class="pct">~75% · ledger rich; pricing/payer source-blocked</div></div>
+    <div class="tnode done"><div class="ph">Layer 2</div><div class="ti">Conservation harness</div><div class="st done">✅ done</div><div class="pct">~95% · two-lane CI + branch protection</div></div>
+    <div class="tnode mid"><div class="ph">Layer 3</div><div class="ti">Grounded chat / intelligence</div><div class="st mid">🔄 active</div><div class="pct">~65% · citations + trust done; PLAN + memory next</div></div>
+    <div class="tnode done"><div class="ph">Layer 4</div><div class="ti">CI cockpit surfaces</div><div class="st done">✅ live</div><div class="pct">~80% · 7 stages wired; 4-panel UI pending</div></div>
+    <div class="tnode pend"><div class="ph">Layer 5</div><div class="ti">Self-improving loops</div><div class="st pend">⬜ wiring</div><div class="pct">~30% · agent + memory built, not wired</div></div>
+    <div class="tnode mid"><div class="ph">Layer 6</div><div class="ti">Domain-Intelligence factory</div><div class="st mid">🔄 partial</div><div class="pct">~45% · planner ~90% built, not in chat</div></div>
+  </div>
+  <div class="flowline">every loop = probe (real prod) → spec → reuse-first design → TDD red→green → live red-team → independent review → gate → ship → record</div>
+
+  <!-- LANE BOARDS -->
+  <h2><span class="ic">🗂️</span> Workstreams — the three lanes &amp; their epics</h2>
+  <div class="loops">
+
+    <!-- PLATFORM -->
+    <div class="loop mid">
+      <div class="lh"><div class="lt">Platform / Intelligence <small>chat · harness · orchestration</small></div><span class="badge mid">ACTIVE</span></div>
+      <div class="meter"><i class="mid" style="width:68%"></i></div>
+      <ul class="epics">
+        <li class="done">Conservation-gates harness — two-lane CI + branch protection <span class="ev">#180–#188 · protected-surface + CODEOWNERS · 5 required checks</span></li>
+        <li class="done">Unified/CTX pipeline resurrected (was hard-down) <span class="ev">#198 · every chat had fallen back to thin legacy 8-handler</span></li>
+        <li class="done">Citation grounding on the unified path <span class="ev">#206 · dossier 0→3/3, compare 0→2/2 resolvable [N]</span></li>
+        <li class="done">Trust routing — category / "who-leads" grounded <span class="ev">#208 · "Medtronic dominates"→"Novo Nordisk leads, 68 drugs [1]" · trust-set 80→93%</span></li>
+        <li class="mid">PLAN stage — DecompositionPlanner → QuestionMatrix <span class="ev">~90% built in services/domain_intelligence; not yet wired into UnifiedChatHandler</span></li>
+        <li class="pend">Wire ConversationMemory (token-budgeted) <span class="ev">28 tests pass; extra_context path now reaches the LLM</span></li>
+        <li class="pend">Nightly live-eval trend + re-baseline <span class="ev">needs MZ_PROD_URL repo var; harness exists (benchmark/live_eval.py)</span></li>
+      </ul>
+    </div>
+
+    <!-- DATA -->
+    <div class="loop done">
+      <div class="lh"><div class="lt">Data / Sensing <small>connectors · ledger · resolution</small></div><span class="badge done">MATURE · ongoing</span></div>
+      <div class="meter"><i class="done" style="width:75%"></i></div>
+      <ul class="epics">
+        <li class="done">Fact-emitter framework + 6 emitters <span class="ev">clinical · adverse-event · label · mechanism · phase-transition · approval/discontinuation</span></li>
+        <li class="done">Governed fact ledger — 19.6k facts / 24 predicates <span class="ev">monoculture broken (all ~1,470 drugs backfilled); 12.3k evidence records</span></li>
+        <li class="done">Semantic resolution + RxNorm/ATC crosswalk <span class="ev">#194/#199–#205 · ontology_support wired; 217 crosswalk records</span></li>
+        <li class="done">Company misattribution repair <span class="ev">#204 · drugs.company_id from authoritative dominant sponsor (this powers "who-leads")</span></li>
+        <li class="mid">Resolution phase-2 <span class="ev">persist resolution_decisions; wire drug_mention_parser into entity_resolver</span></li>
+        <li class="risk">Therapeutic-area / sponsorship link over-broad <span class="ev">flagged 10 Jun — Celgene shows as diabetes-linked; dup company rows; a data-quality loop</span></li>
+        <li class="pend">Pricing / payer / sales emitters <span class="ev">SOURCE-BLOCKED — NADAC 404s; needs a live pricing feed first</span></li>
+      </ul>
+    </div>
+
+    <!-- FRONTEND -->
+    <div class="loop done">
+      <div class="lh"><div class="lt">Frontend / UX <small>workspace · cockpit · landing</small></div><span class="badge done">LIVE · polishing</span></div>
+      <div class="meter"><i class="done" style="width:80%"></i></div>
+      <ul class="epics">
+        <li class="done">Chat + Canvas workspace <span class="ev">Claude-style narrative, citation cards resolve [N]→evidence</span></li>
+        <li class="done">7-stage CI cockpit <span class="ev">Brief · Sources · Dossier · Synthesis · Gaps · Scenarios · Workshop — all wired &amp; navigable</span></li>
+        <li class="done">Landing + design system <span class="ev">Fraunces/DM Sans · CSS tokens · Tailwind-v4/Railway @source guard</span></li>
+        <li class="mid">4-panel decomposition UI <span class="ev">awaits the PLAN-stage QuestionMatrix API contract (Platform L3-PLAN)</span></li>
+        <li class="pend">In-app brief editing + correction cards <span class="ev">PUT endpoint + form deferred</span></li>
+      </ul>
+    </div>
+
+    <!-- CROSS-CUTTING -->
+    <div class="loop mid">
+      <div class="lh"><div class="lt">Quality &amp; Trust <small>cross-cutting</small></div><span class="badge mid">INSTRUMENTED</span></div>
+      <div class="meter"><i class="mid" style="width:60%"></i></div>
+      <ul class="epics">
+        <li class="done">Live-eval harness (capture → score 5 dims) <span class="ev">benchmark/live_eval.py · 60 golden + 12 trust queries</span></li>
+        <li class="done">Citation validation + numeric-hallucination guard <span class="ev">validate_citations + [unverified] marker on ungrounded figures</span></li>
+        <li class="mid">Answer grounding (factual dim weakest) <span class="ev">live factual 72% — the main quality headroom</span></li>
+        <li class="pend">ContextGuard content-grounding <span class="ev">currently name-checks; doesn't verify claims against context</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- THE END-GOAL: SELF-IMPROVING LOOPS -->
+  <h2><span class="ic">♻️</span> The self-improving loops — the engine being built (Layer 5 target)</h2>
+  <div class="ploops">
+    <div class="ploop live"><div class="pn">1 · Sense</div><div class="pd">Connectors → facts &amp; signals into the governed ledger.</div><div class="pst">✅ live (data lane)</div></div>
+    <div class="ploop"><div class="pn">2 · Steward</div><div class="pd">Signals → ranked curation actions &amp; research missions.</div><div class="pst">🔄 partial — scheduler tasks run</div></div>
+    <div class="ploop"><div class="pn">3 · Research agent</div><div class="pd">Autonomous knowledge-gap filler.</div><div class="pst">⬜ built (27 tests), not wired</div></div>
+    <div class="ploop"><div class="pn">4 · Memory</div><div class="pd">Token-budgeted session memory + coreference.</div><div class="pst">⬜ built (28 tests), not wired</div></div>
+    <div class="ploop"><div class="pn">5 · Learn</div><div class="pd">Eval + calibration + feedback → better answers.</div><div class="pst">🔄 calibration live; eval trend pending</div></div>
+  </div>
+
+  <div class="two" style="margin-top:14px">
+    <!-- ACTIVE LOOP -->
+    <div>
+      <h2 style="margin-top:8px"><span class="ic">🎯</span> Active loop — Platform L3-PLAN</h2>
+      <div class="panel">
+        <p style="font-size:.88rem;color:var(--muted)">Goal: wire the <b style="color:var(--text)">DecompositionPlanner</b> into the live chat as a PLAN stage — decompose a nuanced question (entities × dimensions) into a grounded <code>QuestionMatrix</code>, add an ambiguity gate ("success rate = N meanings"), and surface the matrix as the API contract for the frontend 4-panel UI.</p>
+        <ol class="plan-steps">
+          <li>Probe live: where does the unified path under-answer multi-dimensional Qs?</li>
+          <li>Wire plan_decomposition() between understand → retrieve</li>
+          <li>Adopt the data lane's ask_success_rate 5-lens playbook</li>
+          <li>Surface QuestionMatrix in the chat response (frontend contract)</li>
+          <li>Re-run live-eval — expect lift over the 84.9% baseline</li>
+          <li>Independent review → gate → ship → update this dashboard</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- RISKS -->
+    <div>
+      <h2 style="margin-top:8px"><span class="ic">⚠️</span> Risks &amp; debt</h2>
+      <table>
+        <tr><th>Item</th><th>Status</th></tr>
+        <tr><td>TA / sponsorship links over-broad (Celgene-in-diabetes); dup company rows</td><td><span class="risk-sev open">OPEN</span> data-lane loop · clean company_id path mitigates chat</td></tr>
+        <tr><td>Self-improving loops built but not wired (agent, memory)</td><td><span class="risk-sev deb">DEBT</span> Layer 5 — next big stretch</td></tr>
+        <tr><td>Compression-vs-citation-index edge (evidence reorder)</td><td><span class="risk-sev deb">DEBT</span> pre-existing; scoped follow-up</td></tr>
+        <tr><td>Answer factual-accuracy dim (72% live)</td><td><span class="risk-sev open">OPEN</span> main quality headroom</td></tr>
+        <tr><td>Railway Postgres password rotation</td><td><span class="risk-sev open">OPEN</span> security hygiene</td></tr>
+        <tr><td>Pricing / payer dimension empty (no live source)</td><td><span class="risk-sev deb">BLOCKED</span> needs a feed</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- UPDATE LOG -->
+  <h2><span class="ic">🧾</span> Update log</h2>
+  <div class="panel log">
+    <div class="e"><div class="d">2026-06-10</div><div class="t"><b>Platform L3 — trust routing (#208, deployed)</b> — category/"who-leads" queries grounded across 5 layers; "Medtronic dominates"→"Novo Nordisk leads [1]". Trust-set 80.1→93.3%; full golden 83.9→84.9% (no regression). Eval harness + 12 trust Qs added.</div></div>
+    <div class="e"><div class="d">2026-06-09</div><div class="t"><b>Platform L2 — citation grounding (#206)</b> — unified path emitted 0 citations (evidence hardcoded empty + validator stripped [N]); fixed → dossier 3/3, compare 2/2 resolvable, live-verified.</div></div>
+    <div class="e"><div class="d">2026-06-09</div><div class="t"><b>Platform L1 — unified/CTX pipeline resurrected (#198)</b> — corpus builder was fully broken → every chat fell back to thin legacy handler. Now live.</div></div>
+    <div class="e"><div class="d">2026-06-09</div><div class="t"><b>Data DI batch (#201–#205)</b> — phase-transition emitter, ontology_support wiring, company-misattribution repair, RxNav bulk crosswalk.</div></div>
+    <div class="e"><div class="d">2026-06-09</div><div class="t"><b>Platform ops (#195/#196)</b> — Decimal-safe research-job JSON; connector-health RED → idempotent GitHub-issue alert.</div></div>
+    <div class="e"><div class="d">2026-06-08</div><div class="t"><b>Conservation harness (#180–#192)</b> — two-lane gates, protected surface + CODEOWNERS, branch protection ON (5 required checks), coordination board.</div></div>
+  </div>
+
+  <footer>Market Zero Delivery Dashboard · visual companion to <code>docs/COORDINATION.md</code> + the roadmap memory · quality figures from live-eval against marketzero.up.railway.app · maturity %s are estimates · updated every few platform loops.</footer>
+</div>
+</body>
+</html>
