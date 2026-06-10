@@ -376,7 +376,8 @@ class UnifiedChatHandler:
         """
         ql = (plan.original_question or "").lower()
         for alias, canonical in self._MECHANISM_ALIASES.items():
-            if alias in ql:
+            # Word-bounded so "arb" doesn't match "carb", "tnf" doesn't match inside words.
+            if re.search(rf"\b{re.escape(alias)}\b", ql):
                 return canonical
         tokens = set(re.split(r"[^a-z0-9]+", ql))
         area_hits = tokens & self._area_vocab()

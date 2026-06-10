@@ -108,7 +108,8 @@ _LEADERS_RE = re.compile(
     r'\b(?:which|what|who|name)\b[^?]*\b(?:compan(?:y|ies)|players?|makers?|'
     r'manufacturers?|firms?|leaders?|developers?|vendors?)\b'
     r'|\b(?:dominate|dominates|dominating|market\s+leaders?|biggest\s+players?|'
-    r'who\s+(?:makes|develops|sells|manufactures))\b',
+    r'who\s+(?:makes|develops|sells|manufactures|leads?)|leads?\s+the\s+'
+    r'(?:market|space|area|field))\b',
     re.IGNORECASE,
 )
 # "Phase 3 for X", "in Phase II" → pipeline (unless it's a count question, see below).
@@ -120,10 +121,14 @@ _COUNT_RE = re.compile(r'\b(?:how many|count|total number|number of)\b', re.IGNO
 # market players. Disease words ("diabetes") keyword-match their names
 # ("Baker Heart and Diabetes Institute") and mislead synthesis. Filtered from
 # entity detection and (in metrics) from company rankings.
+# Word-bounded so partial words don't false-positive (e.g. "Centene",
+# "Centessa", a drug name containing "carb"). Morphological suffixes
+# (institut\w*, universit\w*) catch institute/institutes/university/universities.
 _JUNK_ORG_RE = re.compile(
-    r'institut|universit|college|\bschool\b|foundation|hospital|registry|'
-    r'ministry|\bdepartment\b|\bcenter\b|\bcentre\b|\bclinic\b|\btrust\b|'
-    r'medical\s+center|health\s+system|consortium|society|association',
+    r'\b(?:institut\w*|universit\w*|college|school|foundation|hospital|'
+    r'registry|ministry|department|center|centre|clinic|trust|consortium|'
+    r'society|association|polyclinic)\b'
+    r'|medical\s+cent(?:er|re)|health\s+system',
     re.IGNORECASE,
 )
 
@@ -267,7 +272,8 @@ class CTXQueryPipeline:
         if _COMPARE_RE.search(question):
             return "compare"
         # "which companies dominate X" / "who leads X" → competitive landscape.
-        if _LEADERS_RE.search(question):
+        # (A count phrasing — "how many companies…" — stays structured.)
+        if _LEADERS_RE.search(question) and not _COUNT_RE.search(question):
             return "landscape"
         if _LANDSCAPE_RE.search(question):
             return "landscape"

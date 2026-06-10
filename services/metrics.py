@@ -404,13 +404,14 @@ class PharmaMetrics:
             )
             return []
 
-    # Academic / clinical sponsors that are NOT pharma market players. Disease
-    # words match their names via trial sponsorship; excluded from "who leads"
-    # rankings (mirrors services.ctx_pipeline._JUNK_ORG_RE).
+    # Academic / clinical orgs that are NOT pharma market players — excluded
+    # from "who leads" rankings. Word-bounded (\y) to mirror
+    # services.ctx_pipeline._JUNK_ORG_RE and avoid partial-word false positives.
     _JUNK_ORG_SQL = (
-        r'(institut|universit|college|foundation|hospital|registry|ministry|'
-        r'\ydepartment\y|\ycenter\y|\ycentre\y|\yclinic\y|consortium|society|'
-        r'association|health\s+system|medical\s+center)'
+        r'\y(institut\w*|universit\w*|college|school|foundation|hospital|'
+        r'registry|ministry|department|center|centre|clinic|trust|consortium|'
+        r'society|association|polyclinic)\y'
+        r'|medical\s+cent(er|re)|health\s+system'
     )
 
     def top_companies_by_topic(self, topic: Optional[str], limit: int = 8) -> list[dict]:

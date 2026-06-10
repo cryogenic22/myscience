@@ -123,6 +123,22 @@ class TestTrustRouting:
         # Regression: a count question that mentions a phase must NOT become pipeline
         assert pipeline.understand("How many drugs are in Phase 3?").intent == "structured_query"
 
+    def test_count_companies_stays_structured(self, pipeline):
+        # Regression: "how many companies …" is a count, not a leaders/landscape query
+        assert pipeline.understand(
+            "How many companies are developing obesity drugs?"
+        ).intent == "structured_query"
+
+    def test_who_leads_verb_routes_to_landscape(self, pipeline):
+        assert pipeline.understand("Who leads the obesity drug market?").intent == "landscape"
+
+    def test_junk_filter_does_not_flag_partial_words(self):
+        from services.ctx_pipeline import _is_junk_org
+        # Word-bounded: must NOT false-positive on real companies/drugs
+        assert not _is_junk_org("COMPANY-CENTESSA-PHARMACEUTICALS")
+        assert not _is_junk_org("COMPANY-CENTENE")
+        assert not _is_junk_org("ENTITY-DRUG-CARBIDOPA")
+
     def test_dossier_still_dossier(self, pipeline):
         assert pipeline.understand("Tell me about semaglutide").intent == "dossier"
 
