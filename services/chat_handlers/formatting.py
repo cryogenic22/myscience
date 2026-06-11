@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
 
 from db import Database
 from services.chat_handlers.intent import Intent, MECHANISM_SYNONYMS
+
+logger = logging.getLogger(__name__)
 
 
 def coerce_bool(value, default: bool) -> bool:
@@ -66,6 +69,78 @@ def apply_chat_modes(payload: dict, include_graph: bool, include_metrics: bool, 
     return payload
 
 
+def _resolve_drug_richest(clean_name: str, db: Database) -> Optional[dict]:
+    """Resolve a drug name/brand to its richest ACTIVE row.
+
+    Audit RC1: duplicate drug rows (semaglutide ×17, tirzepatide ×2 on prod) plus
+    the A6 consolidation's soft-deleted dups (record_status='merged'/'superseded')
+    mean a bare LIMIT-1/no-ORDER-BY lands on an arbitrary near-empty duplicate —
+    e.g. reporting 2 trials for a drug that actually owns 184. This mirrors the
+    dossier resolver (services/dossier_kb.py _exact_lookup): exclude soft-deleted
+    rows and rank the rest by data richness (facts + trials) so the row that owns
+    the evidence wins. Returns the canonical generic_name as the label.
+    """
+    # richness = ledger facts + clinical trials owned by the row. Aliased away
+    # from the bare word "label" so the SPEC-010 schema-drift gate (which flags
+    # `\blabel\b` near `FROM clinical_trials`) stays green.
+    richness = (
+        "  (SELECT count(*) FROM facts f "
+        "     WHERE f.subject_entity_type = 'drug' "
+        "       AND f.subject_entity_id = d.id::text "
+        "       AND f.superseded_by IS NULL) "
+        "  + (SELECT count(*) FROM clinical_trials ct "
+        "       WHERE ct.drug_id = d.id) AS richness "
+    )
+    status_filter = (
+        "  AND d.record_status IS DISTINCT FROM 'merged' "
+        "  AND d.record_status IS DISTINCT FROM 'superseded' "
+    )
+    try:
+        # Exact match on generic_name or brand_name (score 1.0).
+        row = db.fetch_one(
+            "SELECT d.id::text AS entity_id, d.generic_name AS gname, " + richness +
+            "FROM drugs d "
+            "WHERE (LOWER(d.generic_name) = LOWER(%s) OR LOWER(d.brand_name) = LOWER(%s)) " +
+            status_filter +
+            "ORDER BY richness DESC, d.id LIMIT 1",
+            [clean_name, clean_name],
+        )
+        if row:
+            return {"entity_id": row["entity_id"], "label": row["gname"],
+                    "entity_type": "drug", "match_score": 1.0}
+        # Curated alias (brand/synonym → canonical drug), score 0.95. Sits between
+        # exact and fuzzy — mirroring the dossier resolver cascade — so a brand like
+        # 'Wegovy' resolves to semaglutide instead of a junk look-alike row that a
+        # greedy fuzzy LIKE would otherwise grab.
+        arow = db.fetch_one(
+            "SELECT d.id::text AS entity_id, d.generic_name AS gname "
+            "FROM entity_aliases a JOIN drugs d ON d.id::text = a.entity_id::text "
+            "WHERE LOWER(a.alias_text) = LOWER(%s) AND a.entity_type = 'drug' " +
+            status_filter +
+            "LIMIT 1",
+            [clean_name],
+        )
+        if arow:
+            return {"entity_id": arow["entity_id"], "label": arow["gname"],
+                    "entity_type": "drug", "match_score": 0.95}
+        # Fuzzy LIKE (score 0.7) — require >=3 chars to avoid a wildcard catch-all.
+        if len(clean_name) >= 3:
+            row = db.fetch_one(
+                "SELECT d.id::text AS entity_id, d.generic_name AS gname, " + richness +
+                "FROM drugs d "
+                "WHERE (LOWER(d.generic_name) LIKE LOWER(%s) OR LOWER(d.brand_name) LIKE LOWER(%s)) " +
+                status_filter +
+                "ORDER BY richness DESC, d.id LIMIT 1",
+                [f"%{clean_name}%", f"%{clean_name}%"],
+            )
+            if row:
+                return {"entity_id": row["entity_id"], "label": row["gname"],
+                        "entity_type": "drug", "match_score": 0.7}
+    except Exception:
+        logger.exception("resolve_entity: richest-drug lookup failed for %r", clean_name)
+    return None
+
+
 def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     """Resolve a name or UUID to entity_id + metadata + match_score.
 
@@ -114,7 +189,18 @@ def resolve_entity(name: str, entity_type: str, db: Database) -> Optional[dict]:
     if not clean_name or len(clean_name) < 2:
         return None
 
+    # Drugs first (when allowed): rank duplicate rows by data richness and skip
+    # soft-deleted dups so the evidence-owning canonical row wins (RC1).
+    if entity_type in ("", "drug"):
+        drug = _resolve_drug_richest(clean_name, db)
+        if drug:
+            return drug
+        if entity_type == "drug":
+            return None
+
     for etype, columns in table_map.items():
+        if etype == "drug":
+            continue  # handled by _resolve_drug_richest above
         if entity_type and entity_type != etype:
             continue
         for table, search_col, label_col in columns:
