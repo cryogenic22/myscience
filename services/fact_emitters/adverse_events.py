@@ -9,6 +9,20 @@ and how many were serious/fatal. Singletons are dropped (min_reports).
 The framework is per-row, so ``fetch_rows`` returns the GROUP BY result and
 ``row_to_facts`` maps each aggregated reaction → one fact. Idempotency key is
 synthetic: ``<drug_id>:<reaction>`` (an aggregate has no single source row).
+
+FAERS hygiene (raw_notes.md / eval PV-01)
+-----------------------------------------
+FAERS preferred terms are *not all* adverse drug reactions. A large share are
+MedDRA terms from the SOCs "Injury, poisoning and procedural complications"
+(medication errors: wrong/extra/omitted dose, dispensing errors, off-label use,
+overdose) and "General disorders" lack-of-efficacy terms ("Drug ineffective").
+On prod these dominate the GLP-1 reaction counts ("Incorrect dose administered"
+35x, "Drug ineffective" 49x). Lifting them raw makes the dossier imply a drug
+carries serious *harms* when the report is really a use error. ``is_non_adr_term``
+filters them out of the safety emitter; the underlying ``adverse_events`` rows
+are untouched (full source conservation). Every surviving fact also carries an
+explicit spontaneous-reporting caveat so synthesis cannot present a raw count as
+a causal safety property.
 """
 
 from __future__ import annotations
@@ -19,6 +33,65 @@ from typing import Optional
 from services.fact_emitters.base import EmittedFact, FactEmitter, clamp_confidence
 
 logger = logging.getLogger(__name__)
+
+# MedDRA terms that are NOT adverse drug reactions. Substrings are matched
+# case-insensitively against the preferred term; exact terms cover lack-of-
+# efficacy / uninformative PTs that have no medication-error substring. Grounded
+# in the terms actually present on prod (read-only FAERS probe, Jun 2026) plus
+# the MedDRA SOC families they belong to — extend here, not at the call site.
+_NON_ADR_SUBSTRINGS: tuple[str, ...] = (
+    "dose administered",        # incorrect/extra/increased dose administered (+ by device)
+    "dose omission",            # product/drug/intentional dose omission
+    "dispensing error",         # product dispensing error (+ intercepted)
+    "medication error",         # incl. "...capable of leading to medication error"
+    "administration error",
+    "preparation error",
+    "off label",                # off label use
+    "off-label",
+    "unapproved indication",    # product use / drug ineffective in unapproved indication
+    "product use issue",
+    "product use in",
+    "wrong technique",          # wrong technique in product usage process
+    "wrong product",            # wrong product administered
+    "wrong patient",            # wrong patient received product
+    "wrong drug",
+    "product dose",             # product dose omission ...
+    "overdose",                 # accidental/intentional overdose (circumstance, not ADR)
+    "underdose",
+    "by device",                # incorrect dose administered / drug dose omission by device
+    "expired product",
+    "product storage",
+    "circumstance or information",
+    "product quality issue",
+)
+
+_NON_ADR_EXACT: frozenset[str] = frozenset({
+    "drug ineffective",
+    "illness",
+    "therapeutic response decreased",
+    "therapeutic response unexpected",
+    "therapeutic product effect incomplete",
+    "drug effect decreased",
+    "no adverse event",
+})
+
+# Standing caveat stamped on every FAERS safety fact so downstream synthesis
+# renders spontaneous-reporting limits instead of treating a count as causal.
+REPORTING_CAVEAT = (
+    "FAERS spontaneous report — no denominator; subject to reporting and "
+    "notoriety bias; not evidence of causation."
+)
+
+
+def is_non_adr_term(term: str) -> bool:
+    """True when ``term`` is a MedDRA medication-error / lack-of-efficacy PT
+    rather than a genuine adverse drug reaction. Pure + case-insensitive."""
+    t = (term or "").strip().lower()
+    if not t:
+        return False
+    if t in _NON_ADR_EXACT:
+        return True
+    return any(sub in t for sub in _NON_ADR_SUBSTRINGS)
 
 
 def build_claim(reaction: str, report_count: int, serious: int, fatal: int) -> str:
@@ -83,13 +156,18 @@ class AdverseEventEmitter(FactEmitter):
         report_count = int(row.get("report_count") or 0)
         if not drug_id or not reaction or report_count <= 0:
             return []
+        # FAERS hygiene: medication-error / lack-of-efficacy PTs are not ADRs.
+        # Drop them from the safety emitter (source rows are conserved).
+        if is_non_adr_term(reaction):
+            logger.debug("adverse_events: dropping non-ADR term %r", reaction)
+            return []
         serious = int(row.get("serious_count") or 0)
         fatal = int(row.get("fatal_count") or 0)
         claim = build_claim(reaction, report_count, serious, fatal)
         drug_name = row.get("drug_name") or "the drug"
         evidence = (
             f"FAERS: {reaction} reported {report_count}x for {drug_name}; "
-            f"{serious} serious, {fatal} fatal."
+            f"{serious} serious, {fatal} fatal. {REPORTING_CAVEAT}"
         )
         # Confidence rises with corroboration (more reports), capped — these are
         # observed signals, not confirmed causal facts.
@@ -105,6 +183,8 @@ class AdverseEventEmitter(FactEmitter):
                     "report_count": report_count,
                     "serious_count": serious,
                     "fatal_count": fatal,
+                    "reporting_basis": "spontaneous",
+                    "reporting_caveat": REPORTING_CAVEAT,
                     "source_url": row.get("source_url"),
                 },
                 source_row_id=f"{drug_id}:{reaction.lower()}",
