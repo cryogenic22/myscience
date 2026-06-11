@@ -104,8 +104,14 @@ from ctxpack.core.packer import pack as ctx_pack, PackResult
 
 # ── SQL queries for entity export ──
 
+# One section per drug NAME, the richest ACTIVE row — never a soft-deleted
+# duplicate. Without this the corpus carried merged/superseded dup rows, so CTX
+# hydrate_by_name could match an empty 0-fact duplicate (e.g. tirzepatide →
+# 'merged' row e8499246) and report a rich, approved drug as having no data.
+# DISTINCT ON + richness ordering mirrors the resolver (services/dossier_kb.py)
+# so the corpus and the resolver always agree on the canonical row.
 _DRUGS_SQL = """
-SELECT
+SELECT DISTINCT ON (LOWER(d.generic_name))
     d.id,
     d.generic_name,
     d.brand_name,
@@ -119,7 +125,15 @@ FROM drugs d
 LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
 LEFT JOIN companies c ON d.company_id = c.id
 LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
-ORDER BY d.generic_name
+WHERE d.record_status IS DISTINCT FROM 'merged'
+  AND d.record_status IS DISTINCT FROM 'superseded'
+ORDER BY LOWER(d.generic_name),
+    (SELECT count(*) FROM facts f
+       WHERE f.subject_entity_type = 'drug'
+         AND f.subject_entity_id = d.id::text
+         AND f.superseded_by IS NULL)
+    + (SELECT count(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) DESC,
+    d.id
 """
 
 _COMPANIES_SQL = """

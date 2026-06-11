@@ -175,6 +175,21 @@ class TestExportDrugs:
         assert sema["therapeutic_area"] == "Diabetes Mellitus, Type 2"
 
 
+def test_drugs_sql_excludes_soft_deleted_and_dedupes_by_richness():
+    """Conservation regression (P4): the CTX corpus must NOT carry merged/superseded
+    duplicate drug rows — otherwise hydrate_by_name can match an empty 0-fact dup
+    and report a rich, approved drug as having no data (tirzepatide → merged dup
+    e8499246). Pin the status filter + richest-row dedup so it can't be dropped."""
+    from services.ctx_corpus import _DRUGS_SQL
+    s = _DRUGS_SQL.lower()
+    assert "record_status is distinct from 'merged'" in s
+    assert "record_status is distinct from 'superseded'" in s
+    assert "distinct on (lower(d.generic_name))" in s
+    # ranks by richness (facts + trials) so the canonical row wins, matching the resolver
+    assert "from facts f" in s and "from clinical_trials ct" in s
+    assert "desc" in s
+
+
 class TestExportCompanies:
     """Verify company export."""
 
