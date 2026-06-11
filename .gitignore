@@ -102,3 +102,7 @@ benchmark/reports/ci-eval-*.json
 benchmark/reports/eval-*.json
 benchmark/reports/live-captured-*.json
 benchmark/reports/trust-baseline-*.json
+benchmark/reports/golden-*.json
+benchmark/reports/_*.log
+benchmark/reports/trust-after.json
+benchmark/reports/trust-baseline-*.json
