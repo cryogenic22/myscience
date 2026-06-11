@@ -10,6 +10,7 @@ snippet text.
 from services.unified_handler import (
     _PREDICATE_SOURCE,
     _display_source,
+    _provenance_footer,
     UnifiedChatHandler,
 )
 
@@ -61,6 +62,29 @@ def test_matrix_evidence_carries_named_source_not_plan_stage():
     assert not any(s.startswith("plan") for s in sources)
     # The dimension is still recorded in provenance for the frontend.
     assert ev[0]["provenance"]["dimension"] == "mechanism"
+
+
+def test_provenance_footer_maps_each_citation_to_named_connector():
+    """Deterministic provenance: every [N] traces to a named connector + cadence,
+    since no LLM narrates this reliably (eval gate G1)."""
+    evidence = [
+        {"source": "ClinicalTrials.gov", "provenance": {"predicate": "clinical_trial"}},
+        {"source": "openFDA FAERS", "provenance": {"predicate": "adverse_event"}},
+        {"source": "ClinicalTrials.gov", "provenance": {"predicate": "clinical_trial"}},
+    ]
+    footer = _provenance_footer(evidence)
+    assert "Provenance" in footer
+    assert "ClinicalTrials.gov (daily refresh)" in footer
+    assert "openFDA FAERS (weekly refresh)" in footer
+    # citations 1 & 3 share a source → grouped; 2 is FAERS
+    assert "[1],[3] ClinicalTrials.gov" in footer
+    assert "[2] openFDA FAERS" in footer
+    # honest about coverage being ingest, not the world
+    assert "not everything that exists" in footer
+
+
+def test_provenance_footer_empty_when_no_evidence():
+    assert _provenance_footer([]) == ""
 
 
 def test_predicate_source_map_covers_emitter_predicates():

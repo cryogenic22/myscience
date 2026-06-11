@@ -54,6 +54,50 @@ _PREDICATE_SOURCE = {
 }
 
 
+# Nominal refresh cadence per connector — the "freshness" half of provenance
+# (eval gate G1). This is the connector's SCHEDULE, not a "last updated" claim, so
+# it can't go stale into a lie; actual staleness is a Lane-2 connector_health
+# concern, surfaced separately.
+_SOURCE_CADENCE = {
+    "ClinicalTrials.gov": "daily refresh",
+    "ClinicalTrials.gov (derived)": "daily refresh",
+    "openFDA FAERS": "weekly refresh",
+    "openFDA Drug Labels": "weekly refresh",
+    "MeSH / curated mechanism": "curated",
+    "Pharma News / SEC": "daily/weekly refresh",
+    "pricing (CMS NADAC)": "weekly refresh",
+    "platform metrics": "derived from ingested data",
+    "platform data": "ingested data",
+}
+
+
+def _provenance_footer(evidence_items: list[dict]) -> str:
+    """A deterministic provenance legend mapping each citation [N] to its named
+    connector + refresh cadence.
+
+    No LLM reliably attributes every claim to a named source in prose (proven
+    across 6 eval runs, gpt-4o-mini and gpt-4o), so provenance is rendered in code,
+    not left to the model — and it is honest: it names only the connectors that
+    actually backed the cited evidence, and frames coverage as ingest, not truth.
+    """
+    if not evidence_items:
+        return ""
+    by_source: dict[str, list[int]] = {}
+    for i, it in enumerate(evidence_items, 1):
+        src = _display_source(it.get("source"), (it.get("provenance") or {}).get("predicate"))
+        by_source.setdefault(src, []).append(i)
+    parts = []
+    for src, idxs in by_source.items():
+        cite = ",".join(f"[{n}]" for n in idxs)
+        cadence = _SOURCE_CADENCE.get(src)
+        parts.append(f"{cite} {src}" + (f" ({cadence})" if cadence else ""))
+    return (
+        "\n\n**Provenance** — each cited claim above traces to a platform-ingested "
+        "source; coverage reflects what has been ingested, not everything that exists: "
+        + "; ".join(parts) + "."
+    )
+
+
 def _display_source(raw_source: str | None, predicate: str | None) -> str:
     """Best human-named source for an evidence item, for inline attribution.
 
@@ -64,10 +108,19 @@ def _display_source(raw_source: str | None, predicate: str | None) -> str:
     if predicate and predicate in _PREDICATE_SOURCE:
         return _PREDICATE_SOURCE[predicate]
     raw = (raw_source or "").strip()
-    if raw and not raw.startswith("plan"):
-        # "metrics.top_companies_by_topic" → "platform metrics"
-        return "platform metrics" if raw.startswith("metrics") else raw
-    return "platform data"
+    if not raw:
+        return "platform data"
+    low = raw.lower()
+    # Internal pipeline labels are not sources a reader can attribute to — map them
+    # to honest, human-readable buckets rather than leaking the stage name.
+    if low.startswith("plan"):
+        return "platform data"
+    if low.startswith("metrics"):
+        return "platform metrics"
+    if low.startswith("ctx") or "hydration" in low:
+        return "platform knowledge base"
+    # An already-clean connector name (e.g. set by an upstream connector) passes through.
+    return raw
 
 
 # Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
@@ -277,9 +330,15 @@ class UnifiedChatHandler:
             extra_directive=leaders_hint, prompt_intent=prompt_intent,
         )
 
-        # ── Guard check ──
+        # ── Guard check ── (on the model's narrative, before the deterministic footer)
         guard_result = self.pipeline.check_response(narrative, context_text)
         guard_status = guard_result.recommendation
+
+        # Deterministically attach the provenance legend ([N] → named connector +
+        # cadence) AFTER the guard check — the LLM won't reliably narrate provenance,
+        # so we render it in code from the source-tagged evidence (eval gate G1). The
+        # connector names are not "claims" to be grounded, so they bypass the guard.
+        narrative = (narrative or "") + _provenance_footer(evidence_items)
 
         # ── Build table data ──
         table_data = self._build_table(plan, metrics_data)
