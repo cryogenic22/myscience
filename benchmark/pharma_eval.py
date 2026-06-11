@@ -267,38 +267,113 @@ def parse_verdict(raw_text: str) -> dict:
         raise
 
 
-def llm_judge(model: str = "", api_key: str = "") -> JudgeFn:
-    """Return a judge_fn backed by an OpenAI chat model. Default model is stronger
-    than the synthesis model (gpt-4o-mini) — a weak judge is a vacuous gate."""
+def _judge_error_verdict(e) -> dict:
+    """Fail-closed verdict for a judge call that couldn't run."""
+    return {
+        "gates": {g: {"pass": False, "reason": f"judge error: {e}"} for g in GATE_IDS},
+        "graded": {q: {"score": 0} for q in GRADED_IDS},
+        "traps_fired": [],
+        "summary": f"judge error: {e}",
+    }
+
+
+def aggregate_verdicts(verdicts: list[dict]) -> dict:
+    """Majority-vote a set of judge samples into one stable verdict. PURE.
+
+    A single LLM judge call is itself a vacuous-green risk (conservation #3): the
+    same provenance legend was seen to pass G1 on one item and fail on another.
+    Voting over N samples denoises that. Rules:
+      * gate passes iff a STRICT majority of samples pass it (ties → fail-closed);
+        evidence_quote taken from the first passing sample.
+      * graded score = rounded mean across samples.
+      * a trap fires iff a strict majority of samples fire it (denoises false fires).
+    """
+    n = len(verdicts)
+    if n == 0:
+        return _judge_error_verdict("no samples")
+    if n == 1:
+        return verdicts[0]
+    need = n // 2 + 1  # strict majority
+
+    gates: dict[str, dict] = {}
+    for gid in GATE_IDS:
+        samples = [(v.get("gates") or {}).get(gid) or {} for v in verdicts]
+        passes = [s for s in samples if s.get("pass") is True]
+        passed = len(passes) >= need
+        quote = next((s.get("evidence_quote") for s in passes if (s.get("evidence_quote") or "").strip()), "")
+        gates[gid] = {
+            "pass": passed,
+            "evidence_quote": quote or "",
+            "reason": f"{len(passes)}/{n} judges passed",
+        }
+
+    graded: dict[str, dict] = {}
+    for qid in GRADED_IDS:
+        scores = []
+        for v in verdicts:
+            q = (v.get("graded") or {}).get(qid) or {}
+            try:
+                scores.append(int(q.get("score")))
+            except (TypeError, ValueError):
+                scores.append(0)
+        graded[qid] = {"score": round(sum(scores) / n) if scores else 0}
+
+    # Count each trap by exact text; fires only on strict majority.
+    trap_counts: dict[str, int] = {}
+    for v in verdicts:
+        for t in (v.get("traps_fired") or []):
+            t = str(t).strip()
+            if t:
+                trap_counts[t] = trap_counts.get(t, 0) + 1
+    traps_fired = [t for t, c in trap_counts.items() if c >= need]
+
+    return {
+        "gates": gates,
+        "graded": graded,
+        "traps_fired": traps_fired,
+        "summary": f"majority of {n} judges; "
+                   + "; ".join(f"{g.split('_')[0]} {gates[g]['reason']}" for g in GATE_IDS),
+    }
+
+
+def llm_judge(model: str = "", api_key: str = "", samples: int = 0) -> JudgeFn:
+    """Return a judge_fn backed by an OpenAI chat model, majority-voted over
+    `samples` calls (default $MZ_EVAL_JUDGE_SAMPLES or 3) to denoise a single
+    LLM verdict. Default model is stronger than the synthesis model — a weak or
+    single-shot judge is a vacuous gate."""
     from openai import OpenAI
 
     chosen = model or os.getenv("MZ_EVAL_JUDGE_MODEL", "gpt-4o")
+    n = samples or int(os.getenv("MZ_EVAL_JUDGE_SAMPLES", "3"))
     key = api_key or os.getenv("OPENAI_API_KEY", "")
     client = OpenAI(api_key=key)
+    # A touch of temperature so the N samples actually vary (majority vote over
+    # identical temp-0 replies would be pointless); 0 when single-shot.
+    temperature = 0.0 if n <= 1 else 0.4
+
+    def _judge_once(user: str) -> dict:
+        resp = client.chat.completions.create(
+            model=chosen,
+            messages=[
+                {"role": "system", "content": _JUDGE_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            response_format={"type": "json_object"},
+        )
+        return parse_verdict(resp.choices[0].message.content)
 
     def judge(item: dict, response: dict, connector_state: dict) -> dict:
         compacted = compact_response(response)
         user = _build_judge_user(item, compacted, connector_state)
-        try:
-            resp = client.chat.completions.create(
-                model=chosen,
-                messages=[
-                    {"role": "system", "content": _JUDGE_SYSTEM},
-                    {"role": "user", "content": user},
-                ],
-                temperature=0,
-                response_format={"type": "json_object"},
-            )
-            return parse_verdict(resp.choices[0].message.content)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("judge call failed for %s", item.get("id"))
-            # Fail-closed: a judge that couldn't run scores nothing as passed.
-            return {
-                "gates": {g: {"pass": False, "reason": f"judge error: {e}"} for g in GATE_IDS},
-                "graded": {q: {"score": 0} for q in GRADED_IDS},
-                "traps_fired": [],
-                "summary": f"judge error: {e}",
-            }
+        verdicts: list[dict] = []
+        for _ in range(max(1, n)):
+            try:
+                verdicts.append(_judge_once(user))
+            except Exception as e:  # noqa: BLE001
+                logger.exception("judge call failed for %s", item.get("id"))
+                verdicts.append(_judge_error_verdict(e))
+        return aggregate_verdicts(verdicts)
 
     return judge
 

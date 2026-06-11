@@ -15,9 +15,50 @@ from benchmark.pharma_eval import (
     apply_fail_closed,
     score_item,
     aggregate,
+    aggregate_verdicts,
     load_eval,
     compact_response,
 )
+
+
+def _v(gate_pass, graded, traps=None, g1_quote="q"):
+    return {
+        "gates": {g: {"pass": gate_pass, "evidence_quote": g1_quote} for g in GATE_IDS},
+        "graded": {q: {"score": graded} for q in GRADED_IDS},
+        "traps_fired": traps or [],
+        "summary": "s",
+    }
+
+
+def test_aggregate_verdicts_majority_gate_pass():
+    # 2 of 3 pass a gate -> passes; 1 of 3 -> fails (fail-closed on minority)
+    v = aggregate_verdicts([_v(True, 3), _v(True, 3), _v(False, 0)])
+    assert all(v["gates"][g]["pass"] for g in GATE_IDS)
+    v2 = aggregate_verdicts([_v(True, 3), _v(False, 0), _v(False, 0)])
+    assert not any(v2["gates"][g]["pass"] for g in GATE_IDS)
+
+
+def test_aggregate_verdicts_graded_is_mean():
+    v = aggregate_verdicts([_v(True, 3), _v(True, 3), _v(True, 0)])  # mean 2
+    assert v["graded"]["Q1_join_completeness"]["score"] == 2
+
+
+def test_aggregate_verdicts_trap_needs_majority():
+    v = aggregate_verdicts([_v(True, 3, traps=["bad"]), _v(True, 3, traps=["bad"]), _v(True, 3)])
+    assert v["traps_fired"] == ["bad"]
+    v2 = aggregate_verdicts([_v(True, 3, traps=["bad"]), _v(True, 3), _v(True, 3)])
+    assert v2["traps_fired"] == []
+
+
+def test_aggregate_verdicts_single_sample_passthrough():
+    one = _v(True, 3)
+    assert aggregate_verdicts([one]) is one
+
+
+def test_aggregate_verdicts_carries_quote_from_passing_sample():
+    v = aggregate_verdicts([_v(True, 3, g1_quote="per ClinicalTrials.gov"),
+                            _v(True, 3, g1_quote=""), _v(False, 0, g1_quote="")])
+    assert v["gates"]["G1_provenance"]["evidence_quote"] == "per ClinicalTrials.gov"
 
 
 def _verdict(*, gate_pass=True, g2_quote="cov limit", graded=3, traps=None):
