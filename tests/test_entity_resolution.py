@@ -31,7 +31,7 @@ class TestResolveEntityMatchScore:
     def test_exact_match_score_1(self):
         from services.chat_handlers.formatting import resolve_entity
         db = MockDB()
-        db._exact = {"entity_id": "d1", "label": "semaglutide"}
+        db._exact = {"entity_id": "d1", "label": "semaglutide", "gname": "semaglutide"}
         result = resolve_entity("semaglutide", "drug", db)
         assert result is not None
         assert result["match_score"] == 1.0
@@ -40,7 +40,7 @@ class TestResolveEntityMatchScore:
         from services.chat_handlers.formatting import resolve_entity
         db = MockDB()
         db._exact = None
-        db._fuzzy = {"entity_id": "d1", "label": "semaglutide"}
+        db._fuzzy = {"entity_id": "d1", "label": "semaglutide", "gname": "semaglutide"}
         result = resolve_entity("sema", "drug", db)
         assert result is not None
         assert result["match_score"] < 1.0
@@ -64,7 +64,7 @@ class TestResolveEntityMatchScore:
         """Every non-None result must have match_score."""
         from services.chat_handlers.formatting import resolve_entity
         db = MockDB()
-        db._exact = {"entity_id": "d1", "label": "semaglutide"}
+        db._exact = {"entity_id": "d1", "label": "semaglutide", "gname": "semaglutide"}
         result = resolve_entity("semaglutide", "", db)
         assert result is not None
         assert "match_score" in result
@@ -73,7 +73,7 @@ class TestResolveEntityMatchScore:
     def test_empty_type_searches_all_tables(self):
         from services.chat_handlers.formatting import resolve_entity
         db = MockDB()
-        db._exact = {"entity_id": "d1", "label": "semaglutide"}
+        db._exact = {"entity_id": "d1", "label": "semaglutide", "gname": "semaglutide"}
         result = resolve_entity("semaglutide", "", db)
         assert result is not None
 

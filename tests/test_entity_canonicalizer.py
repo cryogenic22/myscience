@@ -357,14 +357,12 @@ def test_resolve_entity_finds_drug_by_brand_name():
     Returns the entity with label = generic_name (canonical form)."""
     from services.chat_handlers.formatting import resolve_entity
     db = MagicMock()
-    # First call (generic_name lookup) misses
-    # Second call (brand_name lookup) hits
+    # Drugs are now resolved by a single richness-ranked query matching either
+    # generic_name OR brand_name; the canonical generic_name is returned as gname.
     def fetch_one_side_effect(sql, params=None):
         sql_lower = sql.lower()
-        if "lower(generic_name)" in sql_lower and params and params[0].lower() == "ozempic":
-            return None  # not in generic_name
-        if "lower(brand_name)" in sql_lower and params and params[0].lower() == "ozempic":
-            return {"entity_id": "uuid-sema", "label": "semaglutide"}
+        if "from drugs" in sql_lower and params and any("ozempic" in str(p).lower() for p in params):
+            return {"entity_id": "uuid-sema", "gname": "semaglutide", "richness": 10}
         return None
     db.fetch_one = fetch_one_side_effect
     result = resolve_entity("ozempic", "drug", db)
@@ -381,8 +379,8 @@ def test_resolve_entity_still_works_for_generic_name():
     db = MagicMock()
     def fetch_one_side_effect(sql, params=None):
         sql_lower = sql.lower()
-        if "lower(generic_name)" in sql_lower and params and params[0].lower() == "semaglutide":
-            return {"entity_id": "uuid-sema", "label": "semaglutide"}
+        if "from drugs" in sql_lower and params and any("semaglutide" in str(p).lower() for p in params):
+            return {"entity_id": "uuid-sema", "gname": "semaglutide", "richness": 10}
         return None
     db.fetch_one = fetch_one_side_effect
     result = resolve_entity("semaglutide", "drug", db)
