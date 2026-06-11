@@ -1,21 +1,21 @@
 {
-  "overall_score": 0.734,
+  "overall_score": 0.85,
   "by_dimension": {
-    "intent": 0.864,
-    "grounding": 0.887,
-    "factual": 0.561,
-    "completeness": 0.788,
-    "citation": 0.593
+    "intent": 0.898,
+    "grounding": 0.941,
+    "factual": 0.726,
+    "completeness": 0.907,
+    "citation": 0.78
   },
   "by_intent": {
-    "dossier": 0.705,
-    "compare": 0.726,
-    "landscape": 0.831,
-    "pipeline": 0.842,
-    "portfolio": 0.991,
-    "structured_query": 0.775,
-    "general": 0.495
+    "dossier": 0.745,
+    "compare": 0.818,
+    "landscape": 0.975,
+    "pipeline": 0.922,
+    "portfolio": 0.927,
+    "structured_query": 0.889,
+    "general": 0.846
   },
-  "total_queries": 59,
-  "timestamp": "2026-06-08T20:46:45.638470+00:00"
+  "captured_at": "2026-06-10",
+  "note": "post-PLAN (#210) + guard-grounding (#211), live vs prod"
 }
