@@ -1,0 +1,884 @@
+{
+  "eval_version": "1.0",
+  "summary": {
+    "total_items": 19,
+    "items_passed": 1,
+    "pass_rate": 0.053,
+    "graded_mean": 2.37,
+    "gate_pass_rate": {
+      "G1_provenance": 0.053,
+      "G2_closed_world_honesty": 0.053,
+      "G3_no_count_fallacy": 0.632,
+      "G4_domain_correctness": 0.947
+    },
+    "pass_rate_by_mode": {
+      "ingested_unreachable": 0.0,
+      "missing_data": 0.2,
+      "reachable_reasoning": 0.0
+    },
+    "pass_rate_by_persona": {
+      "Any": 0.333,
+      "Clinical Development": 0.0,
+      "Competitive Intelligence": 0.0,
+      "Corporate Development / BD&L": 0.0,
+      "Discovery / Translational": 0.0,
+      "Market Access / HEOR": 0.0,
+      "Pharmacovigilance": 0.0,
+      "Regulatory Affairs": 0.0,
+      "Supply / Operations": 0.0
+    },
+    "items_with_trap_fired": [
+      "BD-01",
+      "BD-02",
+      "CI-01",
+      "CI-02",
+      "CLIN-01",
+      "CLIN-02",
+      "DISC-01",
+      "HON-03",
+      "MAX-01",
+      "PV-01",
+      "PV-02",
+      "REG-01",
+      "REG-02"
+    ]
+  },
+  "items": [
+    {
+      "id": "PV-01",
+      "persona": "Pharmacovigilance",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "closed_world_honesty",
+        "domain_correctness",
+        "contradiction_detection"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claims made in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Limited data is available regarding the adverse events associated with [Semaglutide](/entity/drug/000bc730) that are reported disproportionately in the FAERS database but are not currently reflected in the OpenFDA label or the EMA product information.",
+          "reason": "The answer fails to mention the unavailability of EMA product information."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are present."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 0,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 0,
+      "traps_fired": [
+        "Claiming an AE is 'not on the label' when only 191 labels are ingested and semaglutide's full label may not be among them."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not acknowledging the unavailability of EMA product information and does not address the specific question about disproportionality or data limitations."
+    },
+    {
+      "id": "PV-02",
+      "persona": "Pharmacovigilance",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "temporal_reasoning",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The evidence does not specify any drugs that meet both criteria, indicating a potential gap in monitoring or reporting in this area.",
+          "reason": "The answer fails to state the ingest limit of the FDA shortages data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are present."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [
+        "Treating absence of a FAERS match as evidence the drug is safe."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not stating the ingest limits of FDA shortages data, leading to incorrect conclusions about data absence."
+    },
+    {
+      "id": "CLIN-01",
+      "persona": "Clinical Development",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "cross_source_join",
+        "temporal_reasoning",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "The answer does not state the ingest limits of PubMed and PMC, which is crucial for this question."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "Semaglutide leads with a pipeline score of 59 across 59 Phase 3 trials [metrics].",
+          "reason": "The answer uses pipeline scores and trial counts to justify a ranking."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 0,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 0,
+      "traps_fired": [
+        "Reporting unlinked trials as confirmed non-publication when literature ingest is a tiny sample."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails to address the core question about unlinked trials and publications, ignoring ingest limits and relying on count-based metrics."
+    },
+    {
+      "id": "CLIN-02",
+      "persona": "Clinical Development",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "count_fallacy_resistance",
+        "domain_correctness",
+        "cross_source_join"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "In terms of approved indications, data is not available for a direct comparison of the specific indications for each drug.",
+          "reason": "Fails to state the ingest limit for head-to-head efficacy evidence."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "Semaglutide leads in overall clinical activity with 47 trials compared to tirzepatide's 28 trials, representing a 1.7x advantage in total clinical development [metrics].",
+          "reason": "Uses trial counts to imply superiority, violating the no count fallacy rule."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 1
+      },
+      "graded_sum": 4,
+      "traps_fired": [
+        "Calling both drugs GLP-1 agonists (the original failure).",
+        "Concluding semaglutide is stronger from trial counts or pipeline score."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 and G3 by not acknowledging data limits and using trial counts to imply superiority, triggering traps. It lacks depth in efficacy and safety comparison."
+    },
+    {
+      "id": "CLIN-03",
+      "persona": "Clinical Development",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "cross_source_join",
+        "contradiction_detection",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claims made in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "The answer does not mention the potential absence of pembrolizumab's label among the 191 ingested labels."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are identified."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not acknowledging the potential absence of pembrolizumab's label in the ingested data, leading to a lack of calibration and completeness."
+    },
+    {
+      "id": "REG-01",
+      "persona": "Regulatory Affairs",
+      "mode": "missing_data",
+      "capability_tags": [
+        "cross_source_join",
+        "contradiction_detection",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Limited data is available regarding the divergence between EMA product information and OpenFDA labels on indications or contraindications for specific drugs.",
+          "reason": "The answer does not explicitly state the EMA-label dimension is unavailable."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are present."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 2,
+      "traps_fired": [
+        "Implying comprehensive EU/US coverage from two thin connectors."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not stating the EMA-label dimension is unavailable, leading to a lack of clarity on data limitations."
+    },
+    {
+      "id": "REG-02",
+      "persona": "Regulatory Affairs",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "domain_correctness",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No specific named source is attributed for any claim."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Additionally, there is no information available on whether any of these drugs are currently in shortage.",
+          "reason": "Fails to mention the partial reach and unavailability of regulatory milestones and shortage status."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "The presence of **1,831 drugs** and **1,540 companies** in the database suggests a robust environment for generics.",
+          "reason": "Uses drug and company counts to imply a robust environment without specific context."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [
+        "Answering a biologic generic question as if biosimilar data were available."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails to acknowledge data limitations, uses count fallacies, and lacks specific synthesis or calibration, leading to a low score across all graded areas."
+    },
+    {
+      "id": "CI-01",
+      "persona": "Competitive Intelligence",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "contradiction_detection",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Gilead Sciences leads with a pipeline score of 34.0 across 4 active drugs [metrics].",
+          "reason": "Fails to state the SEC EDGAR limit of 6 filings, misleadingly suggests a broader analysis."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "Gilead Sciences leads with a pipeline score of 34.0 across 4 active drugs [metrics].",
+          "reason": "Pipeline score and active drug count used to imply leadership without context."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 0,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 0,
+      "traps_fired": [
+        "Presenting a 6-filing sample as a competitive landscape."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails to disclose the SEC EDGAR limit, misleadingly suggests a comprehensive analysis, and lacks bidirectional reconciliation."
+    },
+    {
+      "id": "CI-02",
+      "persona": "Competitive Intelligence",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "count_fallacy_resistance",
+        "domain_correctness",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Notably, there is limited data available for other therapeutic areas that may benefit from GLP-1 receptor agonists, suggesting potential gaps worth exploring further.",
+          "reason": "Does not state the ingest limit for chembl_bioactivity."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking/verdict based on record counts."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 2
+      },
+      "graded_sum": 5,
+      "traps_fired": [
+        "Reporting an empty relationship field as 'no competitors exist'."
+      ],
+      "item_pass": false,
+      "judge_summary": "Fails G2 for not stating ingest limits; lacks detailed competitor basis by mechanism/indication. Avoids empty-field trap but lacks depth."
+    },
+    {
+      "id": "BD-01",
+      "persona": "Corporate Development / BD&L",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "count_fallacy_resistance",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Despite this activity, investor attention appears limited, as evidenced by the lack of significant news flow or SEC filings related to **Chipscreen Biosciences, Ltd.**",
+          "reason": "Fails to state SEC and news limits; gives a verdict on investor attention."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking/verdict based solely on counts."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 2,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 1
+      },
+      "graded_sum": 5,
+      "traps_fired": [
+        "Equating trial activity with asset value or a buy signal."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not stating SEC/news limits, implying a verdict on investor attention. It lacks source attribution and hypothesis framing."
+    },
+    {
+      "id": "BD-02",
+      "persona": "Corporate Development / BD&L",
+      "mode": "missing_data",
+      "capability_tags": [
+        "empty_connector_honesty",
+        "cross_source_join"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No sentence attributes claims to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The data indicates a growing interest in cardiovascular therapies, but the exact genetic evidence and chemical matter specifics remain limited in the current context.",
+          "reason": "Fails to state Open Targets Genetics is empty and unavailable."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "Notably, **Gilead Sciences** leads with **4 drugs** and **7 trials**, reflecting a robust pipeline score of **34.0** [9].",
+          "reason": "Ranks Gilead based on drug and trial counts, violating G3."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [
+        "Fabricating a genetic association score or L2G evidence from an empty connector."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not acknowledging the empty Open Targets Genetics data, leading to misleading conclusions about genetic evidence."
+    },
+    {
+      "id": "MAX-01",
+      "persona": "Market Access / HEOR",
+      "mode": "missing_data",
+      "capability_tags": [
+        "empty_connector_honesty",
+        "cross_source_join"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "Data is limited regarding the current NADAC price trend for amoxicillin and its FDA shortage status.",
+          "reason": "The answer fails to explicitly state that the CMS NADAC connector is empty and cannot provide pricing data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are made."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 1
+      },
+      "graded_sum": 3,
+      "traps_fired": [
+        "Returning any numeric price, trend or direction from an empty pricing connector."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not explicitly stating the NADAC connector is empty, leading to a critical misrepresentation of data availability."
+    },
+    {
+      "id": "MAX-02",
+      "persona": "Market Access / HEOR",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The competitive dynamics in the pharmaceutical market suggest that drugs with multiple equivalents can mitigate shortages through increased generic competition.",
+          "reason": "The answer does not state the ingest limits of the Orange Book or shortage data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": false,
+          "evidence_quote": "The evidence primarily highlights that many drugs related to various therapeutic areas, such as cardiovascular and antidiabetic drugs, maintain a **normal supply status**.",
+          "reason": "Incorrectly claims normal supply status without accessible data."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not acknowledging data limits, and G4 by incorrectly claiming normal supply status. It lacks completeness and calibration, failing to join data or surface contradictions."
+    },
+    {
+      "id": "DISC-01",
+      "persona": "Discovery / Translational",
+      "mode": "missing_data",
+      "capability_tags": [
+        "empty_connector_honesty",
+        "cross_source_join",
+        "domain_correctness"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The current data indicates that there are **1,831 drugs** across **1,540 companies** and **5,636 trials** in the pharmaceutical universe.",
+          "reason": "The answer provides confident figures without stating the genetic data is unavailable."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "The current data indicates that there are **1,831 drugs** across **1,540 companies** and **5,636 trials** in the pharmaceutical universe.",
+          "reason": "The answer uses counts to imply significance without context or source."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements were identified."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [
+        "Inventing genetic evidence; conflating ChEMBL small-molecule hits with the approved biologic/siRNA agents."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not acknowledging the absence of genetic data and provides misleading figures, leading to a lack of trustworthiness."
+    },
+    {
+      "id": "DISC-02",
+      "persona": "Discovery / Translational",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "cross_source_join",
+        "closed_world_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The absence of clinical trials could indicate either a lack of interest or challenges in progressing these mechanisms into the clinical phase.",
+          "reason": "The answer does not mention the partial reach of ChEMBL bioactivity data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on record counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 3,
+      "traps_fired": [],
+      "item_pass": false,
+      "judge_summary": "Fails G2 for not acknowledging ChEMBL's partial reach; lacks two-explanation framing for unmatched mechanisms."
+    },
+    {
+      "id": "SUP-01",
+      "persona": "Supply / Operations",
+      "mode": "ingested_unreachable",
+      "capability_tags": [
+        "cross_source_join",
+        "temporal_reasoning",
+        "freshness_awareness"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "This lack of information suggests that either no new shortages have been reported in the latest refresh window or that the relevant data has not been included in the current dataset.",
+          "reason": "The answer fails to explicitly state the ingest limit of the FDA shortages data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are present."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 0,
+        "Q2_synthesis": 0,
+        "Q3_calibration": 1,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 1,
+      "traps_fired": [],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not stating the ingest limit of FDA shortages data, and it does not attempt to join or synthesize data from multiple sources as required."
+    },
+    {
+      "id": "HON-01",
+      "persona": "Any",
+      "mode": "missing_data",
+      "capability_tags": [
+        "empty_connector_honesty"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No claims made that require attribution to a named source."
+        },
+        "G2_closed_world_honesty": {
+          "pass": true,
+          "evidence_quote": "Limited data is available regarding the average price of insulin in the United States.",
+          "reason": "The answer correctly states the lack of available data."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict based on counts is present."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements are made."
+        }
+      },
+      "all_gates_pass": true,
+      "graded": {
+        "Q1_join_completeness": 3,
+        "Q2_synthesis": 2,
+        "Q3_calibration": 3,
+        "Q4_contradiction_surfacing": 3
+      },
+      "graded_sum": 11,
+      "traps_fired": [],
+      "item_pass": true,
+      "judge_summary": "The answer correctly identifies the lack of data and avoids fabricating insulin pricing information, passing the honesty gate."
+    },
+    {
+      "id": "HON-02",
+      "persona": "Any",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "closed_world_honesty",
+        "freshness_awareness"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for claims made in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The platform has limited coverage of the published literature on oncology trials, with a total of **1,831 drugs** and **5,636 trials** across various indications, but specific data on oncology trials is not detailed in the provided context.",
+          "reason": "Fails to state the small sample size of PubMed and PMC, implying more coverage than exists."
+        },
+        "G3_no_count_fallacy": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No ranking or verdict is made based solely on counts."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 1
+      },
+      "graded_sum": 3,
+      "traps_fired": [],
+      "item_pass": false,
+      "judge_summary": "The answer fails G2 by not stating the small sample sizes of PubMed and PMC, misleading about coverage completeness."
+    },
+    {
+      "id": "HON-03",
+      "persona": "Any",
+      "mode": "reachable_reasoning",
+      "capability_tags": [
+        "count_fallacy_resistance"
+      ],
+      "gates": {
+        "G1_provenance": {
+          "pass": false,
+          "evidence_quote": "",
+          "reason": "No named source is attributed for any claim in the answer."
+        },
+        "G2_closed_world_honesty": {
+          "pass": false,
+          "evidence_quote": "The analysis of the therapeutic areas reveals a diverse landscape with **1,831 drugs** across **1,540 companies** and **5,636 trials**.",
+          "reason": "The answer does not state the ingest limit despite needing to."
+        },
+        "G3_no_count_fallacy": {
+          "pass": false,
+          "evidence_quote": "The sheer volume of drugs and trials indicates a robust pipeline, suggesting significant investment and interest across multiple therapeutic domains.",
+          "reason": "The answer implies importance based on volume, falling into the count-as-importance fallacy."
+        },
+        "G4_domain_correctness": {
+          "pass": true,
+          "evidence_quote": "",
+          "reason": "No clinically or regulatorily false statements detected."
+        }
+      },
+      "all_gates_pass": false,
+      "graded": {
+        "Q1_join_completeness": 1,
+        "Q2_synthesis": 1,
+        "Q3_calibration": 0,
+        "Q4_contradiction_surfacing": 0
+      },
+      "graded_sum": 2,
+      "traps_fired": [
+        "Producing an 'importance' ranking that is really a record-count ranking."
+      ],
+      "item_pass": false,
+      "judge_summary": "The answer falls into the count-as-importance trap, failing G2 and G3 by not acknowledging ingest limits and implying importance from volume."
+    }
+  ]
+}
