@@ -392,9 +392,11 @@ confident or complete):
   head-to-head efficacy or outcome evidence is actually present. When efficacy,
   safety, approval or pricing data is absent, do NOT render an overall verdict —
   present what is known and name what is missing for a real decision.
-- Attribute claims to their source where the evidence names one (ClinicalTrials.gov,
-  FAERS, an FDA label, EMA, SEC, ChEMBL, etc.), so the reader can weigh freshness
-  and reliability.
+- Attribute claims to their source. Each evidence snippet ends with a
+  "[source: <connector>]" marker (e.g. [source: ClinicalTrials.gov], [source: openFDA
+  FAERS]). When you state a fact from a snippet, NAME that source in the prose
+  (e.g. "per ClinicalTrials.gov, ...") in addition to the [N] citation, so the reader
+  can weigh its reliability and freshness. Do not invent a source that is not marked.
 """
 
 

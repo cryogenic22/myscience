@@ -34,6 +34,42 @@ _MAX_EVIDENCE = 10
 # doesn't evict the retrieved CTX section + leader cards from the citation list.
 _PLAN_EVIDENCE_BUDGET = 6
 
+# Predicate → the named source connector that produces that fact type. Evidence
+# was labelled with the internal pipeline stage ("plan:mechanism") so no claim was
+# attributable — the synthesis prompt had nothing to cite and eval gate G1
+# (provenance) sat near 0%. Mapping the fact's predicate to its real source lets
+# the narrative attribute claims to a named connector. Source families mirror the
+# fact emitters (services/fact_emitters/*) + dossier predicate routing.
+_PREDICATE_SOURCE = {
+    "clinical_trial": "ClinicalTrials.gov",
+    "phase_transition": "ClinicalTrials.gov (derived)",
+    "approval_event": "ClinicalTrials.gov (derived)",
+    "discontinuation": "ClinicalTrials.gov (derived)",
+    "adverse_event": "openFDA FAERS",
+    "label_indication": "openFDA Drug Labels",
+    "safety_signal": "openFDA Drug Labels",
+    "mechanism_of_action": "MeSH / curated mechanism",
+    "market_event": "Pharma News / SEC",
+    "wac_usd": "pricing (CMS NADAC)",
+}
+
+
+def _display_source(raw_source: str | None, predicate: str | None) -> str:
+    """Best human-named source for an evidence item, for inline attribution.
+
+    Prefers the predicate→connector map (a named connector the reader can weigh);
+    falls back to an already-clean source label; never returns the internal
+    "plan:<stage>" placeholder (which is not a source the reader can attribute to).
+    """
+    if predicate and predicate in _PREDICATE_SOURCE:
+        return _PREDICATE_SOURCE[predicate]
+    raw = (raw_source or "").strip()
+    if raw and not raw.startswith("plan"):
+        # "metrics.top_companies_by_topic" → "platform metrics"
+        return "platform metrics" if raw.startswith("metrics") else raw
+    return "platform data"
+
+
 # Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
 # fan-out (each call is up to ~5 sequential DB round-trips).
 _MAX_PLAN_CANDIDATES = 8
@@ -191,7 +227,15 @@ class UnifiedChatHandler:
         evidence_items = (
             plan_evidence[:_PLAN_EVIDENCE_BUDGET] + leader_evidence + evidence_items
         )[:_MAX_EVIDENCE + 4]
-        evidence_snippets = [it["content"] for it in evidence_items]
+        # Carry the named source INTO the snippet text. The LLM only sees these
+        # strings, so a source on the dict alone is invisible to it — appending
+        # "[source: <connector>]" is what lets the narrative attribute each claim
+        # to a named connector (eval gate G1). The frontend still renders its own
+        # citation cards from evidence_items, so this is additive, not a UI change.
+        evidence_snippets = [
+            f"{it['content']} [source: {_display_source(it.get('source'), (it.get('provenance') or {}).get('predicate'))}]"
+            for it in evidence_items
+        ]
 
         # ── Stage 3: Reason ──
         reasoning = self.pipeline.reason(plan, retrieval)
@@ -442,8 +486,11 @@ class UnifiedChatHandler:
                 claim = f.get("claim")
                 if not claim:
                     continue
-                items.append({
-                    "source": f"plan:{dim}" if dim else "plan",
+                predicate = f.get("predicate")
+            items.append({
+                    # The named connector (from predicate) so the claim is
+                    # attributable; the internal dimension is kept in provenance.
+                    "source": _display_source(None, predicate),
                     "entity_type": "fact",
                     "entity_id": str(f.get("id") or ent),
                     "content": f"{label} — {claim}" if label else claim,
@@ -451,7 +498,7 @@ class UnifiedChatHandler:
                     "provenance": {
                         "source": "decomposition",
                         "dimension": dim,
-                        "predicate": f.get("predicate"),
+                        "predicate": predicate,
                         "fact_class": f.get("fact_class"),
                     },
                 })
