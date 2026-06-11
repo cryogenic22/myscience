@@ -250,14 +250,27 @@ SYSTEM_PROMPTS: dict[str, str] = {
     "compare": f"""You are a senior pharmaceutical intelligence analyst. You are comparing entities head-to-head.
 
 Rules:
-- Lead with the key differentiator — which entity is stronger/weaker and why.
-- Use comparative language: "X has 2.3x more trials", "Y leads in Phase 3 with N trials".
-- Bold the winner on each dimension.
-- Compute and state differentials, don't just list numbers side-by-side.
-- End with a 1-sentence verdict.
-- 2-3 paragraphs maximum. A comparison table is displayed alongside — don't restate every number.
-- CRITICAL: ONLY use numbers and facts from the PROVIDED CONTEXT below. Do NOT inject clinical trial results, efficacy percentages, MACE reductions, or any other statistics from your training data. If the data doesn't cover a dimension, say "data not available" rather than filling in from memory.
+- Lead with the most decision-relevant DIFFERENCE the data actually supports —
+  mechanism of action, approved indication, or head-to-head evidence — NOT a winner
+  declared from trial counts.
+- State differentials precisely AND label what they mean: "X has N more registered
+  trials in our data" describes the breadth/maturity of a development programme, it
+  does NOT mean X is the stronger or better drug.
+- Do NOT declare one entity "stronger"/"better"/"winning" overall unless head-to-head
+  efficacy or outcome evidence is present in the context. If it is absent, say the
+  comparison is limited to the dimensions the data covers, and name what is missing.
+- Mechanism matters most: if two drugs differ in mechanism (e.g. a GLP-1 agonist vs a
+  dual GIP/GLP-1 agonist), that difference is the headline — never flatten it.
+- Compute and state differentials, don't just list numbers side-by-side. A comparison
+  table is displayed alongside — don't restate every number.
+- CRITICAL: ONLY use numbers and facts from the PROVIDED CONTEXT below. Do NOT inject
+  clinical trial results, efficacy percentages, MACE reductions, or any other
+  statistics from your training data. If the data doesn't cover a dimension, say so
+  rather than filling in from memory.
 - If COMPUTED DIFFERENTIALS are provided, use those exact numbers.
+- End with a verdict ONLY for the dimensions the data supports; otherwise end by
+  stating what further evidence (e.g. head-to-head efficacy) a real decision needs.
+- 2-3 paragraphs maximum.
 {_BASE_RULES}""",
 
     "landscape": f"""You are a senior pharmaceutical intelligence analyst. You are analyzing a competitive market landscape.
@@ -355,17 +368,55 @@ CITATION PROTOCOL (SPEC_016):
 """
 
 
+# The closed-world / calibration guard. Appended to EVERY synthesis prompt so the
+# reasoning layer stops turning database artefacts into confident verdicts — the
+# semaglutide-vs-tirzepatide failure class. Targets eval gates G1 (provenance),
+# G2 (closed-world honesty) and G3 (no count fallacy). See benchmark/eval_pharma_v1.yaml.
+_CLOSED_WORLD_PROTOCOL = """
+CLOSED-WORLD & CALIBRATION PROTOCOL (binding — it overrides any instinct to sound
+confident or complete):
+- The context below is only what THIS PLATFORM has ingested — not everything that
+  is true in the world. Absence in the data is NOT evidence of absence in reality.
+  If a required dimension is empty, thin, or not covered, state that as a known
+  limitation. NEVER convert a gap in retrieval into a negative conclusion — phrases
+  like "no competitors", "limited regulatory data suggests uncertainty", or "not
+  approved" are FORBIDDEN when the real reason is that the data was not retrieved.
+  Surface such gaps as explicit unknowns instead.
+- Counts are not quality. Trial counts, record counts and pipeline scores measure
+  time-on-market and breadth of ingest — NOT efficacy, safety, or commercial
+  strength. NEVER rank entities or call one "stronger"/"better"/"more advanced"
+  overall on the basis of counts alone. A larger trial count means a broader or
+  older development programme; say exactly that and no more.
+- Scope every verdict to the axis the data supports. "More registered trials in our
+  data" is a claim the data licenses; "the stronger asset" is not, unless
+  head-to-head efficacy or outcome evidence is actually present. When efficacy,
+  safety, approval or pricing data is absent, do NOT render an overall verdict —
+  present what is known and name what is missing for a real decision.
+- Attribute claims to their source where the evidence names one (ClinicalTrials.gov,
+  FAERS, an FDA label, EMA, SEC, ChEMBL, etc.), so the reader can weigh freshness
+  and reliability.
+"""
+
+
+def _assemble_system_prompt(base: str) -> str:
+    """The EXACT text shipped to the model for a base prompt: base + citation
+    protocol + closed-world guard. Single source of truth so the prompt-registry
+    row (register_synthesis_prompts) stays 1:1 with what actually ships."""
+    return base + "\n\n" + _CITATION_PROTOCOL + "\n" + _CLOSED_WORLD_PROTOCOL
+
+
 def _get_system_prompt(intent: str, format_hint: str | None = None) -> str:
     """Select the best system prompt based on intent and format hint.
 
-    SPEC_016 §1B: appends the citation protocol (click-through entity links)
-    to every prompt regardless of intent so the response layer is consistent.
+    SPEC_016 §1B: appends the citation protocol (click-through entity links) and
+    the closed-world/calibration guard to every prompt regardless of intent so the
+    response layer is consistent and honest about ingest limits.
     """
     if format_hint == "table":
         base = SYSTEM_PROMPTS["tabular"]
     else:
         base = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS["default"])
-    return base + "\n\n" + _CITATION_PROTOCOL
+    return _assemble_system_prompt(base)
 
 
 # ── C1 depth: prompt-versioned synthesis ───────────────────────────
@@ -410,10 +461,10 @@ def register_synthesis_prompts(db) -> dict[str, str]:
     out: dict[str, str] = {}
     for key in SYNTHESIS_PROMPTS_KEYS:
         name = f"{SYNTHESIS_PROMPT_PREFIX}{key}"
-        # The shipped text for this key = the base prompt + citation protocol.
-        # For "tabular" the format_hint path is what selects it; passing the
-        # key as intent reproduces the same content for every non-table key.
-        content = (SYSTEM_PROMPTS[key] + "\n\n" + _CITATION_PROTOCOL)
+        # The shipped text for this key = base prompt + citation protocol +
+        # closed-world guard. Use the same assembler _get_system_prompt uses so
+        # the registry row is a faithful 1:1 audit of what was sent.
+        content = _assemble_system_prompt(SYSTEM_PROMPTS[key])
         try:
             prompt = PromptRegistry.register(
                 db,
