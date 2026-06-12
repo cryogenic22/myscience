@@ -28,16 +28,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Per-signal support level the scenario's probability is pulled toward, by the
-# signal's confidence tier. A confirmed development is strong corroboration; a
-# How much each signal corroborates the scenario, by confidence tier. This is a
-# SUPPORT weight, not a probability anchor: a disputed signal contributes nothing
-# (we do not let unconfirmed/contested news inflate a scenario's probability),
-# a confirmed one fully. Honesty: we model evidence ACCUMULATION only — fresh
-# corroboration raises the probability monotonically toward a ceiling; we do NOT
-# yet model refutation (a signal that should LOWER a scenario), so the loop never
-# moves current_prob below the structural prior. Downward calibration needs
-# scenario-relative stance detection — an explicit follow-up.
+# How much each signal moves the scenario's probability, by confidence tier. This
+# is an EVIDENCE weight, not a probability anchor: a disputed signal contributes
+# nothing (we do not let unconfirmed/contested news move a scenario), a confirmed
+# one fully. The same weight scales BOTH directions — corroboration pulls toward
+# the ceiling, refutation toward the floor (see ``signal_stance``).
 CORROBORATION_WEIGHT: dict[str, float] = {
     "confirmed": 1.0,
     "reported": 0.65,
@@ -46,15 +41,42 @@ CORROBORATION_WEIGHT: dict[str, float] = {
 }
 _DEFAULT_WEIGHT = 0.35
 
-# How hard a fully-corroborating signal pulls toward the ceiling. Modest, so a
-# single signal never swings a scenario wildly; evidence accumulates over many.
+# How hard a fully-weighted signal pulls toward its bound. Modest, so a single
+# signal never swings a scenario wildly; evidence accumulates over many.
 _ALPHA = 0.30
 
 _CEIL = 0.95
+_FLOOR = 0.05
 _MAX_SIGNALS = 50  # bound the per-scenario evidence window
 
 # Backwards-compatible alias for any external reader of the old name.
 OBSERVATION_BY_CONFIDENCE = CORROBORATION_WEIGHT
+
+# Helix gap #3 — scenario-relative stance. A scenario's probability should not
+# only rise on corroboration; a signal pointing the OTHER way must be able to
+# refute it ("contradictions are often the insight"). Stance is grounded in the
+# signals.direction column (positive/negative/neutral — DB-checked), not guessed.
+SUPPORTS = "supports"
+CONTRADICTS = "contradicts"
+NEUTRAL = "neutral"
+
+
+def signal_stance(direction: Optional[str], *, scenario_is_competitive: bool) -> str:
+    """Stance of one signal toward a scenario — grounded in ``signals.direction``.
+
+    A *competitive-pressure* scenario is about a RIVAL; it materialises when the
+    rival gets STRONGER. So a NEGATIVE rival signal (trial failure, regulatory
+    setback, supply disruption) CONTRADICTS it — the rival weakened, pressure
+    recedes. That is the one new, well-grounded refutation case (Helix gap #3).
+
+    Everything else stays SUPPORTS — identical to the pre-stance behaviour, so
+    there is no regression: a positive/neutral/unknown rival signal still
+    accumulates evidence, and focal-asset (non-competitive) scenarios, for which
+    we have no reliable polarity model yet, treat every signal as corroboration.
+    """
+    if scenario_is_competitive and (direction or "").lower() == "negative":
+        return CONTRADICTS
+    return SUPPORTS
 
 
 def _weight(confidence_tier: Optional[str]) -> float:
@@ -65,36 +87,49 @@ def calibrate_scenario_prob(
     *, prior: float, signals: list[dict], entity_label: str,
 ) -> tuple[Optional[float], Optional[str]]:
     """Pure: re-weight a scenario's prior into a current probability from the
-    CORROBORATING signals about its target entity. Returns (current_prob,
-    calibration_note), or (None, None) when there is no corroborating evidence
-    (scenario stays uncalibrated — honest about "no news yet").
+    signals about its target entity, by their STANCE. Returns (current_prob,
+    calibration_note), or (None, None) when no weighted, non-neutral signal
+    applies (scenario stays uncalibrated — honest about "no news yet").
 
-    Each corroborating signal nudges the running probability toward the ceiling
-    proportionally to its confidence weight (confirmed fully, disputed not at
-    all). The result is monotonically ≥ prior: this loop measures evidence
-    accumulation, never refutation (see CORROBORATION_WEIGHT note). `signals`
-    are expected pre-filtered to those that arrived AFTER derivation, oldest
-    first; the last corroborating one is cited as the latest mover.
+    Each signal nudges the running probability proportionally to its confidence
+    weight: a SUPPORTS signal toward the ceiling, a CONTRADICTS signal toward the
+    floor (Helix gap #3 — refutation). Stance comes from ``s['stance']``; absent,
+    it defaults to SUPPORTS, so a caller that never sets stance gets the exact
+    pre-stance behaviour. `signals` are expected pre-filtered to those that
+    arrived AFTER derivation, oldest first; the last mover is cited.
     """
-    corroborating = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
-    if not corroborating:
+    movers = [
+        s for s in signals
+        if _weight(s.get("confidence_tier")) > 0
+        and s.get("stance", SUPPORTS) in (SUPPORTS, CONTRADICTS)
+    ]
+    if not movers:
         return None, None
 
     current = float(prior)
-    for sig in corroborating[:_MAX_SIGNALS]:
+    n_sup = n_con = 0
+    for sig in movers[:_MAX_SIGNALS]:
         w = _weight(sig.get("confidence_tier"))
-        current = current + w * _ALPHA * (_CEIL - current)  # monotonic toward ceiling
+        if sig.get("stance", SUPPORTS) == CONTRADICTS:
+            current = current - w * _ALPHA * (current - _FLOOR)  # toward floor
+            n_con += 1
+        else:
+            current = current + w * _ALPHA * (_CEIL - current)   # toward ceiling
+            n_sup += 1
 
-    current = round(min(_CEIL, max(float(prior), current)), 3)
+    current = round(min(_CEIL, max(_FLOOR, current)), 3)
 
-    latest = corroborating[-1]
-    n = len(corroborating)
+    latest = movers[-1]
+    n = len(movers)
     headline = (latest.get("headline") or "").strip()
     conf = (latest.get("confidence_tier") or "unrated")
     date_s = str(latest.get("created_at") or "")[:10]
+    moved = "raised" if current >= round(prior, 3) else "lowered"
+    mix = (f"{n_sup} corroborating" + (f", {n_con} contradicting" if n_con else "")) \
+        if n_sup else f"{n_con} contradicting"
     note = (
-        f"{n} corroborating signal{'s' if n != 1 else ''} on {entity_label} since "
-        f"derivation raised this scenario from {round(prior, 2)} to {current}. "
+        f"{mix} signal{'s' if n != 1 else ''} on {entity_label} since derivation "
+        f"{moved} this scenario from {round(prior, 2)} to {current}. "
         f"Latest: \"{headline}\" ({conf}{f', {date_s}' if date_s else ''})."
     )
     return current, note
@@ -112,7 +147,7 @@ _SCENARIOS_SQL = """
 
 # Signals about the focal entity that arrived AFTER the scenario was derived.
 _SIGNALS_SQL = """
-    SELECT id, confidence_tier, impact_tier, headline, created_at
+    SELECT id, confidence_tier, impact_tier, direction, headline, created_at
       FROM signals
      WHERE primary_entity_type = %s
        AND primary_entity_id = %s
@@ -186,9 +221,23 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
         except Exception:
             logger.exception("calibrate: signal fetch failed for scenario %s", scn.get("id"))
             continue
+        # Stance per signal (Helix gap #3). Only a competitive-pressure scenario
+        # whose target resolved to a DISTINCT rival gets directional refutation;
+        # if it fell back to the focal asset, polarity is unknown → treat as
+        # non-competitive (every signal supports — no wrong-direction refutation).
+        is_competitive = (
+            (scn.get("name") or "").strip().startswith(_COMPETITIVE_PREFIX)
+            and t_id != focal_id
+        )
+        signals = [
+            {**dict(s),
+             "stance": signal_stance(s.get("direction"),
+                                     scenario_is_competitive=is_competitive)}
+            for s in signals
+        ]
         current, note = calibrate_scenario_prob(
             prior=float(scn.get("prior_prob") or 0.0),
-            signals=list(signals),
+            signals=signals,
             entity_label=t_label,
         )
         if current is None:
