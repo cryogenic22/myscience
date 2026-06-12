@@ -175,6 +175,26 @@ class TestExportDrugs:
         assert sema["therapeutic_area"] == "Diabetes Mellitus, Type 2"
 
 
+def test_drugs_sql_one_row_per_name_prefer_active_then_richest():
+    """Conservation regression (P4 + dup-consolidation): the CTX corpus must emit
+    ONE row per drug name — the best available — so hydrate_by_name can't match an
+    empty 0-fact dup or 'excluded' junk and report a rich drug as having no data.
+      * 'excluded'/'stale' junk is filtered out (the pseudo-drug that substring-
+        matched 'semaglutide').
+      * but merged/superseded rows are NOT blanket-excluded — a strict active-only
+        filter would silently DROP drugs whose canonical was left 'merged' with no
+        active replacement (~11 high-fact drugs post-consolidation). Prefer active,
+        then richest, so no drug with data is dropped."""
+    from services.ctx_corpus import _DRUGS_SQL
+    s = _DRUGS_SQL.lower()
+    assert "distinct on (lower(d.generic_name))" in s
+    # junk excluded, but not a blanket merged/superseded drop
+    assert "not in ('excluded', 'stale')" in s
+    # prefer active, then richest (facts + trials)
+    assert "= 'active') desc" in s
+    assert "from facts f" in s and "from clinical_trials ct" in s
+
+
 class TestExportCompanies:
     """Verify company export."""
 

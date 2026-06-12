@@ -104,8 +104,23 @@ from ctxpack.core.packer import pack as ctx_pack, PackResult
 
 # ── SQL queries for entity export ──
 
+# ONE section per drug NAME: the best available row — prefer active, then richest.
+# Two failure modes this guards against:
+#   1. Empty/junk shadowing: the corpus carried merged dup rows + 'excluded' junk
+#      (e.g. the 0-fact dup tirzepatide e8499246, or the pseudo-drug "Anti-obesity
+#      medication with … semaglutide" that substring-matched), so hydrate_by_name
+#      could report a rich, approved drug as having no data.
+#   2. Silent drop (conservation): a strict active-only filter would DROP drugs
+#      whose canonical was marked 'merged' with no active replacement (a real prod
+#      state after the dup-consolidation loop left ~11 high-fact drugs — valsartan,
+#      tirzepatide, … — with only a merged canonical). Dropping a drug that owns
+#      hundreds of facts is itself silent data loss.
+# So: exclude only 'excluded'/'stale' junk; among the rest prefer active, then
+# richest (facts + trials). DISTINCT ON collapses to one row per name. This picks
+# the canonical when the data is healthy and the richest survivor when it isn't —
+# and forward-compatibly upgrades to the active row once the data is repaired.
 _DRUGS_SQL = """
-SELECT
+SELECT DISTINCT ON (LOWER(d.generic_name))
     d.id,
     d.generic_name,
     d.brand_name,
@@ -119,7 +134,15 @@ FROM drugs d
 LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
 LEFT JOIN companies c ON d.company_id = c.id
 LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
-ORDER BY d.generic_name
+WHERE COALESCE(d.record_status, 'active') NOT IN ('excluded', 'stale')
+ORDER BY LOWER(d.generic_name),
+    (COALESCE(d.record_status, 'active') = 'active') DESC,
+    (SELECT count(*) FROM facts f
+       WHERE f.subject_entity_type = 'drug'
+         AND f.subject_entity_id = d.id::text
+         AND f.superseded_by IS NULL)
+    + (SELECT count(*) FROM clinical_trials ct WHERE ct.drug_id = d.id) DESC,
+    d.id
 """
 
 _COMPANIES_SQL = """
