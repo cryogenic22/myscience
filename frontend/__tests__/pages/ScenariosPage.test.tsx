@@ -5,9 +5,24 @@
  * Each scenario carries an inline blocked-by-gaps banner when relevant.
  * The probability dial shows prior vs current (the learn-loop in operation).
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+
+// FS-1: the expanded card lazily fetches the probability-history tape.
+vi.mock('../../src/api', () => ({
+  scenariosApi: {
+    probabilityHistory: vi.fn(() => Promise.resolve({ history: [], count: 0 })),
+  },
+}));
+import { scenariosApi } from '../../src/api';
 import { ScenariosPage } from '../../src/pages/ScenariosPage';
+
+const mockHistory = scenariosApi.probabilityHistory as unknown as ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  mockHistory.mockReset();
+  mockHistory.mockResolvedValue({ history: [], count: 0 });
+});
 
 const SCOPE = { engagementName: 'CagriSema Pre-Launch', focalAsset: 'drug:cagrisema' };
 
@@ -75,6 +90,7 @@ function setup(overrides: any = {}) {
   const onMarkComplete = vi.fn();
   const utils = render(
     <ScenariosPage
+      eid="eng-1"
       scope={SCOPE}
       scenarios={SCENARIOS as any}
       activeScenarioId={null}
@@ -228,5 +244,47 @@ describe('ScenariosPage — accessibility', () => {
   it('uses a main landmark', () => {
     setup();
     expect(screen.getByRole('main', { name: /scenarios/i })).toBeInTheDocument();
+  });
+});
+
+describe('ScenariosPage — probability history timeline (FS-1 / OQ2)', () => {
+  const STEPS = [
+    { id: 'h1', scenarioId: 'scn-A', prevProb: 0.55, newProb: 0.62, delta: 0.07,
+      nSupporting: 3, nContradicting: 0, triggeringSignalId: 's1',
+      method: 'ewma_stance', note: 'corroborated', createdAt: '2026-05-20T00:00:00Z' },
+    { id: 'h2', scenarioId: 'scn-A', prevProb: 0.62, newProb: 0.50, delta: -0.12,
+      nSupporting: 0, nContradicting: 1, triggeringSignalId: 's2',
+      method: 'ewma_stance', note: 'rival readout missed', createdAt: '2026-06-01T00:00:00Z' },
+  ];
+
+  it('fetches the tape with the engagement + scenario id when a card expands', async () => {
+    setup({ activeScenarioId: 'scn-A' });
+    await screen.findByTestId('probability-timeline-empty');
+    expect(mockHistory).toHaveBeenCalledWith('eng-1', 'scn-A');
+  });
+
+  it('renders an honest empty state when no calibration has happened', async () => {
+    setup({ activeScenarioId: 'scn-A' });
+    expect(await screen.findByTestId('probability-timeline-empty')).toBeInTheDocument();
+    expect(screen.getByText(/No calibration yet/i)).toBeInTheDocument();
+  });
+
+  it('renders up and down moves with deltas (the audit tape)', async () => {
+    mockHistory.mockResolvedValue({ history: STEPS, count: 2 });
+    const { container } = setup({ activeScenarioId: 'scn-A' });
+    const tape = await screen.findByTestId('probability-timeline');
+    const steps = within(tape).getAllByTestId('calibration-step');
+    expect(steps).toHaveLength(2);
+    // a contradiction-driven downward move is visibly flagged
+    expect(container.querySelector('[data-testid="calibration-step"][data-direction="down"]'))
+      .toBeInTheDocument();
+    expect(within(tape).getByText(/55%/)).toBeInTheDocument();   // step1 prev
+    expect(within(tape).getByText(/50%/)).toBeInTheDocument();   // step2 new
+    expect(within(tape).getByText(/1 contradict/i)).toBeInTheDocument();
+  });
+
+  it('does not fetch history for a collapsed (inactive) card', () => {
+    setup(); // activeScenarioId null → no card expanded
+    expect(mockHistory).not.toHaveBeenCalled();
   });
 });

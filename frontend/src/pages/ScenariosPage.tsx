@@ -15,6 +15,8 @@
  * Headless. Theme-aware.
  */
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { scenariosApi, type CalibrationStep } from '../api';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ export interface Scenario {
 }
 
 export interface ScenariosPageProps {
+  eid: string;
   scope: { engagementName: string; focalAsset: string };
   scenarios: Scenario[];
   activeScenarioId: string | null;
@@ -116,16 +119,99 @@ function ProbabilityDial({ prior, current }: { prior: number; current?: number }
   );
 }
 
+// ── Probability history timeline (FS-1 / OQ2) ──────────────────────
+// The append-only audit tape: how this scenario's probability moved and why.
+// Lazy — only mounted when a card is expanded, so it fetches on demand.
+
+function ProbabilityTimeline({ eid, scenarioId }: { eid: string; scenarioId: string }) {
+  const [steps, setSteps] = useState<CalibrationStep[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    scenariosApi
+      .probabilityHistory(eid, scenarioId)
+      .then((r) => { if (!cancelled) setSteps(r.history); })
+      .catch((e) => { if (!cancelled) setError(String(e?.message ?? e)); });
+    return () => { cancelled = true; };
+  }, [eid, scenarioId]);
+
+  if (error) return null; // non-blocking: a history failure never breaks the card
+  if (steps === null) return null; // loading — stay quiet until we have data
+
+  if (steps.length === 0) {
+    return (
+      <section data-testid="probability-timeline-empty">
+        <SectionLabel>Probability history</SectionLabel>
+        <div style={{ fontSize: 11.5, color: 'var(--color-ink-3)', lineHeight: 1.45 }}>
+          No calibration yet — probability still at its structural prior.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section data-testid="probability-timeline">
+      <SectionLabel>Probability history</SectionLabel>
+      <ol
+        style={{
+          listStyle: 'none', margin: 0, padding: 0,
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}
+      >
+        {steps.map((s) => {
+          const down = s.delta < 0;
+          const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`);
+          const date = (s.createdAt || '').slice(0, 10);
+          return (
+            <li
+              key={s.id}
+              data-testid="calibration-step"
+              data-direction={down ? 'down' : 'up'}
+              title={s.note || undefined}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11.5 }}
+            >
+              <span
+                aria-hidden
+                style={{ color: down ? 'var(--color-amber)' : 'var(--color-accent)', fontFamily: 'var(--font-mono)' }}
+              >
+                {down ? '▼' : '▲'}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink-2)' }}>
+                {pct(s.prevProb)} → {pct(s.newProb)}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: down ? 'var(--color-amber)' : 'var(--color-accent)' }}>
+                ({s.delta >= 0 ? '+' : ''}{Math.round(s.delta * 100)})
+              </span>
+              <span style={{ color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+                {s.nSupporting > 0 && `${s.nSupporting} support`}
+                {s.nContradicting > 0 && `${s.nSupporting > 0 ? ' · ' : ''}${s.nContradicting} contradict`}
+              </span>
+              {date && (
+                <span style={{ marginLeft: 'auto', color: 'var(--color-ink-4)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+                  {date}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 // ── Scenario card (collapsed) ──────────────────────────────────────
 
 function ScenarioCard({
   scenario,
+  eid,
   active,
   onSelect,
   onPlay,
   onOpenFact,
 }: {
   scenario: Scenario;
+  eid: string;
   active: boolean;
   onSelect: (id: string | null) => void;
   onPlay: (id: string) => void;
@@ -244,8 +330,13 @@ function ScenarioCard({
             gap: 18,
           }}
         >
+          {/* Probability history (FS-1 / OQ2) */}
+          <div style={{ paddingTop: 14 }}>
+            <ProbabilityTimeline eid={eid} scenarioId={scenario.id} />
+          </div>
+
           {/* Trigger evidence */}
-          <section style={{ paddingTop: 14 }}>
+          <section>
             <SectionLabel>Trigger evidence</SectionLabel>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {scenario.trigger.evidence.map((e) => (
@@ -468,7 +559,7 @@ function ScenarioCard({
 // ── Main component ────────────────────────────────────────────────
 
 export function ScenariosPage(props: ScenariosPageProps) {
-  const { scope, scenarios, activeScenarioId, onSelectScenario,
+  const { eid, scope, scenarios, activeScenarioId, onSelectScenario,
           onPlayScenario, onOpenFact, onMarkComplete } = props;
 
   const sorted = [...scenarios].sort((a, b) => b.probability - a.probability);
@@ -569,6 +660,7 @@ export function ScenariosPage(props: ScenariosPageProps) {
               <ScenarioCard
                 key={s.id}
                 scenario={s}
+                eid={eid}
                 active={s.id === activeScenarioId}
                 onSelect={onSelectScenario}
                 onPlay={onPlayScenario}

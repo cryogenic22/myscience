@@ -623,6 +623,22 @@ def get_scenarios(
     return {"scenarios": [s.to_dict() for s in scenarios], "count": len(scenarios)}
 
 
+@router.get("/engagements/{eid}/scenarios/{sid}/probability-history")
+def get_scenario_probability_history(
+    eid: str,
+    sid: str,
+    user: dict = Depends(require_role("viewer")),
+    db: Database = Depends(get_db),
+):
+    """FS-1 / OQ2 — the append-only audit tape of how this scenario's probability
+    moved (prev→new→delta + stance mix + triggering signal), oldest→newest."""
+    if not get_engagement(db, eid):
+        raise HTTPException(404, f"engagement not found: {eid}")
+    from services.scenario_calibration import get_probability_history
+    history = get_probability_history(db, sid)
+    return {"history": history, "count": len(history)}
+
+
 @router.get("/engagements/{eid}/activity")
 def get_engagement_activity(
     eid: str,

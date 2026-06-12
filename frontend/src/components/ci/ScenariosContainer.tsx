@@ -206,6 +206,7 @@ export default function ScenariosContainer({ engagement, onMarkComplete, onPlayS
       </div>
 
       <ScenariosPage
+        eid={eid}
         scope={{ engagementName: engagement.name, focalAsset: engagement.asset }}
         scenarios={scenarios}
         activeScenarioId={activeId}

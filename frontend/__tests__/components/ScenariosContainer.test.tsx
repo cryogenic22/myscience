@@ -10,7 +10,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('../../src/api', () => ({
-  scenariosApi: { get: vi.fn(), assemble: vi.fn() },
+  scenariosApi: {
+    get: vi.fn(),
+    assemble: vi.fn(),
+    probabilityHistory: vi.fn(() => Promise.resolve({ history: [], count: 0 })),
+  },
 }));
 
 import { scenariosApi } from '../../src/api';

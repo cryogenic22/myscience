@@ -83,6 +83,28 @@ def _weight(confidence_tier: Optional[str]) -> float:
     return CORROBORATION_WEIGHT.get((confidence_tier or "").lower(), _DEFAULT_WEIGHT)
 
 
+def _movers(signals: list[dict]) -> list[dict]:
+    """The signals that actually move a scenario: weighted (confidence tier not
+    disputed) AND non-neutral stance. Single source of truth for both the math
+    and the history stats so they can never disagree."""
+    return [
+        s for s in signals
+        if _weight(s.get("confidence_tier")) > 0
+        and s.get("stance", SUPPORTS) in (SUPPORTS, CONTRADICTS)
+    ]
+
+
+def move_stats(signals: list[dict]) -> tuple[int, int, Optional[str]]:
+    """(n_supporting, n_contradicting, triggering_signal_id) for the history tape
+    (FS-1 / OQ2). triggering = the latest mover (matches the cited signal in the
+    calibration note). Pure — same `_movers` filter as the math."""
+    movers = _movers(signals)
+    n_sup = sum(1 for s in movers if s.get("stance", SUPPORTS) == SUPPORTS)
+    n_con = sum(1 for s in movers if s.get("stance", SUPPORTS) == CONTRADICTS)
+    trigger = movers[-1].get("id") if movers else None
+    return n_sup, n_con, (str(trigger) if trigger else None)
+
+
 def calibrate_scenario_prob(
     *, prior: float, signals: list[dict], entity_label: str,
 ) -> tuple[Optional[float], Optional[str]]:
@@ -98,11 +120,7 @@ def calibrate_scenario_prob(
     pre-stance behaviour. `signals` are expected pre-filtered to those that
     arrived AFTER derivation, oldest first; the last mover is cited.
     """
-    movers = [
-        s for s in signals
-        if _weight(s.get("confidence_tier")) > 0
-        and s.get("stance", SUPPORTS) in (SUPPORTS, CONTRADICTS)
-    ]
+    movers = _movers(signals)
     if not movers:
         return None, None
 
@@ -161,6 +179,14 @@ _UPDATE_SQL = """
     UPDATE scenarios
        SET current_prob = %s, calibration_note = %s
      WHERE id::text = %s
+"""
+
+# FS-1 / OQ2 — append-only audit tape. One row per ACTUAL move.
+_HISTORY_SQL = """
+    INSERT INTO scenario_calibration_history
+        (scenario_id, prev_prob, new_prob, delta, n_supporting, n_contradicting,
+         triggering_signal_id, method, calibration_note)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 
@@ -251,12 +277,63 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
                 except Exception:
                     logger.exception("calibrate: clear failed for scenario %s", scn.get("id"))
             continue
+        prev = scn.get("current_prob")
+        prev = float(prev) if prev is not None else float(scn.get("prior_prob") or 0.0)
+        changed = round(prev, 3) != round(current, 3)
         try:
+            if changed:
+                # OQ2: record the move on the append-only tape BEFORE applying it
+                # (idempotent recomputes that don't change the value write
+                # nothing). Tape-first so a failed UPDATE retries next run rather
+                # than leaving a move with no audit row.
+                n_sup, n_con, trigger = move_stats(signals)
+                db.execute(_HISTORY_SQL, [
+                    str(scn["id"]), prev, current, round(current - prev, 3),
+                    n_sup, n_con, trigger, "ewma_stance", note,
+                ])
             db.execute(_UPDATE_SQL, [current, note, str(scn["id"])])
             updated += 1
         except Exception:
             logger.exception("calibrate: update failed for scenario %s", scn.get("id"))
     return updated
+
+
+_HISTORY_FETCH_SQL = """
+    SELECT id::text AS id, scenario_id::text AS scenario_id,
+           prev_prob, new_prob, delta, n_supporting, n_contradicting,
+           triggering_signal_id::text AS triggering_signal_id,
+           method, calibration_note, created_at
+      FROM scenario_calibration_history
+     WHERE scenario_id::text = %s
+     ORDER BY created_at ASC
+"""
+
+
+def get_probability_history(db, scenario_id: str) -> list[dict]:
+    """The append-only calibration tape for one scenario, oldest→newest, shaped
+    for the frontend ProbabilityTimeline (FS-1 / OQ2)."""
+    try:
+        rows = db.fetch_all(_HISTORY_FETCH_SQL, [str(scenario_id)]) or []
+    except Exception:
+        logger.exception("history: fetch failed for scenario %s", scenario_id)
+        return []
+    out = []
+    for r in rows:
+        created = r.get("created_at")
+        out.append({
+            "id": r["id"],
+            "scenarioId": r["scenario_id"],
+            "prevProb": r["prev_prob"],
+            "newProb": r["new_prob"],
+            "delta": r["delta"],
+            "nSupporting": r["n_supporting"],
+            "nContradicting": r["n_contradicting"],
+            "triggeringSignalId": r["triggering_signal_id"],
+            "method": r["method"],
+            "note": r["calibration_note"],
+            "createdAt": created.isoformat() if hasattr(created, "isoformat") else created,
+        })
+    return out
 
 
 def calibrate_all_engagements(db, *, limit: int = 200) -> dict:

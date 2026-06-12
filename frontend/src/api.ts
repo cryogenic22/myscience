@@ -2498,6 +2498,26 @@ export interface ScenariosResponse {
   count: number;
 }
 
+// FS-1 / OQ2 — one entry per actual probability move (the audit tape).
+export interface CalibrationStep {
+  id: string;
+  scenarioId: string;
+  prevProb: number | null;
+  newProb: number;
+  delta: number;
+  nSupporting: number;
+  nContradicting: number;
+  triggeringSignalId: string | null;
+  method: string;
+  note: string | null;
+  createdAt: string | null;
+}
+
+export interface ProbabilityHistoryResponse {
+  history: CalibrationStep[];
+  count: number;
+}
+
 export const scenariosApi = {
   get: (eid: string): Promise<ScenariosResponse> =>
     fetch(`${BASE}/engagements/${encodeURIComponent(eid)}/scenarios`, {
@@ -2516,6 +2536,17 @@ export const scenariosApi = {
     fetch(
       `${BASE}/engagements/${encodeURIComponent(eid)}/scenarios/assemble?narrative=${narrative}`,
       { method: 'POST', headers: { ...authHeaders() } },
+    ).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
+      return r.json();
+    }),
+
+  /** FS-1 / OQ2 — the append-only tape of how a scenario's probability moved
+   * (prev→new→delta + stance mix + triggering signal), oldest→newest. */
+  probabilityHistory: (eid: string, sid: string): Promise<ProbabilityHistoryResponse> =>
+    fetch(
+      `${BASE}/engagements/${encodeURIComponent(eid)}/scenarios/${encodeURIComponent(sid)}/probability-history`,
+      { headers: { ...authHeaders() } },
     ).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}: ${await r.text().catch(() => r.statusText)}`);
       return r.json();
