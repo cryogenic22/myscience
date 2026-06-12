@@ -80,12 +80,26 @@ def compute_scorecard(db) -> dict:
     engagement — the substrate is shared)."""
     dims: list[Dimension] = []
 
-    # OQ1 sensing — every signal traces to ≥1 fact.
+    # OQ1 sensing — every signal traces to evidence. Two valid lineage paths: a
+    # governed fact (signal_facts) OR a cited evidence document
+    # (evidence_document_ids — e.g. a news signal cites its article). The GATE is
+    # "no ungrounded signal" (either path); fact-grounding depth is a sub-note,
+    # not a pass/fail (most signals are document-backed news, which is legitimate
+    # — news creates a signal, not a fact).
     sig_total = _count(db, "SELECT count(*) c FROM signals")
-    sig_linked = _count(db, "SELECT count(DISTINCT signal_id) c FROM signal_facts")
-    dims.append(_dim("OQ1_sensing", "Signals traceable to a fact",
-                     sig_linked, sig_total,
-                     "fraction of signals with a signal_facts lineage row"))
+    sig_evidenced = _count(
+        db,
+        "SELECT count(*) c FROM signals s "
+        "WHERE array_length(s.evidence_document_ids, 1) >= 1 "
+        "   OR EXISTS (SELECT 1 FROM signal_facts sf WHERE sf.signal_id = s.id)")
+    sig_fact_grounded = _count(db, "SELECT count(DISTINCT signal_id) c FROM signal_facts")
+    grounded_pct = _ratio(sig_fact_grounded, sig_total)
+    dims.append(_dim(
+        "OQ1_sensing", "Signals traceable to evidence",
+        sig_evidenced, sig_total,
+        f"either a governed fact or a cited evidence document; fact-grounded "
+        f"depth = {sig_fact_grounded}/{sig_total} "
+        f"({'n/a' if grounded_pct is None else str(round(grounded_pct * 100)) + '%'})"))
 
     # OQ2 calibration audit — scenarios with a current_prob have a history row.
     scn_cal = _count(db, "SELECT count(*) c FROM scenarios "

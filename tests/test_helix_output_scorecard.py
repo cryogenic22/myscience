@@ -51,8 +51,9 @@ class _DB:
 
 def test_compute_scorecard_shape():
     db = _DB({
+        "evidence_document_ids": 100,     # OQ1 evidenced (either path) — the gate
+        "FROM signal_facts": 10,          # OQ1 fact-grounded sub-note (10%)
         "FROM signals": 100,
-        "FROM signal_facts": 95,
         "FROM facts WHERE superseded_by IS NULL AND source_doc_id": 80,
         "FROM facts WHERE superseded_by IS NULL AND detected_at": 100,
         "FROM facts WHERE superseded_by IS NULL": 100,
@@ -61,4 +62,7 @@ def test_compute_scorecard_shape():
     keys = {d["key"] for d in card["dimensions"]}
     assert {"OQ1_sensing", "OQ2_calibration_audit", "OQ3_contradiction_ready",
             "OQ5_provenance", "OQ6_as_of"} <= keys
+    # OQ1 gate counts the either-path (evidence-backed), not just fact-grounding.
+    oq1 = next(d for d in card["dimensions"] if d["key"] == "OQ1_sensing")
+    assert oq1["state"] == "ready" and oq1["num"] == 100
     assert "ready" in card and "gaps" in card and "summary" in card
