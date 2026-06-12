@@ -110,6 +110,11 @@ class Scenario:
     # used to scope which gaps block it (own-domain gaps only, not every high
     # gap). Transient: not serialized, not persisted.
     source_domains: list[str] = field(default_factory=list, compare=False)
+    # FS-2 / OQ3 — stance mix of the latest calibration move (read-time, from
+    # scenario_calibration_history). n_contradicting>0 means a refuting signal
+    # contributed: the scenario is CONTRADICTED, surfaced not averaged away.
+    n_supporting: int = field(default=0, compare=False)
+    n_contradicting: int = field(default=0, compare=False)
     # set on persist / read
     id: Optional[str] = None
     engagement_id: Optional[str] = None
@@ -135,6 +140,12 @@ class Scenario:
             "decisionOptions": [o.to_dict() for o in self.decision_options],
             "decisionOutput": self.decision_output,
             "blockedByGaps": list(self.blocked_by_gaps),
+            # FS-2 / OQ3 — a contradicting signal contributed to the last move.
+            "contradicted": self.n_contradicting > 0,
+            "stanceMix": {
+                "supporting": self.n_supporting,
+                "contradicting": self.n_contradicting,
+            },
         }
 
 
@@ -461,13 +472,23 @@ _INSERT_SQL = """
 """
 
 _LIST_SQL = """
-    SELECT id, engagement_id, dossier_snapshot_id, name, trigger_event, trigger_date,
-           from_fact_ids, prior_prob, current_prob, calibration_note,
-           team_moves, decision_options, decision_output, blocked_by_gaps,
-           created_by, created_at
-      FROM scenarios
-     WHERE engagement_id = %s AND is_archived = FALSE
-     ORDER BY prior_prob DESC, created_at DESC
+    SELECT s.id, s.engagement_id, s.dossier_snapshot_id, s.name, s.trigger_event,
+           s.trigger_date, s.from_fact_ids, s.prior_prob, s.current_prob,
+           s.calibration_note, s.team_moves, s.decision_options, s.decision_output,
+           s.blocked_by_gaps, s.created_by, s.created_at,
+           -- FS-2: stance mix of the LATEST calibration move (0/0 if never moved)
+           COALESCE(h.n_supporting, 0)    AS n_supporting,
+           COALESCE(h.n_contradicting, 0) AS n_contradicting
+      FROM scenarios s
+      LEFT JOIN LATERAL (
+          SELECT n_supporting, n_contradicting
+            FROM scenario_calibration_history
+           WHERE scenario_id = s.id
+           ORDER BY created_at DESC
+           LIMIT 1
+      ) h ON TRUE
+     WHERE s.engagement_id = %s AND s.is_archived = FALSE
+     ORDER BY s.prior_prob DESC, s.created_at DESC
 """
 
 
@@ -581,6 +602,8 @@ def _row_to_scenario(row: dict) -> Scenario:
         blocked_by_gaps=[str(g) for g in _coerce_json_list(row.get("blocked_by_gaps"))],
         created_by=row.get("created_by", "system"),
         created_at=row.get("created_at"),
+        n_supporting=int(row.get("n_supporting") or 0),
+        n_contradicting=int(row.get("n_contradicting") or 0),
     )
 
 

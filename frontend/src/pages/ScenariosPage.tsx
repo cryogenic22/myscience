@@ -56,6 +56,8 @@ export interface Scenario {
   decisionOptions: DecisionOption[];
   decisionOutput?: string;
   blockedByGaps?: string[];
+  contradicted?: boolean;  // FS-2 — a refuting signal contributed to the last move
+  stanceMix?: { supporting: number; contradicting: number };
 }
 
 export interface ScenariosPageProps {
@@ -262,6 +264,27 @@ function ScenarioCard({
             {scenario.name}
           </h3>
           <ProbabilityDial prior={scenario.probability} current={scenario.probabilityCurrent} />
+          {scenario.contradicted && (
+            <span
+              data-testid="scenario-contradicted-badge"
+              title={
+                scenario.stanceMix
+                  ? `${scenario.stanceMix.contradicting} contradicting vs ${scenario.stanceMix.supporting} corroborating signal(s) — conflicting evidence, surfaced not reconciled`
+                  : 'Conflicting evidence — surfaced, not reconciled'
+              }
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10.5,
+                color: 'var(--color-amber)',
+                border: '1px solid var(--color-amber)',
+                borderRadius: 3,
+                padding: '1px 6px',
+                letterSpacing: '0.04em',
+              }}
+            >
+              ⚠ Contradicted
+            </span>
+          )}
           <span
             style={{
               marginLeft: 'auto',

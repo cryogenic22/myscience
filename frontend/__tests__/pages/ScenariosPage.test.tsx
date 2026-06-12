@@ -288,3 +288,19 @@ describe('ScenariosPage — probability history timeline (FS-1 / OQ2)', () => {
     expect(mockHistory).not.toHaveBeenCalled();
   });
 });
+
+describe('ScenariosPage — contradiction surfacing (FS-2 / OQ3)', () => {
+  it('shows a contradicted badge when a refuting signal contributed', () => {
+    const contradicted = [{
+      ...SCENARIOS[0], contradicted: true,
+      stanceMix: { supporting: 1, contradicting: 2 },
+    }];
+    setup({ scenarios: contradicted });
+    expect(screen.getByTestId('scenario-contradicted-badge')).toBeInTheDocument();
+  });
+
+  it('shows no contradicted badge for an uncontradicted scenario', () => {
+    setup(); // default scenarios carry no contradiction
+    expect(screen.queryByTestId('scenario-contradicted-badge')).not.toBeInTheDocument();
+  });
+});
