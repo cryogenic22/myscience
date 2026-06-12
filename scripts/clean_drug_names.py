@@ -63,6 +63,23 @@ EXCLUDE_PATTERNS = [
     re.compile(r"\bnurse\b", re.IGNORECASE),
     re.compile(r"^any\s+", re.IGNORECASE),
     re.compile(r"^beta\s+blocker\b", re.IGNORECASE),
+    # Loop 3 (data-quality push): entity-extraction fragments that wrap a real
+    # drug name in trial prose. Verified on prod (tirzepatide spine, 12 Jun 2026)
+    # as 'active' garbage rows that slipped through the rules above. Precise —
+    # these tokens never appear inside a real drug/brand name.
+    #   "Tirzepatide Dose 1" / "Semaglutide Dose 2"  (dose-arm descriptor)
+    re.compile(r"\bdose\s+\d+\b", re.IGNORECASE),
+    #   "initiation of tirzepatide" / "continuation of semaglutide"  (prose verb-of)
+    re.compile(
+        r"^(?:initiation|continuation|discontinuation|administration|use|"
+        r"effects?|efficacy|safety|treatment|titration)\s+of\b",
+        re.IGNORECASE,
+    ),
+    #   "Tirzepatide as an adjunct to ..."  (trial-design phrasing)
+    re.compile(r"\bas\s+an?\s+adjunct\b", re.IGNORECASE),
+    re.compile(r"\badjunct\s+to\b", re.IGNORECASE),
+    #   "tirzepatide prehabilitation"  (trial-setting noun, never a drug)
+    re.compile(r"\b(?:pre|re)habilitation\b", re.IGNORECASE),
 ]
 
 # Multi-drug intervention arms (contain " or ", " and ", " plus " with >30 chars)
