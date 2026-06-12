@@ -88,6 +88,17 @@ def test_resolve_entity_drug_alias_beats_fuzzy_junk_row():
     assert r["match_score"] == 0.95
 
 
+def test_resolve_entity_drug_sql_skips_excluded_rows():
+    """Entity-extraction junk quarantined as record_status='excluded' (e.g.
+    'semaglutide or tirzepatide') must be filtered too — else the fuzzy LIKE for
+    'tirzepatide' resolves to that look-alike. Regression: the status filter
+    originally excluded only 'merged'/'superseded'."""
+    db = _CapturingDB()
+    resolve_entity("tirzepatide", "drug", db)
+    s = db.sql.lower()
+    assert "record_status is distinct from 'excluded'" in s
+
+
 def test_resolve_entity_drug_unknown_returns_none():
     class _EmptyDB:
         def fetch_one(self, sql, params=None):

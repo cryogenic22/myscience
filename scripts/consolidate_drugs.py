@@ -117,157 +117,47 @@ def _log_change(db: Database, entity_type: str, entity_id: str,
 
 
 def consolidate_drugs(db: Database, dry_run: bool = False) -> dict:
-    """Find and merge duplicate drug records."""
-    stats = {"groups_found": 0, "records_merged": 0, "aliases_created": 0}
+    """Find and merge duplicate drug records.
 
-    # Fetch all active drugs with link counts
-    drugs = db.fetch_all(
-        """
-        SELECT d.id, d.generic_name, d.brand_name, d.company_id,
-               d.mechanism_id, d.therapeutic_area_id, d.source_api,
-               d.record_status,
-               (SELECT COUNT(*) FROM entity_links
-                WHERE source_entity_id = d.id::text
-                   OR target_entity_id = d.id::text) AS link_count
-        FROM drugs d
-        WHERE d.record_status IS DISTINCT FROM 'excluded'
-          AND d.record_status IS DISTINCT FROM 'merged'
-          AND d.generic_name IS NOT NULL
-          AND d.generic_name != ''
-        """
+    Delegates to the hardened ``EntityConsolidator`` (richness-ranked,
+    combo-safe) instead of the historical in-module merge. That older path was
+    a conservation landmine and actively corrupted prod: it (a) grouped without
+    excluding ``record_status='superseded'`` rows, so it re-processed rows that
+    a prior pass had already soft-deleted; (b) chose the canonical by *source
+    authority* (``_pick_canonical``) rather than data richness — the opposite of
+    what the chat/dossier resolvers use; and (c) only moved ``entity_links``
+    (DELETE-ing the rest) while leaving the loser's facts / clinical_trials /
+    signals stranded. Run via the scheduler's ``auto_curate`` post-task, it
+    demoted the rich ``tirzepatide`` canonical (269 facts / 112 trials) to
+    ``record_status='merged'`` and scattered its links — so ``resolve_entity``
+    fell through to a junk look-alike row and "compare semaglutide vs
+    tirzepatide" reported 1 trial instead of 184.
+
+    ``EntityConsolidator(rank_by_richness=True, …)`` instead: excludes
+    merged+superseded, keeps the evidence-owning (richest) row as canonical so
+    it is never demoted, and conflict-safe repoints EVERY reference — FK tables,
+    text-keyed ``facts.subject_entity_id``, and ``signals`` — never DELETE-ing
+    them. ``combo_safe_normalize`` keeps additive combos (Hyzaar) out of the
+    mono's group. See tests/test_consolidate_drugs_richness_canonical.py.
+    """
+    from integration.entity_consolidator import EntityConsolidator
+
+    consolidator = EntityConsolidator(
+        db,
+        dry_run=dry_run,
+        rank_by_richness=True,
+        drug_name_normalizer=combo_safe_normalize,
     )
-
-    # Group by normalized name
-    groups: dict[str, list[dict]] = {}
-    for d in drugs:
-        norm = _normalize_drug_name(d["generic_name"])
-        if len(norm) < 2:
-            continue
-        groups.setdefault(norm, []).append(d)
-
-    # Process groups with > 1 record
-    for norm_name, records in groups.items():
-        if len(records) < 2:
-            continue
-
-        stats["groups_found"] += 1
-        canonical = _pick_canonical(records)
-        canonical_id = str(canonical["id"])
-        others = [r for r in records if str(r["id"]) != canonical_id]
-
-        if not others:
-            continue
-
-        logger.info(
-            "Consolidating '%s': keep %s (%s), merge %d others",
-            norm_name, canonical["generic_name"], canonical["source_api"],
-            len(others),
-        )
-
-        for other in others:
-            other_id = str(other["id"])
-
-            if dry_run:
-                logger.info(
-                    "  [DRY RUN] Would merge: %s (src=%s, links=%d) → %s",
-                    other["generic_name"], other["source_api"],
-                    other.get("link_count", 0), canonical["generic_name"],
-                )
-                stats["records_merged"] += 1
-                continue
-
-            # Re-point entity_links from other → canonical.
-            # Delete all links from/to the merged entity — the canonical
-            # already carries its own equivalent links.  This is safe
-            # because we only merge records that are duplicates of the
-            # same real-world drug, so their link sets overlap heavily.
-            db.execute(
-                "DELETE FROM entity_links WHERE source_entity_id = %s OR target_entity_id = %s",
-                [other_id, other_id],
-            )
-
-            # Create alias for the old name (if different)
-            if other["generic_name"].lower() != canonical["generic_name"].lower():
-                try:
-                    db.execute(
-                        """
-                        INSERT INTO entity_aliases (entity_id, entity_type, alias, source)
-                        VALUES (%s, 'drug', %s, 'consolidation')
-                        ON CONFLICT DO NOTHING
-                        """,
-                        [canonical_id, other["generic_name"]],
-                    )
-                    stats["aliases_created"] += 1
-                except Exception:
-                    pass  # alias table may have different schema
-
-            # Enrich canonical with data from merged record (fill gaps)
-            if not canonical.get("company_id") and other.get("company_id"):
-                db.execute(
-                    "UPDATE drugs SET company_id = %s WHERE id = %s",
-                    [other["company_id"], canonical["id"]],
-                )
-                canonical["company_id"] = other["company_id"]
-
-            if not canonical.get("mechanism_id") and other.get("mechanism_id"):
-                db.execute(
-                    "UPDATE drugs SET mechanism_id = %s WHERE id = %s",
-                    [other["mechanism_id"], canonical["id"]],
-                )
-                canonical["mechanism_id"] = other["mechanism_id"]
-
-            if not canonical.get("brand_name") and other.get("brand_name"):
-                db.execute(
-                    "UPDATE drugs SET brand_name = %s WHERE id = %s",
-                    [other["brand_name"], canonical["id"]],
-                )
-                canonical["brand_name"] = other["brand_name"]
-
-            if not canonical.get("therapeutic_area_id") and other.get("therapeutic_area_id"):
-                db.execute(
-                    "UPDATE drugs SET therapeutic_area_id = %s WHERE id = %s",
-                    [other["therapeutic_area_id"], canonical["id"]],
-                )
-                canonical["therapeutic_area_id"] = other["therapeutic_area_id"]
-
-            # Mark other as merged
-            db.execute(
-                "UPDATE drugs SET record_status = 'merged' WHERE id = %s",
-                [other["id"]],
-            )
-            _log_change(db, "drug", other_id, "merged_into",
-                        [f"canonical_id:{canonical_id}", f"old_name:{other['generic_name']}"])
-
-            stats["records_merged"] += 1
-
-    # Deduplicate entity_links that now point to same source+target
-    if not dry_run:
-        try:
-            dedup_result = db.fetch_one(
-                """
-                WITH keepers AS (
-                    SELECT DISTINCT ON (source_entity_id, target_entity_id, link_type)
-                        id AS keep_id,
-                        source_entity_id, target_entity_id, link_type
-                    FROM entity_links
-                    ORDER BY source_entity_id, target_entity_id, link_type, created_at ASC
-                )
-                DELETE FROM entity_links el
-                USING keepers k
-                WHERE el.source_entity_id = k.source_entity_id
-                  AND el.target_entity_id = k.target_entity_id
-                  AND el.link_type = k.link_type
-                  AND el.id != k.keep_id
-                """
-            )
-        except Exception as e:
-            logger.warning("Link dedup cleanup: %s", e)
-
-    logger.info(
-        "Drug consolidation: groups=%d, merged=%d, aliases=%d",
-        stats["groups_found"], stats["records_merged"], stats["aliases_created"],
-    )
-    return stats
+    res = consolidator.consolidate_drugs()
+    # Preserve the historical return shape that callers (scripts.auto_curate)
+    # read/annotate.
+    return {
+        "groups_found": res.get("groups_found", 0),
+        "records_merged": res.get("records_merged", 0),
+        "aliases_created": res.get("records_merged", 0),
+        "skipped": res.get("skipped", 0),
+        "plan": res.get("plan", []),
+    }
 
 
 def run(dry_run: bool = False) -> dict:
