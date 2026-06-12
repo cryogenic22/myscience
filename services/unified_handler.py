@@ -34,6 +34,61 @@ _MAX_EVIDENCE = 10
 # doesn't evict the retrieved CTX section + leader cards from the citation list.
 _PLAN_EVIDENCE_BUDGET = 6
 
+
+def _faers_safety_directive(evidence_items: list[dict]) -> str:
+    """When FAERS adverse-event facts are in context, inject spontaneous-reporting
+    discipline so synthesis stops presenting raw reaction terms as drug properties
+    or ranking two drugs' safety by what happened to be reported (the PV-01 failure
+    a reviewer caught live). Targeted — only fires when AE facts are present, so it
+    doesn't bloat every prompt. The deeper fix (disproportionality, medication-error
+    filtering) is the fact-emitter's job; this keeps synthesis honest meanwhile."""
+    has_ae = any(
+        (it.get("provenance") or {}).get("predicate") == "adverse_event"
+        or "faers" in (it.get("source") or "").lower()
+        for it in evidence_items
+    )
+    if not has_ae:
+        return ""
+    return (
+        "SAFETY / FAERS DISCIPLINE (binding): adverse-event data here is from FAERS "
+        "spontaneous reports — it has NO denominator, is subject to reporting and "
+        "notoriety bias, and does NOT establish causality or incidence. Do NOT present "
+        "reaction terms as established drug properties; do NOT rank or compare two "
+        "drugs' safety by which reactions were reported (that reflects reporting "
+        "volume and time-on-market, not real risk); EXCLUDE medication-error terms "
+        "(e.g. 'product dose omission', 'wrong technique', 'incorrect dose') from any "
+        "safety conclusion. Whenever you mention adverse events, state the "
+        "spontaneous-reporting caveat explicitly."
+    )
+
+
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+|/[^)]*)\)")
+
+
+def _sanitize_entity_links(narrative: str) -> str:
+    """Strip/normalise hallucinated links the LLM invents despite the citation
+    protocol (a reviewer saw 'https://www.example.com/entity/drug/…'). Deterministic,
+    because the model ignores the instruction:
+      * absolute URL pointing at /entity/…  → rewrite to the relative /entity/ path
+        (drops the fabricated domain).
+      * any other absolute http(s) URL      → drop the link, keep the link text
+        (the model has no business inventing external URLs from internal data).
+      * relative links are left untouched.
+    """
+    if not narrative:
+        return narrative
+
+    def _fix(m: "re.Match") -> str:
+        text, href = m.group(1), m.group(2)
+        if href.startswith("/"):
+            return m.group(0)  # already relative — keep
+        idx = href.find("/entity/")
+        if idx != -1:
+            return f"[{text}]({href[idx:]})"  # strip domain, keep /entity/... path
+        return text  # fabricated external URL → plain text, no link
+
+    return _MD_LINK_RE.sub(_fix, narrative)
+
 # Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
 # fan-out (each call is up to ~5 sequential DB round-trips).
 _MAX_PLAN_CANDIDATES = 8
@@ -227,11 +282,19 @@ class UnifiedChatHandler:
         # which stays 'landscape' for routing/response/frontend).
         prompt_intent = "leaders" if is_company_leaders_question(question) else None
 
+        # FAERS discipline only when adverse-event facts are actually in context.
+        faers_directive = _faers_safety_directive(evidence_items)
+        synthesis_directive = "\n\n".join(d for d in (leaders_hint, faers_directive) if d)
+
         # Call LLM with grounded, numbered evidence so citations validate.
         narrative = self._synthesize(
             plan, fallback, evidence_snippets, metrics_data, memory_context,
-            extra_directive=leaders_hint, prompt_intent=prompt_intent,
+            extra_directive=synthesis_directive or None, prompt_intent=prompt_intent,
         )
+
+        # Strip hallucinated/absolute entity links (the model invents example.com
+        # URLs despite the relative-link protocol).
+        narrative = _sanitize_entity_links(narrative)
 
         # ── Guard check ──
         guard_result = self.pipeline.check_response(narrative, context_text)
