@@ -156,6 +156,43 @@ _UPDATE_SQL = """
      WHERE id::text = %s
 """
 
+_PROB_HISTORY_INSERT_SQL = """
+    INSERT INTO scenario_probability_history
+        (scenario_id, prev_prob, new_prob, delta, triggering_signal_ids, method, note)
+    VALUES (%s, %s, %s, %s, %s::uuid[], %s, %s)
+"""
+
+
+def _record_prob_history(db, scenario_id, prev, new, signal_ids, method, note) -> None:
+    """Append a probability-change row (Loop 2 / OQ2). Never blocks calibration:
+    a missing table or write error is logged, not raised — the audit ledger is an
+    enrichment, the calibration UPDATE is the source of truth."""
+    delta = (round(float(new) - float(prev), 3)
+             if (prev is not None and new is not None) else None)
+    try:
+        db.execute(_PROB_HISTORY_INSERT_SQL, [
+            str(scenario_id), prev, new, delta,
+            [str(s) for s in (signal_ids or [])], method, note,
+        ])
+    except Exception:
+        logger.warning("prob-history write skipped for scenario %s", scenario_id,
+                       exc_info=True)
+
+
+def get_scenario_probability_history(db, scenario_id: str) -> list[dict]:
+    """The probability time-series for a scenario, newest first — the
+    'why did this move?' answer (as-of / decision-over-time)."""
+    try:
+        return db.fetch_all(
+            "SELECT prev_prob, new_prob, delta, triggering_signal_ids, method, "
+            "note, created_at FROM scenario_probability_history "
+            "WHERE scenario_id::text = %s ORDER BY created_at DESC",
+            [str(scenario_id)],
+        ) or []
+    except Exception:
+        logger.warning("prob-history read failed for %s", scenario_id, exc_info=True)
+        return []
+
 
 # A competitive-pressure scenario is about a RIVAL ("Competitive pressure:
 # tirzepatide"); its probability is corroborated by signals about that rival, NOT
@@ -220,18 +257,31 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
             entity_label=t_label,
             competitive=(scn.get("name") or "").strip().startswith(_COMPETITIVE_PREFIX),
         )
+        prev = scn.get("current_prob")
+        prev_r = round(float(prev), 3) if prev is not None else None
         if current is None:
             # No corroborating evidence now. If the scenario carries a stale
             # current_prob from a prior run, clear it back to uncalibrated so the
             # loop stays fully idempotent (reflects today's evidence, not history).
-            if scn.get("current_prob") is not None:
+            if prev is not None:
                 try:
+                    # Record the reversion to uncalibrated BEFORE the clear (OQ2).
+                    _record_prob_history(db, scn["id"], prev, None, [],
+                                         "evidence_lapsed", None)
                     db.execute(_UPDATE_SQL, [None, None, str(scn["id"])])
                     updated += 1
                 except Exception:
                     logger.exception("calibrate: clear failed for scenario %s", scn.get("id"))
             continue
         try:
+            # Append a history row only on a genuine change (keeps the ledger
+            # idempotent: re-running with the same evidence writes nothing).
+            if prev_r != current:
+                _record_prob_history(
+                    db, scn["id"], prev, current,
+                    [s.get("id") for s in signals if s.get("id")],
+                    "ewma_calibration", note,
+                )
             db.execute(_UPDATE_SQL, [current, note, str(scn["id"])])
             updated += 1
         except Exception:
