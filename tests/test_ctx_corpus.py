@@ -182,8 +182,9 @@ def test_drugs_sql_excludes_soft_deleted_and_dedupes_by_richness():
     e8499246). Pin the status filter + richest-row dedup so it can't be dropped."""
     from services.ctx_corpus import _DRUGS_SQL
     s = _DRUGS_SQL.lower()
-    assert "record_status is distinct from 'merged'" in s
-    assert "record_status is distinct from 'superseded'" in s
+    # ACTIVE rows only — excludes merged/superseded dups AND 'excluded' junk (e.g.
+    # the trial-arm pseudo-drug that substring-matched 'semaglutide').
+    assert "coalesce(d.record_status, 'active') = 'active'" in s
     assert "distinct on (lower(d.generic_name))" in s
     # ranks by richness (facts + trials) so the canonical row wins, matching the resolver
     assert "from facts f" in s and "from clinical_trials ct" in s

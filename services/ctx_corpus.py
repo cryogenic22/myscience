@@ -125,8 +125,10 @@ FROM drugs d
 LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
 LEFT JOIN companies c ON d.company_id = c.id
 LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
-WHERE d.record_status IS DISTINCT FROM 'merged'
-  AND d.record_status IS DISTINCT FROM 'superseded'
+-- ACTIVE rows only: excludes merged/superseded dups AND 'excluded' junk (e.g. the
+-- trial-arm pseudo-drug "Anti-obesity medication with liraglutide or semaglutide",
+-- which CTX substring-matched for "semaglutide" and shadowed the real drug).
+WHERE COALESCE(d.record_status, 'active') = 'active'
 ORDER BY LOWER(d.generic_name),
     (SELECT count(*) FROM facts f
        WHERE f.subject_entity_type = 'drug'
