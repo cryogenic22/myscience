@@ -57,6 +57,18 @@ class PharmaNewsConnector(BaseConnector):
         self._config = config
         self._queries = (target_overrides or {}).get("queries", NEWS_QUERIES)
         self._max_per_query = (target_overrides or {}).get("max_per_query", 20)
+        # Google News RSS 404s/403s the default `python-requests` User-Agent
+        # (especially from datacenter egress like Railway) — the cause of the
+        # "intelligence feeds to google show 404" reports. BaseConnector's
+        # _fetch_with_retry reads self.headers, so a browser UA fixes every
+        # fetch (FDA + Google) at once.
+        self.headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            ),
+            "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+        }
 
     def source_type(self) -> SourceType:
         return SourceType.NEWS
@@ -64,7 +76,7 @@ class PharmaNewsConnector(BaseConnector):
     def health_check(self) -> HealthCheckResult:
         import requests
         try:
-            resp = requests.get(FDA_PRESS_RSS, timeout=10)
+            resp = requests.get(FDA_PRESS_RSS, timeout=10, headers=self.headers)
             return HealthCheckResult(
                 source_type=self.source_type(),
                 healthy=resp.status_code == 200,
@@ -92,14 +104,25 @@ class PharmaNewsConnector(BaseConnector):
             logger.warning("FDA press RSS failed: %s", e)
 
         # 2. Google News pharma queries
+        failed: list[str] = []
         for query in self._queries:
             try:
                 news = self._fetch_google_news(query, since)
                 records.extend(news)
             except Exception as e:
+                failed.append(query)
                 logger.debug("Google News query '%s' failed: %s", query, e)
 
-        logger.info("News connector fetched %d total records", len(records))
+        # Surface degraded coverage (don't let partial loss read as "all fresh").
+        if failed:
+            logger.warning(
+                "Google News feed degraded: %d/%d queries failed (e.g. %s) — "
+                "news coverage is partial this run",
+                len(failed), len(self._queries), failed[0],
+            )
+
+        logger.info("News connector fetched %d total records (%d/%d google queries ok)",
+                    len(records), len(self._queries) - len(failed), len(self._queries))
         return records
 
     def _fetch_fda_press(self, since: Optional[datetime]) -> list[RawRecord]:
