@@ -81,12 +81,14 @@ _INSERT_SQL = """
     INSERT INTO facts (
         kind, predicate, subject_entity_type, subject_entity_id, object_value,
         valid_from, valid_to, asserted_at, source_doc_id, confidence,
-        created_by, tenant_scope, fact_class
+        created_by, tenant_scope, fact_class,
+        observed_at, detected_at, known_to_team_at
     ) VALUES (
         %(kind)s, %(predicate)s, %(subject_entity_type)s, %(subject_entity_id)s,
         %(object_value)s::jsonb, %(valid_from)s, %(valid_to)s,
         COALESCE(%(asserted_at)s, NOW()), %(source_doc_id)s, %(confidence)s,
-        %(created_by)s, %(tenant_scope)s, %(fact_class)s
+        %(created_by)s, %(tenant_scope)s, %(fact_class)s,
+        %(observed_at)s, COALESCE(%(detected_at)s, NOW()), %(known_to_team_at)s
     )
     RETURNING id
 """
@@ -108,8 +110,16 @@ def assert_fact(
     created_by: str = "system",
     tenant_scope: Optional[str] = None,
     fact_class: str = DEFAULT_FACT_CLASS,
+    observed_at: Any = None,
+    detected_at: Any = None,
+    known_to_team_at: Any = None,
 ) -> str:
-    """Insert a fact; returns its id. Validates the ledger invariants."""
+    """Insert a fact; returns its id. Validates the ledger invariants.
+
+    Epistemic timestamps (all optional, additive): ``observed_at`` (source's
+    report time), ``detected_at`` (our ingest time — defaults to NOW so every
+    fact records when we learned it), ``known_to_team_at`` (when surfaced to
+    decision-makers). These power fair hindsight via ``facts_known_as_of``."""
     import json
     import uuid
 
@@ -128,6 +138,9 @@ def assert_fact(
         "created_by": created_by,
         "tenant_scope": tenant_scope,
         "fact_class": fact_class,
+        "observed_at": observed_at,
+        "detected_at": detected_at,
+        "known_to_team_at": known_to_team_at,
     }
     try:
         res = db.fetch_one(_INSERT_SQL, row) if hasattr(db, "fetch_one") else None
@@ -185,3 +198,58 @@ def facts_as_of(
         logger.exception("facts_as_of query failed for %s:%s", subject_entity_type, subject_entity_id)
         rows = []
     return [r for r in rows if _valid_at(r, as_of)]
+
+
+def _detected_at(fact: dict) -> Optional[datetime]:
+    """When the system learned a fact — detected_at, falling back to asserted_at
+    for rows predating the epistemic split."""
+    return fact.get("detected_at") or fact.get("asserted_at")
+
+
+def _known_at(fact: dict, as_of: datetime) -> bool:
+    """Pure epistemic predicate: had the system LEARNED `fact` by `as_of`?
+    A fact detected after `as_of` was not yet known — fair hindsight."""
+    det = _detected_at(fact)
+    return det is None or det <= as_of
+
+
+_SELECT_KNOWN_SQL = """
+    SELECT id, kind, predicate, subject_entity_type, subject_entity_id,
+           object_value, valid_from, valid_to, asserted_at, detected_at,
+           observed_at, known_to_team_at, source_doc_id, confidence, created_by,
+           superseded_by, tenant_scope, fact_class
+      FROM facts
+     WHERE subject_entity_type = %s AND subject_entity_id = %s
+       {predicate_clause}
+     ORDER BY valid_from DESC NULLS LAST, asserted_at DESC
+"""
+
+
+def facts_known_as_of(
+    db,
+    subject_entity_type: str,
+    subject_entity_id: str,
+    as_of: Optional[datetime] = None,
+    predicate: Optional[str] = None,
+) -> list[dict]:
+    """Facts that were BOTH true in the world AND already KNOWN to the system at
+    `as_of` — the fair-hindsight / as-of-reconstruction primitive (Helix OQ6).
+
+    Differs from ``facts_as_of`` by the epistemic filter: a fact whose
+    ``valid_from`` precedes `as_of` but that we only ``detected_at`` LATER is
+    excluded — the team could not have known it yet. Default `as_of` = now (so
+    everything detected is known)."""
+    as_of = as_of or datetime.now(timezone.utc)
+    params: list = [subject_entity_type, str(subject_entity_id)]
+    pred_clause = ""
+    if predicate:
+        pred_clause = "AND predicate = %s"
+        params.append(predicate)
+    sql = _SELECT_KNOWN_SQL.format(predicate_clause=pred_clause)
+    try:
+        rows = db.fetch_all(sql, params)
+    except Exception:
+        logger.exception("facts_known_as_of query failed for %s:%s",
+                         subject_entity_type, subject_entity_id)
+        rows = []
+    return [r for r in rows if _valid_at(r, as_of) and _known_at(r, as_of)]
