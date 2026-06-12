@@ -154,10 +154,15 @@ def consolidate_drugs(db: Database, dry_run: bool = False) -> dict:
     return {
         "groups_found": res.get("groups_found", 0),
         "records_merged": res.get("records_merged", 0),
-        "aliases_created": res.get("records_merged", 0),
         "skipped": res.get("skipped", 0),
         "plan": res.get("plan", []),
     }
+    # NOTE: the legacy return had an 'aliases_created' count. EntityConsolidator
+    # creates an alias per merged duplicate internally (ON CONFLICT DO NOTHING)
+    # but does not report a count, so we deliberately DROP the key rather than
+    # fabricate it from records_merged (which would be a false metric). The only
+    # consumer (scripts.auto_curate) just stores the dict and adds elapsed_s; no
+    # reader depends on the key.
 
 
 def run(dry_run: bool = False) -> dict:

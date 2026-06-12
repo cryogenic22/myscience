@@ -41,8 +41,11 @@ def test_consolidate_drugs_delegates_to_richness_ranked_consolidator(monkeypatch
     assert captured.get("rank_by_richness") is True
     assert captured.get("dry_run") is True
     assert callable(captured.get("drug_name_normalizer"))
-    # Return shape preserved for scripts.auto_curate.
-    assert set(out) >= {"groups_found", "records_merged", "aliases_created"}
+    # Return shape preserved for scripts.auto_curate (the accurate keys only —
+    # the legacy 'aliases_created' is intentionally dropped, not fabricated from
+    # records_merged).
+    assert set(out) >= {"groups_found", "records_merged"}
+    assert "aliases_created" not in out
 
 
 def test_combo_safe_normalizer_keeps_additive_combo_out_of_mono_group():
