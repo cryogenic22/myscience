@@ -104,12 +104,21 @@ from ctxpack.core.packer import pack as ctx_pack, PackResult
 
 # ── SQL queries for entity export ──
 
-# One section per drug NAME, the richest ACTIVE row — never a soft-deleted
-# duplicate. Without this the corpus carried merged/superseded dup rows, so CTX
-# hydrate_by_name could match an empty 0-fact duplicate (e.g. tirzepatide →
-# 'merged' row e8499246) and report a rich, approved drug as having no data.
-# DISTINCT ON + richness ordering mirrors the resolver (services/dossier_kb.py)
-# so the corpus and the resolver always agree on the canonical row.
+# ONE section per drug NAME: the best available row — prefer active, then richest.
+# Two failure modes this guards against:
+#   1. Empty/junk shadowing: the corpus carried merged dup rows + 'excluded' junk
+#      (e.g. the 0-fact dup tirzepatide e8499246, or the pseudo-drug "Anti-obesity
+#      medication with … semaglutide" that substring-matched), so hydrate_by_name
+#      could report a rich, approved drug as having no data.
+#   2. Silent drop (conservation): a strict active-only filter would DROP drugs
+#      whose canonical was marked 'merged' with no active replacement (a real prod
+#      state after the dup-consolidation loop left ~11 high-fact drugs — valsartan,
+#      tirzepatide, … — with only a merged canonical). Dropping a drug that owns
+#      hundreds of facts is itself silent data loss.
+# So: exclude only 'excluded'/'stale' junk; among the rest prefer active, then
+# richest (facts + trials). DISTINCT ON collapses to one row per name. This picks
+# the canonical when the data is healthy and the richest survivor when it isn't —
+# and forward-compatibly upgrades to the active row once the data is repaired.
 _DRUGS_SQL = """
 SELECT DISTINCT ON (LOWER(d.generic_name))
     d.id,
@@ -125,11 +134,9 @@ FROM drugs d
 LEFT JOIN mechanisms_of_action m ON d.mechanism_id = m.id
 LEFT JOIN companies c ON d.company_id = c.id
 LEFT JOIN therapeutic_areas ta ON d.therapeutic_area_id = ta.id
--- ACTIVE rows only: excludes merged/superseded dups AND 'excluded' junk (e.g. the
--- trial-arm pseudo-drug "Anti-obesity medication with liraglutide or semaglutide",
--- which CTX substring-matched for "semaglutide" and shadowed the real drug).
-WHERE COALESCE(d.record_status, 'active') = 'active'
+WHERE COALESCE(d.record_status, 'active') NOT IN ('excluded', 'stale')
 ORDER BY LOWER(d.generic_name),
+    (COALESCE(d.record_status, 'active') = 'active') DESC,
     (SELECT count(*) FROM facts f
        WHERE f.subject_entity_type = 'drug'
          AND f.subject_entity_id = d.id::text
