@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -65,6 +66,53 @@ _IMPACT = {
     "competitor_launch": ("high", 0.7),
     "ma_deal": ("high", 0.7),
 }
+
+# predicate → signal polarity (signals.direction CHECK: positive|negative|
+# neutral|mixed). Polarity is relative to the signal's SUBJECT: a setback is
+# negative for the drug it hits; an approval is positive for the drug approved.
+# This is what lets calibration treat a rival's setback as evidence AGAINST a
+# competitive-pressure scenario (Loop 1 / OQ3). TA-general — keyed off predicate.
+_DIRECTION_BY_PREDICATE: dict[str, str] = {
+    "safety_signal": "negative",
+    "regulatory_setback": "negative",
+    "regulatory_approval": "positive",
+    "fda_approval_date": "positive",
+    "competitor_launch": "positive",
+    "ma_deal": "positive",
+    # trial_result is resolved from its outcome text below (a readout can be a
+    # hit or a miss); default neutral when the language isn't directional.
+}
+_NEG_OUTCOME_RE = re.compile(
+    r"\b(did not meet|didn'?t meet|failed|fail to|missed|did not achieve|"
+    r"not superior|non[- ]?inferior(?:ity)? (?:not met|miss)|discontinu|"
+    r"terminat|halt|negative|setback|reject)\w*", re.IGNORECASE,
+)
+_POS_OUTCOME_RE = re.compile(
+    r"\b(met (?:its )?primary|achieved|superior|positive|significant(?:ly)?|"
+    r"success|win|hit (?:its )?primary|demonstrat\w* (?:efficacy|benefit))",
+    re.IGNORECASE,
+)
+
+
+def signal_direction(predicate: Optional[str], object_value: Optional[dict]) -> str:
+    """Pure: polarity of a signal toward its subject — 'positive'|'negative'|
+    'neutral'. Directional predicates map straight through; an ambiguous
+    'trial_result' is read from its outcome text (never guessed — defaults to
+    'neutral' when the language isn't directional)."""
+    pred = (predicate or "").strip()
+    fixed = _DIRECTION_BY_PREDICATE.get(pred)
+    if fixed:
+        return fixed
+    if pred == "trial_result":
+        obj = object_value or {}
+        text = " ".join(str(obj.get(k) or "") for k in ("description", "title", "indication"))
+        neg, pos = bool(_NEG_OUTCOME_RE.search(text)), bool(_POS_OUTCOME_RE.search(text))
+        if neg and not pos:
+            return "negative"
+        if pos and not neg:
+            return "positive"
+    return "neutral"
+
 
 # dossier domain → KBQ tag (so fact-signals are filterable in the Signals DB)
 _DOMAIN_TO_KBQ = {
@@ -131,6 +179,10 @@ def build_signal_row(fact: dict) -> Optional[dict]:
         "primary_entity_id": str(fact.get("subject_entity_id") or ""),
         "primary_entity_name": fact.get("entity_name"),
         "evidence_document_ids": [str(source_doc_id)],
+        # Signal polarity — a general enrichment (consumed by calibration's
+        # contradiction handling, and available to chat / feed / future launch
+        # use-cases), not a CI-specific field.
+        "direction": signal_direction(predicate, obj),
         # Auto-minted → 'candidate' (awaits review; the system proposes, a human
         # ships). 'reviewed'/'shipped' require a reviewer per the
         # signals_review_state_paired constraint. The reviewer surface lists
@@ -157,12 +209,13 @@ _INSERT_SIGNAL_SQL = """
     INSERT INTO signals (
         headline, summary, confidence_tier, trust_score, impact_tier,
         impact_score, rule_version_id, kbq_tags, primary_entity_type,
-        primary_entity_id, primary_entity_name, evidence_document_ids, status
+        primary_entity_id, primary_entity_name, evidence_document_ids, status,
+        direction
     ) VALUES (
         %(headline)s, %(summary)s, %(confidence_tier)s, %(trust_score)s,
         %(impact_tier)s, %(impact_score)s, %(rule_version_id)s, %(kbq_tags)s,
         %(primary_entity_type)s, %(primary_entity_id)s, %(primary_entity_name)s,
-        %(evidence_document_ids)s::uuid[], %(status)s
+        %(evidence_document_ids)s::uuid[], %(status)s, %(direction)s
     ) RETURNING id
 """
 

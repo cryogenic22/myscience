@@ -51,6 +51,7 @@ _DEFAULT_WEIGHT = 0.35
 _ALPHA = 0.30
 
 _CEIL = 0.95
+_FLOOR = 0.05
 _MAX_SIGNALS = 50  # bound the per-scenario evidence window
 
 # Backwards-compatible alias for any external reader of the old name.
@@ -61,40 +62,67 @@ def _weight(confidence_tier: Optional[str]) -> float:
     return CORROBORATION_WEIGHT.get((confidence_tier or "").lower(), _DEFAULT_WEIGHT)
 
 
+def _stance(sig: dict, competitive: bool) -> str:
+    """Whether a signal SUPPORTS or CONTRADICTS its scenario.
+
+    Stance = signal polarity × scenario direction. The crisp, defensible case is
+    a competitive-pressure scenario (the threat is a RIVAL being strong): a
+    ``negative``-on-rival signal (setback, failed readout) is evidence the threat
+    receded → CONTRADICTS. Outside that framing we do NOT guess a contradiction
+    (a negative focal signal often SUPPORTS a risk scenario), so everything else
+    SUPPORTS — preserving the prior corroboration-only behaviour."""
+    if competitive and (sig.get("direction") or "").lower() == "negative":
+        return "contradict"
+    return "support"
+
+
 def calibrate_scenario_prob(
     *, prior: float, signals: list[dict], entity_label: str,
+    competitive: bool = False,
 ) -> tuple[Optional[float], Optional[str]]:
     """Pure: re-weight a scenario's prior into a current probability from the
-    CORROBORATING signals about its target entity. Returns (current_prob,
-    calibration_note), or (None, None) when there is no corroborating evidence
-    (scenario stays uncalibrated — honest about "no news yet").
+    signals about its target entity. Returns (current_prob, calibration_note),
+    or (None, None) when there is no weighted evidence (uncalibrated — honest
+    about "no news yet").
 
-    Each corroborating signal nudges the running probability toward the ceiling
-    proportionally to its confidence weight (confirmed fully, disputed not at
-    all). The result is monotonically ≥ prior: this loop measures evidence
-    accumulation, never refutation (see CORROBORATION_WEIGHT note). `signals`
-    are expected pre-filtered to those that arrived AFTER derivation, oldest
-    first; the last corroborating one is cited as the latest mover.
-    """
-    corroborating = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
-    if not corroborating:
+    Each weighted signal nudges the running probability by its confidence weight:
+    a SUPPORTING signal toward the ceiling, a CONTRADICTING one toward the floor
+    (Loop 1 / OQ3 — a rival's setback can now LOWER a competitive-pressure
+    scenario, not just fail to raise it). Contradictions are surfaced in the note,
+    never averaged away. ``competitive`` marks competitive-pressure scenarios,
+    the only framing where a ``negative`` signal is read as a contradiction.
+    `signals` arrive oldest-first; the last weighted one is the latest mover."""
+    weighted = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
+    if not weighted:
         return None, None
 
     current = float(prior)
-    for sig in corroborating[:_MAX_SIGNALS]:
+    n_support = n_contra = 0
+    for sig in weighted[:_MAX_SIGNALS]:
         w = _weight(sig.get("confidence_tier"))
-        current = current + w * _ALPHA * (_CEIL - current)  # monotonic toward ceiling
+        if _stance(sig, competitive) == "contradict":
+            current = current - w * _ALPHA * (current - _FLOOR)  # toward floor
+            n_contra += 1
+        else:
+            current = current + w * _ALPHA * (_CEIL - current)   # toward ceiling
+            n_support += 1
 
-    current = round(min(_CEIL, max(float(prior), current)), 3)
+    current = round(min(_CEIL, max(_FLOOR, current)), 3)
 
-    latest = corroborating[-1]
-    n = len(corroborating)
+    latest = weighted[-1]
     headline = (latest.get("headline") or "").strip()
     conf = (latest.get("confidence_tier") or "unrated")
     date_s = str(latest.get("created_at") or "")[:10]
+    parts = []
+    if n_support:
+        parts.append(f"{n_support} corroborating")
+    if n_contra:
+        parts.append(f"{n_contra} contradicting")
+    verb = "raised" if current >= float(prior) else "lowered"
     note = (
-        f"{n} corroborating signal{'s' if n != 1 else ''} on {entity_label} since "
-        f"derivation raised this scenario from {round(prior, 2)} to {current}. "
+        f"{' and '.join(parts)} signal{'s' if (n_support + n_contra) != 1 else ''} on "
+        f"{entity_label} since derivation {verb} this scenario from "
+        f"{round(prior, 2)} to {current}. "
         f"Latest: \"{headline}\" ({conf}{f', {date_s}' if date_s else ''})."
     )
     return current, note
@@ -112,7 +140,7 @@ _SCENARIOS_SQL = """
 
 # Signals about the focal entity that arrived AFTER the scenario was derived.
 _SIGNALS_SQL = """
-    SELECT id, confidence_tier, impact_tier, headline, created_at
+    SELECT id, confidence_tier, impact_tier, headline, direction, created_at
       FROM signals
      WHERE primary_entity_type = %s
        AND primary_entity_id = %s
@@ -190,6 +218,7 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
             prior=float(scn.get("prior_prob") or 0.0),
             signals=list(signals),
             entity_label=t_label,
+            competitive=(scn.get("name") or "").strip().startswith(_COMPETITIVE_PREFIX),
         )
         if current is None:
             # No corroborating evidence now. If the scenario carries a stale
