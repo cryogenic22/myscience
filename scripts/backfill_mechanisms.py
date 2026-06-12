@@ -19,22 +19,66 @@ from db import Database
 
 logger = logging.getLogger(__name__)
 
+# ── Incretin CO-AGONIST mechanisms (curated) ────────────────────────────────
+# Coarse MeSH collapses these clinically-distinct pharmacologies into the pure
+# GLP-1 class (D000097789). That is WRONG and is exactly the CLIN-02 eval
+# failure: tirzepatide is the first GIP/GLP-1 "twincretin", NOT a GLP-1 RA. The
+# rows are created (source_api='curated_sme') by scripts/correct_drug_mechanisms.py.
+MECH_GLP1 = "Glucagon-Like Peptide-1 Receptor Agonists"
+MECH_GIP_GLP1 = (
+    "Glucose-Dependent Insulinotropic Polypeptide and "
+    "Glucagon-Like Peptide-1 Receptor Agonists"
+)
+MECH_GCG_GLP1 = "Glucagon and Glucagon-Like Peptide-1 Receptor Agonists"
+MECH_TRIPLE = (
+    "Glucagon, Glucose-Dependent Insulinotropic Polypeptide, and "
+    "Glucagon-Like Peptide-1 Receptor Agonists"
+)
+
+CURATED_CO_AGONIST_MECHANISMS = [
+    {"name": MECH_GIP_GLP1, "mechanism_class": "incretin_based",
+     "scope_note": "Dual incretin receptor agonist ('twincretin'): agonist of "
+                   "BOTH the glucose-dependent insulinotropic polypeptide (GIP) "
+                   "and glucagon-like peptide-1 (GLP-1) receptors. Distinct from "
+                   "pure GLP-1 receptor agonists. First-in-class: tirzepatide "
+                   "(Mounjaro, T2D 2022; Zepbound, obesity 2023)."},
+    {"name": MECH_GCG_GLP1, "mechanism_class": "incretin_based",
+     "scope_note": "Dual agonist of the glucagon and GLP-1 receptors "
+                   "(oxyntomodulin class). Distinct from pure GLP-1 receptor agonists."},
+    {"name": MECH_TRIPLE, "mechanism_class": "incretin_based",
+     "scope_note": "Triple agonist of the glucagon, GIP and GLP-1 receptors "
+                   "(e.g. retatrutide). Distinct from pure GLP-1 receptor agonists."},
+]
+
+# generic_name → correct curated mechanism, for the co-agonists that the old map
+# mis-tagged as pure GLP-1. This is the authoritative scope of the correction.
+CO_AGONIST_CORRECTIONS = {
+    "tirzepatide": MECH_GIP_GLP1,
+    "retatrutide": MECH_TRIPLE,
+    "survodutide": MECH_GCG_GLP1,
+    "cotadutide": MECH_GCG_GLP1,
+    "pemvidutide": MECH_GCG_GLP1,
+    "mazdutide": MECH_GCG_GLP1,
+    "efinopegdutide": MECH_GCG_GLP1,
+}
+
 # Drug name → mechanism name (known pharmacology)
 DRUG_MECHANISM_MAP = {
-    # GLP-1 Receptor Agonists
-    "semaglutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "liraglutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "dulaglutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "exenatide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "lixisenatide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "orforglipron": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "tirzepatide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "survodutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "retatrutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "cotadutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "pemvidutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "mazdutide": "Glucagon-Like Peptide-1 Receptor Agonists",
-    "efinopegdutide": "Glucagon-Like Peptide-1 Receptor Agonists",
+    # GLP-1 Receptor Agonists (pure)
+    "semaglutide": MECH_GLP1,
+    "liraglutide": MECH_GLP1,
+    "dulaglutide": MECH_GLP1,
+    "exenatide": MECH_GLP1,
+    "lixisenatide": MECH_GLP1,
+    "orforglipron": MECH_GLP1,
+    # Incretin co-agonists — NOT pure GLP-1 (see CO_AGONIST_CORRECTIONS)
+    "tirzepatide": MECH_GIP_GLP1,
+    "survodutide": MECH_GCG_GLP1,
+    "retatrutide": MECH_TRIPLE,
+    "cotadutide": MECH_GCG_GLP1,
+    "pemvidutide": MECH_GCG_GLP1,
+    "mazdutide": MECH_GCG_GLP1,
+    "efinopegdutide": MECH_GCG_GLP1,
     "cagrilintide": "Appetite Depressants",
     # SGLT2i
     "empagliflozin": "Sodium-Glucose Transporter 2 Inhibitors",

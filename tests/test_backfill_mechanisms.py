@@ -70,6 +70,68 @@ class TestMatchMechanism:
         assert result == "Dipeptidyl-Peptidase IV Inhibitors"
 
 
+class TestCoAgonistMechanisms:
+    """CLIN-02 regression: incretin co-agonists are NOT pure GLP-1 agonists."""
+
+    def test_tirzepatide_is_dual_gip_glp1(self):
+        from scripts.backfill_mechanisms import match_mechanism, MECH_GIP_GLP1
+        assert match_mechanism("tirzepatide") == MECH_GIP_GLP1
+        assert "GLP-1" != match_mechanism("tirzepatide")  # not the pure class
+
+    def test_semaglutide_stays_pure_glp1(self):
+        from scripts.backfill_mechanisms import match_mechanism, MECH_GLP1
+        assert match_mechanism("semaglutide") == MECH_GLP1
+
+    def test_co_agonist_family_corrected(self):
+        from scripts.backfill_mechanisms import (
+            match_mechanism, MECH_TRIPLE, MECH_GCG_GLP1, MECH_GLP1)
+        assert match_mechanism("retatrutide") == MECH_TRIPLE
+        for d in ("survodutide", "cotadutide", "mazdutide", "pemvidutide"):
+            assert match_mechanism(d) == MECH_GCG_GLP1, d
+        # none of them is the pure GLP-1 class
+        assert MECH_GLP1 not in {match_mechanism(d) for d in
+                                 ("tirzepatide", "retatrutide", "survodutide")}
+
+    def test_corrections_subset_of_map(self):
+        """The correction scope must agree with the backfill map (one truth)."""
+        from scripts.backfill_mechanisms import (
+            CO_AGONIST_CORRECTIONS, DRUG_MECHANISM_MAP)
+        for g, mech in CO_AGONIST_CORRECTIONS.items():
+            assert DRUG_MECHANISM_MAP[g] == mech, g
+
+    def test_curated_specs_well_formed(self):
+        from scripts.backfill_mechanisms import CURATED_CO_AGONIST_MECHANISMS
+        names = {s["name"] for s in CURATED_CO_AGONIST_MECHANISMS}
+        assert len(names) == len(CURATED_CO_AGONIST_MECHANISMS)  # no dup names
+        for s in CURATED_CO_AGONIST_MECHANISMS:
+            assert s["mechanism_class"] and len(s["scope_note"]) > 30
+
+
+class TestCorrectDrugMechanisms:
+    """find_mistagged repoints only mis-tagged co-agonists, idempotently."""
+
+    def test_skips_already_correct_and_repoints_wrong(self):
+        from scripts.correct_drug_mechanisms import find_mistagged
+        from scripts.backfill_mechanisms import MECH_GIP_GLP1
+        mech_ids = {MECH_GIP_GLP1: "dual-id"}
+        db = MagicMock()
+
+        def fetch_all(sql, params):
+            generic = params[0]
+            if generic == "tirzepatide":
+                # one mis-tagged (on the GLP-1 row) + one already correct
+                return [{"id": "d-wrong", "generic_name": "tirzepatide",
+                         "mechanism_id": "glp1-id"},
+                        {"id": "d-ok", "generic_name": "tirzepatide",
+                         "mechanism_id": "dual-id"}]
+            return []
+        db.fetch_all.side_effect = fetch_all
+        out = find_mistagged(db, mech_ids)
+        ids = {t["drug_id"] for t in out}
+        assert "d-wrong" in ids and "d-ok" not in ids
+        assert all(t["to_mech"] == "dual-id" for t in out)
+
+
 # ── DB integration tests (MagicMock) ──
 
 
