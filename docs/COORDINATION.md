@@ -172,6 +172,17 @@ owner-gated (protected `.github/workflows/`).**
 
 **Frontend (Claude agent):** general feature/UI board = `docs/PRODUCT_BACKLOG.md`.
 
+**Data (data session), 2026-06-13 — CLAIM D-API-1: expose the L2 service as REST.**
+The L2 connector-taxonomy + onboarding service (`services/connector_taxonomy.py`,
+#245) has no HTTP surface, so the frontend F5 Connect wizard (`mz-fe-f5`) is
+blocked. Adding a **new, self-contained `api/routes/hub.py` router** mounted under
+`/hub` (`GET /hub/connector-types`, `GET/POST /hub/onboarding/{source_id}`,
+`POST …/advance`). **`api/` is Platform's lane (§2) — flagging here:** this is
+purely *additive* (a new file + one registration block in `api/app.py`, same
+try/except pattern as every other router), touches no existing route, and needs
+no migration. Read-only endpoints = viewer; lifecycle writes = uploader. Unblocks
+F5 + tightens the §7.6 dependency.
+
 **▶▶ FRONTEND: build the DataHub Catalog UX — `docs/SPEC_DATA_HUB_FRONTEND.md`.**
 That spec is your full build brief: the lens model, **what already exists to reuse**
 (the live `/catalog` + `/sources` APIs, the `api.ts` clients, `DataCatalogPanel`/
@@ -251,7 +262,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
 | DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
-| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel — **frontend F5 dependency** | open — high priority |
+| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel `claude/data/datahub-d-api-1` | **in-flight** — new `/hub` router (api/ seam — additive, flagged §6) |
 | **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | D-intel — **frontend F1 dependency** | open |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
