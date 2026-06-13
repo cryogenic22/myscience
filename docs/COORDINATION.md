@@ -185,16 +185,36 @@ owner-gated (protected `.github/workflows/`).**
 
 **Frontend (Claude agent):** general feature/UI board = `docs/PRODUCT_BACKLOG.md`.
 
-**Data (data session), 2026-06-13 — CLAIM D-API-1: expose the L2 service as REST.**
-The L2 connector-taxonomy + onboarding service (`services/connector_taxonomy.py`,
-#245) has no HTTP surface, so the frontend F5 Connect wizard (`mz-fe-f5`) is
-blocked. Adding a **new, self-contained `api/routes/hub.py` router** mounted under
-`/hub` (`GET /hub/connector-types`, `GET/POST /hub/onboarding/{source_id}`,
-`POST …/advance`). **`api/` is Platform's lane (§2) — flagging here:** this is
-purely *additive* (a new file + one registration block in `api/app.py`, same
-try/except pattern as every other router), touches no existing route, and needs
-no migration. Read-only endpoints = viewer; lifecycle writes = uploader. Unblocks
-F5 + tightens the §7.6 dependency.
+**Data (data session), 2026-06-13 — D-API-1 SHIPPED (MERGED #254).** New
+self-contained `api/routes/hub.py` router exposes the L2 connector-taxonomy +
+onboarding service (`services/connector_taxonomy.py`, #245) over HTTP. Additive
+only (a new file + one try/except registration block in `api/app.py`; no existing
+route touched, no migration). Independently reviewed (APPROVE) + live prod probe
+(read end-to-end through the ASGI app; write path proven against the real schema
+inside a rolled-back txn). Endpoints:
+- `GET /hub/connector-types` · `GET /hub/connector-types/{name}` — the 6-type
+  taxonomy (viewer).
+- `GET /hub/onboarding?status=` · `GET /hub/onboarding/{source_id}` — lifecycle
+  records (viewer).
+- `POST /hub/onboarding/{source_id}` — start onboarding in `draft` (uploader);
+  body `{owner, contact, connector_type, go_live_date, escalation}`; idempotent.
+- `POST /hub/onboarding/{source_id}/advance` — body `{to_status}`; runs the
+  `draft→test→staged→prod→paused→retired` state machine (uploader).
+- Status mapping: unknown-type / illegal-transition → 400; no-onboarding-row /
+  unknown-source → 404.
+
+**▶ HANDOFF to Frontend (F5 swap off the stub) — two real wiring gaps:** the
+wizard's `registerSource()` (`frontend/src/lib/datahubOnboarding.ts`) conflates
+*register* + *start onboarding*, but the backend keeps them separate (correctly —
+the L2 `source_onboarding` table FKs onto `sources` and only stores the lifecycle
+fields). So: **(1)** call `POST /sources` FIRST to create the source row (else
+`POST /hub/onboarding/{id}` returns 404 by design — the FK-existence probe), THEN
+`POST /hub/onboarding/{id}`. **(2)** the onboarding POST body is
+`{owner, contact, connector_type, go_live_date, escalation}` — NOT the full
+`OnboardingDraft`; the draft's `config`/`mappings`/`contract`/`trust_tier` belong
+to source registration (`/sources` `usage_profile` + the #224 source-contracts
+pack), not the onboarding row. The DTO/enum/lifecycle types already match
+`OnboardingRecord.to_dict()` 1:1, so the response side is a clean swap.
 
 **▶▶ FRONTEND: build the DataHub Catalog UX — `docs/SPEC_DATA_HUB_FRONTEND.md`.**
 That spec is your full build brief: the lens model, **what already exists to reuse**
@@ -275,7 +295,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
 | DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
-| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel `claude/data/datahub-d-api-1` | **in-flight** — new `/hub` router (api/ seam — additive, flagged §6) |
+| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel | **MERGED #254** — new `/hub` router; F5-swap handoff in §6 |
 | **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | D-intel — **frontend F1 dependency** | open |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
@@ -340,7 +360,7 @@ building; one PR per loop; **independent `/review-gate` before merge, no self-me
 | Loop | What | Depends on | Owner / branch | Status |
 |---|---|---|---|---|
 | **F1** | Catalog Home + Source dossier + DataHub nav entry | D-API-2 (degrade till then) | Frontend `claude/datahub/f1-finish` | **MERGED #250** (independent review APPROVE; nav `onDataHub`→`/hub/catalog`, honest FAIR degradation, 25 tests green) |
-| **F5** | Connect wizard (5 source kinds → register + lifecycle) | **D-API-1** | Frontend `claude/datahub/f5-connect-wizard` | **review APPROVE; rebased on main; D-API-1 REST now exists (#253) — one-line swap from the `lib/datahubOnboarding.ts` stub to fetch() is a follow-up; 8 tests green, tsc clean** |
+| **F5** | Connect wizard (5 source kinds → register + lifecycle) | **D-API-1** | Frontend `claude/datahub/f5-connect-wizard` | **shipped vs stub; D-API-1 REST now LIVE (MERGED #254). SWAP follow-up: NOT a one-liner — `registerSource()` must `POST /sources` THEN `POST /hub/onboarding/{id}` with `{owner,contact,connector_type,go_live_date,escalation}` (the FK-existence probe 404s on an unregistered source). See §6 D-API-1 handoff. Response DTO/enums already match 1:1.** |
 | **F2** | Documents & vectors lens (+ enhance actions) | D-API-3 | unclaimed | open |
 | **F3** | Ontology & data-model lens (read-only map + graph + MeSH) | D-API-4 | unclaimed | open |
 | **F4** | Prompts & packs lens (observational impact — NO A/B platform) | D-API-5 | unclaimed | open |
@@ -348,5 +368,7 @@ building; one PR per loop; **independent `/review-gate` before merge, no self-me
 | **F6** | AI co-pilot + autonomous-job timeline (Flow B) | D-API-6 (backend L9–L10) | unclaimed | BLOCKED on backend |
 
 **Suggested order:** F1 (finish+merge) → F5 → F2 → F3 → F4 → F7 → F6. The data lane
-owes **D-API-1** (expose the L2 connector-taxonomy/onboarding service as REST) +
+owed **D-API-1** (REST for the L2 connector-taxonomy/onboarding service) +
 **D-API-2** (source-level FAIR) first — they unblock F5 + F1 (tracked in §7.3).
+**D-API-1 is now MERGED (#254)** → F5 can swap off its stub (see the §6 handoff).
+**D-API-2 is still open** → F1 degrades the FAIR ring until it lands.
