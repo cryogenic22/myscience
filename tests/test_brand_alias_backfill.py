@@ -71,3 +71,45 @@ class TestDesmearReversible:
         sql, params = db.execute.call_args[0]
         assert "update drugs set brand_name = null" in sql.lower()
         assert "frag1" in params
+
+
+class TestReverseRoundTrip:
+    """The de-smear is reversible: --reverse must restore every cleared brand_name
+    from the manifest and remove the inserted aliases. Untested reversibility is a
+    silent-loss risk, so this exercises the actual _reverse path."""
+
+    def _manifest(self, tmp_path, entries):
+        import json
+        p = tmp_path / "brand_desmear_manifest.json"
+        p.write_text(json.dumps(entries), encoding="utf-8")
+        return str(p)
+
+    def test_reverse_restores_each_row_and_deletes_aliases(self, tmp_path, monkeypatch):
+        import scripts.backfill_brand_aliases as m
+        monkeypatch.setattr(m, "_MANIFEST", self._manifest(
+            tmp_path, [{"id": "frag1", "brand_name": "Ozempic"},
+                       {"id": "frag2", "brand_name": "Januvia"}]))
+        db = MagicMock(); db.execute = MagicMock()
+        stats = m._reverse(db, apply=True)
+        assert stats["restored"] == 2
+        calls = [(c.args[0], c.args[1]) for c in db.execute.call_args_list]
+        restores = [p for sql, p in calls if "update drugs set brand_name = %s" in sql.lower()]
+        assert ["Ozempic", "frag1"] in restores and ["Januvia", "frag2"] in restores
+        deletes = [(sql, p) for sql, p in calls if "delete from entity_aliases" in sql.lower()]
+        assert deletes and deletes[0][1] == [m.ALIAS_SOURCE]   # only our backfilled aliases
+
+    def test_reverse_dry_run_writes_nothing(self, tmp_path, monkeypatch):
+        import scripts.backfill_brand_aliases as m
+        monkeypatch.setattr(m, "_MANIFEST", self._manifest(
+            tmp_path, [{"id": "frag1", "brand_name": "Ozempic"}]))
+        db = MagicMock(); db.execute = MagicMock()
+        stats = m._reverse(db, apply=False)
+        assert stats["restored"] == 1          # counts what WOULD restore
+        db.execute.assert_not_called()         # but writes nothing
+
+    def test_reverse_missing_manifest_is_safe(self, tmp_path, monkeypatch):
+        import scripts.backfill_brand_aliases as m
+        monkeypatch.setattr(m, "_MANIFEST", str(tmp_path / "does_not_exist.json"))
+        db = MagicMock(); db.execute = MagicMock()
+        assert m._reverse(db, apply=True) == {"restored": 0}   # no raise, no writes
+        db.execute.assert_not_called()
