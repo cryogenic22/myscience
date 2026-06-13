@@ -52,11 +52,10 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# Prefer the normalized v2 pack (41 items + embedded specialist rubric — the
-# single machine-readable pack the SME reviewer asked for in F6); fall back to
-# v1 if v2 isn't present. Override explicitly with --eval / eval_path.
-_V2 = Path(__file__).parent / "eval_pharma_v2.yaml"
-DEFAULT_EVAL = _V2 if _V2.exists() else (Path(__file__).parent / "eval_pharma_v1.yaml")
+# Default stays v1 (the established measured bar — promoting v2 to the default
+# is an owner decision, not a builder one). The normalized 41-item
+# eval_pharma_v2.yaml ships alongside and is opt-in via --eval / eval_path.
+DEFAULT_EVAL = Path(__file__).parent / "eval_pharma_v1.yaml"
 DEFAULT_REPORT_DIR = Path(__file__).parent / "reports"
 
 GATE_IDS = ["G1_provenance", "G2_closed_world_honesty", "G3_no_count_fallacy", "G4_domain_correctness"]
