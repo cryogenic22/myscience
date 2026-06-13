@@ -114,6 +114,22 @@ adds `n_supporting`/`n_contradicting` to the *existing* ledger (NOT a 2nd table)
 - **PROTOCOL (stop the re-dup): claim a Helix loop in this §6 BEFORE starting it.**
   Data lane reserves the next migration number (next = **095**).
 
+**Data (data session), 2026-06-13 — A1 brand→generic aliases + brand_name de-smear (eval handoff Part A1).**
+`scripts/backfill_brand_aliases.py` (`claude/data/brand-alias-backfill`): `brand_name` was
+over-applied (e.g. "Ozempic" on 30 semaglutide fragment rows), and the `entity_aliases`
+unique index `(entity_type, alias_text, source_type)` forbids per-row self-aliases — so the
+invariant could only go green by **de-smearing**. Fix: keep `brand_name` on the one richest
+ACTIVE canonical per brand, **clear it from the rest (reversible manifest** →
+`benchmark/reports/brand_desmear_manifest.json`, `--reverse` restores), and add one
+`brand→canonical` alias. **No migration.** Conservation: field edit only, never a row
+merge/delete (that's the consolidation lane — A3).
+- **Prod-proven:** invariant `test_drugs_with_brand_name_have_alias_entry` **350 → 0** missing;
+  351 brand_names de-smeared, 72 aliases added; `resolve_asset('drug:Ozempic')`→semaglutide
+  (1049 facts), Januvia→sitagliptin (65), Mounjaro→tirzepatide (450), etc. De-smear also makes
+  brand `exact` resolution deterministic (only the canonical carries each brand now).
+- ⚠️ **A3 overlap (other session, `coord-sync-protocol`):** I only cleared over-applied
+  `brand_name` + added aliases; I did NOT merge/absorb rows. Safe to consolidate on top.
+
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
 
 ---
@@ -174,7 +190,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | Orphaned-canonical detector + Lane-2 invariant | D-intel `claude/data/coord-sync-protocol` | in-flight (this PR) |
 | Diagnose the live re-demotion vector | D-intel | in-flight |
 | Excluded-config absorb (combo-guarded tool ready) | D-intel | **BLOCKED** on canonical stability |
-| **A1 — brand→generic alias backfill + brand_name de-smear** (eval handoff Part A1; reversible field cleanup, no migration) | D-ingest `claude/data/brand-alias-backfill` | in-flight (2026-06-13) — ⚠️ **OVERLAPS A3/consolidation** (`coord-sync-protocol`): I only CLEAR over-applied `brand_name` from non-richest rows + add aliases; I do NOT merge rows. Coordinate before consolidating the same brands. |
+| **A1 — brand→generic alias backfill + brand_name de-smear** (eval handoff Part A1; reversible field cleanup, no migration) | D-ingest `claude/data/brand-alias-backfill` | **delivered — PR open; invariant 350→0, prod-proven**. ⚠️ **OVERLAPS A3/consolidation** (`coord-sync-protocol`): I only CLEARED over-applied `brand_name` + added aliases; did NOT merge rows. Safe to consolidate on top. |
 | FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
