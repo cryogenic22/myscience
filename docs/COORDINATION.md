@@ -140,6 +140,20 @@ chosen with the owner: **layered hybrid**, not one autonomous end-to-end team.
   seam that caused the 092 collision). DataHub backend migrations reserve **096+**
   (095 is taken by #241 NADAC, held); none needed for Phase 0.
 
+**Data (data session), 2026-06-13 (evening) — eval PRs reconciled + DataHub L2
+started.** MERGED to main: **#240** (B1 source coverage+freshness for the answer
+path), **#241** (NADAC pricing revival — DKAN CSV + mig 095 + idempotent history),
+each rebased clean + independently reviewed. **#242** (brand-alias de-smear) is
+**HELD — independent review BLOCK:** the Lane-2 invariant it claims to green is RED
+vs prod (a one-shot field-clear of `brand_name` that ETL re-smears — durability,
+not logic; disposition + fix-path on the PR). Now in-flight: **DataHub L2** (mig
+096 — connector-type taxonomy + onboarding lifecycle), the first Phase 1 backend
+loop, interleaved with the eval work per the layered-hybrid claim above.
+- **Followups logged:** `connectors/nadac.py` still points at the dead Socrata
+  endpoint (drop from registry or repoint to DKAN); source-level FAIR aggregate
+  endpoint does not exist yet (only entity-level) — the DataHub catalog grid needs
+  it (handoff surfaced by the Phase 0 L1 agent).
+
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
 
 ---
@@ -204,7 +218,8 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
 | DataHub Phase 0 — catalog lenses L1–L1d (read-only UI over existing APIs) | dedicated agent `claude/datahub/phase0-lenses` | in-flight — review-gated, no self-merge |
-| DataHub Phase 1+ — L2 taxonomy/lifecycle → L3 generic connectors → … L12 | D-intel — interleaved w/ eval loops | open — sequential, reserves mig 096+ |
+| DataHub Phase 1+ — **L2 connector-type taxonomy + onboarding lifecycle** (mig 096) | D-intel `claude/data/datahub-l2-taxonomy` | in-flight |
+| DataHub Phase 1+ — L3 generic connectors → … L12 | D-intel — interleaved w/ eval loops | open — sequential |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
 - `090` fact_governance · `091` crosswalk_records — MERGED.
@@ -213,7 +228,11 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
   tables; cleanup debt (close #228 backend, keep one).
 - `093` = `facts_epistemic_timestamps` (#233, MERGED).
 - `094` = `scenario_prob_history_stance_counts` (#237, MERGED).
-- `095` = **NEXT FREE** — reserve here before use.
+- `095` = `drug_pricing_idempotent_history` (#241 NADAC revival, MERGED).
+- `096` = **`connector_taxonomy_onboarding`** (DataHub L2 — `connector_types` +
+  `source_onboarding` lifecycle + `sources.connector_type`) — RESERVED, branch
+  `claude/data/datahub-l2-taxonomy`.
+- `097` = **NEXT FREE** — reserve here before use.
 
 ### 7.5 Eval-pass loops (data-team share — how we pass the evals)
 Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238).
