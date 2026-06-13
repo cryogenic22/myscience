@@ -144,6 +144,24 @@ def test_annotate_is_noop_for_free_text():
     assert _annotate_section_sources(content) == content
 
 
+def test_annotate_preserves_value_containing_colon():
+    # partition() splits on the FIRST colon only — a value with a colon (e.g. a
+    # dual-target mechanism) must be kept in full, tagged once.
+    content = "MECHANISM:GIP:GLP-1 dual agonist (ratio 1:1)"
+    out = _annotate_section_sources(content)
+    assert "GIP:GLP-1 dual agonist (ratio 1:1)" in out  # no content loss
+    assert out.count("[source:") == 1
+
+
+def test_annotate_multi_kv_line_degrades_without_content_loss():
+    # Entity sections emit one field per line, but if a multi-KV line ever
+    # appears it must not crash or drop content (it's tagged by the first key).
+    content = "BRAND-NAME:Mounjaro COMPANY:ELI LILLY"
+    out = _annotate_section_sources(content)
+    assert "Mounjaro COMPANY:ELI LILLY" in out  # full text preserved
+    assert "[source:" in out
+
+
 def test_snippet_for_ctx_section_gets_per_field_sources_not_one_bucket():
     item = {
         "source": "ctx_hydration_by_name",

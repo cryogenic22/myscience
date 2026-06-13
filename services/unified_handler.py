@@ -133,7 +133,9 @@ def _display_source(raw_source: str | None, predicate: str | None) -> str:
 _FIELD_SOURCE = {
     # Drug-entity fields
     "MECHANISM": "MeSH / curated mechanism",
-    "BRAND-NAME": "openFDA Drug Labels",
+    # brand_name is written by several FDA connectors (openFDA labels, Orange Book,
+    # designations, discontinuations) — name the FDA product family, not one of them.
+    "BRAND-NAME": "FDA drug products / labels",
     "COMPANY": "drugs@FDA registry",
     "THERAPEUTIC-AREA": "MeSH / curated",
     "APPROVAL-STATUS": "drugs@FDA registry",
@@ -176,6 +178,13 @@ def _annotate_section_sources(content: str) -> str:
     claim (eval gate G1) instead of one generic bucket for the whole section.
     Free-text (non ``KEY:value``) content and structural lines pass through
     untouched.
+
+    Assumes one ``KEY:value`` per line — how the serializer emits hydrated ENTITY
+    sections (verified: one field per line). A multi-KV header line (``K1:v1
+    K2:v2``, which entity sections do not produce) is tagged only with the first
+    key's source; the value text is preserved in full (``partition`` keeps
+    everything after the first ``:``), so this boundary degrades without content
+    loss rather than mangling the line. ``test_annotate_*`` pins both.
     """
     if not content or ":" not in content:
         return content
