@@ -308,15 +308,17 @@ _COVERAGE_LIMITS: list[tuple[re.Pattern, str, str]] = [
 
 # Pricing is the source whose hardcoded wording drifted (MZ-XR-20260613-002): the
 # guard said "NADAC sparse or empty" after the data lane revived NADAC. Pricing is
-# bound to LIVE NADAC row state instead. `drug_pricing` is NADAC-dedicated (loaded
-# only by the post-run pricing task — scheduler/config.py), so a source-specific
-# COUNT here is NOT the shared-table overstatement of MZ-XR-20260613-001.
+# bound to LIVE NADAC row state instead. `drug_pricing` is shared (CMS NADAC AND
+# WHO-GPRM write to it), so the COUNT is FILTERED to source_api='cms_nadac' to stay
+# source-specific — that filter is what avoids the shared-table overstatement of
+# MZ-XR-20260613-001 (a bare COUNT would conflate WHO-GPRM rows with NADAC).
 _PRICING_PAT = re.compile(r"\b(wac|list price|net price|asp|price|pricing|cost per|launch price)\b", re.I)
 
 
 def _nadac_row_count(db: Any) -> Optional[int]:
-    """Live CMS-NADAC row count from the NADAC-dedicated drug_pricing table, or
-    None when no DB / the query fails (⇒ deterministic fallback wording)."""
+    """Live CMS-NADAC row count from drug_pricing, FILTERED to source_api='cms_nadac'
+    (the table is shared with WHO-GPRM). None when no DB / the query fails
+    (⇒ deterministic fallback wording)."""
     if db is None:
         return None
     try:
