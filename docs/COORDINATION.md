@@ -185,7 +185,7 @@ owner-gated (protected `.github/workflows/`).**
 
 **Frontend (Claude agent):** general feature/UI board = `docs/PRODUCT_BACKLOG.md`.
 
-**Data (data session), 2026-06-13 — CLAIM L4a: generic `RssConnector`.** Next
+**Data (data session), 2026-06-13 — L4a SHIPPED (MERGED #257).** Next
 generic connector after L3's `CsvConnector` (#247) — config-driven RSS/Atom feed
 ingestion: point an `RssConfig` at a feed URL, declare the `RecordType` + an
 element→field map, and it emits the universal `RawRecord` with full `Provenance`,
@@ -313,7 +313,9 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub Phase 0 — catalog lenses L1/L1b (CatalogHomePage + live container + `/hub/catalog`) | Frontend agent `claude/datahub/phase0-lenses` | **built, NOT merged — needs `/review-gate`** |
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
-| DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel `claude/data/datahub-l4-connectors` | **in-flight (L4a = RSS first)** — generic config-driven `RssConnector` mirroring L3's `CsvConnector`; WebScrape/Warehouse follow as L4b/L4c (deliver-one-at-a-time rationale in §6) |
+| DataHub L4a — generic `RssConnector` (+ `SourceType.RSS`) | D-intel | **MERGED #257** — RSS 2.0/Atom on stdlib ElementTree; prod-probed FDA RSS (20) + arXiv Atom (5); independent review APPROVE |
+| DataHub L4b — generic `WebScrapeConnector` | D-intel — `bs4` present; needs robots handling | open — NEXT |
+| DataHub L4c — generic `WarehouseConnector` | D-intel — **needs warehouse drivers + live creds → not prod-probeable here** | open — deferred (probe constraint) |
 | **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel | **MERGED #254** — new `/hub` router; F5-swap handoff in §6 |
 | **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` on `/catalog/datasets` rows + `GET /catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | **MERGED #256** — derived from dataset_catalog cols; honest null-when-absent, **0-row ⇒ RED**; independent review APPROVE; prod-probed 12 datasets. ▶ FE wiring follow-up: `CatalogPage.tsx` still proxies `fair_overall←quality_score_avg` + `SourceDetail.fair=null` (stale "no endpoint" comment) — wire to per-row `fair_overall` + `GET /catalog/datasets/{key}/fair` |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
