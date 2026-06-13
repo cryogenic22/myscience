@@ -100,6 +100,31 @@ class TestParse:
         recs = parse_csv_records(_CSV, _cfg(), endpoint="e", retrieved_at=ts)
         assert recs[0].provenance.retrieved_at == ts
 
+    def test_ragged_row_is_kept_not_crash(self, caplog):
+        # A row with more columns than the header → csv emits a None key.
+        # Must NOT crash the batch (the inverse of no-silent-loss).
+        import logging
+        ragged = (
+            "id,name,company\n"
+            "D1,sema,Novo\n"
+            "D2,tirze,Lilly,extra1,extra2\n"   # over-long row
+            "D3,finer,Bayer\n"
+        )
+        with caplog.at_level(logging.WARNING):
+            recs = parse_csv_records(ragged, _cfg(external_id_field="id"), endpoint="e")
+        assert [r.external_id for r in recs] == ["D1", "D2", "D3"]   # all kept
+        assert all(len(r.provenance.raw_response_hash) == 64 for r in recs)
+        assert "ragged row" in caplog.text
+
+    def test_naive_since_does_not_raise(self):
+        # BaseConnector.fetch(since) promises nothing about tz; a naive since
+        # must not raise on comparison with tz-aware row dates.
+        naive = datetime(2026, 6, 1)   # tz-naive
+        recs = parse_csv_records(_CSV, _cfg(since_field="updated"),
+                                 endpoint="e", since=naive)
+        ids = [r.external_id for r in recs]
+        assert "D1" in ids and "D2" not in ids   # same filtering, no TypeError
+
 
 # ── connector (file path + health check, no network) ─────────────────────────
 

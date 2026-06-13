@@ -106,11 +106,20 @@ def parse_csv_records(
     """Map CSV text → RawRecords per `config`. Pure: no network, no clock unless
     `retrieved_at` is omitted (then `now`)."""
     retrieved_at = retrieved_at or datetime.now(timezone.utc)
+    # A naive `since` would raise comparing against our tz-aware row dates.
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
     reader = csv.DictReader(io.StringIO(text), delimiter=config.delimiter)
 
     records: list[RawRecord] = []
     skipped_no_id = 0
+    ragged_rows = 0
     for row in reader:
+        # A row with more columns than the header puts the overflow under a None
+        # key (csv's restkey). Count it (a malformed source stays visible) but
+        # keep the row — never let one ragged line crash the whole batch.
+        if None in row:
+            ragged_rows += 1
         external_id = (row.get(config.external_id_field) or "").strip()
         if not external_id:
             skipped_no_id += 1
@@ -139,7 +148,9 @@ def parse_csv_records(
             query_params={},
             retrieved_at=retrieved_at,
             raw_response_hash=Provenance.hash_response(
-                repr(sorted(row.items())).encode("utf-8")
+                # sort by stringified key — a ragged row's None key (and any
+                # list-valued overflow) must not crash the comparison.
+                repr(sorted(row.items(), key=lambda kv: str(kv[0]))).encode("utf-8")
             ),
         )
         records.append(RawRecord(
@@ -156,6 +167,12 @@ def parse_csv_records(
         logger.warning(
             "CsvConnector(%s): skipped %d row(s) with empty %r — not dropped silently",
             config.source_id, skipped_no_id, config.external_id_field,
+        )
+    if ragged_rows:
+        logger.warning(
+            "CsvConnector(%s): %d ragged row(s) had more columns than the header "
+            "(kept; overflow captured in the provenance hash)",
+            config.source_id, ragged_rows,
         )
     return records
 
