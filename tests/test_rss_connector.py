@@ -196,8 +196,8 @@ class TestConservation:
           <item><title>has id</title><guid>g1</guid></item>
           <item><title>no id at all</title></item>
         </channel></rss>"""
-        # default external id chain is guid->link; second item has neither
-        recs = parse_feed_items(_cfg_strip_link(feed), _cfg(), endpoint="e")
+        # default external id chain is guid->id->link; second item has none
+        recs = parse_feed_items(feed, _cfg(), endpoint="e")
         assert {r.external_id for r in recs} == {"g1"}
 
     def test_empty_feed_returns_empty_list(self):
@@ -208,10 +208,17 @@ class TestConservation:
         with pytest.raises(ConnectorError):
             parse_feed_items("<rss><channel><item>unclosed", _cfg(), endpoint="e")
 
-
-def _cfg_strip_link(feed: str) -> str:
-    # the no-id item in this test has no link either; return feed unchanged
-    return feed
+    def test_content_encoded_becomes_text(self):
+        # Many press/blog feeds put the body in content:encoded, not description.
+        feed = """<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+          <channel><item>
+            <title>Body in content:encoded</title>
+            <guid>ce-1</guid>
+            <content:encoded>The full article body for embedding.</content:encoded>
+          </item></channel></rss>"""
+        recs = parse_feed_items(feed, _cfg(), endpoint="e")
+        assert len(recs) == 1
+        assert "full article body" in (recs[0].text_content or "")
 
 
 # ── connector: fetch + health with a stub HTTP layer ─────────────────────────

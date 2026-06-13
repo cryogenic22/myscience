@@ -49,7 +49,10 @@ _DEFAULT_TIMEOUT = 30
 # Default lookup chains (used when the config leaves a field unset). Atom keys are
 # normalised onto these during extraction, so one chain covers both formats.
 _EXTERNAL_ID_CHAIN = ("guid", "id", "link")
-_TEXT_CHAIN = ("description", "summary", "content")
+# `encoded` is RSS's `content:encoded` (the full-body convention used by many
+# press/blog feeds) after namespace-stripping — include it so a feed whose body
+# lives there still produces text_content for embedding.
+_TEXT_CHAIN = ("description", "summary", "content", "encoded")
 _DATE_CHAIN = ("pubDate", "updated", "published", "date")
 
 
@@ -134,9 +137,10 @@ def _item_fields(item) -> dict[str, str]:
         text = (child.text or "").strip()
         if text:
             fields[name] = text
-    # Atom → RSS-shaped aliases (only when the RSS key is absent).
+    # Atom/RSS body → RSS-shaped `description` alias (only when absent): Atom's
+    # `summary`/`content` and RSS's `content:encoded` (→ local name `encoded`).
     if "description" not in fields:
-        for alt in ("summary", "content"):
+        for alt in ("summary", "content", "encoded"):
             if fields.get(alt):
                 fields["description"] = fields[alt]
                 break
