@@ -163,4 +163,31 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
   `092_scenario_calibration_history` (#228) also applied to prod — two redundant
   tables; cleanup debt (close #228 backend, keep one).
 - `093` = `facts_epistemic_timestamps` (#233, MERGED).
-- `094` = **NEXT FREE** — reserve here before use.
+- `094` = `scenario_prob_history_stance_counts` (#237, MERGED).
+- `095` = **NEXT FREE** — reserve here before use.
+
+### 7.5 Eval-pass loops (data-team share — how we pass the specialist eval)
+Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238). Pasted
+eval (`eval_pharma_v1`, 19 cases): 5% item-pass; gates **G1 provenance 5% / G2
+closed-world-honesty 10%** / G3 68% / G4 domain-correct 90%; reachable_reasoning
+**0%**. **KEY REFRAME (prod-probed): the eval fails in SYNTHESIS, not the
+substrate** — facts already carry provenance at **100%** (15047/15048
+`source_doc_id` → 12,395 evidence_records) and answers are 90% correct, so G1/G2
+are a *surfacing* (cite + hedge) problem = **platform**, not data.
+
+**Data-team eval loops — your highest leverage (do NOT backfill provenance, do NOT
+rush payer/pricing — those are calibrated `missing_data` → honest-refusal passes via
+synthesis):**
+| Loop | What | Unblocks | Status |
+|---|---|---|---|
+| **B1** | Surface per-source **coverage + freshness** (from `pharma_source_contracts.yaml` #224 + `connector_health`) to the answer path, so the closed-world guard states limits ACCURATELY ("FAERS 2,562 wk; labels 191") | **G2** (#1 data lever) | open — D-ingest |
+| **B2** | **Reachability**: wire chat retrieval for landed-but-unreachable data (`regulatory_milestones`, Orange Book patents, SEC structured) | `ingested_unreachable` items (0%) | open — D-ingest |
+| **B3** | **D1 emitters** (TrialOutcome / RegulatoryMilestone / Investigator / PublicationClaim / CompanyFinancial) → more `reachable_reasoning` answerable | item coverage | open (#232 = RegMilestone done) |
+| **B4** | Domain-correctness on the **resolved** row (curated dual-mechanism etc. must sit where resolution lands) — couples with D-intel C1 | **G4** outliers (CLIN-02) | in progress (C1) |
+
+**Platform loops (dominant for eval-pass):** A1 merge #215 (closed-world guard +
+count de-bias + provenance legend) · A2 per-claim citations (data is 100% there) ·
+A3 judge majority-vote · A4 response-contract serialization (P1).
+**D-intel (mine):** C1 resolution stability (#236 detector + heal + excluded-absorb
++ `_exact_lookup` excluded-filter) → G4 · C2 eval-runner extension (hard-fail caps +
+prose-scorable specialist dims) → measurement.
