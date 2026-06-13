@@ -124,6 +124,19 @@ grounding + perf root cause; makes the 59-q eval ~2.5h, un-runnable). Fixing in
 fragments to the canonical base before retrieve hydrates. Unblocks clean eval
 measurement + the #215 merge. **(MERGED #243.)**
 
+**Platform (this session), 2026-06-13 — CLAIM H2: per-claim NAMED source-class
+attribution (G1).** A hydrated CTX drug section bundles many field-claims
+(mechanism, company, therapeutic area, supply) into ONE evidence snippet tagged
+with one generic "platform knowledge base" bucket — so synthesis could not
+attribute the mechanism claim (label/MeSH) separately from the company claim
+(drugs@FDA). The SME saw mechanism AND trial counts tagged the same bucket
+(judge G1 2% / source-transparency 2/10). Fix is `services/unified_handler.py`
+only (platform-owned synthesis path; no data-lane seam): a `_FIELD_SOURCE` map +
+`_annotate_section_sources` tags each CTX `KEY:value` field line inline with its
+real source class; `_evidence_source` names the section footer by entity type
+(via the `TYPE:` line) instead of the generic bucket. F6 v2 pack re-run to
+measure the G1 lift. Follows #246 (F6) + #248 (H1).
+
 **Data (data session), 2026-06-13 — CLAIM: DataHub program (layered hybrid).**
 Spec = `docs/SPEC_DATA_HUB.md` (12 loops, 4 phases; ~80% reuse). Delivery model
 chosen with the owner: **layered hybrid**, not one autonomous end-to-end team.

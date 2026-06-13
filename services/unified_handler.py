@@ -84,7 +84,7 @@ def _provenance_footer(evidence_items: list[dict]) -> str:
         return ""
     by_source: dict[str, list[int]] = {}
     for i, it in enumerate(evidence_items, 1):
-        src = _display_source(it.get("source"), (it.get("provenance") or {}).get("predicate"))
+        src = _evidence_source(it)
         by_source.setdefault(src, []).append(i)
     parts = []
     for src, idxs in by_source.items():
@@ -121,6 +121,129 @@ def _display_source(raw_source: str | None, predicate: str | None) -> str:
         return "platform knowledge base"
     # An already-clean connector name (e.g. set by an upstream connector) passes through.
     return raw
+
+
+# H2: a hydrated CTX entity section bundles many field-claims into ONE snippet
+# (e.g. a drug section carries MECHANISM, COMPANY, THERAPEUTIC-AREA, SUPPLY-STATUS).
+# Tagging the whole section with one source ("platform knowledge base") meant the
+# LLM could not attribute the mechanism claim (label/ontology) separately from the
+# company claim (drugs@FDA) — the G1 failure the SME flagged. This maps each CTX
+# serialized field KEY (uppercase, hyphenated — see ctxpack serializer) to the
+# named source class that actually backs that field, so attribution is per-claim.
+_FIELD_SOURCE = {
+    # Drug-entity fields
+    "MECHANISM": "MeSH / curated mechanism",
+    # brand_name is written by several FDA connectors (openFDA labels, Orange Book,
+    # designations, discontinuations) — name the FDA product family, not one of them.
+    "BRAND-NAME": "FDA drug products / labels",
+    "COMPANY": "drugs@FDA registry",
+    "THERAPEUTIC-AREA": "MeSH / curated",
+    "APPROVAL-STATUS": "drugs@FDA registry",
+    "NDA-NUMBER": "drugs@FDA registry",
+    "SUPPLY-STATUS": "FDA drug shortages",
+    # Trial-entity fields
+    "PHASE": "ClinicalTrials.gov",
+    "STATUS": "ClinicalTrials.gov",
+    "ENROLLMENT": "ClinicalTrials.gov",
+    "START-DATE": "ClinicalTrials.gov",
+    "NCT-ID": "ClinicalTrials.gov",
+    # Aggregate counts (company / mechanism sections) are derived, not a source.
+    "DRUG-COUNT": "platform metrics",
+    "TRIAL-COUNT": "platform metrics",
+    "PIPELINE-SCORE": "platform metrics",
+}
+
+# CTX entity sections have no predicate; the section-level label (for the
+# provenance footer) is named by entity type instead of the generic bucket.
+_SECTION_TYPE_SOURCE = {
+    "drug": "drugs@FDA / MeSH (curated)",
+    "trial": "ClinicalTrials.gov",
+    "company": "drugs@FDA / SEC",
+    "mechanism": "MeSH / curated mechanism",
+    "therapeutic_area": "MeSH / curated",
+    "patent": "USPTO PatentsView",
+    "literature": "PubMed",
+    "investigator": "ClinicalTrials.gov",
+}
+
+# Structural CTX lines that name no claim — never tag these with a source.
+_STRUCTURAL_KEYS = {"IDENTIFIER", "TYPE", "NAME", "SRC", "SECTION"}
+
+
+def _annotate_section_sources(content: str) -> str:
+    """Tag each CTX ``KEY:value`` field line with its named source class inline.
+
+    A drug section's MECHANISM line is attributed to label/ontology and its
+    COMPANY line to the FDA registry — so the LLM can name the right source per
+    claim (eval gate G1) instead of one generic bucket for the whole section.
+    Free-text (non ``KEY:value``) content and structural lines pass through
+    untouched.
+
+    Assumes one ``KEY:value`` per line — how the serializer emits hydrated ENTITY
+    sections (verified: one field per line). A multi-KV header line (``K1:v1
+    K2:v2``, which entity sections do not produce) is tagged only with the first
+    key's source; the value text is preserved in full (``partition`` keeps
+    everything after the first ``:``), so this boundary degrades without content
+    loss rather than mangling the line. ``test_annotate_*`` pins both.
+    """
+    if not content or ":" not in content:
+        return content
+    out: list[str] = []
+    for line in content.splitlines():
+        key, sep, _val = line.partition(":")
+        src = _FIELD_SOURCE.get(key.strip()) if sep else None
+        if src and key.strip() not in _STRUCTURAL_KEYS:
+            out.append(f"{line} [source: {src}]")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _evidence_source(it: dict) -> str:
+    """Best named source for an evidence item (for the provenance footer / count).
+
+    Predicate-bearing evidence (PLAN matrix facts) keeps its named connector; a
+    CTX entity section — which has no predicate — is named by entity type rather
+    than the generic 'platform knowledge base' bucket.
+    """
+    prov = it.get("provenance") or {}
+    predicate = prov.get("predicate")
+    if predicate and predicate in _PREDICATE_SOURCE:
+        return _PREDICATE_SOURCE[predicate]
+    if prov.get("source") == "ctx":
+        etype = _ctx_entity_type(prov.get("entity_type"), it.get("content"))
+        if etype in _SECTION_TYPE_SOURCE:
+            return _SECTION_TYPE_SOURCE[etype]
+    return _display_source(it.get("source"), predicate)
+
+
+def _ctx_entity_type(parsed_type: str | None, content: str | None) -> str:
+    """The real entity type of a CTX section. `_parse_section_name` returns the
+    generic "entity" for hydration-by-name sections (named ``ENTITY-DRUG-…``), so
+    fall back to the section's own ``TYPE:`` line when the parsed type isn't a
+    known section type."""
+    etype = (parsed_type or "").lower()
+    if etype in _SECTION_TYPE_SOURCE:
+        return etype
+    for line in (content or "").splitlines():
+        key, sep, val = line.partition(":")
+        if sep and key.strip().upper() == "TYPE":
+            return val.strip().lower()
+    return etype
+
+
+def _snippet_for_evidence(it: dict) -> str:
+    """The LLM-facing snippet string for one evidence item.
+
+    CTX entity sections get per-field inline ``[source:]`` attribution (H2);
+    everything else (PLAN facts, leaders, metrics) keeps the single trailing
+    ``[source: <connector>]`` marker.
+    """
+    prov = it.get("provenance") or {}
+    content = it.get("content") or ""
+    if prov.get("source") == "ctx":
+        return _annotate_section_sources(content)
+    return f"{content} [source: {_display_source(it.get('source'), prov.get('predicate'))}]"
 
 
 def _faers_safety_directive(evidence_items: list[dict]) -> str:
@@ -402,10 +525,7 @@ class UnifiedChatHandler:
         # "[source: <connector>]" is what lets the narrative attribute each claim
         # to a named connector (eval gate G1). The frontend still renders its own
         # citation cards from evidence_items, so this is additive, not a UI change.
-        evidence_snippets = [
-            f"{it['content']} [source: {_display_source(it.get('source'), (it.get('provenance') or {}).get('predicate'))}]"
-            for it in evidence_items
-        ]
+        evidence_snippets = [_snippet_for_evidence(it) for it in evidence_items]
 
         # ── Stage 3: Reason ──
         reasoning = self.pipeline.reason(plan, retrieval)

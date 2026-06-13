@@ -9,7 +9,11 @@ snippet text.
 
 from services.unified_handler import (
     _PREDICATE_SOURCE,
+    _FIELD_SOURCE,
     _display_source,
+    _evidence_source,
+    _annotate_section_sources,
+    _snippet_for_evidence,
     _provenance_footer,
     UnifiedChatHandler,
 )
@@ -92,3 +96,123 @@ def test_predicate_source_map_covers_emitter_predicates():
     for p in ["clinical_trial", "adverse_event", "label_indication", "safety_signal",
               "mechanism_of_action", "phase_transition", "market_event"]:
         assert p in _PREDICATE_SOURCE and _PREDICATE_SOURCE[p]
+
+
+# ── H2: per-claim NAMED source-class attribution (G1) ────────────────
+#
+# A hydrated CTX drug section bundles many field-claims (mechanism, company,
+# therapeutic area, supply) into ONE evidence snippet that got ONE generic
+# "platform knowledge base" tag — so the LLM could not attribute the mechanism
+# claim (label/MeSH) separately from the company claim (drugs@FDA). The SME
+# saw mechanism AND trial counts both tagged the same generic bucket. H2
+# annotates each field line inline with its real source class.
+
+def test_field_source_map_covers_drug_section_fields():
+    # The CTX serializer emits these uppercase hyphenated keys for a drug section.
+    for k in ["MECHANISM", "BRAND-NAME", "COMPANY", "THERAPEUTIC-AREA", "SUPPLY-STATUS"]:
+        assert k in _FIELD_SOURCE and _FIELD_SOURCE[k]
+
+
+def test_annotate_section_sources_tags_each_field_inline():
+    content = "\n".join([
+        "IDENTIFIER:abc-123",
+        "TYPE:drug",
+        "NAME:Tirzepatide",
+        "MECHANISM:Dual GIP/GLP-1 receptor agonist",
+        "COMPANY:ELI LILLY AND COMPANY",
+        "THERAPEUTIC-AREA:Diabetes Mellitus, Type 2",
+        "SUPPLY-STATUS:NORMAL",
+        "SRC:drug_tirzepatide.yaml",
+    ])
+    out = _annotate_section_sources(content)
+    lines = {ln.split(":", 1)[0]: ln for ln in out.splitlines()}
+    # The mechanism claim is attributed to a label/ontology source, not a bucket.
+    assert "[source:" in lines["MECHANISM"]
+    assert "MeSH" in lines["MECHANISM"] or "label" in lines["MECHANISM"].lower()
+    # The company/registry claim is attributed to an FDA registry source.
+    assert "[source:" in lines["COMPANY"]
+    assert "FDA" in lines["COMPANY"]
+    # Mechanism and company resolve to DIFFERENT named sources (the whole point).
+    assert _FIELD_SOURCE["MECHANISM"] != _FIELD_SOURCE["COMPANY"]
+    # Structural lines have no source to attribute → left untouched.
+    for k in ("IDENTIFIER", "TYPE", "NAME", "SRC"):
+        assert "[source:" not in lines[k]
+
+
+def test_annotate_is_noop_for_free_text():
+    content = "Just a free-text snippet without CTX field keys."
+    assert _annotate_section_sources(content) == content
+
+
+def test_annotate_preserves_value_containing_colon():
+    # partition() splits on the FIRST colon only — a value with a colon (e.g. a
+    # dual-target mechanism) must be kept in full, tagged once.
+    content = "MECHANISM:GIP:GLP-1 dual agonist (ratio 1:1)"
+    out = _annotate_section_sources(content)
+    assert "GIP:GLP-1 dual agonist (ratio 1:1)" in out  # no content loss
+    assert out.count("[source:") == 1
+
+
+def test_annotate_multi_kv_line_degrades_without_content_loss():
+    # Entity sections emit one field per line, but if a multi-KV line ever
+    # appears it must not crash or drop content (it's tagged by the first key).
+    content = "BRAND-NAME:Mounjaro COMPANY:ELI LILLY"
+    out = _annotate_section_sources(content)
+    assert "Mounjaro COMPANY:ELI LILLY" in out  # full text preserved
+    assert "[source:" in out
+
+
+def test_snippet_for_ctx_section_gets_per_field_sources_not_one_bucket():
+    item = {
+        "source": "ctx_hydration_by_name",
+        "content": "TYPE:drug\nMECHANISM:GLP-1 receptor agonist\nCOMPANY:NOVO NORDISK INC",
+        "provenance": {"source": "ctx", "entity_type": "drug"},
+    }
+    snippet = _snippet_for_evidence(item)
+    lines = {ln.split(":", 1)[0]: ln for ln in snippet.splitlines()}
+    assert "[source:" in lines["MECHANISM"]
+    assert "[source:" in lines["COMPANY"]
+    assert "MeSH" in lines["MECHANISM"]
+    assert "FDA" in lines["COMPANY"]
+    # The single generic bucket no longer tags the whole section.
+    assert "platform knowledge base" not in snippet
+
+
+def test_snippet_for_matrix_fact_keeps_single_trailing_source():
+    # Non-CTX evidence (a PLAN matrix fact / leader / metrics) keeps the single
+    # trailing [source:] marker — unchanged behaviour.
+    item = {
+        "source": "ClinicalTrials.gov",
+        "content": "47 registered trials",
+        "provenance": {"predicate": "clinical_trial"},
+    }
+    assert _snippet_for_evidence(item) == "47 registered trials [source: ClinicalTrials.gov]"
+
+
+def test_evidence_source_names_ctx_section_by_type_not_generic_bucket():
+    # The footer/section-level label for a CTX drug section is a named class,
+    # not the generic 'platform knowledge base'.
+    item = {"source": "ctx_hydration_by_name",
+            "provenance": {"source": "ctx", "entity_type": "drug"}}
+    label = _evidence_source(item)
+    assert label != "platform knowledge base"
+    assert "FDA" in label or "MeSH" in label
+
+
+def test_evidence_source_still_prefers_predicate_connector():
+    # Predicate-bearing evidence (matrix facts) keeps its named connector.
+    item = {"source": "x", "provenance": {"predicate": "clinical_trial"}}
+    assert _evidence_source(item) == "ClinicalTrials.gov"
+
+
+def test_evidence_source_falls_back_to_content_type_for_entity_sections():
+    # Hydration-by-name sections are named ENTITY-DRUG-… so `_parse_section_name`
+    # yields the generic "entity"; the real type comes from the TYPE: line.
+    item = {
+        "source": "ctx_hydration_by_name",
+        "content": "IDENTIFIER:abc\nTYPE:drug\nNAME:Semaglutide\nMECHANISM:GLP-1 RA",
+        "provenance": {"source": "ctx", "entity_type": "entity"},
+    }
+    label = _evidence_source(item)
+    assert label != "platform knowledge base"
+    assert "FDA" in label or "MeSH" in label
