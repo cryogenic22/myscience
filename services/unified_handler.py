@@ -169,8 +169,9 @@ _COVERAGE_LIMITS: list[tuple[re.Pattern, str, str]] = [
      "and access claims cannot be made and require a named payer + geography + effective date.",
      "SOURCE_COVERAGE_GAP"),
     (re.compile(r"\b(wac|list price|net price|asp|price|pricing|cost per|launch price)\b", re.I),
-     "Only CMS NADAC pricing is ingested — WAC/list/net price, non-US pricing, and per-unit "
-     "cost basis are not available; do not infer a price without a unit basis and effective date.",
+     "Drug pricing (WAC, list, net, ASP) is not reliably available — the only pricing connector "
+     "(CMS NADAC) is frequently sparse or empty, and non-US pricing is not ingested at all; do not "
+     "state or infer a price without verifying coverage, a unit basis, and an effective date.",
      "SOURCE_COVERAGE_GAP"),
     (re.compile(r"\b(biosimilar|purple book|interchangeab\w*)\b", re.I),
      "The FDA Purple Book (biologics/biosimilars) is not ingested — biosimilar competition "
