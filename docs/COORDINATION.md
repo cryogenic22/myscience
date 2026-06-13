@@ -161,8 +161,10 @@ decision quality. The LLM-judge runner `benchmark/pharma_eval.py` (G1-G4 gates +
 Q1-Q4 graded, majority-voted) already exists but ran against the 19-item v1 pack
 and was never wired as a gate. F6 adopts the normalized **41-item `eval_pharma_v2.yaml`**
 (the single machine-readable specialist pack — supersets v1 + embeds the rubric)
-as the default, ratchets the well-formedness test to it, and runs it on the
-post-L0b+#215 system for the first real decision-quality scorecard. **NOTE: the
+as an **opt-in pack via `--eval`** (default stays v1 — promoting the default
+measured bar is an owner decision), adds an additive well-formedness test for it,
+and runs it on the post-L0b+#215 system for the first real decision-quality
+scorecard (scorecard PENDING until the run completes + numbers are pasted). **NOTE: the
 eval pack belongs to the platform eval-harness (`benchmark/`); `eval_pharma_v2.yaml`
 was also added on data-lane PR #238 — #238 should keep only `docs/eval_pass_plan.md`
 and drop the pack to avoid a duplicate. Lane-2 CI wiring of pharma_eval =
