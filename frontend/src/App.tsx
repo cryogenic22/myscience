@@ -77,6 +77,7 @@ function AppRoutes() {
               onBack={() => navigate('/')}
               onSearch={() => navigate('/search')}
               onCI={() => navigate('/ci')}
+              onDataHub={() => navigate('/hub/catalog')}
               initialQuestion={seedQuestion}
             />
           }

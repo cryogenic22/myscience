@@ -315,8 +315,8 @@ building; one PR per loop; **independent `/review-gate` before merge, no self-me
 
 | Loop | What | Depends on | Owner / branch | Status |
 |---|---|---|---|---|
-| **F1** | Catalog Home + Source dossier + DataHub nav entry | D-API-2 (degrade till then) | Frontend `claude/datahub/phase0-lenses` | **built — rebase+review+merge, then add nav** |
-| **F5** | Connect wizard (5 source kinds → register + lifecycle) | **D-API-1** | unclaimed | open — the differentiator, do early |
+| **F1** | Catalog Home + Source dossier + DataHub nav entry | D-API-2 (degrade till then) | Frontend `claude/datahub/f1-finish` | **CLAIMED — rebased on main, nav added (`onDataHub`→`/hub/catalog`), 25 tests green, tsc clean; PR open, awaiting `/review-gate`** |
+| **F5** | Connect wizard (5 source kinds → register + lifecycle) | **D-API-1** | Frontend `claude/datahub/f5-connect-wizard` | **CLAIMED — building against a typed stub (D-API-1 not yet exposed); one-line swap when REST lands** |
 | **F2** | Documents & vectors lens (+ enhance actions) | D-API-3 | unclaimed | open |
 | **F3** | Ontology & data-model lens (read-only map + graph + MeSH) | D-API-4 | unclaimed | open |
 | **F4** | Prompts & packs lens (observational impact — NO A/B platform) | D-API-5 | unclaimed | open |

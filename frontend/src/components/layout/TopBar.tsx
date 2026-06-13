@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Bell, Database, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
+import { Activity, ArrowLeft, Bell, Database, Layers, Moon, Network, Search, Sparkles, Sun } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { PRODUCT_NAME } from '../../brand';
 import { FeedBadge } from '../intelligence/FeedBadge';
@@ -10,6 +10,8 @@ interface TopBarProps {
   onSearch?: () => void;
   /** Jump to the CI cockpit (/ci) — the engagement war-gaming walkthrough. */
   onCI?: () => void;
+  /** Jump to the DataHub Catalog (/hub/catalog) — every connected source at a glance. */
+  onDataHub?: () => void;
   activeTab: TopBarTab;
   onTabChange: (tab: TopBarTab) => void;
   breadcrumb?: string;
@@ -23,7 +25,7 @@ const TABS = [
   { key: 'catalog' as const, label: 'Entity Library', icon: Database },
 ];
 
-export default function TopBar({ onBack, onSearch, onCI, activeTab, onTabChange, breadcrumb }: TopBarProps) {
+export default function TopBar({ onBack, onSearch, onCI, onDataHub, activeTab, onTabChange, breadcrumb }: TopBarProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -92,6 +94,19 @@ export default function TopBar({ onBack, onSearch, onCI, activeTab, onTabChange,
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {onDataHub && (
+            <button
+              type="button"
+              onClick={onDataHub}
+              data-testid="topbar-datahub"
+              className="btn btn-ghost btn-sm hidden sm:flex items-center gap-2"
+              style={{ borderRadius: '8px' }}
+              title="Open DataHub — every connected source, dataset & entity at a glance"
+            >
+              <Layers size={13} />
+              <span style={{ color: 'var(--color-ink-3)' }}>DataHub</span>
+            </button>
+          )}
           {onCI && (
             <button
               type="button"
