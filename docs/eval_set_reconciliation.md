@@ -96,3 +96,29 @@ item with `data_reality.mode ∈ {reachable_reasoning, missing_data, ingested_un
 - `tests/test_pharma_eval_harness.py` — Lane-1 deterministic tests of the scoring
   logic (no LLM, no DB).
 - `benchmark/reports/pharma-eval-baseline.json` — the first honest baseline.
+
+## G1 calibration question for the eval owner (raised 2026-06-11)
+
+Phase 3 ran the harness 6 times (gpt-4o-mini and gpt-4o, with the closed-world
+guard, de-biased inputs, and named-source evidence all in place). **G1
+(provenance) never moved off ~0%.** Diagnosis: no LLM reliably attributes *every*
+factual claim to a named connector *in prose*, even when explicitly instructed and
+given `[source: <connector>]` markers on each snippet. gpt-4o reached G4=100% and
+still failed G1.
+
+This surfaces a calibration question the team should settle:
+
+- **G1 is judged on the narrative prose only.** In the product, provenance renders
+  in the citation panel / evidence cards (the `data.evidence[]` array, each item now
+  carrying a named `source`), which the judge never sees.
+- We have shipped a **deterministic provenance legend** appended to the narrative
+  (`_provenance_footer`): every `[N]` citation → named connector + refresh cadence.
+  This makes provenance attributable in the text the judge does see, without relying
+  on the LLM.
+
+**Decision needed:** should G1 credit (a) the deterministic legend / structured
+`evidence[].source` (provenance the product actually surfaces), or (b) strictly
+require each sentence to name its source inline? If (b), G1 will remain near-0%
+regardless of model — it is asking for something LLMs don't do reliably and the
+product surfaces elsewhere. The platform-side fix (legend + source-tagged evidence)
+is in; the bar's calibration is the team's call.

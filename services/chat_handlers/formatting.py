@@ -299,35 +299,48 @@ def compute_comparison_insights(resolved: list[dict], metrics_comp: dict) -> str
     pa = ma.get("pipeline", {}) if isinstance(ma, dict) else {}
     pb = mb.get("pipeline", {}) if isinstance(mb, dict) else {}
 
-    # Pipeline score ratio
+    # These are COUNTS — proxies for development breadth and time-on-market, not
+    # efficacy, safety or overall strength. They are phrased neutrally on purpose:
+    # the LLM faithfully echoes its input, so framing a count as "X has a stronger
+    # pipeline" or "Y leads" hands the model the count fallacy (eval gate G3) no
+    # matter what the system prompt says. State the number and what it does/doesn't
+    # mean; never declare a winner here.
     score_a = pa.get("pipeline_score", 0) or 0
     score_b = pb.get("pipeline_score", 0) or 0
     if score_a and score_b:
-        if score_a >= score_b:
-            ratio = score_a / score_b if score_b else float("inf")
-            insights.append(f"{a['label']} has a {ratio:.1f}x stronger pipeline score than {b['label']} ({score_a} vs {score_b})")
-        else:
-            ratio = score_b / score_a if score_a else float("inf")
-            insights.append(f"{b['label']} has a {ratio:.1f}x stronger pipeline score than {a['label']} ({score_b} vs {score_a})")
+        insights.append(
+            f"Pipeline score (phase-weighted trial count): {a['label']} {score_a} vs "
+            f"{b['label']} {score_b} — a breadth/maturity metric, NOT a measure of efficacy or strength"
+        )
 
     # Trial volume difference
     trials_a = pa.get("total_trials", 0) or 0
     trials_b = pb.get("total_trials", 0) or 0
     diff = abs(trials_a - trials_b)
     if diff > 0:
-        leader = a["label"] if trials_a > trials_b else b["label"]
-        insights.append(f"{leader} has {diff} more trials ({max(trials_a, trials_b)} vs {min(trials_a, trials_b)})")
+        more = a["label"] if trials_a > trials_b else b["label"]
+        insights.append(
+            f"{more} has {diff} more registered trials in our data "
+            f"({max(trials_a, trials_b)} vs {min(trials_a, trials_b)}) — reflects time-on-market and "
+            f"ingest breadth, not superiority"
+        )
 
-    # Late-stage (Phase 3) leadership
+    # Late-stage (Phase 3) counts — report the numbers, do not crown a leader.
     p3_a = pa.get("p3_count", 0) or 0
     p3_b = pb.get("p3_count", 0) or 0
     if p3_a != p3_b:
-        leader = a["label"] if p3_a > p3_b else b["label"]
-        insights.append(f"{leader} leads in Phase 3 with {max(p3_a, p3_b)} trials vs {min(p3_a, p3_b)}")
+        insights.append(
+            f"Active Phase 3 trials in our data: {a['label']} {p3_a} vs {b['label']} {p3_b} "
+            f"(a count, not a verdict on which programme is stronger)"
+        )
 
     if not insights:
         return ""
-    return "COMPUTED DIFFERENTIALS:\n" + "\n".join(f"- {i}" for i in insights)
+    return (
+        "COMPUTED DIFFERENTIALS (counts only — development breadth/maturity; NOT efficacy, "
+        "safety, or overall strength. Do not rank or declare a winner from these):\n"
+        + "\n".join(f"- {i}" for i in insights)
+    )
 
 
 def build_visualizations(data: Optional[dict]) -> list[dict]:
