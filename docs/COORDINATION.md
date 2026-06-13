@@ -3,7 +3,7 @@
 > **This file is the single living coordination surface.** It supersedes
 > `docs/archive/AGENT_BACKLOG.md` (stale, 2026-05-11, framed backend↔frontend
 > only). If another doc disagrees with this one about lanes or process, this one
-> wins. Last updated: 2026-06-08.
+> wins. Last updated: 2026-06-13.
 
 There are now **three** concurrent agent lanes, not two. The old board assumed a
 single backend agent; it didn't, and two backend sessions sharing one working
@@ -92,5 +92,26 @@ attribution bug; `Decimal` serialize crash in `services/workspace.py:225`.
 **Data (data session):** MeSH ontology fix (descriptors' descendants; shipped on
 main via #190, originally #189). Owns the reassigned substrate loops above. See
 `specs/data_strategy.md` + `specs/SPEC_DATA_001`.
+
+**Data (data session), 2026-06-13 — Helix Loop 1/2 reconciliation + stance-count
+follow-up.** Merged to main: **#227** (Loop 1 — signal polarity `signals.direction`
++ contradiction-aware downward calibration, D4/H-g/OQ3), **#231** (Loop 2a —
+`scenario_probability_history` audit ledger, mig 092, H-b/OQ2), plus #232/#233/#234/#235.
+This PR (`claude/data/scenario-stance-counts`) closes the structured-data gap left by
+those: `calibrate_scenario_prob` computed the stance mix but discarded it, so a
+contradiction-driven move was only recoverable by parsing the note prose. **Mig 094**
+adds `n_supporting`/`n_contradicting` to the *existing* ledger (NOT a 2nd table) +
+`latest_stance_mix()` reader — the structured OQ3 / dossier-`contradicted` (H-d) enabler.
+- **Dup reconciliation (a parallel data session built the same loops):** PRs **#223**
+  (stance math) and **#228** (prob-history backend) are now **dups of merged #227/#231**
+  — being **closed**; **#228** also collided on mig number 092. **#230**'s *backend*
+  (contradiction read) is superseded here; its **frontend** (scenarios timeline +
+  `⚠ Contradicted` badge, `frontend/src/**`, `components/ci/**`) is **not the data lane**
+  → handed to **Platform (CI UI)/Antigravity** — wire `latest_stance_mix()` / the
+  ledger's stance cols onto the scenario read shape. **#224** (source-contracts pack,
+  H-e) is clean data-lane → **merging**. **#222** (canonical-orphan restore) **deferred**
+  pending a prod re-probe (memory: restores may be re-demoted post-#220).
+- **PROTOCOL (stop the re-dup): claim a Helix loop in this §6 BEFORE starting it.**
+  Data lane reserves the next migration number (next = **095**).
 
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).

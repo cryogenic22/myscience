@@ -76,25 +76,18 @@ def _stance(sig: dict, competitive: bool) -> str:
     return "support"
 
 
-def calibrate_scenario_prob(
-    *, prior: float, signals: list[dict], entity_label: str,
-    competitive: bool = False,
-) -> tuple[Optional[float], Optional[str]]:
-    """Pure: re-weight a scenario's prior into a current probability from the
-    signals about its target entity. Returns (current_prob, calibration_note),
-    or (None, None) when there is no weighted evidence (uncalibrated — honest
-    about "no news yet").
+def _calibrate(
+    *, prior: float, signals: list[dict], entity_label: str, competitive: bool,
+) -> tuple[Optional[float], Optional[str], int, int]:
+    """Core calibration → (current_prob, note, n_supporting, n_contradicting).
 
-    Each weighted signal nudges the running probability by its confidence weight:
-    a SUPPORTING signal toward the ceiling, a CONTRADICTING one toward the floor
-    (Loop 1 / OQ3 — a rival's setback can now LOWER a competitive-pressure
-    scenario, not just fail to raise it). Contradictions are surfaced in the note,
-    never averaged away. ``competitive`` marks competitive-pressure scenarios,
-    the only framing where a ``negative`` signal is read as a contradiction.
-    `signals` arrive oldest-first; the last weighted one is the latest mover."""
+    The stance mix is computed HERE so it can be PERSISTED (Loop 1+2 follow-up /
+    OQ3 — surface contradictions as structured data, not only as note prose).
+    ``calibrate_scenario_prob`` is the public 2-tuple wrapper; the DB orchestrator
+    calls this to also get the counts for the probability-history ledger."""
     weighted = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
     if not weighted:
-        return None, None
+        return None, None, 0, 0
 
     current = float(prior)
     n_support = n_contra = 0
@@ -124,6 +117,29 @@ def calibrate_scenario_prob(
         f"{entity_label} since derivation {verb} this scenario from "
         f"{round(prior, 2)} to {current}. "
         f"Latest: \"{headline}\" ({conf}{f', {date_s}' if date_s else ''})."
+    )
+    return current, note, n_support, n_contra
+
+
+def calibrate_scenario_prob(
+    *, prior: float, signals: list[dict], entity_label: str,
+    competitive: bool = False,
+) -> tuple[Optional[float], Optional[str]]:
+    """Pure: re-weight a scenario's prior into a current probability from the
+    signals about its target entity. Returns (current_prob, calibration_note),
+    or (None, None) when there is no weighted evidence (uncalibrated — honest
+    about "no news yet").
+
+    Each weighted signal nudges the running probability by its confidence weight:
+    a SUPPORTING signal toward the ceiling, a CONTRADICTING one toward the floor
+    (Loop 1 / OQ3 — a rival's setback can now LOWER a competitive-pressure
+    scenario, not just fail to raise it). Contradictions are surfaced in the note,
+    never averaged away. ``competitive`` marks competitive-pressure scenarios,
+    the only framing where a ``negative`` signal is read as a contradiction.
+    `signals` arrive oldest-first; the last weighted one is the latest mover."""
+    current, note, _, _ = _calibrate(
+        prior=prior, signals=signals, entity_label=entity_label,
+        competitive=competitive,
     )
     return current, note
 
@@ -158,21 +174,26 @@ _UPDATE_SQL = """
 
 _PROB_HISTORY_INSERT_SQL = """
     INSERT INTO scenario_probability_history
-        (scenario_id, prev_prob, new_prob, delta, triggering_signal_ids, method, note)
-    VALUES (%s, %s, %s, %s, %s::uuid[], %s, %s)
+        (scenario_id, prev_prob, new_prob, delta, triggering_signal_ids, method, note,
+         n_supporting, n_contradicting)
+    VALUES (%s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s)
 """
 
 
-def _record_prob_history(db, scenario_id, prev, new, signal_ids, method, note) -> None:
-    """Append a probability-change row (Loop 2 / OQ2). Never blocks calibration:
-    a missing table or write error is logged, not raised — the audit ledger is an
-    enrichment, the calibration UPDATE is the source of truth."""
+def _record_prob_history(db, scenario_id, prev, new, signal_ids, method, note,
+                         n_supporting: int = 0, n_contradicting: int = 0) -> None:
+    """Append a probability-change row (Loop 2 / OQ2). ``n_supporting`` /
+    ``n_contradicting`` record the STANCE MIX behind the move (OQ3 — a move driven
+    by a contradiction is now structured, not buried in the note). Never blocks
+    calibration: a missing table or write error is logged, not raised — the audit
+    ledger is an enrichment, the calibration UPDATE is the source of truth."""
     delta = (round(float(new) - float(prev), 3)
              if (prev is not None and new is not None) else None)
     try:
         db.execute(_PROB_HISTORY_INSERT_SQL, [
             str(scenario_id), prev, new, delta,
             [str(s) for s in (signal_ids or [])], method, note,
+            int(n_supporting), int(n_contradicting),
         ])
     except Exception:
         logger.warning("prob-history write skipped for scenario %s", scenario_id,
@@ -181,17 +202,40 @@ def _record_prob_history(db, scenario_id, prev, new, signal_ids, method, note) -
 
 def get_scenario_probability_history(db, scenario_id: str) -> list[dict]:
     """The probability time-series for a scenario, newest first — the
-    'why did this move?' answer (as-of / decision-over-time)."""
+    'why did this move?' answer (as-of / decision-over-time). Each row carries the
+    stance mix (n_supporting / n_contradicting) behind that move."""
     try:
         return db.fetch_all(
             "SELECT prev_prob, new_prob, delta, triggering_signal_ids, method, "
-            "note, created_at FROM scenario_probability_history "
+            "note, n_supporting, n_contradicting, created_at "
+            "FROM scenario_probability_history "
             "WHERE scenario_id::text = %s ORDER BY created_at DESC",
             [str(scenario_id)],
         ) or []
     except Exception:
         logger.warning("prob-history read failed for %s", scenario_id, exc_info=True)
         return []
+
+
+def latest_stance_mix(db, scenario_id: str) -> dict:
+    """Stance mix of a scenario's LATEST probability move — the structured answer
+    to "is this scenario currently contradicted?" (OQ3 / dossier ``contradicted``
+    readiness state H-d). Returns {n_supporting, n_contradicting, contradicted};
+    all-zero / contradicted=False when the scenario has never moved or on error.
+    Read-only seam for the API / scenario read-path (Platform / CI surfaces)."""
+    try:
+        row = db.fetch_one(
+            "SELECT n_supporting, n_contradicting FROM scenario_probability_history "
+            "WHERE scenario_id::text = %s ORDER BY created_at DESC LIMIT 1",
+            [str(scenario_id)],
+        )
+    except Exception:
+        logger.warning("stance-mix read failed for %s", scenario_id, exc_info=True)
+        row = None
+    n_sup = int((row or {}).get("n_supporting") or 0)
+    n_con = int((row or {}).get("n_contradicting") or 0)
+    return {"n_supporting": n_sup, "n_contradicting": n_con,
+            "contradicted": n_con > 0}
 
 
 # A competitive-pressure scenario is about a RIVAL ("Competitive pressure:
@@ -251,7 +295,7 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
         except Exception:
             logger.exception("calibrate: signal fetch failed for scenario %s", scn.get("id"))
             continue
-        current, note = calibrate_scenario_prob(
+        current, note, n_sup, n_con = _calibrate(
             prior=float(scn.get("prior_prob") or 0.0),
             signals=list(signals),
             entity_label=t_label,
@@ -281,6 +325,7 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
                     db, scn["id"], prev, current,
                     [s.get("id") for s in signals if s.get("id")],
                     "ewma_calibration", note,
+                    n_supporting=n_sup, n_contradicting=n_con,
                 )
             db.execute(_UPDATE_SQL, [current, note, str(scn["id"])])
             updated += 1
