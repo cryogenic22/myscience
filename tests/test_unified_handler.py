@@ -461,3 +461,20 @@ class TestFullIntegration:
         result = handler.handle("Tell me about nonexistentdrug")
         assert result["narrative"]
         assert result["confidence"] < 0.5
+
+
+class TestCoverageHonestyContract:
+    """H1 — handle() surfaces deterministic coverage limits + review_flags for
+    queries that touch not-ingested sources (eval gate G2 / response contract F1)."""
+
+    def test_payer_query_surfaces_limitations(self, handler):
+        result = handler.handle("Are GLP-1s covered by payers and what is the formulary tier?")
+        data = result["data"]
+        assert data["limitations"], "payer query must surface a coverage limitation"
+        assert "SOURCE_COVERAGE_GAP" in data["review_flags"]
+        assert "Coverage limits" in result["narrative"]
+
+    def test_clinical_query_has_no_false_limitations(self, handler):
+        result = handler.handle("What is the mechanism of action of semaglutide?")
+        assert result["data"]["limitations"] == []
+        assert result["data"]["review_flags"] == []
