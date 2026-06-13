@@ -87,6 +87,8 @@ export interface CatalogHomePageProps {
   onSelectSource: (sourceKey: string) => void;
   onCloseDetail: () => void;
   onRefresh?: () => void;
+  /** Open the Connect-a-source wizard (F5). Omitted ⇒ no entry point rendered. */
+  onConnect?: () => void;
 }
 
 // ── Tones ───────────────────────────────────────────────────────────
@@ -493,7 +495,7 @@ const ALL_TYPES = '__all__';
 const ALL_STATUS = '__all__';
 
 export function CatalogHomePage(props: CatalogHomePageProps) {
-  const { sources, selected, selectedLoading, onSelectSource, onCloseDetail, onRefresh } = props;
+  const { sources, selected, selectedLoading, onSelectSource, onCloseDetail, onRefresh, onConnect } = props;
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES);
   const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUS);
@@ -611,6 +613,26 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
               }}
             >
               Refresh
+            </button>
+          )}
+          {onConnect && (
+            <button
+              type="button"
+              data-action="connect-source"
+              onClick={onConnect}
+              style={{
+                background: 'var(--color-accent)',
+                border: '1px solid var(--color-accent)',
+                borderRadius: 8,
+                color: 'var(--color-surface)',
+                cursor: 'pointer',
+                padding: '4px 12px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              + Connect a source
             </button>
           )}
         </div>
