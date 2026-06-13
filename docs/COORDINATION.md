@@ -154,6 +154,20 @@ loop, interleaved with the eval work per the layered-hybrid claim above.
   endpoint does not exist yet (only entity-level) — the DataHub catalog grid needs
   it (handoff surfaced by the Phase 0 L1 agent).
 
+**Platform (this session), 2026-06-13 — CLAIM F6: land the specialist eval
+runner.** The heuristic `benchmark/scorers.py` only measures mechanics (intent
+match, keyword presence, number-coincidence, citation well-formedness) — NOT
+decision quality. The LLM-judge runner `benchmark/pharma_eval.py` (G1-G4 gates +
+Q1-Q4 graded, majority-voted) already exists but ran against the 19-item v1 pack
+and was never wired as a gate. F6 adopts the normalized **41-item `eval_pharma_v2.yaml`**
+(the single machine-readable specialist pack — supersets v1 + embeds the rubric)
+as the default, ratchets the well-formedness test to it, and runs it on the
+post-L0b+#215 system for the first real decision-quality scorecard. **NOTE: the
+eval pack belongs to the platform eval-harness (`benchmark/`); `eval_pharma_v2.yaml`
+was also added on data-lane PR #238 — #238 should keep only `docs/eval_pass_plan.md`
+and drop the pack to avoid a duplicate. Lane-2 CI wiring of pharma_eval =
+owner-gated (protected `.github/workflows/`).**
+
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
 
 ---

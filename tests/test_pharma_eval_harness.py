@@ -210,7 +210,10 @@ def test_eval_yaml_loads_and_is_well_formed():
     and scorer require — a malformed eval is a vacuous run."""
     spec = load_eval()
     items = spec["items"]
-    assert len(items) == 19
+    # Coverage ratchet: the default specialist pack is now v2 (41 items). Never
+    # silently shrink the gold set below its established size (conservation:
+    # no vacuous green via a quietly-trimmed eval). Growth is fine.
+    assert len(items) >= 41, f"specialist pack shrank to {len(items)} items (floor 41)"
     assert set(spec["connector_state_actual"]) , "connector_state_actual present"
     for it in items:
         assert it.get("question"), f"{it['id']} has a question"
