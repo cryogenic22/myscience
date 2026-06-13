@@ -94,3 +94,68 @@ main via #190, originally #189). Owns the reassigned substrate loops above. See
 `specs/data_strategy.md` + `specs/SPEC_DATA_001`.
 
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
+
+---
+
+## 7. ⛔ STOP-AND-SYNC — two Data sessions collided (2026-06-13)
+
+**What happened.** Two concurrent sessions both acted as the **Data lane** and
+worked the same Helix loops with **no claiming mechanism** → duplicate work + a
+**migration-092 collision** (both authored a `092_*.sql`; prod applied *both*).
+Duplicated loops: contradiction surfacing (#227 merged ↔ #230 open), probability
+history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
+`092_scenario_calibration_history`), signal stance (#227 ↔ #223).
+
+> **Both Data sessions: STOP starting new loops. Read §7.1–§7.4 first, then claim.**
+
+### 7.1 The protocol (binds every Data session)
+1. **One backlog.** §7.3 is the only loop list. Do **not** plan from the
+   build-plan doc or `MEMORY.md` alone — they are not claim-aware.
+2. **Claim before you build.** Before starting a loop, append a line under §7.3
+   CLAIMS (`<loop> — <branch> — <date> — in-flight`) and **commit+push that
+   one-line claim FIRST**. The other session greps CLAIMS before picking. No
+   claim ⇒ unclaimed ⇒ fair game.
+3. **Reserve migrations.** §7.4 is the migration registry. **Reserve the next
+   number here (commit first)** before adding `schema/migrations/NNN_*.sql`.
+   This is exactly what the 092 collision violated.
+4. **Area-split when two Data sessions run concurrently.** **D-ingest** =
+   connectors / emitters / `integration/` / ontology / crosswalk. **D-intel** =
+   intelligence-objects (`scenario_*`, `fact_signals`, `dossier_kb` read) /
+   `benchmark/` / FS-* frontend. Pick a letter at session start; record in CLAIMS.
+5. **Frontend is a distinct deliverable.** The other Data session is
+   backend-only; the FS-* frontend (timeline, contradiction badge, readiness
+   panel) is unclaimed — take it via CLAIMS.
+
+### 7.2 Reconciled state of the collision (authoritative)
+- **MERGED on main — do NOT redo:** #220 canonical-guard, #226 build-plan, #227
+  contradiction/polarity, #231 prob-history (`092_scenario_probability_history`),
+  #232 regulatory-emitter, #233 epistemic-timestamps (`093`), #234 scorecard,
+  #235 OQ1.
+- **This session's open PRs — disposition:** **#224** source-contracts = KEEP
+  (complementary → merge); **#228/#230/#223** = backend DUPS → close, salvage
+  only the unique **frontend** onto the merged backend; **#222** = superseded by
+  #220 (but see the live recurrence below); **#225** = superseded by this §7.
+- **STILL BROKEN (not fixed by #220):** canonical re-demotion **RECURS** — **34
+  names orphaned on prod** (live evidence, 0 active row: valsartan 83, sitagliptin
+  phosphate 80, ivabradine 33…). New fail-loud detector
+  `scripts/check_orphaned_canonicals.py` + Lane-2 invariant
+  (`tests/test_orphaned_canonical_invariant.py`) ship with this change. **Live
+  root-cause diagnosis = D-intel (this session), in progress.**
+
+### 7.3 Backlog — CLAIMS (append before building; commit the claim first)
+| Loop | Owner / branch | Status |
+|---|---|---|
+| Orphaned-canonical detector + Lane-2 invariant | D-intel `claude/data/coord-sync-protocol` | in-flight (this PR) |
+| Diagnose the live re-demotion vector | D-intel | in-flight |
+| Excluded-config absorb (combo-guarded tool ready) | D-intel | **BLOCKED** on canonical stability |
+| FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
+| D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
+| FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
+
+### 7.4 Migration registry (reserve a number here before authoring)
+- `090` fact_governance · `091` crosswalk_records — MERGED.
+- `092` = **`scenario_probability_history`** (#231, MERGED). ⚠️ a duplicate
+  `092_scenario_calibration_history` (#228) also applied to prod — two redundant
+  tables; cleanup debt (close #228 backend, keep one).
+- `093` = `facts_epistemic_timestamps` (#233, MERGED).
+- `094` = **NEXT FREE** — reserve here before use.
