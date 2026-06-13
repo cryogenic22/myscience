@@ -251,8 +251,8 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
 | DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
-| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel — **frontend F5 dependency** | open — high priority |
-| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | D-intel — **frontend F1 dependency** | open |
+| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `GET/POST /hub/onboarding/{id}`) | **Platform** (api/ is platform lane — resolving the seam the data note flagged; thin reads over `connector_taxonomy`) | **built, PR open** — `api/routes/hub.py`, lifecycle enforced server-side; prod probe = 6 seeded types |
+| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | open — next |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
