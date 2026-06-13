@@ -40,25 +40,33 @@ def _is_real_single_drug(name: str) -> bool:
 
 
 def find_orphaned(rows: list[dict], *, min_evidence: int = _MIN_EVIDENCE) -> list[dict]:
-    """Pure: given per-row {name, status, richness}, return the REAL single-drug
-    names that have >= min_evidence live evidence but NO active row holding any
-    of it (the silent-degradation invariant). Junk/combo/placebo names are
-    excluded — they legitimately have no mono canonical.
+    """Pure: given per-row {name, status, richness}, return the REAL drugs (by
+    NORMALIZED name) that have >= min_evidence live evidence but NO active row
+    holding any of it (the silent-degradation invariant).
+
+    Grouping is by the combo-SAFE normalized name (`_norm`): a salt/config row
+    ("furosemide injection", "metformin hcl") rolls up to its base drug, so the
+    invariant asks the right question — "is the DRUG resolvable (an active row
+    exists)?" — not "is every dosage-form string independently active?". The
+    combo-safe normalizer never collapses additive combos, and junk/combo/placebo
+    names are filtered out (they legitimately have no mono canonical).
     """
-    by_name: dict[str, dict] = {}
+    from scripts.consolidate_junk_drug_rows import _norm
+    by_norm: dict[str, dict] = {}
     for r in rows:
-        nm = (r.get("name") or "").lower().strip()
-        if not nm:
+        nm = (r.get("name") or "").strip()
+        if not nm or not _is_real_single_drug(nm):
             continue
-        agg = by_name.setdefault(nm, {"total": 0, "active": 0})
+        key = _norm(nm) or nm.lower()
+        agg = by_norm.setdefault(key, {"total": 0, "active": 0, "label": nm.lower()})
         rich = int(r.get("richness") or 0)
         agg["total"] += rich
         if r.get("status") == "active":
             agg["active"] += rich
     return [
-        {"name": nm, "evidence": a["total"]}
-        for nm, a in by_name.items()
-        if a["total"] >= min_evidence and a["active"] == 0 and _is_real_single_drug(nm)
+        {"name": a["label"], "evidence": a["total"]}
+        for a in by_norm.values()
+        if a["total"] >= min_evidence and a["active"] == 0
     ]
 
 
