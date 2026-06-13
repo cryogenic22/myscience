@@ -78,6 +78,7 @@ class SourceType(str, Enum):
     # Generic DataHub connector kinds (config-driven; the per-source identity
     # lives in the string-keyed `sources` registry, not a bespoke enum member).
     CSV_FILE = "csv_file"
+    RSS = "rss"
 
 
 class RecordType(str, Enum):
