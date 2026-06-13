@@ -185,6 +185,25 @@ owner-gated (protected `.github/workflows/`).**
 
 **Frontend (Claude agent):** general feature/UI board = `docs/PRODUCT_BACKLOG.md`.
 
+**Data (data session), 2026-06-13 — CLAIM L4a: generic `RssConnector`.** Next
+generic connector after L3's `CsvConnector` (#247) — config-driven RSS/Atom feed
+ingestion: point an `RssConfig` at a feed URL, declare the `RecordType` + an
+element→field map, and it emits the universal `RawRecord` with full `Provenance`,
+zero pipeline/schema change (the `BaseConnector` contract is the seam). Additive
+`SourceType.RSS = "rss"`; **no migration**. stdlib `ElementTree` (no new dep;
+`feedparser` is absent) handling both RSS 2.0 and Atom. **NOT a dup of bespoke
+`connectors/news.py`** (hardcoded FDA/Google feeds → EVENT) — this is the generic,
+any-feed→any-type version, same relationship as `CsvConnector` vs bespoke CSV;
+not added to `CONNECTOR_REGISTRY` (instantiated by the onboarding flow).
+- **Why one connector per loop (L4 split into L4a RSS / L4b WebScrape / L4c
+  Warehouse):** the DoD needs RED→GREEN **+ a real prod probe** per connector. RSS
+  is dependency-free + probeable against a live public pharma feed → shippable now.
+  WebScrape needs an HTML/CSS-selector dep (`bs4` is present) + robots handling;
+  Warehouse needs Snowflake/Databricks/BigQuery drivers **+ live credentials** and
+  **cannot be prod-probed here** — bundling all three would force vacuous green on
+  two of them. L3 likewise shipped exactly one connector. L4b/L4c are claimed
+  separately when each can be genuinely proven.
+
 **Data (data session), 2026-06-13 — D-API-1 SHIPPED (MERGED #254).** New
 self-contained `api/routes/hub.py` router exposes the L2 connector-taxonomy +
 onboarding service (`services/connector_taxonomy.py`, #245) over HTTP. Additive
@@ -294,9 +313,9 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub Phase 0 — catalog lenses L1/L1b (CatalogHomePage + live container + `/hub/catalog`) | Frontend agent `claude/datahub/phase0-lenses` | **built, NOT merged — needs `/review-gate`** |
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
-| DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
+| DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel `claude/data/datahub-l4-connectors` | **in-flight (L4a = RSS first)** — generic config-driven `RssConnector` mirroring L3's `CsvConnector`; WebScrape/Warehouse follow as L4b/L4c (deliver-one-at-a-time rationale in §6) |
 | **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel | **MERGED #254** — new `/hub` router; F5-swap handoff in §6 |
-| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` on `/catalog/datasets` rows + `GET /catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | **built, PR open** — derived from dataset_catalog cols; honest null-when-absent, **0-row ⇒ RED**; independent review APPROVE; prod-probed 12 datasets |
+| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` on `/catalog/datasets` rows + `GET /catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | **MERGED #256** — derived from dataset_catalog cols; honest null-when-absent, **0-row ⇒ RED**; independent review APPROVE; prod-probed 12 datasets. ▶ FE wiring follow-up: `CatalogPage.tsx` still proxies `fair_overall←quality_score_avg` + `SourceDetail.fair=null` (stale "no endpoint" comment) — wire to per-row `fair_overall` + `GET /catalog/datasets/{key}/fair` |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
@@ -371,4 +390,6 @@ building; one PR per loop; **independent `/review-gate` before merge, no self-me
 owed **D-API-1** (REST for the L2 connector-taxonomy/onboarding service) +
 **D-API-2** (source-level FAIR) first — they unblock F5 + F1 (tracked in §7.3).
 **D-API-1 is now MERGED (#254)** → F5 can swap off its stub (see the §6 handoff).
-**D-API-2 is still open** → F1 degrades the FAIR ring until it lands.
+**D-API-2 is now MERGED (#256)** → F1 can wire the real FAIR ring (`fair_overall`
+per `/catalog/datasets` row + `GET /catalog/datasets/{key}/fair`); the catalog
+page currently still proxies `quality_score_avg` + nulls the dossier breakdown.
