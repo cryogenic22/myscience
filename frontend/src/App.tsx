@@ -7,6 +7,7 @@ import WorkspacePage from './pages/WorkspacePage';
 import SearchPage from './pages/SearchPage';
 import NewWorkspace from './pages/NewWorkspace';
 import ConnectorsPage from './pages/ConnectorsPage';
+import CatalogPage from './pages/CatalogPage';
 import CIPage from './pages/CIPage';
 import DossierPage from './pages/DossierPage';
 import KbqDossierPage from './pages/KbqDossierPage';
@@ -76,6 +77,7 @@ function AppRoutes() {
               onBack={() => navigate('/')}
               onSearch={() => navigate('/search')}
               onCI={() => navigate('/ci')}
+              onDataHub={() => navigate('/hub/catalog')}
               initialQuestion={seedQuestion}
             />
           }
@@ -94,6 +96,7 @@ function AppRoutes() {
         />
         <Route path="/newui" element={<NewWorkspace key="newui" />} />
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
+        <Route path="/hub/catalog" element={<CatalogPage key="hub-catalog" />} />
         <Route path="/ci" element={<CIPage key="ci" />} />
         <Route path="/ci/dossier/:entityType/:entityId" element={<KbqDossierPage key="kbq-dossier" />} />
         <Route path="/dossier/:entityType/:slug" element={<DossierPage key="dossier" />} />

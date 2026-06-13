@@ -19,6 +19,7 @@ interface WorkspacePageProps {
   onBack: () => void;
   onSearch?: () => void;
   onCI?: () => void;
+  onDataHub?: () => void;
   initialQuestion?: string | null;
   initialTab?: Tab;
 }
@@ -44,6 +45,7 @@ export default function WorkspacePage({
   onBack,
   onSearch,
   onCI,
+  onDataHub,
   initialQuestion,
   initialTab = 'chat',
 }: WorkspacePageProps) {
@@ -223,6 +225,7 @@ export default function WorkspacePage({
         onBack={onBack}
         onSearch={onSearch}
         onCI={onCI}
+        onDataHub={onDataHub}
         activeTab={activeTab}
         onTabChange={tab => {
           if (tab === 'search') { onSearch?.(); return; }
