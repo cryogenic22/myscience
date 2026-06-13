@@ -135,12 +135,17 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
   (complementary → merge); **#228/#230/#223** = backend DUPS → close, salvage
   only the unique **frontend** onto the merged backend; **#222** = superseded by
   #220 (but see the live recurrence below); **#225** = superseded by this §7.
-- **STILL BROKEN (not fixed by #220):** canonical re-demotion **RECURS** — **34
-  names orphaned on prod** (live evidence, 0 active row: valsartan 83, sitagliptin
-  phosphate 80, ivabradine 33…). New fail-loud detector
-  `scripts/check_orphaned_canonicals.py` + Lane-2 invariant
-  (`tests/test_orphaned_canonical_invariant.py`) ship with this change. **Live
-  root-cause diagnosis = D-intel (this session), in progress.**
+- **Canonical re-demotion — DIAGNOSED (13 Jun):** #220 (merged **21:42**) DID fix
+  the vector; the orphaning observed at **21:46** was the *old* `consolidate_drugs`
+  running its last cycle inside Railway's deploy window — not a bypass of the new
+  guard. The 34 orphans were accumulated **residue**, not ongoing corruption. A
+  best-effort restore healed the real-drug canonicals (**34 → 3** real orphans;
+  ivabradine/valsartan/sitagliptin-phosphate/finerenone back to `active`). The
+  fail-loud detector `scripts/check_orphaned_canonicals.py` (junk/combo-filtered,
+  real-drug-only) + Lane-2 invariant `tests/test_orphaned_canonical_invariant.py`
+  ship here and will catch any **new** recurrence. Residual 3 (sitagliptin,
+  furosemide injection, metformin hcl) = targeted restore/absorb — the
+  combo-guarded absorb tool is ready, HELD per §7.3.
 
 ### 7.3 Backlog — CLAIMS (append before building; commit the claim first)
 | Loop | Owner / branch | Status |

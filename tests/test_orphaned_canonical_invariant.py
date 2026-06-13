@@ -47,6 +47,17 @@ def test_zero_evidence_excluded_row_is_not_flagged():
     assert find_orphaned(rows) == []
 
 
+def test_junk_combo_placebo_names_are_not_orphans():
+    # a combo / placebo arm / junk name legitimately has NO mono canonical — it
+    # must not trip the invariant (else the gate is noisy and gets ignored).
+    rows = [
+        {"name": "valsartan and hydrochlorothiazide", "status": "excluded", "richness": 88},
+        {"name": "placebo (matching)", "status": "excluded", "richness": 285},
+        {"name": "valsartan/amlodipine 160/5 mg", "status": "excluded", "richness": 17},
+    ]
+    assert find_orphaned(rows) == []
+
+
 # ── Lane-2: live prod invariant (skipped without a DB) ──────────────────────
 
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"),

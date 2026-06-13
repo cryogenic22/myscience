@@ -25,12 +25,25 @@ from db import Database
 _MIN_EVIDENCE = 10
 
 
-def find_orphaned(rows: list[dict], *, min_evidence: int = _MIN_EVIDENCE) -> list[dict]:
-    """Pure: given per-row {name, status, richness}, return the names that have
-    >= min_evidence live evidence but NO active row holding any of it.
+def _is_real_single_drug(name: str) -> bool:
+    """Only a REAL single-drug name can be 'orphaned' — a combo, placebo arm, or
+    junk row legitimately has no mono canonical, so it must not trip the invariant.
+    Reuses the shared junk classifier so the detector and the consolidator agree."""
+    from scripts.clean_drug_names import _should_exclude
+    from scripts.consolidate_junk_drug_rows import _ADDITIVE_COMBO_RE, _NON_DRUG_TOKENS
+    low = (name or "").strip().lower()
+    if not low or low in _NON_DRUG_TOKENS:
+        return False
+    if "/" in low or _ADDITIVE_COMBO_RE.search(low):  # combo — not a mono canonical
+        return False
+    return not _should_exclude(name)
 
-    `rows` is every drug row (any status). A name is orphaned when its total
-    live evidence clears the floor yet the sum over ACTIVE rows is zero.
+
+def find_orphaned(rows: list[dict], *, min_evidence: int = _MIN_EVIDENCE) -> list[dict]:
+    """Pure: given per-row {name, status, richness}, return the REAL single-drug
+    names that have >= min_evidence live evidence but NO active row holding any
+    of it (the silent-degradation invariant). Junk/combo/placebo names are
+    excluded — they legitimately have no mono canonical.
     """
     by_name: dict[str, dict] = {}
     for r in rows:
@@ -45,7 +58,7 @@ def find_orphaned(rows: list[dict], *, min_evidence: int = _MIN_EVIDENCE) -> lis
     return [
         {"name": nm, "evidence": a["total"]}
         for nm, a in by_name.items()
-        if a["total"] >= min_evidence and a["active"] == 0
+        if a["total"] >= min_evidence and a["active"] == 0 and _is_real_single_drug(nm)
     ]
 
 
