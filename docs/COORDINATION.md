@@ -166,11 +166,24 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 - `094` = `scenario_prob_history_stance_counts` (#237, MERGED).
 - `095` = **NEXT FREE** — reserve here before use.
 
-### 7.5 Eval-pass loops (data-team share — how we pass the specialist eval)
-Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238). Pasted
-eval (`eval_pharma_v1`, 19 cases): 5% item-pass; gates **G1 provenance 5% / G2
-closed-world-honesty 10%** / G3 68% / G4 domain-correct 90%; reachable_reasoning
-**0%**. **KEY REFRAME (prod-probed): the eval fails in SYNTHESIS, not the
+### 7.5 Eval-pass loops (data-team share — how we pass the evals)
+Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238).
+
+**There are TWO eval suites — and they AGREE on the fix (read this to avoid cross-talk):**
+| Suite | Runner / file | Latest | Scoring | Weakest |
+|---|---|---|---|---|
+| **General live-eval** (the standing CI bar) | `benchmark/live_eval.py` → `eval-20260613` | **73.4%** (59 q) | 0–1 per dimension, averaged | **citation 59.3%, factual 56.1%**; intent `general` 49.5% |
+| **Pharma specialist** (the harsher rigor bar) | `benchmark/pharma_eval.py` → `eval_pharma_v1.yaml` | **5% item-pass** | binary gates (ALL must pass) + graded | **G1 provenance 5%, G2 honesty 10%** (G3 68 / G4 90) |
+| Comprehensive (target) | `eval_pharma_v2.yaml` (#238) | not yet run | gates today + specialist model (target) | — |
+
+**Both point to the SAME root cause: provenance/citation + factual grounding in
+SYNTHESIS** (general `citation 59.3% / factual 56.1%` == specialist `G1 5%`). And the
+general eval's **E0x cluster is ENTITY RESOLUTION** (E07 Januvia grounding 0.2, E01
+"semaglutude" typo, E09 sema+tirz) → maps to **C1** (resolution stability) + **B4**
+(resolved-row correctness). Its **G0x cluster** (factual 0.0) → synthesis **A1/A2**.
+
+So `eval_pharma_v1` (5%): gates **G1 provenance 5% / G2 closed-world-honesty 10%** /
+G3 68% / G4 domain-correct 90%; reachable_reasoning **0%**. **KEY REFRAME (prod-probed): the eval fails in SYNTHESIS, not the
 substrate** — facts already carry provenance at **100%** (15047/15048
 `source_doc_id` → 12,395 evidence_records) and answers are 90% correct, so G1/G2
 are a *surfacing* (cite + hedge) problem = **platform**, not data.
