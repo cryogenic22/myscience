@@ -131,7 +131,7 @@ function toDetail(p: DatasetProfile, quality: QualityBreakdown | null): SourceDe
   };
 }
 
-export default function CatalogPage() {
+export default function CatalogPage({ onConnect }: { onConnect?: () => void } = {}) {
   const [sources, setSources] = useState<CatalogSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -269,6 +269,7 @@ export default function CatalogPage() {
       onSelectSource={openSource}
       onCloseDetail={closeDetail}
       onRefresh={load}
+      onConnect={onConnect}
     />
   );
 }

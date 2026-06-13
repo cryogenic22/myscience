@@ -97,7 +97,10 @@ function AppRoutes() {
         />
         <Route path="/newui" element={<NewWorkspace key="newui" />} />
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
-        <Route path="/hub/catalog" element={<CatalogPage key="hub-catalog" />} />
+        <Route
+          path="/hub/catalog"
+          element={<CatalogPage key="hub-catalog" onConnect={() => navigate('/hub/connect')} />}
+        />
         <Route
           path="/hub/connect"
           element={

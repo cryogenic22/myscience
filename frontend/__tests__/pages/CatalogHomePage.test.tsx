@@ -139,6 +139,20 @@ describe('CatalogHomePage — catalog home grid', () => {
     fireEvent.click(card);
     expect(onSelectSource).toHaveBeenCalledWith('pubmed');
   });
+
+  it('renders a "Connect a source" entry that fires onConnect (F5 discoverability)', () => {
+    const onConnect = vi.fn();
+    const { container } = setup({ onConnect });
+    const btn = container.querySelector('[data-action="connect-source"]') as HTMLElement;
+    expect(btn).not.toBeNull();
+    fireEvent.click(btn);
+    expect(onConnect).toHaveBeenCalled();
+  });
+
+  it('omits the Connect entry when no onConnect is provided', () => {
+    const { container } = setup();
+    expect(container.querySelector('[data-action="connect-source"]')).toBeNull();
+  });
 });
 
 describe('CatalogHomePage — search + filter', () => {
