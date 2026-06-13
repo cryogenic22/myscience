@@ -75,6 +75,9 @@ class SourceType(str, Enum):
     OPEN_TARGETS = "open_targets"
     USER_DOCUMENT = "user_document"
     USER_URL = "user_url"
+    # Generic DataHub connector kinds (config-driven; the per-source identity
+    # lives in the string-keyed `sources` registry, not a bespoke enum member).
+    CSV_FILE = "csv_file"
 
 
 class RecordType(str, Enum):
