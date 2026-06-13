@@ -478,9 +478,74 @@ class EntityTagRequest(BaseModel):
 # ── Endpoints ──
 
 
+# ── D-API-2: source-level FAIR aggregate ─────────────────────────────
+#
+# The frontend Catalog grid (F1) renders a per-dataset FAIR ring; per-entity FAIR
+# exists but there was no dataset-level number. This derives one from the
+# dataset_catalog columns the ETL already maintains. It is a *derived ingest-
+# health composite, NOT a formal FAIR audit*: every dimension is null when its
+# input is absent (never coerced to 0/100 — honest degradation), and the
+# composite is the weighted mean of only the present dimensions.
+
+def _license_openness(license_name: str | None) -> float | None:
+    """Reusability proxy from the license string. None when unknown (no coercion)."""
+    if not license_name:
+        return None
+    low = license_name.lower()
+    if any(t in low for t in ("public domain", "cc0", "cc-by", "open data", "open access")):
+        return 1.0
+    if any(t in low for t in ("nlm", "terms of use", "cc-by-nc", "attribution")):
+        return 0.7  # reusable with terms
+    return 0.4
+
+
+def _dataset_fair(row: dict) -> tuple[float | None, dict, float | None]:
+    """Return (fair_overall, by_dimension, freshness_days) for one dataset row.
+
+    Dimensions map to real dataset_catalog columns; a dimension is null when its
+    column is null/absent and is then EXCLUDED from the composite (so a partially
+    profiled dataset is scored honestly on what's known, not penalised for gaps).
+    """
+    compl = row.get("completeness_pct")
+    quality = row.get("quality_score_avg")
+    rc = row.get("row_count")
+    is_empty = rc is not None and rc == 0
+    dims = {
+        "completeness": {
+            # completeness of zero rows is vacuous (100% of nothing) — null it out
+            # so it cannot prop up an empty dataset's score. float() guards a
+            # Decimal column (symmetry with quality below; durable across schema).
+            "value": None if is_empty else ((float(compl) / 100.0) if compl is not None else None),
+            "weight": 0.35, "explanation": "fraction of expected fields populated",
+        },
+        "quality": {
+            "value": float(quality) if quality is not None else None,
+            "weight": 0.30, "explanation": "mean data-quality score of sampled records",
+        },
+        "accessibility": {
+            "value": (1.0 if (rc or 0) > 0 else 0.0) if rc is not None else None,
+            "weight": 0.20, "explanation": "data has actually landed (0 rows ⇒ not accessible)",
+        },
+        "license_openness": {
+            "value": _license_openness(row.get("license_name")),
+            "weight": 0.15, "explanation": "how freely the source license permits reuse",
+        },
+    }
+    if is_empty:
+        # Conservation: a 0-row dataset is RED regardless of structural metadata —
+        # it delivers no data, so the overall ring is 0.0, not a license-propped score.
+        return 0.0, dims, row.get("freshness_days")
+    present = [(d["value"], d["weight"]) for d in dims.values() if d["value"] is not None]
+    composite = (
+        round(sum(v * w for v, w in present) / sum(w for _, w in present), 3)
+        if present else None
+    )
+    return composite, dims, row.get("freshness_days")
+
+
 @router.get("/datasets")
 def list_datasets(db: Database = Depends(get_db)):
-    """List all datasets from the dataset catalog with quality metrics."""
+    """List all datasets from the dataset catalog with quality + FAIR metrics."""
     try:
         rows = db.fetch_all(
             """
@@ -499,7 +564,42 @@ def list_datasets(db: Database = Depends(get_db)):
     if not rows:
         rows = _compute_dataset_stats(db)
 
+    # D-API-2: attach the derived FAIR composite to each row for the grid ring.
+    for r in rows:
+        try:
+            r["fair_overall"], _, _ = _dataset_fair(r)
+        except Exception:
+            r["fair_overall"] = None
+
     return {"datasets": rows, "count": len(rows)}
+
+
+@router.get("/datasets/{source_key}/fair")
+def dataset_fair(source_key: str, db: Database = Depends(get_db)):
+    """Source-level FAIR breakdown for a dataset (D-API-2) — composite + the
+    per-dimension values behind it, for the F1 dossier ring. 404 if unknown."""
+    try:
+        row = db.fetch_one(
+            """
+            SELECT dataset_name, row_count, license_name, quality_score_avg,
+                   completeness_pct, freshness_days
+            FROM dataset_catalog WHERE dataset_name = %s
+            """,
+            [source_key],
+        )
+    except Exception:
+        row = None
+    if not row:
+        raise HTTPException(404, f"Unknown dataset: {source_key}")
+    composite, dims, freshness_days = _dataset_fair(row)
+    return {
+        "source_key": source_key,
+        "fair_overall": composite,
+        "by_dimension": dims,
+        "freshness_days": freshness_days,
+        "note": "derived ingest-health composite from dataset_catalog metrics — "
+                "not a formal FAIR audit; dimensions are null when not yet profiled",
+    }
 
 
 @router.get("/datasets/{source_key}/profile")

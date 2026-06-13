@@ -296,7 +296,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
 | DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
 | **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel | **MERGED #254** — new `/hub` router; F5-swap handoff in §6 |
-| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | D-intel — **frontend F1 dependency** | open |
+| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` on `/catalog/datasets` rows + `GET /catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | **built, PR open** — derived from dataset_catalog cols; honest null-when-absent, **0-row ⇒ RED**; independent review APPROVE; prod-probed 12 datasets |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
