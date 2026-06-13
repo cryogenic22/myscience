@@ -23,9 +23,23 @@ from db import Database
 
 logger = logging.getLogger(__name__)
 
+# Legacy Socrata endpoint (DEAD — CMS migrated to the DKAN portal in 2025/26).
+# Kept only as a back-compat label; live data now comes from the DKAN CSV below.
 NADAC_API_URL = "https://data.medicaid.gov/resource/4j6z-xnwq.json"
+
+# DKAN metastore: NADAC is published as one dataset per year ("NADAC (National
+# Average Drug Acquisition Cost) <year>"); each year's distribution is the latest
+# WEEKLY CSV snapshot. We resolve the current-year CSV download URL dynamically —
+# the filename carries the week's date and changes weekly, so never hardcode it.
+NADAC_DKAN_SEARCH = "https://data.medicaid.gov/api/1/search/"
+NADAC_DATASET_PREFIX = "NADAC (National Average Drug Acquisition Cost)"
+# medicaid.gov bot-blocks default UAs (same lesson as the news feed, #229).
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 DEFAULT_PAGE_SIZE = 1000
-DEFAULT_LIMIT = 5000
+# A weekly NADAC snapshot is ~28k NDCs; default high enough to ingest the full
+# current price list (the scheduled post-task pulls all of it, idempotently).
+DEFAULT_LIMIT = 50000
 
 
 # ── Parsing helpers ──
@@ -80,20 +94,50 @@ def extract_drug_name(ndc_description: str) -> str:
     return name
 
 
-def parse_nadac_record(record: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Parse a single NADAC API record into a drug_pricing row.
+def _norm_keys(record: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a NADAC record's keys to canonical lowercase_underscore, so the
+    same parser handles BOTH the DKAN CSV headers ("NDC", "NADAC Per Unit",
+    "Effective Date", "Pricing Unit", "As of Date") and the legacy Socrata JSON
+    keys (already lowercase_underscore). Back-compat: a Socrata record passes
+    through unchanged."""
+    return {k.strip().lower().replace(" ", "_"): v for k, v in record.items()}
 
-    Returns None if the record has missing critical fields (no price).
+
+def _parse_nadac_date(value: Any) -> Optional["date"]:
+    """Parse a NADAC date from any of the formats the source uses:
+    ISO ("2026-03-15T00:00:00.000" / "2026-03-15", legacy Socrata) or
+    US "MM/DD/YYYY" (DKAN CSV). Returns None if unparseable (never raises)."""
+    if not value:
+        return None
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
+        except (ValueError, AttributeError):
+            continue
+    try:
+        return datetime.fromisoformat(s.replace("T00:00:00.000", "")).date()
+    except (ValueError, AttributeError):
+        return None
+
+
+def parse_nadac_record(record: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Parse a single NADAC record (DKAN CSV row OR legacy Socrata JSON) into a
+    drug_pricing row. Returns None if the record has no usable price.
+
+    The effective date is the price's "Effective Date" (when this NDC's price
+    last changed) — the right history key. Legacy Socrata records carry only
+    "as_of_date" (publication date), so we fall back to it for back-compat.
     """
-    ndc = record.get("ndc", "")
-    description = record.get("ndc_description", "")
-    price_str = record.get("nadac_per_unit")
-    as_of_date = record.get("as_of_date", "")
-    pricing_unit = record.get("pricing_unit", "EA")
-    classification = record.get("classification_for_rate_setting", "")
+    r = _norm_keys(record)
+    ndc = r.get("ndc", "")
+    description = r.get("ndc_description", "")
+    price_str = r.get("nadac_per_unit")
+    pricing_unit = r.get("pricing_unit") or "EA"
+    classification = r.get("classification_for_rate_setting", "")
 
     # Skip records without price
-    if not price_str:
+    if price_str in (None, "", "N/A"):
         return None
 
     try:
@@ -101,17 +145,9 @@ def parse_nadac_record(record: dict[str, Any]) -> Optional[dict[str, Any]]:
     except (ValueError, TypeError):
         return None
 
-    # Parse effective date
-    effective_date = None
-    if as_of_date:
-        try:
-            # API returns ISO format: "2026-03-15T00:00:00.000"
-            effective_date = datetime.fromisoformat(as_of_date.replace("T00:00:00.000", "")).date()
-        except (ValueError, AttributeError):
-            try:
-                effective_date = datetime.strptime(as_of_date[:10], "%Y-%m-%d").date()
-            except (ValueError, AttributeError):
-                pass
+    # Effective Date (price validity) is the history key; fall back to As of Date
+    # (publication) for legacy Socrata records that lack an effective_date column.
+    effective_date = _parse_nadac_date(r.get("effective_date") or r.get("as_of_date"))
 
     # Map pricing unit
     unit_map = {"EA": "per unit", "GM": "per gram", "ML": "per ml"}
@@ -222,31 +258,101 @@ def match_drug_name(db: Database, drug_name: str) -> Optional[str]:
     return None
 
 
-def fetch_nadac_page(offset: int = 0, page_size: int = DEFAULT_PAGE_SIZE,
-                     since_date: str = "2026-01-01") -> list[dict]:
-    """Fetch one page of NADAC data from the CMS API."""
+def resolve_current_nadac_csv_url(year: Optional[int] = None,
+                                  *, session=None) -> Optional[str]:
+    """Resolve the current-year NADAC dataset's latest CSV download URL from the
+    CMS DKAN metastore. The weekly filename changes, so we never hardcode it.
+
+    Returns None if no dataset/CSV is found (caller treats as a soft no-data run,
+    not a crash). Falls back to the previous year (handles early January, before
+    the new year's first weekly file is published)."""
     import requests
+    session = session or requests
+    target_year = year or datetime.now(timezone.utc).year
+    for candidate_year in (target_year, target_year - 1):
+        title = f"{NADAC_DATASET_PREFIX} {candidate_year}"
+        try:
+            resp = session.get(
+                NADAC_DKAN_SEARCH,
+                params={"fulltext": f"NADAC {candidate_year}", "page-size": 30},
+                headers={"User-Agent": _BROWSER_UA}, timeout=30,
+            )
+            resp.raise_for_status()
+            results = resp.json().get("results") or {}
+            items = results.values() if isinstance(results, dict) else results
+        except Exception as e:
+            logger.warning("NADAC DKAN search failed for %s: %s", candidate_year, e)
+            continue
+        for item in items:
+            if (item.get("title") or "").strip() != title:
+                continue
+            for dist in item.get("distribution") or []:
+                d = dist.get("data", dist)
+                url = d.get("downloadURL") or d.get("accessURL")
+                if url and str(url).lower().endswith(".csv"):
+                    logger.info("NADAC current CSV (%s): %s", candidate_year, url)
+                    return url
+    logger.warning("NADAC: no current-year CSV distribution found via DKAN")
+    return None
 
-    params = {
-        "$where": f"as_of_date > '{since_date}'",
-        "$limit": str(page_size),
-        "$offset": str(offset),
-        "$order": "as_of_date DESC",
-    }
 
-    resp = requests.get(NADAC_API_URL, params=params, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+def fetch_nadac_rows(since: Optional[datetime] = None, *,
+                     limit: int = DEFAULT_LIMIT, session=None) -> list[dict]:
+    """Download the current weekly NADAC CSV snapshot and return raw row dicts
+    (CSV headers preserved; parse_nadac_record normalizes them). Bounded by
+    `limit`; `since` keeps only rows whose Effective Date is on/after it."""
+    import csv
+    import requests
+    session = session or requests
+
+    url = resolve_current_nadac_csv_url(session=session)
+    if not url:
+        return []
+    try:
+        # Stream + stop at `limit`: the weekly CSV is ~28k rows / multi-MB, so we
+        # avoid loading it all into memory and close the connection once we have
+        # enough (a bounded pull downloads only what it reads).
+        resp = session.get(url, headers={"User-Agent": _BROWSER_UA},
+                           timeout=120, stream=True)
+        resp.raise_for_status()
+        # iter_lines(decode_unicode=True) yields bytes unless an encoding is set
+        # (the server often omits the charset) — pin UTF-8 so csv gets str.
+        resp.encoding = resp.encoding or "utf-8"
+        lines = resp.iter_lines(decode_unicode=True)
+    except Exception as e:
+        logger.error("NADAC CSV download failed (%s): %s", url, e)
+        return []
+
+    rows: list[dict] = []
+    try:
+        reader = csv.DictReader(lines)
+        for raw in reader:
+            if since is not None:
+                eff = _parse_nadac_date(raw.get("Effective Date") or raw.get("effective_date"))
+                if eff is not None and eff < since.date():
+                    continue
+            rows.append(raw)
+            if len(rows) >= limit:
+                break
+    finally:
+        resp.close()
+    logger.info("NADAC: read %d rows from %s", len(rows), url)
+    return rows
 
 
 def store_pricing_record(db: Database, record: dict[str, Any], drug_id: Optional[str]) -> None:
-    """Insert a single pricing record into drug_pricing."""
+    """Insert a pricing record into drug_pricing, idempotently.
+
+    ON CONFLICT on the history key (ndc_code, price_type, effective_date,
+    source_api) DO NOTHING — re-pulling an unchanged weekly snapshot is a no-op;
+    only a genuinely new (NDC, effective_date) lands a new history row (mig 095)."""
     db.execute(
         """
         INSERT INTO drug_pricing
             (drug_id, drug_name, ndc_code, price_type, unit_price, unit,
              currency, country, source_api, source_url, effective_date)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (ndc_code, price_type, effective_date, source_api) DO NOTHING
         """,
         [
             drug_id,
@@ -265,20 +371,22 @@ def store_pricing_record(db: Database, record: dict[str, Any], drug_id: Optional
 
 
 def fetch_nadac(db: Database, limit: int = DEFAULT_LIMIT,
-                dry_run: bool = False, since_date: str = "2026-01-01") -> dict:
-    """Fetch latest NADAC prices and store in drug_pricing table.
+                dry_run: bool = False, since_date: Optional[str] = None) -> dict:
+    """Fetch the current weekly NADAC snapshot and store in drug_pricing.
 
     Args:
         db: Database connection.
         limit: Maximum total records to fetch.
         dry_run: If True, parse and match but don't write to DB.
-        since_date: Only fetch prices after this date.
+        since_date: Optional 'YYYY-MM-DD'. The NADAC file is a SNAPSHOT of all
+            current prices, so by default (None) we ingest the full snapshot and
+            let the idempotent upsert dedupe — filtering by Effective Date would
+            wrongly drop prices that are current but last changed before the date.
 
     Returns:
         Summary dict with counts of fetched, matched, stored, skipped records.
     """
     stats = {
-        "pages_fetched": 0,
         "raw_records": 0,
         "parsed": 0,
         "matched": 0,
@@ -287,33 +395,18 @@ def fetch_nadac(db: Database, limit: int = DEFAULT_LIMIT,
         "skipped_no_price": 0,
     }
 
-    offset = 0
-    all_parsed: list[dict] = []
-
-    while offset < limit:
-        page_size = min(DEFAULT_PAGE_SIZE, limit - offset)
+    since_dt = None
+    if since_date:
         try:
-            raw_records = fetch_nadac_page(offset=offset, page_size=page_size,
-                                           since_date=since_date)
-        except Exception as e:
-            logger.error("Failed to fetch NADAC page at offset %d: %s", offset, e)
-            break
+            since_dt = datetime.strptime(since_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except (ValueError, AttributeError):
+            since_dt = None
 
-        stats["pages_fetched"] += 1
-        stats["raw_records"] += len(raw_records)
-
-        if not raw_records:
-            break
-
-        parsed = parse_nadac_response(raw_records)
-        stats["parsed"] += len(parsed)
-        stats["skipped_no_price"] += len(raw_records) - len(parsed)
-        all_parsed.extend(parsed)
-
-        offset += page_size
-
-        if len(raw_records) < page_size:
-            break  # Last page
+    raw_records = fetch_nadac_rows(since=since_dt, limit=limit)
+    stats["raw_records"] = len(raw_records)
+    all_parsed = parse_nadac_response(raw_records)
+    stats["parsed"] = len(all_parsed)
+    stats["skipped_no_price"] = len(raw_records) - len(all_parsed)
 
     # Match and store
     for record in all_parsed:

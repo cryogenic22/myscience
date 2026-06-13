@@ -281,7 +281,7 @@ class TestFetchNADAC:
             }
         ]
 
-        with patch("scripts.fetch_nadac_pricing.fetch_nadac_page", return_value=mock_page):
+        with patch("scripts.fetch_nadac_pricing.fetch_nadac_rows", return_value=mock_page):
             stats = fetch_nadac(db, limit=10, dry_run=True)
 
         assert stats["parsed"] == 1
@@ -305,7 +305,7 @@ class TestFetchNADAC:
             }
         ]
 
-        with patch("scripts.fetch_nadac_pricing.fetch_nadac_page", return_value=mock_page):
+        with patch("scripts.fetch_nadac_pricing.fetch_nadac_rows", return_value=mock_page):
             stats = fetch_nadac(db, limit=10, dry_run=False)
 
         assert stats["stored"] == 1
@@ -320,12 +320,90 @@ class TestFetchNADAC:
 
         db = MockDB()
 
-        with patch("scripts.fetch_nadac_pricing.fetch_nadac_page", return_value=[]):
+        with patch("scripts.fetch_nadac_pricing.fetch_nadac_rows", return_value=[]):
             stats = fetch_nadac(db, limit=10, dry_run=False)
 
         assert stats["raw_records"] == 0
         assert stats["parsed"] == 0
         assert stats["stored"] == 0
+
+
+# ============================================================
+# TestDKANCsvSource — the live DKAN portal path (Socrata is dead)
+# ============================================================
+
+class TestDKANCsvSource:
+    """The current NADAC source: per-year DKAN datasets → weekly CSV snapshot."""
+
+    def test_parses_dkan_csv_row(self):
+        """A real DKAN CSV row (Title-Case headers) parses correctly — the field
+        names differ from the legacy Socrata JSON keys."""
+        from scripts.fetch_nadac_pricing import parse_nadac_record
+
+        row = {
+            "NDC Description": "METFORMIN HCL 500MG TABLETS",
+            "NDC": "00093031101",
+            "NADAC Per Unit": "0.02345",
+            "Effective Date": "12/17/2025",
+            "Pricing Unit": "EA",
+            "As of Date": "01/07/2026",
+            "Classification for Rate Setting": "G",
+        }
+        rec = parse_nadac_record(row)
+        assert rec is not None
+        assert rec["ndc_code"] == "00093031101"
+        assert rec["unit_price"] == pytest.approx(0.02345)
+        # Effective Date (price validity), NOT As of Date (publication)
+        assert rec["effective_date"] == date(2025, 12, 17)
+        assert "metformin" in rec["drug_name"].lower()
+        assert rec["source_api"] == "cms_nadac"
+
+    def test_legacy_socrata_row_still_parses(self):
+        """Back-compat: a legacy Socrata-key record is unchanged."""
+        from scripts.fetch_nadac_pricing import parse_nadac_record
+        rec = parse_nadac_record({
+            "ndc": "00093031101", "ndc_description": "METFORMIN HCL 500MG TABLETS",
+            "nadac_per_unit": "0.02345", "as_of_date": "2026-03-15T00:00:00.000",
+            "pricing_unit": "EA",
+        })
+        assert rec is not None and rec["effective_date"] == date(2026, 3, 15)
+
+    def test_resolve_current_csv_url_from_dkan(self):
+        """Resolver finds the current-year dataset's CSV downloadURL."""
+        from scripts.fetch_nadac_pricing import resolve_current_nadac_csv_url
+        from datetime import datetime, timezone
+        yr = datetime.now(timezone.utc).year
+
+        class _Resp:
+            def raise_for_status(self): pass
+            def json(self):
+                return {"results": {"x": {
+                    "title": f"NADAC (National Average Drug Acquisition Cost) {yr}",
+                    "distribution": [
+                        {"data": {"format": "csv",
+                                  "downloadURL": f"https://download.medicaid.gov/data/nadac-{yr}.csv"}},
+                    ],
+                }}}
+
+        class _Session:
+            def get(self, url, params=None, headers=None, timeout=None):
+                return _Resp()
+
+        url = resolve_current_nadac_csv_url(session=_Session())
+        assert url == f"https://download.medicaid.gov/data/nadac-{yr}.csv"
+
+    def test_store_is_idempotent_on_conflict(self):
+        """The history INSERT carries ON CONFLICT DO NOTHING (mig 095) — re-pulling
+        an unchanged weekly snapshot must not duplicate rows."""
+        from scripts.fetch_nadac_pricing import store_pricing_record
+        db = MockDB()
+        store_pricing_record(db, {
+            "drug_name": "Metformin", "ndc_code": "00093031101", "price_type": "nadac",
+            "unit_price": 0.0234, "unit": "per unit", "currency": "USD", "country": "US",
+            "source_api": "cms_nadac", "source_url": "x", "effective_date": date(2025, 12, 17),
+        }, drug_id="d1")
+        sql, _ = db.executed[0]
+        assert "on conflict" in sql.lower() and "do nothing" in sql.lower()
 
 
 # ============================================================
