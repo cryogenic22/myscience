@@ -51,6 +51,7 @@ _DEFAULT_WEIGHT = 0.35
 _ALPHA = 0.30
 
 _CEIL = 0.95
+_FLOOR = 0.05
 _MAX_SIGNALS = 50  # bound the per-scenario evidence window
 
 # Backwards-compatible alias for any external reader of the old name.
@@ -61,41 +62,84 @@ def _weight(confidence_tier: Optional[str]) -> float:
     return CORROBORATION_WEIGHT.get((confidence_tier or "").lower(), _DEFAULT_WEIGHT)
 
 
-def calibrate_scenario_prob(
-    *, prior: float, signals: list[dict], entity_label: str,
-) -> tuple[Optional[float], Optional[str]]:
-    """Pure: re-weight a scenario's prior into a current probability from the
-    CORROBORATING signals about its target entity. Returns (current_prob,
-    calibration_note), or (None, None) when there is no corroborating evidence
-    (scenario stays uncalibrated — honest about "no news yet").
+def _stance(sig: dict, competitive: bool) -> str:
+    """Whether a signal SUPPORTS or CONTRADICTS its scenario.
 
-    Each corroborating signal nudges the running probability toward the ceiling
-    proportionally to its confidence weight (confirmed fully, disputed not at
-    all). The result is monotonically ≥ prior: this loop measures evidence
-    accumulation, never refutation (see CORROBORATION_WEIGHT note). `signals`
-    are expected pre-filtered to those that arrived AFTER derivation, oldest
-    first; the last corroborating one is cited as the latest mover.
-    """
-    corroborating = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
-    if not corroborating:
-        return None, None
+    Stance = signal polarity × scenario direction. The crisp, defensible case is
+    a competitive-pressure scenario (the threat is a RIVAL being strong): a
+    ``negative``-on-rival signal (setback, failed readout) is evidence the threat
+    receded → CONTRADICTS. Outside that framing we do NOT guess a contradiction
+    (a negative focal signal often SUPPORTS a risk scenario), so everything else
+    SUPPORTS — preserving the prior corroboration-only behaviour."""
+    if competitive and (sig.get("direction") or "").lower() == "negative":
+        return "contradict"
+    return "support"
+
+
+def _calibrate(
+    *, prior: float, signals: list[dict], entity_label: str, competitive: bool,
+) -> tuple[Optional[float], Optional[str], int, int]:
+    """Core calibration → (current_prob, note, n_supporting, n_contradicting).
+
+    The stance mix is computed HERE so it can be PERSISTED (Loop 1+2 follow-up /
+    OQ3 — surface contradictions as structured data, not only as note prose).
+    ``calibrate_scenario_prob`` is the public 2-tuple wrapper; the DB orchestrator
+    calls this to also get the counts for the probability-history ledger."""
+    weighted = [s for s in signals if _weight(s.get("confidence_tier")) > 0]
+    if not weighted:
+        return None, None, 0, 0
 
     current = float(prior)
-    for sig in corroborating[:_MAX_SIGNALS]:
+    n_support = n_contra = 0
+    for sig in weighted[:_MAX_SIGNALS]:
         w = _weight(sig.get("confidence_tier"))
-        current = current + w * _ALPHA * (_CEIL - current)  # monotonic toward ceiling
+        if _stance(sig, competitive) == "contradict":
+            current = current - w * _ALPHA * (current - _FLOOR)  # toward floor
+            n_contra += 1
+        else:
+            current = current + w * _ALPHA * (_CEIL - current)   # toward ceiling
+            n_support += 1
 
-    current = round(min(_CEIL, max(float(prior), current)), 3)
+    current = round(min(_CEIL, max(_FLOOR, current)), 3)
 
-    latest = corroborating[-1]
-    n = len(corroborating)
+    latest = weighted[-1]
     headline = (latest.get("headline") or "").strip()
     conf = (latest.get("confidence_tier") or "unrated")
     date_s = str(latest.get("created_at") or "")[:10]
+    parts = []
+    if n_support:
+        parts.append(f"{n_support} corroborating")
+    if n_contra:
+        parts.append(f"{n_contra} contradicting")
+    verb = "raised" if current >= float(prior) else "lowered"
     note = (
-        f"{n} corroborating signal{'s' if n != 1 else ''} on {entity_label} since "
-        f"derivation raised this scenario from {round(prior, 2)} to {current}. "
+        f"{' and '.join(parts)} signal{'s' if (n_support + n_contra) != 1 else ''} on "
+        f"{entity_label} since derivation {verb} this scenario from "
+        f"{round(prior, 2)} to {current}. "
         f"Latest: \"{headline}\" ({conf}{f', {date_s}' if date_s else ''})."
+    )
+    return current, note, n_support, n_contra
+
+
+def calibrate_scenario_prob(
+    *, prior: float, signals: list[dict], entity_label: str,
+    competitive: bool = False,
+) -> tuple[Optional[float], Optional[str]]:
+    """Pure: re-weight a scenario's prior into a current probability from the
+    signals about its target entity. Returns (current_prob, calibration_note),
+    or (None, None) when there is no weighted evidence (uncalibrated — honest
+    about "no news yet").
+
+    Each weighted signal nudges the running probability by its confidence weight:
+    a SUPPORTING signal toward the ceiling, a CONTRADICTING one toward the floor
+    (Loop 1 / OQ3 — a rival's setback can now LOWER a competitive-pressure
+    scenario, not just fail to raise it). Contradictions are surfaced in the note,
+    never averaged away. ``competitive`` marks competitive-pressure scenarios,
+    the only framing where a ``negative`` signal is read as a contradiction.
+    `signals` arrive oldest-first; the last weighted one is the latest mover."""
+    current, note, _, _ = _calibrate(
+        prior=prior, signals=signals, entity_label=entity_label,
+        competitive=competitive,
     )
     return current, note
 
@@ -112,7 +156,7 @@ _SCENARIOS_SQL = """
 
 # Signals about the focal entity that arrived AFTER the scenario was derived.
 _SIGNALS_SQL = """
-    SELECT id, confidence_tier, impact_tier, headline, created_at
+    SELECT id, confidence_tier, impact_tier, headline, direction, created_at
       FROM signals
      WHERE primary_entity_type = %s
        AND primary_entity_id = %s
@@ -127,6 +171,71 @@ _UPDATE_SQL = """
        SET current_prob = %s, calibration_note = %s
      WHERE id::text = %s
 """
+
+_PROB_HISTORY_INSERT_SQL = """
+    INSERT INTO scenario_probability_history
+        (scenario_id, prev_prob, new_prob, delta, triggering_signal_ids, method, note,
+         n_supporting, n_contradicting)
+    VALUES (%s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s)
+"""
+
+
+def _record_prob_history(db, scenario_id, prev, new, signal_ids, method, note,
+                         n_supporting: int = 0, n_contradicting: int = 0) -> None:
+    """Append a probability-change row (Loop 2 / OQ2). ``n_supporting`` /
+    ``n_contradicting`` record the STANCE MIX behind the move (OQ3 — a move driven
+    by a contradiction is now structured, not buried in the note). Never blocks
+    calibration: a missing table or write error is logged, not raised — the audit
+    ledger is an enrichment, the calibration UPDATE is the source of truth."""
+    delta = (round(float(new) - float(prev), 3)
+             if (prev is not None and new is not None) else None)
+    try:
+        db.execute(_PROB_HISTORY_INSERT_SQL, [
+            str(scenario_id), prev, new, delta,
+            [str(s) for s in (signal_ids or [])], method, note,
+            int(n_supporting), int(n_contradicting),
+        ])
+    except Exception:
+        logger.warning("prob-history write skipped for scenario %s", scenario_id,
+                       exc_info=True)
+
+
+def get_scenario_probability_history(db, scenario_id: str) -> list[dict]:
+    """The probability time-series for a scenario, newest first — the
+    'why did this move?' answer (as-of / decision-over-time). Each row carries the
+    stance mix (n_supporting / n_contradicting) behind that move."""
+    try:
+        return db.fetch_all(
+            "SELECT prev_prob, new_prob, delta, triggering_signal_ids, method, "
+            "note, n_supporting, n_contradicting, created_at "
+            "FROM scenario_probability_history "
+            "WHERE scenario_id::text = %s ORDER BY created_at DESC",
+            [str(scenario_id)],
+        ) or []
+    except Exception:
+        logger.warning("prob-history read failed for %s", scenario_id, exc_info=True)
+        return []
+
+
+def latest_stance_mix(db, scenario_id: str) -> dict:
+    """Stance mix of a scenario's LATEST probability move — the structured answer
+    to "is this scenario currently contradicted?" (OQ3 / dossier ``contradicted``
+    readiness state H-d). Returns {n_supporting, n_contradicting, contradicted};
+    all-zero / contradicted=False when the scenario has never moved or on error.
+    Read-only seam for the API / scenario read-path (Platform / CI surfaces)."""
+    try:
+        row = db.fetch_one(
+            "SELECT n_supporting, n_contradicting FROM scenario_probability_history "
+            "WHERE scenario_id::text = %s ORDER BY created_at DESC LIMIT 1",
+            [str(scenario_id)],
+        )
+    except Exception:
+        logger.warning("stance-mix read failed for %s", scenario_id, exc_info=True)
+        row = None
+    n_sup = int((row or {}).get("n_supporting") or 0)
+    n_con = int((row or {}).get("n_contradicting") or 0)
+    return {"n_supporting": n_sup, "n_contradicting": n_con,
+            "contradicted": n_con > 0}
 
 
 # A competitive-pressure scenario is about a RIVAL ("Competitive pressure:
@@ -186,23 +295,38 @@ def calibrate_engagement_scenarios(db, engagement_id: str) -> int:
         except Exception:
             logger.exception("calibrate: signal fetch failed for scenario %s", scn.get("id"))
             continue
-        current, note = calibrate_scenario_prob(
+        current, note, n_sup, n_con = _calibrate(
             prior=float(scn.get("prior_prob") or 0.0),
             signals=list(signals),
             entity_label=t_label,
+            competitive=(scn.get("name") or "").strip().startswith(_COMPETITIVE_PREFIX),
         )
+        prev = scn.get("current_prob")
+        prev_r = round(float(prev), 3) if prev is not None else None
         if current is None:
             # No corroborating evidence now. If the scenario carries a stale
             # current_prob from a prior run, clear it back to uncalibrated so the
             # loop stays fully idempotent (reflects today's evidence, not history).
-            if scn.get("current_prob") is not None:
+            if prev is not None:
                 try:
+                    # Record the reversion to uncalibrated BEFORE the clear (OQ2).
+                    _record_prob_history(db, scn["id"], prev, None, [],
+                                         "evidence_lapsed", None)
                     db.execute(_UPDATE_SQL, [None, None, str(scn["id"])])
                     updated += 1
                 except Exception:
                     logger.exception("calibrate: clear failed for scenario %s", scn.get("id"))
             continue
         try:
+            # Append a history row only on a genuine change (keeps the ledger
+            # idempotent: re-running with the same evidence writes nothing).
+            if prev_r != current:
+                _record_prob_history(
+                    db, scn["id"], prev, current,
+                    [s.get("id") for s in signals if s.get("id")],
+                    "ewma_calibration", note,
+                    n_supporting=n_sup, n_contradicting=n_con,
+                )
             db.execute(_UPDATE_SQL, [current, note, str(scn["id"])])
             updated += 1
         except Exception:

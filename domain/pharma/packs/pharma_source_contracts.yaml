@@ -1,0 +1,244 @@
+# pharma_source_contracts.yaml — Helix domain pack #2 of 5.
+#
+# Purpose (from docs/raw_notes.md §4 + COORDINATION §7.1 / loop D-contracts):
+#   Every connector must be justified by the OBJECT it can produce — not
+#   "we connected PubMed" but "PubMed emits publication_claim / endpoint_result
+#   / safety facts at peer-reviewed trust." This pack makes that a CONTRACT:
+#   per source class → trust tier, must-capture fields, and the governed
+#   predicates it MAY emit (with the fact_class that keeps a corporate claim,
+#   an observed signal and a reference fact distinct).
+#
+# Enforced (tests/test_source_contracts.py, Lane-1, DB-free):
+#   - every REGISTERED connector (connectors.CONNECTOR_REGISTRY) has an
+#     `active` contract here — no ungoverned source;
+#   - every `may_emit.predicate` of an active contract is a REAL predicate
+#     (services.dossier_kb._PREDICATE_DOMAIN) — no phantom/vacuous declaration;
+#   - required fields present; trust_tier and fact_class from the closed sets.
+#   `planned` contracts capture demand (raw_notes Priority 2/3 — payer, RWD)
+#   and are roadmap, not yet wired; they are exempt from the predicate check.
+
+pack:
+  id: pharma.source_contracts.v0_1
+  name: Pharma Source Contracts
+  domain: pharma_intelligence
+  owner: data_steward
+  status: draft
+  version: 0.1
+
+# Highest-trust first. A fact's confidence and review burden inherit from here.
+trust_tiers:
+  regulatory_primary:   { rank: 1, note: "FDA/EMA approvals, labels, Orange Book — authoritative on what may be claimed, where." }
+  registry_primary:     { rank: 2, note: "ClinicalTrials.gov / EU CTR — authoritative on trial design/status." }
+  peer_reviewed:        { rank: 2, note: "PubMed/PMC, journals — evidence, but watch extension/subgroup/post-hoc." }
+  reference_ontology:   { rank: 3, note: "MeSH/ChEMBL/PubChem/Open Targets — curated reference, not events." }
+  corporate_filing:     { rank: 3, note: "SEC filings — corporate CLAIMS, not observed market facts." }
+  pricing_reference:    { rank: 3, note: "NADAC/CMS ASP — list/acquisition price; not net/rebated." }
+  trade_press:          { rank: 4, note: "News — creates a SIGNAL, not an approved fact, unless it cites primary evidence." }
+
+# Default fact_class meanings (services.facts_ledger.FACT_CLASSES):
+#   reference = curated/ontology · corporate = self-reported (filing/label/trial)
+#   signal = observed event/safety · inferred = derived (graph/competition).
+
+source_contracts:
+
+  # ── Regulatory ──────────────────────────────────────────────────────────
+  fda_orange_book:
+    status: active
+    source_class: regulatory
+    trust_tier: regulatory_primary
+    steward: "FDA Orange Book"
+    must_capture: [application_number, patent_number, patent_expiry_date, exclusivity]
+    default_fact_class: corporate
+    may_emit:
+      - { predicate: patent_event, fact_class: corporate }
+
+  openfda_labels:
+    status: active
+    source_class: regulatory
+    trust_tier: regulatory_primary
+    steward: "openFDA (SPL labels)"
+    must_capture: [set_id, indication, boxed_warning, label_date]
+    default_fact_class: corporate
+    may_emit:
+      - { predicate: label_indication, fact_class: corporate }
+      - { predicate: safety_signal,    fact_class: signal }
+
+  ema:
+    status: active
+    source_class: regulatory
+    trust_tier: regulatory_primary
+    steward: "EMA / EPAR"
+    must_capture: [product_number, indication, approval_date, market]
+    default_fact_class: corporate
+    may_emit:
+      - { predicate: regulatory_approval, fact_class: corporate }
+      - { predicate: approval_event,      fact_class: corporate }
+
+  fda_shortages:
+    status: active
+    source_class: regulatory
+    trust_tier: regulatory_primary
+    steward: "FDA Drug Shortages"
+    must_capture: [drug, shortage_status, effective_date]
+    default_fact_class: signal
+    may_emit:
+      - { predicate: supply_disruption, fact_class: signal }
+
+  # ── Clinical registries ─────────────────────────────────────────────────
+  clinical_trials_gov:
+    status: active
+    source_class: registry
+    trust_tier: registry_primary
+    steward: "ClinicalTrials.gov"
+    must_capture: [nct_id, sponsor, phase, status, intervention, comparator, endpoint, start_date]
+    default_fact_class: corporate
+    may_emit:
+      - { predicate: clinical_trial,   fact_class: corporate }
+      - { predicate: phase_transition, fact_class: corporate }
+      - { predicate: discontinuation,  fact_class: corporate }
+      - { predicate: approval_event,   fact_class: corporate }
+
+  openfda_faers:
+    status: active
+    source_class: registry
+    trust_tier: registry_primary
+    steward: "openFDA FAERS"
+    must_capture: [drug, reaction, serious, report_count]
+    # FAERS is spontaneous reporting — no denominator/causality (PV discipline,
+    # see services/fact_emitters/adverse_events.py); med-error PTs are filtered.
+    default_fact_class: signal
+    may_emit:
+      - { predicate: adverse_event, fact_class: signal }
+
+  # ── Literature ──────────────────────────────────────────────────────────
+  pubmed:
+    status: active
+    source_class: literature
+    trust_tier: peer_reviewed
+    steward: "PubMed"
+    must_capture: [pmid, publication_type, linked_trial_ids, evidence_level]
+    default_fact_class: reference
+    may_emit:
+      - { predicate: key_publication, fact_class: reference }
+      - { predicate: disease_evidence, fact_class: reference }
+
+  pmc:
+    status: active
+    source_class: literature
+    trust_tier: peer_reviewed
+    steward: "PubMed Central (full text)"
+    must_capture: [pmcid, linked_trial_ids, evidence_level]
+    default_fact_class: reference
+    may_emit:
+      - { predicate: key_publication, fact_class: reference }
+
+  # ── Corporate filings / news ────────────────────────────────────────────
+  sec_edgar:
+    status: active
+    source_class: filing
+    trust_tier: corporate_filing
+    steward: "SEC EDGAR (10-K/10-Q/8-K)"
+    # A company saying "we expect rapid uptake" is a corporate CLAIM, not an
+    # observed market fact — kept distinct via fact_class (raw_notes §4.4).
+    must_capture: [cik, form_type, period, forward_looking_flag]
+    default_fact_class: corporate
+    may_emit:
+      - { predicate: revenue,        fact_class: corporate }
+      - { predicate: sales_guidance, fact_class: corporate }
+      - { predicate: ma_deal,        fact_class: corporate }
+      - { predicate: market_event,   fact_class: signal }
+
+  pharma_news:
+    status: active
+    source_class: news
+    trust_tier: trade_press
+    steward: "Pharma news aggregation"
+    # News creates a SIGNAL, not an approved fact, unless it cites primary
+    # evidence (raw_notes §4.5).
+    must_capture: [publisher, published_at, primary_source_link, affected_entity]
+    default_fact_class: signal
+    may_emit:
+      - { predicate: market_event,      fact_class: signal }
+      - { predicate: competitor_launch, fact_class: signal }
+
+  # ── Pricing (reference; net/rebate is NOT here) ─────────────────────────
+  nadac:
+    status: active
+    source_class: pricing
+    trust_tier: pricing_reference
+    steward: "CMS NADAC"
+    must_capture: [ndc, unit_price, effective_date]
+    default_fact_class: reference
+    # NADAC is acquisition cost; a PricingEmitter is the D2 loop (not yet wired)
+    # — the predicates exist in the ledger routing, emission is pending.
+    emitter_status: pending
+    may_emit:
+      - { predicate: wac_usd_monthly, fact_class: reference }
+      - { predicate: net_price,       fact_class: inferred }
+
+  # ── Reference / ontology (enrichment — spine, not ledger events) ────────
+  mesh_ontology:
+    status: active
+    source_class: ontology
+    trust_tier: reference_ontology
+    steward: "NLM MeSH"
+    must_capture: [descriptor_ui, tree_number]
+    default_fact_class: reference
+    may_emit:
+      - { predicate: mechanism_of_action, fact_class: reference }
+
+  chembl:
+    status: active
+    source_class: ontology
+    trust_tier: reference_ontology
+    steward: "EMBL-EBI ChEMBL"
+    must_capture: [chembl_id, target_chembl_id, activity_type, standard_value]
+    default_fact_class: reference
+    may_emit:
+      - { predicate: target_activity,     fact_class: reference }
+      - { predicate: mechanism_of_action, fact_class: reference }
+
+  pubchem:
+    status: active
+    source_class: ontology
+    trust_tier: reference_ontology
+    steward: "PubChem"
+    enrichment_only: true   # populates molecular identity columns; emits no ledger facts
+    must_capture: [pubchem_cid, canonical_smiles, inchi_key]
+    default_fact_class: reference
+    may_emit: []
+
+  open_targets:
+    status: active
+    source_class: ontology
+    trust_tier: reference_ontology
+    steward: "Open Targets"
+    enrichment_only: true   # genetic target-disease associations; emitter not yet wired
+    must_capture: [target_id, disease_id, association_score]
+    default_fact_class: reference
+    may_emit: []
+
+  # ══ PLANNED (demand, not yet connected) — raw_notes Priority 2/3 ═════════
+  cms_formulary:
+    status: planned
+    source_class: payer
+    trust_tier: regulatory_primary
+    demand: "Payer access is often the game for launch wargames (raw_notes §4.6 / Priority 2)."
+    must_capture: [payer, plan, formulary_tier, prior_authorisation, step_therapy, effective_date, covered_lives]
+    proposed_predicates: [formulary_status, prior_authorisation, step_edit, coverage_restriction]
+
+  icer:
+    status: planned
+    source_class: payer
+    trust_tier: peer_reviewed
+    demand: "HTA / value framework evidence for access narrative (raw_notes §4.6)."
+    must_capture: [product, indication, value_assessment, evidence_rating, report_date]
+    proposed_predicates: [hta_decision]
+
+  rwd_claims:
+    status: planned
+    source_class: rwd
+    trust_tier: reference_ontology
+    demand: "Uptake/switch/persistence — the market does not behave like a label (raw_notes §4.8)."
+    must_capture: [starts, switches, persistence, channel_source, period]
+    proposed_predicates: [uptake_signal, switching_signal, persistence_fact, channel_signal]

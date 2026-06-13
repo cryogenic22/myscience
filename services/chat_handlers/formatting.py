@@ -94,6 +94,10 @@ def _resolve_drug_richest(clean_name: str, db: Database) -> Optional[dict]:
     status_filter = (
         "  AND d.record_status IS DISTINCT FROM 'merged' "
         "  AND d.record_status IS DISTINCT FROM 'superseded' "
+        # 'excluded' = entity-extraction junk quarantined by the junk-row
+        # consolidation; must never win resolution (a junk look-alike like
+        # 'semaglutide or tirzepatide' otherwise resolves the query 'tirzepatide').
+        "  AND d.record_status IS DISTINCT FROM 'excluded' "
     )
     try:
         # Exact match on generic_name or brand_name (score 1.0).
