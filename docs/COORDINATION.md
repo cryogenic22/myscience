@@ -35,7 +35,7 @@ Anything in `specs/archive/` is **history**, not current intent. Don't plan from
 |---|---|---|
 | **Platform / Harness** | backend session "platform" | harness + CI gates (`tests/test_conservation_gates.py`, `test_schema_completeness.py` **ceilings**, `test_backend_smoke_manifest.py`, `protected-surface.txt`, `.github/workflows/`, `scripts/connector_health.py`, `scripts/gen_codeowners.py`); **agentic orchestration** (`services/agent/`, `services/unified_handler.py`, `services/ctx_pipeline.py`); **API layer** (`api/`); **domain/chat** (`api/routes/chat.py`, `services/chat_handlers/`, `domain/`); **search** (`services/search.py`, `services/ask_engine.py`); **benchmark/live-eval** (`benchmark/`); **dossier read-path** (`resolve_asset` in `services/dossier_kb.py`); **CI UI** (`apps/ci/`, frontend CI surfaces) |
 | **Data / Sensing / Intelligence** | backend session "data" | the layer that surfaces data + sensing: `connectors/`, `integration/` (ETL), `services/fact_emitters/`, `services/fact_signals.py`, `services/scenario_calibration.py`, `services/intelligence_feed.py`, ontology, `schema/migrations/`, `scheduler/config.py` (`FRESHNESS_SLA_DAYS`), and `services/dossier_kb.py` **`_PREDICATE_DOMAIN` / fact-routing** |
-| **Frontend** | Antigravity | `frontend/` (app shell, design system, non-CI surfaces) |
+| **Frontend** | Frontend (Claude) agent | `frontend/` (app shell, design system, non-CI surfaces, the **DataHub Catalog UX**) |
 
 **Roadmap reassignment (2026-06-08):** the platform session's old data-substrate
 loops — connector status-emission, ChEMBL `bioactivities.drug_id` linkage,
@@ -170,7 +170,21 @@ was also added on data-lane PR #238 — #238 should keep only `docs/eval_pass_pl
 and drop the pack to avoid a duplicate. Lane-2 CI wiring of pharma_eval =
 owner-gated (protected `.github/workflows/`).**
 
-**Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
+**Frontend (Claude agent):** general feature/UI board = `docs/PRODUCT_BACKLOG.md`.
+
+**▶▶ FRONTEND: build the DataHub Catalog UX — `docs/SPEC_DATA_HUB_FRONTEND.md`.**
+That spec is your full build brief: the lens model, **what already exists to reuse**
+(the live `/catalog` + `/sources` APIs, the `api.ts` clients, `DataCatalogPanel`/
+`SourceProfileCard`/`SourcesPage`, and the **F1 work already on branch
+`claude/datahub/phase0-lenses`** — rebase+review+merge it, don't rebuild), the
+**backend dependencies** you need from the data lane (§4: D-API-1 connector-types/
+onboarding endpoints, D-API-2 source-level FAIR, …), and the **F1–F7 build loops**
+with acceptance criteria. The **vision/north-star** is `docs/SPEC_DATA_HUB.md` (the
+spec) + **`docs/data-hub-vision.html`** (open in a browser — the visual walkthrough).
+**How to build:** reuse-first (anti-slop), CSS-variable styling (no Tailwind color
+utilities / no dynamic class names — the v4/Railway gotcha), TDD, honest degradation
+for missing fields, claim your loop in §7.6 first, independent `/review-gate` before
+merge (no self-merge), `App.tsx`/shell edits additive + minimal.
 
 ---
 
@@ -233,9 +247,13 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
-| DataHub Phase 0 — catalog lenses L1–L1d (read-only UI over existing APIs) | dedicated agent `claude/datahub/phase0-lenses` | in-flight — review-gated, no self-merge |
-| DataHub Phase 1+ — **L2 connector-type taxonomy + onboarding lifecycle** (mig 096) | D-intel `claude/data/datahub-l2-taxonomy` | in-flight |
-| DataHub Phase 1+ — L3 generic connectors → … L12 | D-intel — interleaved w/ eval loops | open — sequential |
+| DataHub Phase 0 — catalog lenses L1/L1b (CatalogHomePage + live container + `/hub/catalog`) | Frontend agent `claude/datahub/phase0-lenses` | **built, NOT merged — needs `/review-gate`** |
+| DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
+| DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
+| DataHub L4 — Rss / WebScrape / Warehouse connectors | D-intel — interleaved w/ eval loops | open — NEXT |
+| **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel — **frontend F5 dependency** | open — high priority |
+| **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` / `/catalog/datasets/{key}/fair`) | D-intel — **frontend F1 dependency** | open |
+| DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
 - `090` fact_governance · `091` crosswalk_records — MERGED.
@@ -288,3 +306,23 @@ A3 judge majority-vote · A4 response-contract serialization (P1).
 **D-intel (mine):** C1 resolution stability (#236 detector + heal + excluded-absorb
 + `_exact_lookup` excluded-filter) → G4 · C2 eval-runner extension (hard-fail caps +
 prose-scorable specialist dims) → measurement.
+
+### 7.6 DataHub Frontend — CLAIMS (Frontend (Claude) agent lane)
+**Build brief = `docs/SPEC_DATA_HUB_FRONTEND.md`** (lens model + reuse inventory +
+the F1–F7 loops + acceptance criteria). **Vision = `docs/SPEC_DATA_HUB.md` +
+`docs/data-hub-vision.html`** (open the HTML in a browser). Claim a loop here before
+building; one PR per loop; **independent `/review-gate` before merge, no self-merge**.
+
+| Loop | What | Depends on | Owner / branch | Status |
+|---|---|---|---|---|
+| **F1** | Catalog Home + Source dossier + DataHub nav entry | D-API-2 (degrade till then) | Frontend `claude/datahub/phase0-lenses` | **built — rebase+review+merge, then add nav** |
+| **F5** | Connect wizard (5 source kinds → register + lifecycle) | **D-API-1** | unclaimed | open — the differentiator, do early |
+| **F2** | Documents & vectors lens (+ enhance actions) | D-API-3 | unclaimed | open |
+| **F3** | Ontology & data-model lens (read-only map + graph + MeSH) | D-API-4 | unclaimed | open |
+| **F4** | Prompts & packs lens (observational impact — NO A/B platform) | D-API-5 | unclaimed | open |
+| **F7** | Governance board (provenance/lineage/lifecycle/trust) | reuse ledgers | unclaimed | open |
+| **F6** | AI co-pilot + autonomous-job timeline (Flow B) | D-API-6 (backend L9–L10) | unclaimed | BLOCKED on backend |
+
+**Suggested order:** F1 (finish+merge) → F5 → F2 → F3 → F4 → F7 → F6. The data lane
+owes **D-API-1** (expose the L2 connector-taxonomy/onboarding service as REST) +
+**D-API-2** (source-level FAIR) first — they unblock F5 + F1 (tracked in §7.3).
