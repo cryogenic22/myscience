@@ -2,13 +2,15 @@
  * DataHub · Phase 0 · Lens A (L1b) — CatalogPage container tests.
  *
  * The container wires the headless CatalogHomePage to live read-API shapes:
- *   - api.catalogDatasets()      → the source grid (records, FAIR overall, data type)
+ *   - api.catalogDatasets()      → the source grid (records, quality overall, data type)
  *   - api.catalogPipelineStatus() → the per-source status verdict + connector schedule
  *   - api.datasetProfile(key)     → the drill-in source dossier
+ *   - api.datasetFair(key)        → the D-API-2 source-level quality breakdown
  *
  * Covers: loading → ready (grid joined from datasets × pipeline-status), the
- * error path, opening a source dossier (datasetProfile), and the graceful
- * source-level-FAIR-absent degrade (fair === null until that endpoint exists).
+ * error path, opening a source dossier (profile + D-API-2 quality breakdown),
+ * the explicit profile-load-failure error state, and honest "Quality" (not FAIR)
+ * language (cross-lane review MZ-XR-20260613-004).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -18,6 +20,7 @@ vi.mock('../../src/api', () => ({
     catalogDatasets: vi.fn(),
     catalogPipelineStatus: vi.fn(),
     datasetProfile: vi.fn(),
+    datasetFair: vi.fn(),
   },
 }));
 
@@ -38,6 +41,7 @@ const DATASETS = {
       quality_score_avg: 0.88,
       completeness_pct: 0.9,
       freshness_days: 1,
+      fair_overall: 0.94, // D-API-2 composite — preferred over the raw quality score
     },
     {
       dataset_name: 'SEC EDGAR',
@@ -95,6 +99,19 @@ const PROFILE = {
   freshness: '11 days',
 };
 
+const FAIR = {
+  source_key: 'sec_edgar',
+  fair_overall: 0.63,
+  by_dimension: {
+    completeness: { value: 0.7, weight: 0.35, explanation: 'fields populated' },
+    quality: { value: 0.45, weight: 0.3, explanation: 'mean score' },
+    accessibility: { value: 1.0, weight: 0.2, explanation: 'data landed' },
+    license_openness: { value: 1.0, weight: 0.15, explanation: 'open license' },
+  },
+  freshness_days: 11,
+  note: 'derived ingest-health composite — not a formal FAIR audit',
+};
+
 describe('CatalogPage container', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -121,7 +138,7 @@ describe('CatalogPage container', () => {
     expect(ct.querySelector('[data-status-badge="fresh"]')).not.toBeNull();
   });
 
-  it('maps quality_score_avg onto the FAIR ring, degrading to a placeholder when null', async () => {
+  it('prefers the D-API-2 fair_overall composite for the ring, degrading to a placeholder when absent', async () => {
     (api.catalogDatasets as any).mockResolvedValue(DATASETS);
     (api.catalogPipelineStatus as any).mockResolvedValue(PIPELINE);
     const { container } = render(<CatalogPage />);
@@ -129,16 +146,18 @@ describe('CatalogPage container', () => {
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
     );
     const ct = container.querySelector('[data-source-card="clinical_trials_gov"]') as HTMLElement;
-    expect((ct.querySelector('[data-fair-ring]') as HTMLElement).textContent).toBe('88');
-    // SEC has a null quality score → placeholder ring (en-dash), not a fabricated number.
+    // 0.94 (fair_overall) preferred over 0.88 (quality_score_avg).
+    expect((ct.querySelector('[data-quality-ring]') as HTMLElement).textContent).toBe('94');
+    // SEC has neither → placeholder ring (en-dash), not a fabricated number.
     const sec = container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement;
-    expect((sec.querySelector('[data-fair-ring]') as HTMLElement).textContent).toBe('–');
+    expect((sec.querySelector('[data-quality-ring]') as HTMLElement).textContent).toBe('–');
   });
 
-  it('opens a source dossier from datasetProfile and degrades source-level FAIR to null', async () => {
+  it('opens a dossier with the D-API-2 quality breakdown (labelled Quality, not FAIR)', async () => {
     (api.catalogDatasets as any).mockResolvedValue(DATASETS);
     (api.catalogPipelineStatus as any).mockResolvedValue(PIPELINE);
     (api.datasetProfile as any).mockResolvedValue(PROFILE);
+    (api.datasetFair as any).mockResolvedValue(FAIR);
     const { container } = render(<CatalogPage />);
     await waitFor(() =>
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
@@ -148,11 +167,34 @@ describe('CatalogPage container', () => {
       expect(container.querySelector('[data-source-dossier="sec_edgar"]')).not.toBeNull(),
     );
     expect(api.datasetProfile).toHaveBeenCalledWith('sec_edgar');
-    // Schema preview is carried from the profile.
+    expect(api.datasetFair).toHaveBeenCalledWith('sec_edgar');
     expect(container.querySelector('[data-schema-field="cik"]')).not.toBeNull();
-    // Source-level FAIR doesn't exist yet → graceful "profile pending" copy, no fabricated dims.
-    expect(screen.getByText(/profile pending/i)).toBeInTheDocument();
-    expect(container.querySelector('[data-fair-dim="completeness"]')).toBeNull();
+    // The real D-API-2 dimensions render; no "FAIR" language.
+    expect(container.querySelector('[data-quality-dim="completeness"]')).not.toBeNull();
+    expect(container.querySelector('[data-quality-dim="accessibility"]')).not.toBeNull();
+    expect(screen.getByText(/Quality profile/i)).toBeInTheDocument();
+    expect(screen.queryByText(/FAIR profile/i)).toBeNull();
+  });
+
+  it('shows an explicit error+retry dossier when the profile load fails (not a silent empty card)', async () => {
+    (api.catalogDatasets as any).mockResolvedValue(DATASETS);
+    (api.catalogPipelineStatus as any).mockResolvedValue(PIPELINE);
+    (api.datasetProfile as any).mockRejectedValue(new Error('HTTP 500'));
+    (api.datasetFair as any).mockRejectedValue(new Error('HTTP 500'));
+    const { container } = render(<CatalogPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement);
+    await waitFor(() =>
+      expect(container.querySelector('[data-dossier-error="sec_edgar"]')).not.toBeNull(),
+    );
+    // It's a real error state, not an empty-but-valid dossier.
+    expect(container.querySelector('[data-quality-dim]')).toBeNull();
+    expect(screen.getByText(/HTTP 500/)).toBeInTheDocument();
+    // Retry re-requests the profile.
+    fireEvent.click(container.querySelector('[data-action="retry-dossier"]') as HTMLElement);
+    expect((api.datasetProfile as any).mock.calls.length).toBe(2);
   });
 
   it('shows an error state when the catalog load fails', async () => {

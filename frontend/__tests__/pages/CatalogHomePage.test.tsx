@@ -23,7 +23,7 @@ const SOURCES: CatalogSource[] = [
     data_type: 'trial',
     status: 'fresh',
     records: 12450,
-    fair_overall: 0.88,
+    quality_overall: 0.88,
     freshness_days: 1,
   },
   {
@@ -33,7 +33,7 @@ const SOURCES: CatalogSource[] = [
     data_type: 'company',
     status: 'stale',
     records: 3120,
-    fair_overall: 0.61,
+    quality_overall: 0.61,
     freshness_days: 11,
   },
   {
@@ -43,7 +43,7 @@ const SOURCES: CatalogSource[] = [
     data_type: 'article',
     status: 'ok',
     records: 90210,
-    fair_overall: 0.79,
+    quality_overall: 0.79,
     freshness_days: 3,
   },
   {
@@ -53,7 +53,7 @@ const SOURCES: CatalogSource[] = [
     data_type: null,
     status: 'never',
     records: 0,
-    fair_overall: null,
+    quality_overall: null,
     freshness_days: null,
   },
 ];
@@ -64,13 +64,14 @@ const SEC_DETAIL: SourceDetail = {
   connector_type: 'corporate_filing',
   schedule: 'daily',
   license: 'free · public domain',
-  fair: {
-    completeness: 0.84,
-    source_diversity: 0.71,
-    freshness: 0.66,
-    link_density: 0.8,
-    resolution: 0.92,
+  quality: {
     overall: 0.79,
+    dimensions: [
+      { key: 'completeness', label: 'Completeness', value: 0.84, explanation: 'fields populated' },
+      { key: 'quality', label: 'Data quality', value: 0.71, explanation: 'mean score' },
+      { key: 'accessibility', label: 'Accessibility', value: 1.0, explanation: 'data landed' },
+      { key: 'license_openness', label: 'License openness', value: 0.7, explanation: 'reuse terms' },
+    ],
   },
   fields_collected: ['cik', 'form', 'filed_at', 'revenue'],
   records: 3120,
@@ -114,18 +115,21 @@ describe('CatalogHomePage — catalog home grid', () => {
     expect(within(sec).getByText(/3,120 rows/)).toBeInTheDocument();
   });
 
-  it('renders a FAIR ring with the rounded overall score', () => {
+  it('renders a Quality ring with the rounded overall score', () => {
     const { container } = setup();
     const ct = container.querySelector('[data-source-card="clinical_trials_gov"]') as HTMLElement;
-    const ring = ct.querySelector('[data-fair-ring]') as HTMLElement;
+    const ring = ct.querySelector('[data-quality-ring]') as HTMLElement;
     expect(ring).not.toBeNull();
     expect(ring.textContent).toBe('88');
+    // Honesty: the ring is labelled Quality, never "FAIR".
+    expect(ring.getAttribute('title')).toMatch(/Quality/);
+    expect(ring.getAttribute('title')).not.toMatch(/FAIR/);
   });
 
-  it('shows a placeholder ring for a source still profiling (null FAIR)', () => {
+  it('shows a placeholder ring for a source still profiling (null quality)', () => {
     const { container } = setup();
     const nadac = container.querySelector('[data-source-card="nadac_pricing"]') as HTMLElement;
-    const ring = nadac.querySelector('[data-fair-ring]') as HTMLElement;
+    const ring = nadac.querySelector('[data-quality-ring]') as HTMLElement;
     expect(ring.textContent).toBe('–'); // en-dash placeholder
   });
 
@@ -182,15 +186,49 @@ describe('CatalogHomePage — source dossier (Screen 2)', () => {
     expect(container.querySelectorAll('[data-source-card]').length).toBe(0);
   });
 
-  it('renders all 5 FAIR dimensions with their scores', () => {
+  it('renders the quality dimensions (D-API-2) with their scores, labelled Quality not FAIR', () => {
     const { container } = setup({ selected: SEC_DETAIL });
-    expect(container.querySelector('[data-fair-dim="completeness"]')).not.toBeNull();
-    expect(container.querySelector('[data-fair-dim="source_diversity"]')).not.toBeNull();
-    expect(container.querySelector('[data-fair-dim="freshness"]')).not.toBeNull();
-    expect(container.querySelector('[data-fair-dim="link_density"]')).not.toBeNull();
-    expect(container.querySelector('[data-fair-dim="resolution"]')).not.toBeNull();
-    const completeness = container.querySelector('[data-fair-dim="completeness"]') as HTMLElement;
+    expect(container.querySelector('[data-quality-dim="completeness"]')).not.toBeNull();
+    expect(container.querySelector('[data-quality-dim="quality"]')).not.toBeNull();
+    expect(container.querySelector('[data-quality-dim="accessibility"]')).not.toBeNull();
+    expect(container.querySelector('[data-quality-dim="license_openness"]')).not.toBeNull();
+    const completeness = container.querySelector('[data-quality-dim="completeness"]') as HTMLElement;
     expect(within(completeness).getByText('0.84')).toBeInTheDocument();
+    // No "FAIR" language in the dossier body (it's a derived composite, not a FAIR audit).
+    expect(screen.queryByText(/FAIR profile/i)).toBeNull();
+    expect(screen.getByText(/Quality profile/i)).toBeInTheDocument();
+  });
+
+  it('renders a null dimension as "n/a", never fabricated', () => {
+    const partial: SourceDetail = {
+      ...SEC_DETAIL,
+      quality: {
+        overall: 0.5,
+        dimensions: [
+          { key: 'completeness', label: 'Completeness', value: 0.5, explanation: '' },
+          { key: 'quality', label: 'Data quality', value: null, explanation: 'not scored' },
+        ],
+      },
+    };
+    const { container } = setup({ selected: partial });
+    const q = container.querySelector('[data-quality-dim="quality"]') as HTMLElement;
+    expect(within(q).getByText('n/a')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error+retry dossier when the profile failed to load', () => {
+    const errored: SourceDetail = {
+      ...SEC_DETAIL,
+      loadError: 'HTTP 500',
+    };
+    const { container, onSelectSource } = setup({ selected: errored });
+    const errBox = container.querySelector('[data-dossier-error="sec_edgar"]') as HTMLElement;
+    expect(errBox).not.toBeNull();
+    expect(within(errBox).getByText(/sec_edgar/)).toBeInTheDocument();
+    // It is NOT a normal (empty-but-valid) dossier — no quality dims rendered.
+    expect(container.querySelector('[data-quality-dim]')).toBeNull();
+    const retry = container.querySelector('[data-action="retry-dossier"]') as HTMLElement;
+    fireEvent.click(retry);
+    expect(onSelectSource).toHaveBeenCalledWith('sec_edgar');
   });
 
   it('renders a schema preview of the fields collected', () => {

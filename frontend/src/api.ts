@@ -386,6 +386,26 @@ export interface CatalogDataset {
   completeness_pct?: number | null;
   freshness_days?: number | null;
   description?: string;
+  /** Derived ingest-health composite in [0,1] (D-API-2). null while unprofiled. */
+  fair_overall?: number | null;
+}
+
+/** One dimension of the D-API-2 derived data-quality composite. */
+export interface DatasetFairDimension {
+  value: number | null;
+  weight: number;
+  explanation: string;
+}
+
+/** GET /catalog/datasets/{key}/fair — derived ingest-health composite + breakdown.
+ *  Explicitly NOT a formal FAIR audit (see `note`); dimensions are null when the
+ *  underlying metric is absent. */
+export interface DatasetFairResponse {
+  source_key: string;
+  fair_overall: number | null;
+  by_dimension: Record<string, DatasetFairDimension>;
+  freshness_days: number | null;
+  note: string;
 }
 
 export interface DatasetProfile {
@@ -856,6 +876,8 @@ export const api = {
   catalogDatasets: () => get<{ datasets: CatalogDataset[]; count: number }>('/catalog/datasets'),
   datasetProfile: (sourceKey: string) =>
     get<DatasetProfile>(`/catalog/datasets/${encodeURIComponent(sourceKey)}/profile`),
+  datasetFair: (sourceKey: string) =>
+    get<DatasetFairResponse>(`/catalog/datasets/${encodeURIComponent(sourceKey)}/fair`),
   catalogBrowse: (entityType: string, params?: {
     search?: string; status?: string; quality_min?: number;
     sort?: string; sort_by?: string; sort_dir?: string; limit?: number; offset?: number;
