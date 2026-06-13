@@ -202,7 +202,6 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | Excluded-config absorb (combo-guarded tool ready) | D-intel | **BLOCKED** on canonical stability |
 | FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
-| **D2 — NADAC pricing revival** (dead Socrata→DKAN CSV; idempotent history mig 095; weekly scheduler; geo-extensible) | D-ingest `claude/data/nadac-pricing-revival` | in-flight (2026-06-13) |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
 | DataHub Phase 0 — catalog lenses L1–L1d (read-only UI over existing APIs) | dedicated agent `claude/datahub/phase0-lenses` | in-flight — review-gated, no self-merge |
 | DataHub Phase 1+ — L2 taxonomy/lifecycle → L3 generic connectors → … L12 | D-intel — interleaved w/ eval loops | open — sequential, reserves mig 096+ |
@@ -214,8 +213,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
   tables; cleanup debt (close #228 backend, keep one).
 - `093` = `facts_epistemic_timestamps` (#233, MERGED).
 - `094` = `scenario_prob_history_stance_counts` (#237, MERGED).
-- `095` = **`drug_pricing_idempotent_history`** — RESERVED (NADAC revival, D2, in-flight `claude/data/nadac-pricing-revival`): unique `(ndc_code,price_type,effective_date,source_api)` for upsert-idempotent price history.
-- `096` = **NEXT FREE** — reserve here before use.
+- `095` = **NEXT FREE** — reserve here before use.
 
 ### 7.5 Eval-pass loops (data-team share — how we pass the evals)
 Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238).

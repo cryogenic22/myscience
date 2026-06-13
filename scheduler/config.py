@@ -66,10 +66,10 @@ CONNECTOR_SCHEDULES: dict[SourceType, dict] = {
         "label": "EMA (EU Medicines)",
         "cron": {"hour": 4, "minute": 30, "day_of_week": "fri"},    # Friday 04:30
     },
-    SourceType.NADAC: {
-        "label": "CMS NADAC Pricing",
-        "cron": {"hour": 5, "minute": 0, "day_of_week": "sat"},     # Saturday 05:00
-    },
+    # NADAC pricing is NOT an entity source — its rows are prices, not drugs, so
+    # it must not go through the entity pipeline (it would create junk drug rows).
+    # It loads into drug_pricing via the dedicated post-run pricing task instead
+    # (see runner._run_post_tasks). Kept in CONNECTOR_REGISTRY for the contract.
     SourceType.NEWS: {
         "label": "Pharma News & Events",
         "cron": {"hour": 6, "minute": 0},                           # Daily 06:00
@@ -108,7 +108,6 @@ RUN_ORDER: list[SourceType] = [
     SourceType.OPENFDA_LABELS,
     SourceType.FDA_SHORTAGES,
     SourceType.SEC_EDGAR,
-    SourceType.NADAC,
     SourceType.NEWS,
     SourceType.CHEMBL,
     SourceType.PUBCHEM,
@@ -120,6 +119,7 @@ RUN_ORDER: list[SourceType] = [
 POST_RUN_TASKS = [
     "backfill_data_linkage",   # OWNS, TA, mechanism, sponsor links
     "fix_data_quality",         # literature-drug match, quality scores, MV refresh
+    "fetch_nadac_pricing",      # CMS NADAC weekly snapshot -> drug_pricing (idempotent)
 ]
 
 
@@ -159,10 +159,7 @@ FRESHNESS_SLA_DAYS: dict[SourceType, tuple[str, str, int]] = {
 # returns 0 rows by design, so the scorecard reports them as DEFERRED rather
 # than RED — distinguishing "we gave up" from "it silently broke". Each entry
 # carries the reproduced reason so the verdict is auditable.
-KNOWN_DEFERRED_SOURCES: dict[SourceType, str] = {
-    SourceType.NADAC: (
-        "CMS NADAC endpoint (data.medicaid.gov/resource/4j6z-xnwq) returns "
-        "HTTP 404 - CMS migrated platforms in 2025/26; no live feed and no "
-        "rows in drug_pricing. Needs a new source URL before it can flow."
-    ),
-}
+# NADAC was here ("dead Socrata endpoint") until the DKAN CSV revival (D2): it now
+# flows into drug_pricing via the post-run pricing task, so it is no longer
+# deferred. Re-add an entry here only for a source with a confirmed-dead feed.
+KNOWN_DEFERRED_SOURCES: dict[SourceType, str] = {}

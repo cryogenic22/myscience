@@ -153,6 +153,23 @@ class DataPipelineScheduler:
             logger.exception("Post-task fix_data_quality failed")
             results["fix_data_quality"] = f"ERROR: {e}"
 
+        # 2b. NADAC pricing — load the current weekly CMS snapshot into drug_pricing
+        # (idempotent ON CONFLICT, so re-running each cycle accumulates price history
+        # without dupes). NADAC is a pricing source, not an entity source, so it loads
+        # here rather than through the entity pipeline.
+        try:
+            t0 = time.time()
+            mod = importlib.import_module("scripts.fetch_nadac_pricing")
+            stats = mod.run()
+            results["fetch_nadac_pricing"] = (
+                f"OK stored={stats.get('stored', 0)} matched={stats.get('matched', 0)} "
+                f"({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: fetch_nadac_pricing completed: %s", stats)
+        except Exception as e:
+            logger.exception("Post-task fetch_nadac_pricing failed")
+            results["fetch_nadac_pricing"] = f"ERROR: {e}"
+
         # 3. TA linkage backfill
         try:
             t0 = time.time()
