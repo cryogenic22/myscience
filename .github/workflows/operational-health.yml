@@ -51,6 +51,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/connector_health.py
       - name: Live conservation invariants (NULL%, orphan ceilings, evidence floor, no orphaned canonical)
+        # Run even if connector_health went RED above — a connector SLA failure
+        # must NOT mask whether the DATA invariants hold. The job still fails on
+        # either; this just stops one RED from hiding the other.
+        if: ${{ !cancelled() }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m pytest tests/test_schema_completeness.py tests/test_orphaned_canonical_invariant.py -v --no-header
