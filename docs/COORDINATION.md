@@ -174,6 +174,7 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | Orphaned-canonical detector + Lane-2 invariant | D-intel `claude/data/coord-sync-protocol` | in-flight (this PR) |
 | Diagnose the live re-demotion vector | D-intel | in-flight |
 | Excluded-config absorb (combo-guarded tool ready) | D-intel | **BLOCKED** on canonical stability |
+| **A1 — brand→generic alias backfill + brand_name de-smear** (eval handoff Part A1; reversible field cleanup, no migration) | D-ingest `claude/data/brand-alias-backfill` | in-flight (2026-06-13) — ⚠️ **OVERLAPS A3/consolidation** (`coord-sync-protocol`): I only CLEAR over-applied `brand_name` from non-richest rows + add aliases; I do NOT merge rows. Coordinate before consolidating the same brands. |
 | FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
