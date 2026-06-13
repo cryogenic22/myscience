@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>DataHub — AI-led Integration, Curation & Intelligence Catalog</title>
+<style>
+  :root{
+    --ink:#16130f; --ink-soft:#4b4640; --surface:#fbf9f5; --panel:#ffffff;
+    --line:#e7e1d6; --line-soft:#f0ebe1; --accent:#7a4d2b; --accent-soft:#b07a4e;
+    --green:#3f7d52; --amber:#b58227; --red:#b1442f; --blue:#3a5a8c;
+    --reuse:#3f7d52; --extend:#b58227; --new:#7a4d2b;
+    --shadow:0 1px 2px rgba(20,16,12,.05),0 8px 28px rgba(20,16,12,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--surface);color:var(--ink);
+    font:16px/1.6 "DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Fraunces","Iowan Old Style",Georgia,"Times New Roman",serif;
+    font-weight:600;line-height:1.15;letter-spacing:-.01em;color:var(--ink)}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+  a{color:var(--accent);text-decoration:none}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;background:rgba(251,249,245,.86);
+    backdrop-filter:saturate(140%) blur(10px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;gap:22px;height:58px}
+  nav .brand{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:18px;margin-right:auto}
+  nav .brand b{color:var(--accent)}
+  nav a{color:var(--ink-soft);font-size:13.5px;font-weight:500}
+  nav a:hover{color:var(--ink)}
+  @media(max-width:880px){nav a:not(.cta){display:none}}
+
+  /* hero */
+  .hero{padding:74px 0 46px;border-bottom:1px solid var(--line);
+    background:radial-gradient(1100px 380px at 78% -8%,#f4ece0 0,transparent 60%)}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  .hero h1{font-size:clamp(34px,5.4vw,60px);margin:14px 0 0;max-width:18ch}
+  .hero p.lede{font-size:19px;color:var(--ink-soft);max-width:62ch;margin:20px 0 0}
+  .oneliner{margin:26px 0 0;padding:16px 20px;border-left:3px solid var(--accent);
+    background:var(--panel);border-radius:0 10px 10px 0;box-shadow:var(--shadow);max-width:74ch;font-size:15.5px}
+  .pillstrip{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+  .pill{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--line);color:var(--ink-soft)}
+
+  section{padding:62px 0;border-bottom:1px solid var(--line)}
+  .sec-head{max-width:70ch;margin-bottom:34px}
+  .sec-head h2{font-size:clamp(24px,3.2vw,34px);margin:0}
+  .sec-head .kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-soft)}
+  .sec-head p{color:var(--ink-soft);font-size:16.5px;margin:12px 0 0}
+
+  /* pillars */
+  .grid{display:grid;gap:18px}
+  .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:980px){.g5{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr}}
+  @media(max-width:680px){.g5,.g2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)}
+  .card .n{font-family:"Fraunces",serif;font-size:13px;color:var(--accent);font-weight:600}
+  .card h3{font-size:17px;margin:6px 0 8px}
+  .card p{font-size:13.8px;color:var(--ink-soft);margin:0}
+  .mat{margin-top:12px;height:6px;border-radius:999px;background:var(--line-soft);overflow:hidden}
+  .mat>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent-soft),var(--accent))}
+  .mat-l{font-size:11.5px;color:var(--ink-soft);margin-top:6px;font-weight:600}
+
+  /* mock UI */
+  .screen{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .screen .bar{display:flex;align-items:center;gap:7px;padding:11px 15px;border-bottom:1px solid var(--line);background:#fcfaf6}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#e0897a}.dot.y{background:#e3c07a}.dot.g{background:#8fc09a}
+  .screen .bar .addr{margin-left:10px;font-size:12px;color:var(--ink-soft);background:var(--surface);
+    border:1px solid var(--line);border-radius:7px;padding:4px 12px;font-family:ui-monospace,Menlo,monospace}
+  .screen .body{padding:18px}
+  .walk{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:center;margin-bottom:46px}
+  .walk:last-child{margin-bottom:0}
+  .walk.rev{direction:rtl}.walk.rev>*{direction:ltr}
+  @media(max-width:900px){.walk,.walk.rev{grid-template-columns:1fr;direction:ltr}}
+  .walk .cap .step{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-soft)}
+  .walk .cap h3{font-size:21px;margin:6px 0 10px}
+  .walk .cap p{color:var(--ink-soft);font-size:15px;margin:0 0 12px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;letter-spacing:.02em}
+  .tag.reuse{background:#eaf3ed;color:var(--reuse);border:1px solid #cfe6d6}
+  .tag.extend{background:#f7efdd;color:#8a6217;border:1px solid #ecdcb6}
+  .tag.new{background:#f3e9e0;color:var(--new);border:1px solid #e4d2c1}
+
+  /* catalog grid mock */
+  .cat-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:13px}
+  .search{flex:1;border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:12.5px;color:var(--ink-soft);background:var(--surface)}
+  .chip{font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--ink-soft);font-weight:600}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .src-row{display:grid;grid-template-columns:1.6fr .9fr .8fr 1fr;gap:10px;align-items:center;
+    padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:12.5px;background:#fff}
+  .src-row .nm{font-weight:700;color:var(--ink)} .src-row .sub{color:var(--ink-soft);font-size:11px}
+  .badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block}
+  .badge.green{background:#eaf3ed;color:var(--green)} .badge.amber{background:#f7efdd;color:var(--amber)}
+  .badge.red{background:#f6e7e2;color:var(--red)} .badge.kind{background:var(--line-soft);color:var(--ink-soft)}
+  .fair{display:flex;align-items:center;gap:6px}
+  .fair .ring{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff}
+  .meter{height:5px;border-radius:9px;background:var(--line-soft);overflow:hidden;margin-top:4px}
+  .meter>i{display:block;height:100%;background:var(--green)}
+
+  /* fair detail mock */
+  .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+  .kv b{font-weight:700}.kv .v{color:var(--ink-soft);font-family:ui-monospace,monospace}
+  .dim{margin:9px 0}
+  .dim .t{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+
+  /* wizard mock */
+  .kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+  .kind{border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;font-size:12px;font-weight:600;color:var(--ink-soft);background:#fff}
+  .kind.on{border-color:var(--accent);background:#fbf3ec;color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .kind .ic{font-size:19px;display:block;margin-bottom:5px}
+  .wizfield{font-size:12px;color:var(--ink-soft);margin:10px 0 4px;font-weight:600}
+  .wizinput{border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:12px;
+    font-family:ui-monospace,monospace;color:var(--ink);background:var(--surface);display:block}
+
+  /* copilot chat mock */
+  .chat{display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:88%;padding:10px 13px;border-radius:13px;font-size:13px;line-height:1.5}
+  .msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+  .msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg.ai b{color:var(--accent)}
+  .plan{align-self:flex-start;width:100%;border:1px dashed var(--accent-soft);border-radius:11px;padding:11px 13px;background:#fdf8f3}
+  .plan .pt{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+  .plan ol{margin:0;padding-left:18px;font-size:12.5px;color:var(--ink-soft)} .plan li{margin:3px 0}
+
+  /* job timeline mock */
+  .tl{position:relative;padding-left:22px}
+  .tl::before{content:"";position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--line)}
+  .ev{position:relative;margin-bottom:12px;font-size:12.5px}
+  .ev::before{content:"";position:absolute;left:-22px;top:4px;width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px #fbf3ec}
+  .ev.ok::before{background:var(--green);box-shadow:0 0 0 3px #eaf3ed}
+  .ev.rev::before{background:var(--amber);box-shadow:0 0 0 3px #f7efdd}
+  .ev .m{color:var(--ink-soft)} .ev .d{font-family:ui-monospace,monospace;font-size:11px;color:var(--accent-soft)}
+
+  /* architecture */
+  .arch{display:flex;flex-direction:column;gap:12px}
+  .layer{border:1px solid var(--line);border-radius:13px;padding:16px 18px;background:var(--panel);box-shadow:var(--shadow)}
+  .layer .lh{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:11px}
+  .layer.agentic{background:linear-gradient(180deg,#fbf3ec,#fff)}
+  .layer.seam{background:repeating-linear-gradient(135deg,#fbf9f5,#fbf9f5 10px,#f6f1e8 10px,#f6f1e8 20px)}
+  .mods{display:flex;flex-wrap:wrap;gap:7px}
+  .mod{font-size:12px;padding:6px 11px;border-radius:8px;background:#fff;border:1px solid var(--line);font-weight:500}
+  .mod.reuse{border-left:3px solid var(--reuse)} .mod.extend{border-left:3px solid var(--extend)} .mod.new{border-left:3px solid var(--new)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--ink-soft)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  /* flows */
+  .flowcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:var(--shadow)}
+  .flowcard h3{margin:0 0 4px;font-size:19px}
+  .flowcard .quote{font-style:italic;color:var(--ink-soft);font-size:13.5px;margin:0 0 16px;border-left:2px solid var(--line);padding-left:12px}
+  .steps{display:flex;flex-direction:column;gap:10px}
+  .stepi{display:flex;gap:12px;align-items:flex-start}
+  .stepi .num{flex:0 0 26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:12.5px;display:grid;place-items:center}
+  .stepi .tx{font-size:13.3px} .stepi .tx b{color:var(--ink)}
+  .stepi .tx code{font-family:ui-monospace,monospace;font-size:11.5px;background:var(--line-soft);padding:1px 5px;border-radius:5px;color:var(--accent)}
+
+  /* reuse table */
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{background:#fcfaf6;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft)}
+  td .tag{margin:1px 3px 1px 0}
+
+  /* roadmap */
+  .phase{margin-bottom:18px}
+  .phase .ph{font-family:"Fraunces",serif;font-size:16px;color:var(--accent);margin-bottom:9px}
+  .loops{display:flex;flex-wrap:wrap;gap:8px}
+  .loop{border:1px solid var(--line);border-radius:10px;padding:9px 13px;background:#fff;font-size:12.5px;box-shadow:var(--shadow)}
+  .loop b{color:var(--accent);font-family:ui-monospace,monospace}
+
+  .note{font-size:13px;color:var(--ink-soft)}
+  .twocol{columns:2;column-gap:30px} @media(max-width:760px){.twocol{columns:1}}
+  .twocol li{margin:0 0 9px;break-inside:avoid;font-size:13.5px;color:var(--ink-soft)}
+  footer{padding:40px 0 60px;color:var(--ink-soft);font-size:13px}
+  .tagkey{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:12px}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="brand">Data<b>Hub</b></span>
+  <a href="#pillars">Pillars</a>
+  <a href="#layers">Layers</a>
+  <a href="#walk">Walkthrough</a>
+  <a href="#arch">Architecture</a>
+  <a href="#flows">AI flows</a>
+  <a href="#reuse">Reuse vs new</a>
+  <a href="#roadmap">Roadmap</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">Vision &amp; design · 2026-06-13</div>
+  <h1>An AI-led DataHub for connection, curation &amp; intelligence — in one catalog.</h1>
+  <p class="lede">Onboard <em>any</em> source — API, RSS, CSV, a website, Snowflake/Databricks —
+  see it all in one place, FAIR-profile and curate it, and let agents <em>create connectors</em>
+  and keep the data products enriching themselves on a schedule. Built mostly from what the
+  system already has; portable to other systems by design.</p>
+  <div class="oneliner"><b>The one line —</b> never make onboarding a new data source an
+  engineering project again: make it a product. Connect → catalog → curate → autonomously enrich,
+  with provenance and governance as the floor.</div>
+  <div class="pillstrip">
+    <span class="pill">🔌 Connect anything</span>
+    <span class="pill">🗂️ One catalog</span>
+    <span class="pill">🧪 FAIR profiles</span>
+    <span class="pill">🤖 AI-built connectors</span>
+    <span class="pill">♻️ Autonomous enrichment</span>
+    <span class="pill">🛡️ Governed by default</span>
+    <span class="pill">📦 Portable module</span>
+  </div>
+</div></header>
+
+<!-- PILLARS -->
+<section id="pillars"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">The product</div>
+    <h2>Five pillars — and most of the substrate already exists</h2>
+    <p>This isn't greenfield. ~80% of the code and ~95% of the architecture is reuse/extend;
+    the differentiated build is generic connectors, an AI onboarding layer, and the catalog UX.</p>
+  </div>
+  <div class="grid g5">
+    <div class="card"><div class="n">01</div><h3>Catalog</h3>
+      <p>See, search &amp; browse every source, dataset and entity — connector type, status, data type, FAIR profile. CRUD as a curator.</p>
+      <div class="mat"><i style="width:70%"></i></div><div class="mat-l">~70% built</div></div>
+    <div class="card"><div class="n">02</div><h3>Connect</h3>
+      <p>Onboard any source kind through a guided wizard — REST, RSS, CSV/file, website, warehouse.</p>
+      <div class="mat"><i style="width:60%"></i></div><div class="mat-l">framework ~60%</div></div>
+    <div class="card"><div class="n">03</div><h3>Curate</h3>
+      <p>Auto-curate, clean, dedupe + human CRUD. See what the steward did and the FAIR delta.</p>
+      <div class="mat"><i style="width:80%"></i></div><div class="mat-l">~80% built</div></div>
+    <div class="card"><div class="n">04</div><h3>Enrich</h3>
+      <p>"Gather X for every Y and integrate it." Set a schedule. Keep the data products richer each cycle.</p>
+      <div class="mat"><i style="width:50%"></i></div><div class="mat-l">loop ~50%</div></div>
+    <div class="card"><div class="n">05</div><h3>Govern</h3>
+      <p>Provenance, lineage, lifecycle, license/trust, conservation gates — fail closed, never silent.</p>
+      <div class="mat"><i style="width:85%"></i></div><div class="mat-l">~85% built</div></div>
+  </div>
+</div></section>
+
+<!-- LAYERS / LENSES -->
+<section id="layers"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">One catalog, many lenses</div>
+    <h2>It catalogs every stratum — not just sources</h2>
+    <p>The catalog is a lens onto each layer of the data→intelligence stack, over the same
+    governed objects. Backend for all of these already exists — so most lenses are UI + a thin
+    read-endpoint. Each is read-mostly; the only writes are "enhance" actions that route through
+    the existing pipeline/steward, so provenance &amp; gates still apply.</p>
+  </div>
+  <div class="grid g5">
+    <div class="card"><div class="n">Lens A</div><h3>Sources &amp; connectors</h3>
+      <p>Every connected feed — type, status, tier, FAIR. (Screens 1–3.)</p>
+      <div class="tags" style="margin-top:10px"><span class="tag reuse">source_registry</span><span class="tag reuse">connector_health</span></div></div>
+    <div class="card"><div class="n">Lens B</div><h3>Documents &amp; vectors</h3>
+      <p>Upload docs; see what's in the store, embedding status &amp; links; <b>enhance</b> = re-embed / re-extract / re-link.</p>
+      <div class="tags" style="margin-top:10px"><span class="tag reuse">upload.py · search</span><span class="tag extend">UserDocumentConnector</span><span class="tag new">docs list + enhance</span></div></div>
+    <div class="card"><div class="n">Lens C</div><h3>Ontology &amp; data-model</h3>
+      <p>A <b>read-only</b> live map of the model + entity graph + ontology as it develops.</p>
+      <div class="tags" style="margin-top:10px"><span class="tag reuse">GraphExplorer · KnowledgeGraph</span><span class="tag reuse">schema_introspector</span><span class="tag new">model map view</span></div></div>
+    <div class="card"><div class="n">Lens D</div><h3>Facts &amp; evidence</h3>
+      <p>The governed-object ledger with provenance. (Governance board, Screen 6.)</p>
+      <div class="tags" style="margin-top:10px"><span class="tag reuse">facts + evidence ledger</span></div></div>
+    <div class="card"><div class="n">Lens E</div><h3>Prompts &amp; domain packs</h3>
+      <p>How intelligence is fed: prompt versions + packs, with an <b>observational</b> impact view.</p>
+      <div class="tags" style="margin-top:10px"><span class="tag reuse">prompt_registry · learning</span><span class="tag reuse">domain packs</span><span class="tag new">browse + impact lens</span></div></div>
+  </div>
+  <div class="oneliner" style="margin-top:24px;max-width:none">
+    <b>Handle "impact on output" with care (the over-engineering line).</b> The lean version is
+    <em>observational</em>: pin a prompt/pack version → show its calibration trend (<code>learning_service</code>)
+    + the eval scores around its activation (<code>live_eval</code> / <code>pharma_eval</code> / scorecard) —
+    signals we already compute. We are <b>not</b> building a prompt playground, a corpus-replay / A-B
+    experimentation platform, a document-management system, or an ontology/schema editor. Those are
+    where this tips into over-engineering; none are needed for the catalog to be useful. True
+    counterfactual A/B is a separate, deferred program.
+  </div>
+</div></section>
+
+<!-- WALKTHROUGH -->
+<section id="walk"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">Visual walkthrough</div>
+    <h2>What it looks like — six screens</h2>
+    <p>Each screen notes what it <span class="tag reuse">reuses</span>, <span class="tag extend">extends</span>, or builds <span class="tag new">new</span>.</p>
+  </div>
+
+  <!-- 1. Catalog home -->
+  <div class="walk">
+    <div class="cap">
+      <div class="step">Screen 1 · Catalog home</div>
+      <h3>Every source, at a glance</h3>
+      <p>A searchable grid of all connected sources: connector type, trust tier, live status
+      (FLOW/SYNC verdict), the kind of data it emits, and a FAIR score ring. Filter by type,
+      status, tier. Click through to a source dossier.</p>
+      <div class="tags"><span class="tag reuse">source_registry</span><span class="tag reuse">connector_health</span><span class="tag reuse">/sources API</span><span class="tag new">catalog grid UX</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/catalog</span></div>
+      <div class="body">
+        <div class="cat-toolbar">
+          <span class="search">🔍 search sources, datasets, entities…</span>
+          <span class="chip on">All</span><span class="chip">API</span><span class="chip">CSV</span><span class="chip">Web</span>
+        </div>
+        <div class="src-row"><div><div class="nm">ClinicalTrials.gov</div><div class="sub">REST API · registry_primary</div></div>
+          <div><span class="badge green">GREEN · 0.5d</span></div><div><span class="badge kind">trials</span></div>
+          <div class="fair"><span class="ring" style="background:var(--green)">88</span><span class="sub">FAIR</span></div></div>
+        <div class="src-row"><div><div class="nm">CMS NADAC</div><div class="sub">CSV (DKAN) · pricing_reference</div></div>
+          <div><span class="badge green">GREEN · 3d</span></div><div><span class="badge kind">pricing</span></div>
+          <div class="fair"><span class="ring" style="background:var(--amber)">61</span><span class="sub">FAIR</span></div></div>
+        <div class="src-row"><div><div class="nm">SEC EDGAR</div><div class="sub">REST + parse · corporate_filing</div></div>
+          <div><span class="badge amber">AMBER · 11d</span></div><div><span class="badge kind">filings</span></div>
+          <div class="fair"><span class="ring" style="background:var(--green)">79</span><span class="sub">FAIR</span></div></div>
+        <div class="src-row"><div><div class="nm">Acme Co · Investor Site</div><div class="sub">Web scrape · trade_press · <b style="color:var(--new)">draft</b></div></div>
+          <div><span class="badge red">DRAFT</span></div><div><span class="badge kind">financials</span></div>
+          <div class="fair"><span class="ring" style="background:var(--line)">–</span><span class="sub">profiling…</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Source detail + FAIR -->
+  <div class="walk rev">
+    <div class="cap">
+      <div class="step">Screen 2 · Source dossier</div>
+      <h3>FAIR profile, schema &amp; health history</h3>
+      <p>Per source: the 5-dimension FAIR breakdown with explanations, a schema preview with
+      sample rows, the quality time-series, the contract (trust tier · must-capture · may-emit),
+      and license posture. Curators edit metadata inline.</p>
+      <div class="tags"><span class="tag reuse">fair_scorer</span><span class="tag reuse">SourceProfileCard</span><span class="tag reuse">source contracts</span><span class="tag extend">coverage-by-type</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/sources/sec_edgar</span></div>
+      <div class="body">
+        <div class="kv"><b>Tier</b><span class="v">corporate_filing (rank 3)</span></div>
+        <div class="kv"><b>License</b><span class="v">free · public domain · OK</span></div>
+        <div class="kv"><b>Contract</b><span class="v">must: cik,form,filed_at · may_emit: ma_deal, revenue</span></div>
+        <div style="margin-top:14px;font-size:12px;font-weight:700;color:var(--ink-soft)">FAIR · overall 0.79</div>
+        <div class="dim"><div class="t"><span>Completeness</span><span>0.84</span></div><div class="meter"><i style="width:84%"></i></div></div>
+        <div class="dim"><div class="t"><span>Source diversity</span><span>0.71</span></div><div class="meter"><i style="width:71%"></i></div></div>
+        <div class="dim"><div class="t"><span>Freshness</span><span>0.66</span></div><div class="meter"><i style="width:66%;background:var(--amber)"></i></div></div>
+        <div class="dim"><div class="t"><span>Link density</span><span>0.80</span></div><div class="meter"><i style="width:80%"></i></div></div>
+        <div class="dim"><div class="t"><span>Resolution</span><span>0.92</span></div><div class="meter"><i style="width:92%"></i></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Connect wizard -->
+  <div class="walk">
+    <div class="cap">
+      <div class="step">Screen 3 · Connect wizard</div>
+      <h3>Onboard any source kind</h3>
+      <p>Pick a connector type, point at the source, and the wizard handles auth, pagination,
+      and field mapping. CSV upload, REST endpoint, RSS feed, a website URL, or a warehouse DSN +
+      query — all land as the same governed <code>RawRecord</code> downstream.</p>
+      <div class="tags"><span class="tag reuse">BaseConnector / RawRecord</span><span class="tag new">RestApiConnector</span><span class="tag new">CsvConnector</span><span class="tag new">WarehouseConnector</span><span class="tag new">wizard UX</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/connect</span></div>
+      <div class="body">
+        <div class="kinds">
+          <div class="kind"><span class="ic">🔗</span>REST API</div>
+          <div class="kind"><span class="ic">📰</span>RSS</div>
+          <div class="kind on"><span class="ic">📄</span>CSV / file</div>
+          <div class="kind"><span class="ic">🌐</span>Website</div>
+          <div class="kind"><span class="ic">❄️</span>Snowflake</div>
+          <div class="kind"><span class="ic">🧱</span>Databricks</div>
+        </div>
+        <div class="wizfield">Source URL or file</div>
+        <span class="wizinput">https://download.medicaid.gov/data/nadac-…-2026.csv</span>
+        <div class="wizfield">Refresh cadence (AI-suggested)</div>
+        <span class="wizinput">weekly · Sat 05:00 UTC  ✦ from freshness SLA</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. AI co-pilot -->
+  <div class="walk rev">
+    <div class="cap">
+      <div class="step">Screen 4 · AI co-pilot</div>
+      <h3>"Paste a link, I'll build the connector"</h3>
+      <p>The co-pilot fetches a sample, infers the schema + field mapping + extraction schema,
+      drafts a connector config, and dry-runs it in a sandbox — then shows you the records it
+      <em>would</em> land for review before publishing. No hand-coding.</p>
+      <div class="tags"><span class="tag reuse">extraction_llm</span><span class="tag reuse">prompt registry</span><span class="tag new">SiteCrawler</span><span class="tag new">SchemaInference</span><span class="tag new">ConnectorSynthesis</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/connect · co-pilot</span></div>
+      <div class="body"><div class="chat">
+        <div class="msg user">Connect this: investors.acme.com — I want their annual financials.</div>
+        <div class="msg ai">Fetched the IR page + latest 10-K (PDF). Detected a <b>filings</b> source.
+          Inferring schema…</div>
+        <div class="plan"><div class="pt">Draft connector · sandbox dry-run</div>
+          <ol>
+            <li>type <b>web_scrape + pdf</b> · trust tier <b>corporate_filing</b></li>
+            <li>map → <code>revenue</code>, <code>guidance</code>, <code>period</code> (conf 0.91/0.88/0.97)</li>
+            <li>resolve company → <b>Acme Co</b> (exact)</li>
+            <li>dry-run landed <b>12 facts</b>, 0 false links · draft FAIR 0.74</li>
+            <li>suggested cadence: <b>quarterly</b></li>
+          </ol></div>
+        <div class="msg ai">Looks clean. <b>Publish connector + schedule?</b> I'll register the source and the first run lands tonight.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- 5. Autonomous enrichment -->
+  <div class="walk">
+    <div class="cap">
+      <div class="step">Screen 5 · Autonomous enrichment job</div>
+      <h3>"Gather financials for every company"</h3>
+      <p>A standing job iterates over a target set (a SQL over the spine), gathers from each
+      target's site/filings, extracts, resolves, and emits evidence-bearing facts —
+      <em>commit-or-revert</em> on FAIR delta + false-link checks, every step streamed and audited.</p>
+      <div class="tags"><span class="tag extend">AutonomousResearchAgent loop</span><span class="tag reuse">facts + evidence ledger</span><span class="tag reuse">harness budget/events</span><span class="tag new">external-fetch enrichment</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/jobs/enrich-company-financials</span></div>
+      <div class="body"><div class="tl">
+        <div class="ev ok"><b>Novo Nordisk</b> — 10-K found, 14 facts, FAIR +0.18 <span class="d">committed</span><div class="m">revenue, guidance, R&amp;D spend → resolved + evidenced</div></div>
+        <div class="ev ok"><b>Eli Lilly</b> — IR page, 11 facts, FAIR +0.12 <span class="d">committed</span></div>
+        <div class="ev rev"><b>Acme Biosci</b> — 2 facts, 1 false link <span class="d">reverted → review queue</span><div class="m">held: confidence below floor, routed to a curator</div></div>
+        <div class="ev"><b>Pfizer</b> — fetching latest filing… <span class="d">in-flight · budget 38% used</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- 6. Governance board -->
+  <div class="walk rev">
+    <div class="cap">
+      <div class="step">Screen 6 · Governance board</div>
+      <h3>Health, lineage &amp; lifecycle</h3>
+      <p>One board for Lane-1 (deterministic) + Lane-2 (operational) gate status, per-connector
+      health verdicts, the steward's recent actions with FAIR deltas, cross-source lineage, and
+      each source's lifecycle state — so "the job ran" never gets mistaken for "the product is healthy."</p>
+      <div class="tags"><span class="tag reuse">conservation gates</span><span class="tag reuse">connector_health</span><span class="tag reuse">steward_actions</span><span class="tag new">lineage + lifecycle</span></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="addr">/hub/governance</span></div>
+      <div class="body">
+        <div class="kv"><b>Lane-1 deterministic gate</b><span class="v" style="color:var(--green)">GREEN · 5/5 checks</span></div>
+        <div class="kv"><b>Lane-2 operational health</b><span class="v" style="color:var(--amber)">1 AMBER (SEC 11d stale)</span></div>
+        <div class="kv"><b>Steward last run</b><span class="v">22 actions · FAIR Δ +0.041 · 0 reverts</span></div>
+        <div class="kv"><b>Sources w/ contract + FAIR</b><span class="v">16 / 17</span></div>
+        <div class="kv"><b>Lineage</b><span class="v">ChEMBL → PubChem (SMILES) · 1 dep</span></div>
+        <div class="kv"><b>Lifecycle</b><span class="v">14 prod · 1 staged · 2 draft</span></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ARCHITECTURE -->
+<section id="arch"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">Engineering &amp; agentic modules</div>
+    <h2>One stack, three layers, one portability seam</h2>
+    <p>The agentic layer is new <em>orchestration</em> over reused engineering parts. The domain-pack
+    boundary is what lets the whole hub lift onto another system.</p>
+  </div>
+  <div class="arch">
+    <div class="layer">
+      <div class="lh">Frontend · Catalog UX</div>
+      <div class="mods">
+        <span class="mod extend">Catalog Home (grid+search)</span>
+        <span class="mod reuse">SourceProfileCard / FAIR</span>
+        <span class="mod new">Connect Wizard</span>
+        <span class="mod new">AI Co-pilot panel</span>
+        <span class="mod new">Job timeline</span>
+        <span class="mod extend">Governance board</span>
+      </div>
+    </div>
+    <div class="layer agentic">
+      <div class="lh">Agentic layer · new orchestration over reused parts</div>
+      <div class="mods">
+        <span class="mod new">ConnectorCreationGraph</span>
+        <span class="mod new">SiteCrawler</span>
+        <span class="mod new">SchemaInference</span>
+        <span class="mod new">ConnectorSynthesis (sandbox)</span>
+        <span class="mod new">ScheduleSynthesizer</span>
+        <span class="mod extend">AutonomousEnrichmentAgent</span>
+        <span class="mod reuse">DataSteward</span>
+        <span class="mod reuse">MarketZeroHarness</span>
+        <span class="mod reuse">Tool registry</span>
+        <span class="mod reuse">LLM gateway · prompt registry</span>
+        <span class="mod reuse">extraction_llm</span>
+        <span class="mod reuse">schema_introspector</span>
+        <span class="mod reuse">learning_service (EWMA)</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="lh">Engineering layer · reused as-is</div>
+      <div class="mods">
+        <span class="mod reuse">BaseConnector / RawRecord</span>
+        <span class="mod new">Generic connectors ×5</span>
+        <span class="mod reuse">IntegrationPipeline (+DLQ, hooks)</span>
+        <span class="mod reuse">entity_resolver (6-strategy)</span>
+        <span class="mod reuse">Scheduler (APScheduler)</span>
+        <span class="mod reuse">SourceRegistry · quality · license</span>
+        <span class="mod reuse">FAIR scorer · DataQuality engine</span>
+        <span class="mod reuse">connector_health (FLOW/SYNC/E2E)</span>
+        <span class="mod reuse">Facts ledger · Evidence ledger</span>
+        <span class="mod reuse">Conservation gates</span>
+      </div>
+    </div>
+    <div class="layer seam">
+      <div class="lh">Domain-pack plugin boundary · the portability seam</div>
+      <div class="mods">
+        <span class="mod extend">entity schema</span>
+        <span class="mod extend">resolver maps</span>
+        <span class="mod extend">predicate routing</span>
+        <span class="mod extend">enrichment actions</span>
+        <span class="mod extend">FAIR config</span>
+        <span class="mod new">swap pack → new system</span>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--reuse)"></i>Reuse as-is</span>
+      <span><i style="background:var(--extend)"></i>Extend / generalize</span>
+      <span><i style="background:var(--new)"></i>Net-new</span>
+    </div>
+  </div>
+</div></section>
+
+<!-- FLOWS -->
+<section id="flows"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">The two flagship AI flows</div>
+    <h2>From a link, and from a sentence</h2>
+  </div>
+  <div class="grid g2">
+    <div class="flowcard">
+      <h3>Flow A — Onboard from a link</h3>
+      <p class="quote">"Connect this URL / this CSV / this warehouse table."</p>
+      <div class="steps">
+        <div class="stepi"><span class="num">1</span><span class="tx"><b>Sample</b> — SiteCrawler/fetcher pulls a sample (HTML/PDF/CSV head); robots + rate aware.</span></div>
+        <div class="stepi"><span class="num">2</span><span class="tx"><b>Infer</b> — SchemaInference proposes connector type, RecordType, field→column map, extraction schema, trust tier + cadence, with per-field confidence.</span></div>
+        <div class="stepi"><span class="num">3</span><span class="tx"><b>Synthesize</b> — ConnectorSynthesis emits a declarative config (preferred) and <b>dry-runs in a sandbox</b> — no writes.</span></div>
+        <div class="stepi"><span class="num">4</span><span class="tx"><b>Preview</b> — shows the records it would land + a draft FAIR profile for review.</span></div>
+        <div class="stepi"><span class="num">5</span><span class="tx"><b>Publish</b> — registers the source, writes the schedule, first real run lands rows; catalog goes live.</span></div>
+      </div>
+    </div>
+    <div class="flowcard">
+      <h3>Flow B — Enrich everything, on a schedule</h3>
+      <p class="quote">"Browse the company names, gather their financials from filings, auto-curate &amp; integrate — and keep doing it."</p>
+      <div class="steps">
+        <div class="stepi"><span class="num">1</span><span class="tx"><b>Compile</b> — co-pilot turns the sentence into a job: target set = <code>SELECT companies</code>, per-target plan = find filings → extract → resolve → emit facts.</span></div>
+        <div class="stepi"><span class="num">2</span><span class="tx"><b>Run</b> — the AutonomousResearchAgent loop, generalized to external fetch: per target, <b>commit-or-revert</b> on FAIR delta + false-link detection.</span></div>
+        <div class="stepi"><span class="num">3</span><span class="tx"><b>Evidence</b> — every gathered fact carries <code>source_doc_id</code> + evidence; low-confidence routes to a human-review queue.</span></div>
+        <div class="stepi"><span class="num">4</span><span class="tx"><b>Schedule</b> — ScheduleSynthesizer sets a recurring cadence; DataSteward keeps cleaning/deduping.</span></div>
+        <div class="stepi"><span class="num">5</span><span class="tx"><b>Learn</b> — learning_service (EWMA) tracks per-connector accuracy and auto-flags drift.</span></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- REUSE -->
+<section id="reuse"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">Build economics</div>
+    <h2>Reuse vs. new — by layer</h2>
+    <p>~80% of code and ~95% of architecture is reuse/extend. The differentiated build is the
+    generic-connector set, the AI onboarding/enrichment agents, and the catalog UX.</p>
+  </div>
+  <table>
+    <thead><tr><th>Layer</th><th>Reuse as-is</th><th>Extend</th><th>Net-new</th></tr></thead>
+    <tbody>
+      <tr><td><b>Ingestion</b></td><td>BaseConnector, RawRecord, pipeline, resolver, DLQ, hooks</td><td>normalizer/linker → pack-driven</td><td><span class="tag new">5 generic connectors</span></td></tr>
+      <tr><td><b>Catalog</b></td><td>source registry, quality, license, catalog/sources API, connector_health, FAIR</td><td>entity tables → introspected</td><td><span class="tag new">connector-type taxonomy</span><span class="tag new">onboarding lifecycle</span><span class="tag new">lineage</span></td></tr>
+      <tr><td><b>Curation</b></td><td>data_steward, steward_signals, auto_curate, data_quality, fair_scorer</td><td>ACTION_MAP → pluggable registry</td><td><span class="tag new">curation-rule UI</span></td></tr>
+      <tr><td><b>Governance</b></td><td>facts/evidence ledger, conservation gates, source contracts</td><td>predicate routing → registry</td><td><span class="tag new">lifecycle + lineage surfacing</span></td></tr>
+      <tr><td><b>Agentic</b></td><td>harness, tool registry, research-agent loop, llm_gateway, extraction_llm, schema_introspector, learning_service</td><td>research-agent → external fetch</td><td><span class="tag new">site-crawler</span><span class="tag new">schema-inference</span><span class="tag new">connector-synthesis</span><span class="tag new">schedule-synthesizer</span></td></tr>
+      <tr><td><b>Frontend</b></td><td>DataCatalogPanel, SourceProfileCard, SourcesPage</td><td>generalize entity views</td><td><span class="tag new">Catalog home</span><span class="tag new">Connect wizard</span><span class="tag new">AI co-pilot</span><span class="tag new">job timeline</span></td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<!-- ROADMAP -->
+<section id="roadmap"><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">How we build it</div>
+    <h2>In loops — each one shippable</h2>
+    <p>Every loop ships RED→GREEN with a real prod probe, a green Lane-1 gate, no conservation
+    regression, and an independent review — the way this codebase already works.</p>
+  </div>
+
+  <div class="phase"><div class="ph">Phase 0 · Catalog truth — surface what exists (the lenses)</div>
+    <div class="loops">
+      <span class="loop"><b>L1</b> Catalog Home + source dossier over existing APIs</span>
+      <span class="loop"><b>L1b</b> Documents &amp; vectors lens (+ enhance)</span>
+      <span class="loop"><b>L1c</b> Ontology &amp; data-model map lens</span>
+      <span class="loop"><b>L1d</b> Prompts &amp; packs lens (observational impact)</span>
+      <span class="loop"><b>L2</b> Connector-type taxonomy + onboarding lifecycle + dynamic registration</span>
+    </div></div>
+  <div class="phase"><div class="ph">Phase 1 · Connect any source (deterministic)</div>
+    <div class="loops">
+      <span class="loop"><b>L3</b> CsvConnector + RestApiConnector</span>
+      <span class="loop"><b>L4</b> Rss + WebScrape + Warehouse connectors</span>
+      <span class="loop"><b>L5</b> Connect wizard + ScheduleSynthesizer</span>
+    </div></div>
+  <div class="phase"><div class="ph">Phase 2 · AI-assisted onboarding</div>
+    <div class="loops">
+      <span class="loop"><b>L6</b> SiteCrawler (fetch/PDF/HTML, robots, budget)</span>
+      <span class="loop"><b>L7</b> SchemaInference (sample → mapping + schema)</span>
+      <span class="loop"><b>L8</b> ConnectorSynthesis + sandbox → ConnectorCreationGraph (Flow A)</span>
+    </div></div>
+  <div class="phase"><div class="ph">Phase 3 · Autonomous enrichment</div>
+    <div class="loops">
+      <span class="loop"><b>L9</b> Generalize research-agent to external-fetch enrichment (Flow B)</span>
+      <span class="loop"><b>L10</b> Schedule it + learning_service drift tracking</span>
+    </div></div>
+  <div class="phase"><div class="ph">Phase 4 · Govern &amp; portability</div>
+    <div class="loops">
+      <span class="loop"><b>L11</b> Cross-source lineage + coverage-by-type + lifecycle board</span>
+      <span class="loop"><b>L12</b> Extract DomainPack package — prove on a 2nd (non-pharma) pack</span>
+    </div></div>
+</div></section>
+
+<!-- GUARDRAILS -->
+<section><div class="wrap">
+  <div class="sec-head">
+    <div class="kicker">Guardrails &amp; success</div>
+    <h2>What keeps AI-led ingestion safe</h2>
+  </div>
+  <ul class="twocol">
+    <li><b>Codegen safety</b> — prefer declarative connector <em>configs</em> over generated code; if code, sandbox + static-check + human-approve before it touches the scheduled path.</li>
+    <li><b>Crawl etiquette / legal</b> — robots.txt, rate limits, ToS respected; licensed/paywalled sources stay <code>planned</code> contracts, never scraped.</li>
+    <li><b>No hallucinated schema / false links</b> — confidence floors, a human-review queue, and the research agent's false-link detection + FAIR-delta commit-or-revert.</li>
+    <li><b>Provenance always</b> — every autonomously gathered fact carries <code>source_doc_id</code> + evidence; conservation gates fail closed otherwise.</li>
+    <li><b>No vacuous catalog</b> — a source that lands 0 rows shows RED, not "connected"; "the job ran" ≠ "the product is healthy."</li>
+    <li><b>Success metrics</b> — time-to-onboard (engineer-days → curator-minutes); % onboarded via AI; facts &amp; FAIR-delta per enrichment cycle; sources with contract+FAIR+green; # domains served from a swapped pack.</li>
+  </ul>
+</div></section>
+
+<footer><div class="wrap">
+  DataHub vision &amp; design draft · grounded in a market_zero codebase probe (ingestion · catalog · FAIR/curation/governance · agentic).
+  Full spec: <code>docs/SPEC_DATA_HUB.md</code>. <span style="color:var(--accent)">Portable by design — the same hub lifts onto any system via a swapped domain pack.</span>
+</div></footer>
+
+</body>
+</html>

@@ -122,7 +122,23 @@ fan out per-fragment → 147s/query and a wall of near-duplicate noise (the E0x
 grounding + perf root cause; makes the 59-q eval ~2.5h, un-runnable). Fixing in
 `ctx_pipeline.py` only (platform-owned; no data-lane seam). Collapses config
 fragments to the canonical base before retrieve hydrates. Unblocks clean eval
-measurement + the #215 merge.
+measurement + the #215 merge. **(MERGED #243.)**
+
+**Data (data session), 2026-06-13 — CLAIM: DataHub program (layered hybrid).**
+Spec = `docs/SPEC_DATA_HUB.md` (12 loops, 4 phases; ~80% reuse). Delivery model
+chosen with the owner: **layered hybrid**, not one autonomous end-to-end team.
+- **Phase 0 (catalog lenses L1–L1d)** = a **dedicated, parallel** agent, scoped
+  **only** to the DataHub catalog surfaces — read-only UI over existing APIs
+  (`source_registry`, `connector_health`, `source_coverage`, `schema_introspector`,
+  `prompt_registry`). Touches `frontend/` so it overlaps **Antigravity's** lane →
+  it stays inside the new catalog views, claims here, and opens a PR for review (no
+  self-merge). No backend/migration seam ⇒ collision-safe to run in parallel.
+- **Phase 1+ (generic connectors, AI onboarding, autonomous enrich, portability;
+  L2–L12)** = **data lane (me), interleaved with the eval-pass loops** under the §7
+  claim + §7.4 migration-reservation protocol — NOT a blind parallel backend
+  session (this is the exact `connectors/` + `scheduler/` + `schema/migrations/`
+  seam that caused the 092 collision). DataHub backend migrations reserve **096+**
+  (095 is taken by #241 NADAC, held); none needed for Phase 0.
 
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
 
@@ -187,6 +203,8 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | FS-* frontend salvage (timeline + badge on #231/#227) | unclaimed | open |
 | D1 emitters: TrialOutcome / Investigator / PublicationClaim / CompanyFinancial | D-ingest (other session has #232) | open — claim individually |
 | FS-3 readiness panel, FS-4 as-of UI, H-a temporal edges | unclaimed | open |
+| DataHub Phase 0 — catalog lenses L1–L1d (read-only UI over existing APIs) | dedicated agent `claude/datahub/phase0-lenses` | in-flight — review-gated, no self-merge |
+| DataHub Phase 1+ — L2 taxonomy/lifecycle → L3 generic connectors → … L12 | D-intel — interleaved w/ eval loops | open — sequential, reserves mig 096+ |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
 - `090` fact_governance · `091` crosswalk_records — MERGED.
