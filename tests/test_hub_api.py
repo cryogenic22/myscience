@@ -222,7 +222,6 @@ class TestAdvanceOnboarding:
 
 class TestRoutesMounted:
     def test_hub_routes_present(self):
-        from fastapi.testclient import TestClient
         from api.app import create_app
         app = create_app()
         paths = {r.path for r in app.routes}
