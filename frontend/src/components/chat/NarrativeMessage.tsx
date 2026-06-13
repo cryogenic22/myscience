@@ -76,6 +76,52 @@ export default function NarrativeMessage({
                 />
               </div>
 
+              {/* Coverage limits — structured honesty about not-ingested / thin
+                  sources (H1 / MZ-XR-002). Rendered as first-class rows so the
+                  user does not have to scrape the prose; review flags shown as
+                  chips for traceability. */}
+              {Array.isArray(message.data?.limitations) && message.data.limitations.length > 0 && (
+                <div
+                  data-testid="coverage-limits"
+                  className="mt-4 rounded-xl"
+                  style={{
+                    padding: '12px',
+                    background: 'var(--color-amber-soft)',
+                    fontSize: '12px',
+                    color: 'var(--color-amber)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 6 }}>
+                    <span>⚠</span>
+                    <span>Coverage limits</span>
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {message.data.limitations.map((lim, i) => (
+                      <li key={i} data-coverage-limit={i}>{lim}</li>
+                    ))}
+                  </ul>
+                  {Array.isArray(message.data?.review_flags) && message.data.review_flags.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {message.data.review_flags.map((f) => (
+                        <span
+                          key={f}
+                          data-review-flag={f}
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            padding: '2px 6px',
+                            border: '1px solid var(--color-amber)',
+                            borderRadius: 6,
+                          }}
+                        >
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Confidence warning */}
               {message.confidenceAssessment && message.confidenceAssessment.overall < 0.45 && (
                 <div

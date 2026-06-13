@@ -214,6 +214,13 @@ export interface QueryResponse {
   provenance_summary: Record<string, unknown>;
   /** DI-3 — structured decomposition (entities × dimensions, grounded cells). */
   decomposition_matrix?: DecompositionMatrix;
+  /** H1 / MZ-XR-002 — honest coverage limits for not-ingested / thin sources the
+   *  question implicates (so the UI shows them as first-class rows, not buried in
+   *  prose). */
+  limitations?: string[];
+  /** Source-specific review flags behind the limitations (e.g. NO_PAYER_SOURCE,
+   *  NADAC_NO_ROWS, EMA_PRODUCT_INFO_NOT_INGESTED). */
+  review_flags?: string[];
 }
 
 /* ── DI-3 decomposition matrix (entities × dimensions, grounded cells) ── */
