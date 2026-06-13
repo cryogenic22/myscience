@@ -1,0 +1,121 @@
+"""Fail-loud detector for orphaned drug canonicals (conservation invariant).
+
+A drug name is ORPHANED when it has live evidence (facts/trials) but **zero
+active rows** — every row carrying its evidence is merged/superseded/excluded, so
+every ``record_status``-filtering read path (CTX corpus, resolver richness rank,
+dossier) skips it and a rich drug reads as "no data". This is the dominant
+silent-degradation failure (#218/#220/#222) and it RECURS: a scheduled
+consolidation re-demotes canonicals mid-cycle. #222 heals point-in-time; this
+makes the next recurrence FAIL LOUD instead of silently rotting.
+
+Pure core (``find_orphaned``) is Lane-1 unit-tested; ``scan`` is the live Lane-2
+probe (behind DATABASE_URL). Exit code 1 if any name is orphaned above the floor.
+
+    python -m scripts.check_orphaned_canonicals            # report + exit code
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+from db import Database
+
+# Names below this live-evidence weight aren't worth flagging (long-tail noise /
+# genuinely-empty). A real canonical (valsartan, ivabradine…) is far above this.
+_MIN_EVIDENCE = 10
+
+
+def _is_real_single_drug(name: str) -> bool:
+    """Only a REAL single-drug name can be 'orphaned' — a combo, placebo arm, or
+    junk row legitimately has no mono canonical, so it must not trip the invariant.
+    Reuses the shared junk classifier so the detector and the consolidator agree."""
+    from scripts.clean_drug_names import _should_exclude
+    from scripts.consolidate_junk_drug_rows import _ADDITIVE_COMBO_RE, _NON_DRUG_TOKENS
+    low = (name or "").strip().lower()
+    if not low or low in _NON_DRUG_TOKENS:
+        return False
+    if "/" in low or _ADDITIVE_COMBO_RE.search(low):  # combo — not a mono canonical
+        return False
+    return not _should_exclude(name)
+
+
+def find_orphaned(rows: list[dict], *, min_evidence: int = _MIN_EVIDENCE) -> list[dict]:
+    """Pure: given per-row {name, status, richness}, return the REAL drugs (by
+    NORMALIZED name) that have >= min_evidence live evidence but NO active row
+    holding any of it (the silent-degradation invariant).
+
+    Grouping is by the combo-SAFE normalized name (`_norm`): a salt/config row
+    ("furosemide injection", "metformin hcl") rolls up to its base drug, so the
+    invariant asks the right question — "is the DRUG resolvable (an active row
+    exists)?" — not "is every dosage-form string independently active?". The
+    combo-safe normalizer never collapses additive combos, and junk/combo/placebo
+    names are filtered out (they legitimately have no mono canonical).
+    """
+    from scripts.consolidate_junk_drug_rows import _norm
+    by_norm: dict[str, dict] = {}
+    for r in rows:
+        nm = (r.get("name") or "").strip()
+        if not nm or not _is_real_single_drug(nm):
+            continue
+        key = _norm(nm) or nm.lower()
+        agg = by_norm.setdefault(key, {"total": 0, "active": 0, "label": nm.lower()})
+        rich = int(r.get("richness") or 0)
+        agg["total"] += rich
+        if r.get("status") == "active":
+            agg["active"] += rich
+    return [
+        {"name": a["label"], "evidence": a["total"]}
+        for a in by_norm.values()
+        if a["total"] >= min_evidence and a["active"] == 0
+    ]
+
+
+_SCAN_SQL = """
+    WITH fc AS (SELECT subject_entity_id k, count(*) n FROM facts
+                WHERE subject_entity_type='drug' AND superseded_by IS NULL
+                GROUP BY subject_entity_id),
+         tc AS (SELECT drug_id::text k, count(*) n FROM clinical_trials
+                WHERE drug_id IS NOT NULL GROUP BY drug_id)
+    SELECT lower(d.generic_name) AS name, d.record_status AS status,
+           COALESCE(fc.n,0)+COALESCE(tc.n,0) AS richness
+      FROM drugs d
+      LEFT JOIN fc ON fc.k = d.id::text
+      LEFT JOIN tc ON tc.k = d.id::text
+     WHERE d.generic_name IS NOT NULL AND d.generic_name <> ''
+"""
+
+
+def scan(db, *, min_evidence: int = _MIN_EVIDENCE) -> list[dict]:
+    rows = [dict(r) for r in (db.fetch_all(_SCAN_SQL) or [])]
+    return sorted(find_orphaned(rows, min_evidence=min_evidence),
+                  key=lambda o: -o["evidence"])
+
+
+def _load_env():
+    for b in (os.getcwd(), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))):
+        p = os.path.join(b, ".env")
+        if os.path.exists(p):
+            for line in open(p, encoding="utf-8"):
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            return
+
+
+def main() -> None:
+    _load_env()
+    db = Database(os.environ["DATABASE_URL"])
+    db.connect()
+    orphaned = scan(db)
+    if not orphaned:
+        print("OK — no orphaned canonicals (every drug with evidence has an active row).")
+        return
+    print(f"FAIL — {len(orphaned)} orphaned canonical(s): evidence exists but no active row.")
+    for o in orphaned[:40]:
+        print(f"  {o['name']:<34} {o['evidence']:>5} live facts+trials, 0 active")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
