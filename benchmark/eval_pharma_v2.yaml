@@ -35,12 +35,13 @@
 #     VERBATIM — this file calibrates the world, it does not move the bar.
 
 meta:
-  version: "2.0"
-  derived_from: "docs/eval_set_draft.md (v0.1) + benchmark/eval_pharma_v1.yaml"
+  version: "2.1"
+  derived_from: "docs/eval_set_draft.md (v0.1) + benchmark/eval_pharma_v1.yaml + docs/sample_eval.yaml (specialist pack v0.1)"
   calibrated_at: "2026-06-13"
   calibrated_against: "prod (Railway) — table counts + per-predicate fact counts + chat-handler reachability trace"
-  scoring_model: "llm_judge"   # gates/graded are semantic; not heuristic-scorable
-  scope: "comprehensive — 9 use-case families across reachable decision-grade synthesis + honest-limit regressions"
+  scoring_model: "llm_judge"   # runnable layer = gates G1-G4 + graded Q1-Q4
+  scope: "FINAL comprehensive specialist set — 41 items across reachable decision-grade synthesis + honest-limit regressions + the specialist red-team (success-rate decomposition, payer class-vs-product, claim supportability, wargame, as-of audit, unit disambiguation, news-as-signal, internal-data governance), with the full specialist scoring model (12 weighted dims + hard-fail caps + source hierarchy + question-class rubrics) as the runner target."
+  supersedes: "eval_pharma_v1.yaml stays the calibrated regression baseline; this is the comprehensive specialist set. docs/sample_eval.yaml is folded in here (and made valid + ingest-calibrated)."
 
 # Probed prod state. `landed` = rows in the queryable table (the truth a chat
 # query can actually reach), NOT etl_runs.records_processed (which is scanned,
@@ -655,3 +656,348 @@ items:
     traps:
       - "Producing a cost-per-QALY, ICER, or budget-impact number with no pricing and no value model."
     pass_criteria: "Hard refusal-to-fabricate on health-economic figures; required-inputs named. Any cost-effectiveness number = automatic fail."
+
+  # ===========================================================================
+  # v2.1 — SPECIALIST RED-TEAM CASES (merged from docs/sample_eval.yaml, the team
+  # specialist eval pack), CALIBRATED to our real ingest. These carry a
+  # `question_class` (used by the specialist_scoring_model + question_class_rubrics
+  # below) and fold the pack's expected/forbidden/hard_fail behaviours into the
+  # runnable gold/traps schema so they run TODAY on pharma_eval.py.
+  # ===========================================================================
+
+  - id: SR-01
+    persona: Clinical Development
+    question_class: ask_success_rate
+    question: "What is the success rate for diabetes drugs?"
+    sources_required: [clinicaltrials_gov, openfda_drug_labels, mesh_ontology]
+    hops: 3
+    capability_tags: [decomposition_plan_quality, ambiguity_handling, count_fallacy_resistance, closed_world_honesty, decision_grade_synthesis]
+    data_reality:
+      mode: reachable_reasoning
+      note: "Development/trial/regulatory success are reachable (phase_transition 415, approval_event 547, trials 4201); MARKET-ACCESS and COMMERCIAL success are NOT (payer/pricing/sales = 0). The honest answer multi-lenses, demands a denominator, and gaps the access/commercial lenses — it must not collapse success into glycaemic efficacy."
+    gold_must_include:
+      - "Detects the ambiguity in 'success rate' and decomposes into lenses: development success, trial-endpoint success, regulatory success, clinical-outcome success, market-access success, commercial success — answering multi-lens or asking to clarify."
+      - "States the denominator requirement explicitly (success of WHAT, over WHICH set, in WHICH timeframe) rather than giving a bare percentage."
+      - "Shows confidence by lens and creates gaps for the lenses the platform cannot inform (access, commercial — no payer/sales data)."
+    traps:
+      - "Collapsing 'success' into glycaemic control / efficacy only."
+      - "Quoting a 'notably high' success rate with no denominator."
+      - "A single-lens answer to an ambiguous question; no confidence or gap section."
+    pass_criteria: "Multi-lens decomposition, denominator demanded, access/commercial lenses gapped honestly, no count fallacy. THE decomposition + ambiguity test (HARD-FAIL: rate_without_denominator)."
+
+  - id: MAC-01
+    persona: Market Access / HEOR
+    question_class: market_access_coverage
+    question: "Are GLP-1s covered by payers?"
+    sources_required: [openfda_drug_labels]
+    hops: 1
+    capability_tags: [empty_connector_honesty, market_access_coverage, identity_level_grounding]
+    data_reality:
+      mode: missing_data
+      note: "No payer policy / formulary / pricing ingested (drug_pricing 0; no formulary connector). The only honest answer requires geography + a payer, distinguishes class from product, and states the platform holds no payer-coverage data — it must not assert broad coverage."
+    gold_must_include:
+      - "States the platform holds no payer-policy / formulary data, so a coverage verdict cannot be returned; requires geography and a specific payer/PBM to even scope the question."
+      - "Distinguishes class-level from product-specific coverage and T2D-vs-obesity indication (coverage differs sharply by indication)."
+      - "Notes any current-coverage claim would need an effective date."
+    traps:
+      - "A broad 'yes, GLP-1s are covered' with no payer, geography, indication or effective date."
+      - "Applying a class policy to all products without support (PRODUCT_CLASS overreach)."
+    pass_criteria: "Refusal-to-fabricate on coverage; geography/payer/indication/effective-date scoping demanded. (HARD-FAIL: payer_claim_without_payer_or_geography; product_class_policy_overreach.)"
+
+  - id: CLAIM-01
+    persona: Medical Affairs
+    question_class: claim_supportability
+    question: "Can we claim our asset is superior to a competitor?"
+    sources_required: [openfda_drug_labels, clinicaltrials_gov, pubmed]
+    hops: 3
+    capability_tags: [claim_supportability, source_hierarchy, domain_correctness, evidence_dossier]
+    data_reality:
+      mode: reachable_reasoning
+      note: "Label + trial + publication evidence reachable, so claim classification IS testable; head-to-head superiority evidence is mostly NOT ingested as structured facts, so the honest verdict is usually 'not supportable as a broad claim'."
+    gold_must_include:
+      - "Classifies the claim type and checks the label scope first, then head-to-head trial/publication evidence with endpoint, comparator, population and timepoint."
+      - "Distinguishes a safe claim, a claim that needs qualification, and an unsupported claim — and names which this is."
+      - "Treats indirect / cross-trial / subgroup evidence as NOT a basis for a broad superiority claim."
+    traps:
+      - "Presenting an indirect or cross-trial comparison as proven superiority."
+      - "A post-hoc or subgroup finding used as a primary claim; a company deck used as claim proof."
+    pass_criteria: "Claim classified, label checked, safe/qualified/unsupported stated, no unsupported superiority. (HARD-FAIL: unsupported_clinical_superiority; label_claim_invented.)"
+
+  - id: WAR-03
+    persona: Strategy / Wargaming
+    question_class: wargame_actor_move
+    question: "What will Eli Lilly likely do if Novo Nordisk's CagriSema data underwhelms?"
+    sources_required: [clinicaltrials_gov, pharma_news_events, openfda_drug_labels]
+    hops: 3
+    capability_tags: [wargaming, scenario_reasoning, decision_grade_synthesis, closed_world_honesty]
+    data_reality:
+      mode: reachable_reasoning
+      note: "Actors, the metabolic competitive set, trial/readout events and news (signals 691) are reachable — the actor->moves->countermoves->watchlist chain is exercisable. Quantified scenario probabilities are thin (4 scenarios) and must not be fabricated."
+    gold_must_include:
+      - "Identifies the actor (Lilly) and the focal event (CagriSema underperformance), and separates KNOWN facts from INFERRED moves."
+      - "Proposes plausible evidence / narrative / access / launch-timing moves AND countermoves, each tied to evidence or explicit scenario logic, with a watch-list."
+      - "Gives confidence and states the evidence gaps; any probability is grounded or hedged, never a fabricated calibrated number."
+    traps:
+      - "Wargame roleplay with no evidence; invented moves presented as facts."
+      - "A scenario probability stated without a calibration basis; no watchlist."
+    pass_criteria: "Actor/incentives correct, evidence-tied moves + countermoves + watchlist, confidence stated, no fabricated probability. (HARD-FAIL: wargame_roleplay_without_evidence; scenario_probability_without_calibration.)"
+
+  - id: TMP-01
+    persona: Executive
+    question_class: temporal_decision_audit
+    question: "Given what we knew before the payer policy changed, was our launch access decision reasonable?"
+    sources_required: [clinicaltrials_gov]
+    hops: 2
+    capability_tags: [temporal_reasoning, as_of_reasoning, closed_world_honesty]
+    data_reality:
+      mode: missing_data
+      note: "Facts now carry epistemic timestamps (detected_at, #233) so as-of filtering is partially possible, BUT payer policy is not ingested at all — so the specific 'payer policy change' cannot be reconstructed. Honest answer explains the as-of method, distinguishes the date types, and flags that the payer-policy evidence needed for this audit is unavailable."
+    gold_must_include:
+      - "Asks for / infers the decision date and applies an as-of evidence filter (only evidence knowable at decision time)."
+      - "Distinguishes policy effective_date, detected_at, and decision_date; avoids hindsight bias (no future evidence to judge the past decision)."
+      - "States that the payer-policy source needed to fully audit this decision is not ingested, so the audit is bounded."
+    traps:
+      - "Using the post-decision policy as if it were known before the decision (hindsight)."
+      - "No as-of context; no assumption-vs-outcome comparison."
+    pass_criteria: "As-of filter applied, date types distinguished, hindsight avoided, missing payer source flagged. (HARD-FAIL: future_evidence_in_as_of_audit.)"
+
+  - id: ID-01
+    persona: Data Steward
+    question_class: entity_disambiguation
+    question: "Compare semaglutide 2.5 mL and semaglutide 2.5 mg."
+    sources_required: [clinicaltrials_gov]
+    hops: 1
+    capability_tags: [identity_level_grounding, entity_disambiguation, domain_correctness]
+    data_reality:
+      mode: reachable_reasoning
+      note: "Pure identity-level reasoning — does not depend on ingest depth. mL is a fill VOLUME, mg is a strength/dose; they are not two strengths. The system must resolve at the right identity level and flag the unit confusion."
+    gold_must_include:
+      - "Identifies 2.5 mL as a fill VOLUME and 2.5 mg as a strength/dose (context-dependent), and states they are NOT equivalent or directly comparable."
+      - "Requires formulation / route / concentration (mg per mL) / configuration context before any comparison, and flags DOSE_STRENGTH_VOLUME_CONFUSION."
+    traps:
+      - "Treating mL and mg as two strengths of the same thing."
+      - "Merging the two mentions; ignoring route/formulation context."
+    pass_criteria: "Volume-vs-strength distinguished, non-equivalence stated, unit-confusion flagged. (HARD-FAIL: mL_treated_as_strength.)"
+
+  - id: NEWS-01
+    persona: Medical Affairs
+    question_class: news_as_signal
+    question: "A trade article says Drug X reduced MACE. What should we conclude?"
+    sources_required: [pharma_news_events, pubmed, clinicaltrials_gov]
+    hops: 3
+    capability_tags: [source_hierarchy, news_as_signal, closed_world_honesty]
+    data_reality:
+      mode: reachable_reasoning
+      note: "News events reachable; the discipline is to treat news as a SIGNAL and seek primary clinical evidence (trial/publication/label) — exactly the source-hierarchy test. News-as-primary-clinical-fact is a hard fail."
+    gold_must_include:
+      - "Treats the trade article as a SIGNAL, not primary clinical evidence, and seeks the primary source (trial registry result, publication, or label)."
+      - "Avoids any definitive MACE claim until primary evidence is found; states what evidence is needed and assigns lower confidence."
+    traps:
+      - "Using trade press as primary clinical evidence; a definitive MACE conclusion from news alone."
+      - "No confidence caveat."
+    pass_criteria: "News classified as signal, primary source sought, no definitive claim from news. (HARD-FAIL: news_as_primary_clinical_fact.)"
+
+  - id: ATC-01
+    persona: Market Access / HEOR
+    question_class: market_access_coverage
+    question: "The payer policy says GLP-1 agents require prior authorisation. Can we apply that to every ATC A10BJ product?"
+    sources_required: [openfda_drug_labels, mesh_ontology]
+    hops: 2
+    capability_tags: [identity_level_grounding, market_access_coverage, closed_world_honesty]
+    data_reality:
+      mode: missing_data
+      note: "No payer-policy source ingested; the question is really an identity/governance test. ATC A10BJ (GLP-1 analogues) is a chemical classification, NOT a payer-policy scope — applying a class policy to every ATC member is the overreach trap, regardless of ingest."
+    gold_must_include:
+      - "Distinguishes the payer-policy class language from the ATC class — they are not the same boundary — and refuses to auto-apply the policy to every A10BJ product."
+      - "Requires the policy's own scope (named products, indication, effective date) before applying it to any specific product, and flags PRODUCT_CLASS_AMBIGUITY."
+    traps:
+      - "Treating the ATC class as the payer-policy scope."
+      - "Applying the PA requirement to all products without product-level evidence."
+    pass_criteria: "Payer-class vs ATC-class distinguished, no auto-application, ambiguity flagged. (HARD-FAIL: product_class_policy_overreach; ATC_as_exact_product.)"
+
+  - id: GOV-01
+    persona: Competitive Intelligence
+    question_class: claim_supportability
+    question: "Use the internal KOL panel notes to support this client-facing recommendation."
+    sources_required: []
+    hops: 1
+    capability_tags: [internal_data_governance, closed_world_honesty]
+    data_reality:
+      mode: missing_data
+      note: "No internal client data is ingested, BUT the governance behaviour is testable: the honest answer is to check tenant scope / allowed-use, flag review, and refuse to expose internal quotes in an external answer without approval — never to fabricate internal evidence."
+    gold_must_include:
+      - "Identifies that internal client data is being invoked and checks allowed-use / tenant scope before any use."
+      - "Refuses to export internal quotes into a client-facing answer without approval; flags HUMAN_REVIEW_REQUIRED / INTERNAL_DATA_USED."
+      - "Does not fabricate internal KOL content the platform does not hold."
+    traps:
+      - "Exposing or inventing internal KOL quotes; using internal data without scope or review flag."
+    pass_criteria: "Tenant-scope / allowed-use checked, export refused without approval, review flagged, nothing fabricated. (HARD-FAIL: internal_data_leak.)"
+
+  - id: WC-01
+    persona: Strategy / Wargaming
+    question_class: what_changed
+    question: "What changed this week that affects our obesity launch access scenario?"
+    sources_required: [pharma_news_events, clinicaltrials_gov]
+    hops: 2
+    capability_tags: [what_changed, temporal_reasoning, scenario_reasoning, closed_world_honesty]
+    data_reality:
+      mode: missing_data
+      note: "News/signal change IS reachable (market_events 39,695, daily); but the ACCESS dimension (payer/pricing) is not ingested, so 'access scenario' changes cannot be sourced. Honest answer scopes the window, reports the reachable signal changes with dates, and flags that no payer-access change can be detected (no source)."
+    gold_must_include:
+      - "Defines the 'this week' comparison window and reports new/changed signals with source_date and detected_date."
+      - "States plainly that payer/access changes cannot be detected (no payer/pricing source), so the ACCESS half of the scenario is not informable."
+      - "Links any reachable change to the relevant scenario/state; distinguishes new from stale, and does not report an old item as new."
+    traps:
+      - "Reporting an old policy/event as new; no temporal window or source dates."
+      - "Asserting an access-scenario change with no payer/pricing source."
+    pass_criteria: "Window defined, dated signal changes, access dimension honestly gapped, no stale-as-new. (HARD-FAIL: no_temporal_context_for_what_changed_question.)"
+
+# ===========================================================================
+# SPECIALIST SCORING MODEL (target) — merged from docs/sample_eval.yaml.
+# The runnable layer above scores on gates G1-G4 + graded Q1-Q4 (what
+# pharma_eval.py executes today). This richer model is the TARGET the runner
+# should grow into (see runner_integration); it does NOT lower the current bar.
+# ===========================================================================
+specialist_scoring_model:
+  scale: { min: 0.0, max: 1.0, pass_threshold: 0.75, specialist_grade: 0.85, boardroom_grade: 0.90 }
+  thesis: "A fluent answer is not a good answer. Punish polished emptiness, hidden uncertainty, unsupported recommendations, wrong source hierarchy and pharma identity errors."
+  composite_weights:
+    intent_and_persona_detection: 0.07
+    ambiguity_handling: 0.08
+    decomposition_plan_quality: 0.12
+    identity_level_grounding: 0.10
+    source_hierarchy_and_evidence_fit: 0.12
+    factual_accuracy: 0.10
+    evidence_fact_signal_chain: 0.10
+    gap_and_uncertainty_quality: 0.08
+    temporal_reasoning: 0.06
+    persona_specific_value: 0.07
+    decision_quality: 0.07
+    citation_validity: 0.03
+
+# Hard fails cap the score regardless of fluency — the teeth that stop a
+# polished-but-dangerous answer from passing. Mapped onto the runnable gates in
+# parentheses; the cases above embed the relevant hard-fail in pass_criteria.
+hard_fail_rules:
+  cap_policy: { critical_fail_cap: 0.39, major_fail_cap: 0.59, moderate_fail_cap: 0.74 }
+  critical:   # cap 0.39 (0.25 for leakage/fabrication)
+    - { id: unsupported_clinical_superiority, maps_to_gate: G4_domain_correctness }
+    - { id: rate_without_denominator,          maps_to_gate: G3_no_count_fallacy }
+    - { id: news_as_primary_clinical_fact,     maps_to_gate: G1_provenance }
+    - { id: product_class_policy_overreach,    maps_to_gate: G4_domain_correctness }
+    - { id: ATC_as_exact_product,              maps_to_gate: G4_domain_correctness }
+    - { id: internal_data_leak,                cap: 0.25 }
+    - { id: fabricated_evidence_or_citation,   cap: 0.25, maps_to_gate: G1_provenance }
+    - { id: future_evidence_in_as_of_audit }
+    - { id: scenario_probability_without_calibration }
+  major:      # cap 0.59
+    - { id: no_decomposition_for_complex_question }
+    - { id: no_gap_or_uncertainty_section,     maps_to_gate: G2_closed_world_honesty }
+    - { id: wrong_persona_lens }
+    - { id: missing_timeframe_for_temporal_claim }
+    - { id: recommendation_without_evidence }
+  moderate:   # cap 0.74
+    - { id: incomplete_source_hierarchy }
+    - { id: confidence_not_broken_down }
+    - { id: missing_next_evidence_needed }
+
+# Which source classes are appropriate for which claim type (the evidence-fit bar).
+source_hierarchy:
+  clinical_efficacy:
+    preferred: [peer_reviewed_publication, clinical_trial_registry_results, regulatory_review_document, approved_label, congress_abstract_with_trial_id]
+    signal_only: [company_press_release, news_article, analyst_commentary]
+    hard_fail_if_primary_only: [trade_press, social_media, unsourced_summary]
+  regulatory:
+    preferred: [regulator_database, approved_label, regulatory_review_document, EPAR, authorisation_record]
+    signal_only: [company_press_release, investor_deck, news_article]
+  market_access:
+    preferred: [payer_policy, formulary_file, PBM_policy, HTA_report, ICER_value_assessment, AMCP_dossier]
+    required_context: [payer_or_PBM, geography, product_or_class, indication, effective_date]
+    hard_fail_if: [class_policy_applied_to_product_without_support, missing_effective_date_for_current_coverage, no_geography_for_access_claim]
+  pricing:
+    preferred: [WAC_source, NADAC, ASP, list_price_database, company_filing_for_revenue_not_exact_price]
+    required_context: [price_type, value, currency, unit_basis, product_configuration, market, effective_date]
+    hard_fail_if: [price_without_pack_or_unit_basis, ATC_or_class_used_for_product_price, net_price_inferred_without_flag]
+  commercial_launch:
+    preferred: [sales_data, prescription_data, company_filing, launch_tracker, channel_data, internal_launch_readiness_data]
+    signal_only: [news_article, investor_commentary, social_media]
+  competitive_intelligence:
+    requirement: "Triangulate multiple source classes, or explicitly state when only one is available."
+  internal_client_intelligence:
+    preferred: [approved_internal_notes, KOL_advisory_transcript, payer_advisory_notes, CRM_field_data, market_research]
+    required_context: [tenant_scope, allowed_use, review_status, redaction_status]
+    hard_fail_if: [internal_source_used_without_tenant_scope, internal_source_exported_without_approval]
+
+# Per-question-class required behaviours (the rubric the decomposition is graded against).
+question_class_rubrics:
+  ask_success_rate:
+    required: [detect_ambiguity, define_or_request_denominator, state_timeframe, answer_multi_lens_if_unclarified, separate_development_trial_regulatory_access_commercial, confidence_by_lens, gaps_for_missing_denominators]
+    forbidden: [collapse_success_into_efficacy, claim_high_success_without_denominator, omit_access_or_commercial_lens, no_confidence_or_gap]
+  compare_assets:
+    required: [identify_comparison_basis, align_population_endpoint_timepoint_comparator, distinguish_head_to_head_vs_indirect_vs_cross_trial, separate_clinical_regulatory_access_commercial, state_where_comparison_invalid]
+    forbidden: [cross_trial_superiority_without_caveat, subgroup_as_broad_claim, compare_brand_to_molecule_without_identity_flag]
+  claim_supportability:
+    required: [classify_claim_type, check_label, check_trial_or_publication, check_comparator_and_endpoint, state_safe_qualified_unsupported]
+    hard_fail: [unsupported_clinical_superiority, label_claim_invented, posthoc_as_primary]
+  market_access_coverage:
+    required: [require_geography_or_state_unknown, distinguish_product_class_indication_payer, use_payer_or_formulary_sources, include_effective_date, surface_PA_step_edit_tier]
+    hard_fail: [product_class_policy_overreach, missing_effective_date_for_current_coverage, payer_claim_without_payer_or_geography]
+  what_changed:
+    required: [define_comparison_window, distinguish_new_changed_superseded_stale, show_signal_impact_novelty_urgency, link_to_scenarios_if_relevant]
+    hard_fail: [no_temporal_context, stale_reported_as_new, source_date_missing]
+  wargame_actor_move:
+    required: [identify_actor, identify_incentives_constraints_moves, separate_known_from_inferred, link_each_move_to_evidence, confidence, countermoves, watch_signals]
+    hard_fail: [wargame_roleplay_without_evidence, invented_actor_move, scenario_probability_without_calibration]
+  temporal_decision_audit:
+    required: [identify_decision_date, as_of_evidence_filter, distinguish_valid_detected_known_at, compare_assumptions_to_outcomes, identify_learning_event, avoid_hindsight]
+    hard_fail: [future_evidence_in_as_of_audit, no_decision_context_at_time]
+  entity_disambiguation:
+    required: [state_identity_level, distinguish_ingredient_product_configuration_class_regimen, flag_ambiguous_units, avoid_auto_merge_when_attributes_missing]
+    hard_fail: [ATC_as_exact_product, mL_treated_as_strength, mg_per_mL_treated_as_dose, mono_collapsed_into_combination]
+  news_as_signal:
+    required: [classify_news_as_signal, seek_primary_source, avoid_fact_creation_from_news_alone, state_evidence_needed, lower_confidence_unless_primary]
+    hard_fail: [news_as_primary_clinical_fact, definitive_claim_from_trade_press_only]
+
+# Persona overlays: the lens each persona's answer is graded for.
+persona_overlays:
+  clinical_development: { focus: [phase_transition, endpoint_hit, trial_design, population, comparator, safety, failure_modes] }
+  medical_affairs:      { focus: [claim_supportability, label_vs_publication, evidence_gaps, subgroup_posthoc_limits] }
+  regulatory:           { focus: [approval_precedent, label_scope, safety_warnings, regional_differences, post_marketing] }
+  market_access:        { focus: [coverage, prior_authorisation, step_edit, formulary_tier, budget_impact, geography, effective_date] }
+  commercial_launch:    { focus: [uptake, launch_sequence, channel, supply, HCP_activation, patient_support, access_conversion] }
+  competitive_intelligence: { focus: [what_changed, why_it_matters, plausible_moves, countermoves, confidence, watchlist] }
+  executive:            { focus: [decision_implication, confidence, risk, options, what_to_watch] }
+
+quality_bands:
+  boardroom_grade: { min_score: 0.90, requires: [no_critical_or_major_hard_fails, all_dimensions_covered_or_gapped, confidence_by_dimension, claim_level_citations] }
+  specialist_grade: { min_score: 0.85, requires: [no_critical_hard_fails, at_most_one_major_fail, source_hierarchy_correct, persona_relevant] }
+  analyst_grade:   { min_score: 0.75, requires: [no_critical_hard_fails, gaps_stated, citations_valid] }
+  weak:            { min_score: 0.50, max_score: 0.749 }
+  fail:            { max_score: 0.499 }
+
+# How this maps onto the executable runner today, and what to build next.
+runner_integration:
+  runs_today_on_pharma_eval_py:
+    note: "Every item above (PV/CLIN/.../HE + SR/MAC/.../WC) runs now: gates G1-G4 + graded Q1-Q4, llm_judge, fail-closed-with-quote. question_class + the specialist model are metadata the current runner ignores."
+    gate_mapping:
+      G1_provenance: [source_hierarchy_and_evidence_fit, citation_validity]
+      G2_closed_world_honesty: [gap_and_uncertainty_quality]
+      G3_no_count_fallacy: [factual_accuracy]
+      G4_domain_correctness: [identity_level_grounding, factual_accuracy]
+  new_scorers_to_add:   # to execute the full specialist_scoring_model
+    - score_persona_and_intent_detection
+    - score_ambiguity_handling
+    - score_decomposition_plan_quality   # needs the chat API to return the QuestionMatrix (platform P1)
+    - score_identity_level_grounding
+    - score_source_hierarchy
+    - score_evidence_fact_signal_chain
+    - score_temporal_reasoning
+    - score_decision_quality
+    - detect_hard_failures_and_apply_caps
+  blocked_on:
+    - "Full decomposition/identity/chain scoring needs the response CONTRACT (decomposition, retrieved_objects, facts, signals, gaps, citations) serialized in the chat API — today the QuestionMatrix is computed then discarded (COORDINATION §7 P1). Until then these are judged from prose only."
+
+human_sme_calibration:
+  required_for_release: true
+  minimum_release_bar: { automated_score_minimum: 0.85, human_specialist_score_minimum: 0.80, critical_hard_fails_allowed: 0, citation_validity_minimum: 0.90, source_hierarchy_minimum: 0.85 }
+  process: [author_50_to_100_golden_questions, two_SMEs_grade_overlap, resolve_into_rubric_rules, convert_failure_patterns_to_hard_fails, run_automated_every_build, run_human_on_major_pack_or_model_change]
