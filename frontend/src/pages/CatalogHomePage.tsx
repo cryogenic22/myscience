@@ -3,12 +3,13 @@
  *
  * Screen 1 (Catalog home): a searchable / filterable grid of every connected
  * source — connector type, live status verdict (from connector_health), the
- * kind of data it emits, and a FAIR / quality summary ring. Filter by
- * connector type and status; search by name. Click a card to open the
- * source dossier.
+ * kind of data it emits, and a data-quality summary ring (the D-API-2 derived
+ * composite — NOT a formal FAIR audit, so it is labelled "Quality"). Filter by
+ * connector type and status; search by name. Click a card to open the dossier.
  *
- * Screen 2 (Source dossier): the 5-dimension FAIR breakdown with meters, a
- * schema preview (fields collected), and coverage + freshness for one source.
+ * Screen 2 (Source dossier): the per-dimension Quality breakdown with meters
+ * (null dimensions shown "n/a", never fabricated), a schema preview, coverage +
+ * freshness, and an explicit error+retry state if the profile fails to load.
  *
  * Headless — props in, callbacks out, mirroring SourcesPage. The live wiring
  * (mapping CatalogDataset + pipeline-status + fair_scores onto these props)
@@ -24,14 +25,22 @@ import { useMemo, useState } from 'react';
 /** Connector status verdict — mirrors connector_health / pipeline-status. */
 export type CatalogStatus = 'fresh' | 'ok' | 'stale' | 'error' | 'never' | 'unknown';
 
-/** The five FAIR dimensions surfaced in the dossier (entity-profile shape). */
-export interface FairBreakdown {
-  completeness: number;
-  source_diversity: number;
-  freshness: number;
-  link_density: number;
-  resolution: number;
-  overall: number;
+/** One dimension of the derived data-quality composite (D-API-2 shape). A null
+ *  value means the metric is not measurable for this source — shown as "n/a",
+ *  never fabricated. */
+export interface QualityDimension {
+  key: string;
+  label: string;
+  value: number | null;
+  explanation?: string;
+}
+
+/** The derived ingest-health composite for a source. NOT a formal FAIR audit —
+ *  the backend (D-API-2) labels it a derived composite, so the UI calls it
+ *  "Quality", not "FAIR". */
+export interface QualityBreakdown {
+  overall: number | null;
+  dimensions: QualityDimension[];
 }
 
 /** One row in the catalog grid — a connected source / dataset. */
@@ -45,8 +54,8 @@ export interface CatalogSource {
   data_type: string | null;
   status: CatalogStatus;
   records: number;
-  /** Overall FAIR / quality score in [0,1], or null while profiling. */
-  fair_overall: number | null;
+  /** Overall derived data-quality score in [0,1], or null while profiling. */
+  quality_overall: number | null;
   freshness_days: number | null;
 }
 
@@ -57,7 +66,11 @@ export interface SourceDetail {
   connector_type: string;
   schedule: string;
   license: string | null;
-  fair: FairBreakdown | null;
+  /** Derived quality breakdown (D-API-2), or null while profiling. */
+  quality: QualityBreakdown | null;
+  /** Set when the profile endpoint FAILED to load (distinct from "unprofiled").
+   *  When present the dossier shows an explicit error + retry, not an empty card. */
+  loadError?: string | null;
   /** Schema preview — the fields this source collects. */
   fields_collected: string[];
   records: number;
@@ -87,15 +100,15 @@ const STATUS_TONE: Record<CatalogStatus, { tone: string; label: string }> = {
   unknown: { tone: 'var(--color-ink-4)',          label: 'unknown' },
 };
 
-/** FAIR / quality ring tone by score band. */
-function fairTone(score: number | null): string {
+/** Data-quality ring tone by score band. */
+function qualityTone(score: number | null): string {
   if (score === null) return 'var(--color-line)';
   if (score >= 0.75) return 'var(--color-green, #15803d)';
   if (score >= 0.5) return 'var(--color-amber)';
   return 'var(--color-red)';
 }
 
-function fairLabel(score: number | null): string {
+function qualityLabel(score: number | null): string {
   return score === null ? '–' : String(Math.round(score * 100));
 }
 
@@ -131,12 +144,12 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FairRing({ score }: { score: number | null }) {
-  const tone = fairTone(score);
+function QualityRing({ score }: { score: number | null }) {
+  const tone = qualityTone(score);
   return (
     <div
-      data-fair-ring
-      title={score === null ? 'profiling…' : `FAIR ${Math.round(score * 100)}`}
+      data-quality-ring
+      title={score === null ? 'profiling…' : `Quality ${Math.round(score * 100)}`}
       style={{
         width: 34,
         height: 34,
@@ -151,7 +164,7 @@ function FairRing({ score }: { score: number | null }) {
         border: score === null ? '1px dashed var(--color-line-2, var(--color-line))' : 'none',
       }}
     >
-      {fairLabel(score)}
+      {qualityLabel(score)}
     </div>
   );
 }
@@ -191,22 +204,16 @@ function StatusBadge({ status }: { status: CatalogStatus }) {
 
 // ── Source dossier (Screen 2) ───────────────────────────────────────
 
-const FAIR_DIMS: Array<{ key: keyof FairBreakdown; label: string }> = [
-  { key: 'completeness', label: 'Completeness' },
-  { key: 'source_diversity', label: 'Source diversity' },
-  { key: 'freshness', label: 'Freshness' },
-  { key: 'link_density', label: 'Link density' },
-  { key: 'resolution', label: 'Resolution' },
-];
-
 function SourceDossier({
   detail,
   loading,
   onClose,
+  onRetry,
 }: {
   detail: SourceDetail | null;
   loading: boolean;
   onClose: () => void;
+  onRetry: (sourceKey: string) => void;
 }) {
   return (
     <section
@@ -295,22 +302,61 @@ function SourceDossier({
         >
           Loading profile…
         </div>
+      ) : detail.loadError ? (
+        <div
+          data-dossier-error={detail.source_key}
+          style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--color-red)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 13,
+            }}
+          >
+            Could not load the profile for <strong>{detail.source_key}</strong> — {detail.loadError}
+          </p>
+          <button
+            type="button"
+            data-action="retry-dossier"
+            onClick={() => onRetry(detail.source_key)}
+            style={{
+              alignSelf: 'flex-start',
+              padding: '6px 12px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              border: '1px solid var(--color-line)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              background: 'var(--color-surface-2)',
+              color: 'var(--color-ink)',
+            }}
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div style={{ paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 22 }}>
-          {/* FAIR breakdown */}
+          {/* Quality breakdown — derived ingest-health composite (D-API-2), not a
+              formal FAIR audit, so the UI deliberately says "Quality" not "FAIR". */}
           <div>
             <SectionLabel>
-              FAIR profile{detail.fair ? ` · overall ${detail.fair.overall.toFixed(2)}` : ' · profiling'}
+              Quality profile
+              {detail.quality && detail.quality.overall !== null
+                ? ` · overall ${detail.quality.overall.toFixed(2)}`
+                : ' · profiling'}
             </SectionLabel>
-            {detail.fair ? (
+            {detail.quality && detail.quality.dimensions.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {FAIR_DIMS.map((dim) => {
-                  const v = detail.fair![dim.key];
-                  const pct = Math.round(v * 100);
+                {detail.quality.dimensions.map((dim) => {
+                  const v = dim.value;
+                  const pct = v === null ? 0 : Math.round(v * 100);
                   return (
                     <div
                       key={dim.key}
-                      data-fair-dim={dim.key}
+                      data-quality-dim={dim.key}
+                      title={dim.explanation}
                       style={{ display: 'flex', alignItems: 'center', gap: 10 }}
                     >
                       <span
@@ -334,7 +380,7 @@ function SourceDossier({
                           flexShrink: 0,
                         }}
                       >
-                        {v.toFixed(2)}
+                        {v === null ? 'n/a' : v.toFixed(2)}
                       </span>
                       <div
                         style={{
@@ -350,17 +396,27 @@ function SourceDossier({
                             width: `${pct}%`,
                             height: '100%',
                             borderRadius: 3,
-                            background: fairTone(v),
+                            background: v === null ? 'var(--color-line)' : qualityTone(v),
                           }}
                         />
                       </div>
                     </div>
                   );
                 })}
+                <p
+                  style={{
+                    margin: '4px 0 0',
+                    fontSize: 11,
+                    color: 'var(--color-ink-4)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Derived ingest-health composite from catalog metrics — not a formal FAIR audit.
+                </p>
               </div>
             ) : (
               <div style={{ color: 'var(--color-ink-4)', fontSize: 13, fontStyle: 'italic' }}>
-                FAIR profile pending — this source has not been scored yet.
+                Quality profile pending — this source has not been scored yet.
               </div>
             )}
           </div>
@@ -473,7 +529,7 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
           minHeight: '100%',
         }}
       >
-        <SourceDossier detail={selected} loading={!!selectedLoading} onClose={onCloseDetail} />
+        <SourceDossier detail={selected} loading={!!selectedLoading} onClose={onCloseDetail} onRetry={onSelectSource} />
       </main>
     );
   }
@@ -704,7 +760,7 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
                       {s.data_type ? ` · ${s.data_type}` : ''}
                     </div>
                   </div>
-                  <FairRing score={s.fair_overall} />
+                  <QualityRing score={s.quality_overall} />
                 </div>
 
                 <div

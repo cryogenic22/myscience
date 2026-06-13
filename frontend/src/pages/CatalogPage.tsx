@@ -9,11 +9,12 @@
  * Container state machine mirrors ConnectorsPage / SourcesContainer:
  *   loading → ready (grid) → (select) dossier → error.
  *
- * ⚠️ Source-level FAIR does not exist yet — only entity-level FAIR is scored.
- * Until a source-FAIR endpoint lands (data-lane handoff), the grid ring uses
- * the dataset's overall quality score and the dossier degrades `fair` to null
- * (the lens renders a "profile pending" placeholder rather than fabricating
- * the five FAIR dimensions).
+ * Source-level data quality comes from D-API-2 (`/catalog/datasets/{key}/fair`):
+ * the grid ring uses the dataset's `fair_overall` composite, and the dossier
+ * fetches the per-dimension breakdown. It is a derived ingest-health composite,
+ * NOT a formal FAIR audit, so the UI labels it "Quality" (per cross-lane review
+ * MZ-XR-20260613-004). A profile-load failure surfaces an explicit error+retry
+ * dossier (not a silent empty card that looks unprofiled).
  *
  * Styling: the lens owns all visuals (CSS custom properties + inline styles);
  * this container only renders loading / error chrome in the same idiom.
@@ -23,11 +24,13 @@ import {
   api,
   type CatalogDataset,
   type DatasetProfile,
+  type DatasetFairResponse,
 } from '../api';
 import {
   CatalogHomePage,
   type CatalogSource,
   type CatalogStatus,
+  type QualityBreakdown,
   type SourceDetail,
 } from './CatalogHomePage';
 
@@ -83,22 +86,40 @@ function toSource(
     data_type: ds.entity_type,
     status,
     records,
-    fair_overall: ds.quality_score_avg, // null ⇒ lens renders placeholder ring
+    // D-API-2 derived quality composite; fall back to the raw quality score,
+    // then null (⇒ lens renders the placeholder ring). Never fabricated.
+    quality_overall: ds.fair_overall ?? ds.quality_score_avg ?? null,
     freshness_days: ds.freshness_days ?? null,
   };
 }
 
-function toDetail(p: DatasetProfile): SourceDetail {
+/** Human labels for the D-API-2 quality dimensions (server returns snake_case keys). */
+const QUALITY_DIM_LABELS: Record<string, string> = {
+  completeness: 'Completeness',
+  quality: 'Data quality',
+  accessibility: 'Accessibility',
+  license_openness: 'License openness',
+};
+
+/** Map the D-API-2 FAIR response into the lens' generic QualityBreakdown. */
+function toQuality(f: DatasetFairResponse): QualityBreakdown {
+  const dimensions = Object.entries(f.by_dimension ?? {}).map(([key, d]) => ({
+    key,
+    label: QUALITY_DIM_LABELS[key] ?? key.replace(/_/g, ' '),
+    value: d.value,
+    explanation: d.explanation,
+  }));
+  return { overall: f.fair_overall, dimensions };
+}
+
+function toDetail(p: DatasetProfile, quality: QualityBreakdown | null): SourceDetail {
   return {
     source_key: p.source_key,
     label: p.display_name || p.source_key,
     connector_type: p.collection_method || 'source',
     schedule: p.refresh_schedule || 'unknown',
     license: null, // DatasetProfile carries no license field on this branch.
-    // ⚠️ DATA-LANE HANDOFF: no source-level FAIR breakdown endpoint yet — only
-    // entity-level FAIR is scored. Degrade to null so the lens shows "profile
-    // pending" instead of fabricating the five dimensions.
-    fair: null,
+    quality,
     fields_collected: p.fields_collected ?? [],
     records: p.records ?? 0,
     // DatasetProfile.freshness is a human label, not a day count — keep the
@@ -148,28 +169,39 @@ export default function CatalogPage() {
   const openSource = useCallback((sourceKey: string) => {
     setSelected(null);
     setSelectedLoading(true);
-    api
-      .datasetProfile(sourceKey)
-      .then((p) => setSelected(toDetail(p)))
-      .catch((e) => {
-        // The profile endpoint only knows a curated set of source keys; if a
-        // grid source has no profile, surface a minimal degraded dossier rather
-        // than a hard error (the grid stays usable).
+    // Fetch the dossier profile + the D-API-2 quality breakdown independently:
+    // the profile drives the dossier, the FAIR breakdown is an enhancement that
+    // degrades to null on its own without failing the whole view.
+    Promise.allSettled([api.datasetProfile(sourceKey), api.datasetFair(sourceKey)])
+      .then(([profileRes, fairRes]) => {
+        const quality =
+          fairRes.status === 'fulfilled' ? toQuality(fairRes.value) : null;
+        if (profileRes.status === 'fulfilled') {
+          setSelected(toDetail(profileRes.value, quality));
+          return;
+        }
+        // Profile load FAILED — surface an explicit error+retry dossier (with the
+        // source key) rather than a silent empty card that reads as "unprofiled
+        // but valid" (cross-lane review MZ-XR-20260613-004).
+        const reason =
+          profileRes.reason instanceof Error
+            ? profileRes.reason.message
+            : String(profileRes.reason);
         setSelected({
           source_key: sourceKey,
           label: sourceKey,
           connector_type: 'source',
           schedule: 'unknown',
           license: null,
-          fair: null,
+          quality,
+          loadError: reason,
           fields_collected: [],
           records: 0,
           freshness_days: null,
           coverage: [],
         });
-        // Keep the failure visible in diagnostics without breaking the view.
         if (typeof console !== 'undefined') {
-          console.warn(`datasetProfile(${sourceKey}) failed:`, e);
+          console.warn(`datasetProfile(${sourceKey}) failed:`, profileRes.reason);
         }
       })
       .finally(() => setSelectedLoading(false));
