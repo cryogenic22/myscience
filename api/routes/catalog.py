@@ -513,8 +513,9 @@ def _dataset_fair(row: dict) -> tuple[float | None, dict, float | None]:
     dims = {
         "completeness": {
             # completeness of zero rows is vacuous (100% of nothing) — null it out
-            # so it cannot prop up an empty dataset's score.
-            "value": None if is_empty else ((compl / 100.0) if compl is not None else None),
+            # so it cannot prop up an empty dataset's score. float() guards a
+            # Decimal column (symmetry with quality below; durable across schema).
+            "value": None if is_empty else ((float(compl) / 100.0) if compl is not None else None),
             "weight": 0.35, "explanation": "fraction of expected fields populated",
         },
         "quality": {

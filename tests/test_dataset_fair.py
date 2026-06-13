@@ -53,6 +53,17 @@ def test_missing_inputs_are_null_not_coerced_and_excluded():
     assert composite is None        # nothing known → honest null, not 0.0
 
 
+def test_decimal_completeness_does_not_crash():
+    # Defensive: if a future schema delivers completeness_pct as Decimal, the
+    # /100 division must not TypeError (float-coerced symmetrically with quality).
+    from decimal import Decimal
+    row = {"completeness_pct": Decimal("80.0"), "quality_score_avg": Decimal("0.9"),
+           "row_count": 100, "license_name": "Public Domain", "freshness_days": None}
+    composite, dims, _ = _dataset_fair(row)
+    assert dims["completeness"]["value"] == pytest.approx(0.8)
+    assert composite is not None
+
+
 def test_composite_is_weighted_mean_of_present_dimensions_only():
     # Only completeness present → composite equals it (single present dim).
     row = {"completeness_pct": 50.0, "quality_score_avg": None,
