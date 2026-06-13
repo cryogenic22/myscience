@@ -79,6 +79,19 @@ requires 5 checks: *Backend conservation invariants (DB-free)*, *Frontend
 typecheck (no vacuous green)*, *Schema drift static checks*, *benchmark*,
 *Backend unit smoke (DB-free)*.
 
+**Eval tiers (MZ-XR-20260613-005) — do not conflate them.** Two evals, two roles
+(declared in code as `EVAL_TIER`, pinned by `tests/test_eval_tiers.py`):
+- **Smoke / regression** — `benchmark/eval_runner.py` (`EVAL_TIER="smoke"`) +
+  `benchmark/scorers.py`. Heuristic: intent match, grounding, numeric coincidence,
+  evidence count, citation well-formedness. Catches route breakage. A green run
+  here is **NOT** evidence of content quality.
+- **SME content-quality gate** — `benchmark/pharma_eval.py`
+  (`EVAL_TIER="content_gate"`) + `eval_pharma_v2.yaml`, LLM-judge. Judges
+  provenance (G1), closed-world honesty (G2), count-fallacy (G3), domain
+  correctness (G4). This is the bar for "is the answer SME-grade", tracked by gate
+  (not just mean score). Promotion of this to a HARD CI gate is owner-gated
+  (protected `.github/workflows/`).
+
 ---
 
 ## 6. In-flight / recently shipped (keep this current)

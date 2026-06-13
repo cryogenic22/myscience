@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_GOLDEN = Path(__file__).parent / "golden_queries.json"
 DEFAULT_REPORT_DIR = Path(__file__).parent / "reports"
 
+# Eval tier (MZ-XR-20260613-005). This heuristic runner is SMOKE / REGRESSION
+# coverage: `benchmark/scorers.py` scores route mechanics (intent match, grounding,
+# numeric coincidence, evidence count, citation well-formedness) and CANNOT judge
+# SME synthesis quality — provenance, closed-world honesty, count-fallacy, domain
+# correctness. The SME CONTENT-QUALITY gate is `benchmark/pharma_eval.py`
+# (EVAL_TIER="content_gate"). A green run here is NOT evidence of content quality.
+EVAL_TIER = "smoke"
+
 
 @dataclass
 class EvalResult:

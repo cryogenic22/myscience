@@ -58,6 +58,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_EVAL = Path(__file__).parent / "eval_pharma_v1.yaml"
 DEFAULT_REPORT_DIR = Path(__file__).parent / "reports"
 
+# Eval tier (MZ-XR-20260613-005). This LLM-judge runner is the SME CONTENT-QUALITY
+# gate — it judges provenance (G1), closed-world honesty (G2), count-fallacy (G3),
+# and domain correctness (G4), which the heuristic smoke runner
+# `benchmark/eval_runner.py` (EVAL_TIER="smoke") structurally cannot.
+EVAL_TIER = "content_gate"
+
 GATE_IDS = ["G1_provenance", "G2_closed_world_honesty", "G3_no_count_fallacy", "G4_domain_correctness"]
 GRADED_IDS = ["Q1_join_completeness", "Q2_synthesis", "Q3_calibration", "Q4_contradiction_surfacing"]
 GRADED_PASS_THRESHOLD = 8  # of 12
