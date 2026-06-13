@@ -140,6 +140,97 @@ def _is_junk_org(name: str) -> bool:
     return bool(name and _JUNK_ORG_RE.search(name))
 
 
+# Bound on distinct detected entities fed to retrieve(). A real compare names 2;
+# a dossier 1. A broad term ("GLP-1") can keyword-match many DISTINCT drugs —
+# cap so retrieve() (which runs keyword.match + entity_graph.neighbors PER entity)
+# never fans out unboundedly. Generous so it never clips a legitimate query.
+_MAX_DETECTED_ENTITIES = 12
+
+# A combo / co-formulation product (CagriSema = "cagrilintide and semaglutide",
+# "metformin with semaglutide", "liraglutide / semaglutide") is a DISTINCT
+# entity, never a configuration of the mono — collapsing one into the other is a
+# rubric hard-fail (`mono_product_collapsed_into_combination`). These markers
+# fence combos off so they are preserved, not merged into a base.
+_COMBO_RE = re.compile(r"\b(?:and|with|plus|combination|coformulation|co-formulation)\b|[/+&]")
+
+
+def _entity_tokens(name: str) -> frozenset[str]:
+    """Word-token set of a detected entity name (used for subset collapse)."""
+    return frozenset(t for t in name.split() if t)
+
+
+def _collapse_entity_fragments(
+    entities: list[str], *, max_entities: int = _MAX_DETECTED_ENTITIES
+) -> list[str]:
+    """Collapse configuration fragments of the same drug to their canonical base.
+
+    ``keyword_index.match("semaglutide")`` returns every CTX section whose name
+    contains the token — on prod that is 31 sections: ``ENTITY-DRUG-SEMAGLUTIDE``
+    plus ``ORAL-SEMAGLUTIDE`` / ``INJECTABLE-SEMAGLUTIDE`` / ``SEMAGLUTIDE-(1-MG-DOSE)``
+    / ``SEMAGLUTIDE-(ADMINISTERED-BY-DV3396-PEN)`` / combos — so ``understand()``
+    emits ~31 near-duplicate detected entities. Each makes ``retrieve()`` fan out
+    (keyword.match + entity_graph.neighbors), bloats the PLAN candidate set, and
+    floods synthesis with duplicate noise → ~147s/query (the E0x grounding + perf
+    root cause).
+
+    A *fragment* is a non-combo entity whose token set is a **superset** of a
+    shorter detected *base* — i.e. it only adds configuration modifiers
+    (``oral``/``injectable``/``1 mg dose``) to the same molecule. The modifier
+    can sit anywhere ("oral semaglutide" *and* "semaglutide (1 mg dose)"), so we
+    compare token sets, not string prefixes. We keep the base, drop the
+    fragments. This de-fragments one entity; it is not a silent loss of distinct
+    entities:
+      * distinct drugs (``semaglutide`` / ``tirzepatide``) both survive (neither
+        token set subsets the other);
+      * **combos are preserved verbatim** and never act as a base
+        (``cagrilintide and semaglutide`` stays distinct from ``semaglutide``);
+      * if no base was matched, the configs are kept verbatim (we never invent a
+        canonical retrieval can't hydrate);
+      * subset is token-level, so ``semaglutidexyz`` is not a fragment of
+        ``semaglutide``.
+
+    Order-preserving and DB-free (``understand`` is the cheap stage). Capped to
+    ``max_entities`` to bound the worst case (a broad term that keyword-matches
+    many *distinct* drugs); truncation is logged, never a silent drop.
+    """
+    # Dedup exact, preserve first-seen order.
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for e in entities:
+        e = (e or "").strip()
+        if e and e not in seen:
+            seen.add(e)
+            deduped.append(e)
+
+    # Accept shortest-first (fewest tokens) so a base is seen before its
+    # fragments. Drop a non-combo entity when an accepted non-combo base's token
+    # set is a subset of it. Combos are always kept and never used as a base.
+    accepted: list[str] = []
+    acc_meta: list[tuple[frozenset[str], bool]] = []  # (tokens, is_combo)
+    for e in sorted(deduped, key=lambda s: (len(_entity_tokens(s)), len(s), s)):
+        is_combo = bool(_COMBO_RE.search(e))
+        toks = _entity_tokens(e)
+        if not is_combo and any(
+            (not b_combo) and b_toks and b_toks <= toks
+            for b_toks, b_combo in acc_meta
+        ):
+            continue
+        accepted.append(e)
+        acc_meta.append((toks, is_combo))
+
+    # Return in the original (first-seen) order, not token-count order.
+    accepted_set = set(accepted)
+    collapsed = [e for e in deduped if e in accepted_set]
+
+    if len(collapsed) > max_entities:
+        logger.info(
+            "understand: capping detected entities %d→%d (dropped: %s)",
+            len(collapsed), max_entities, collapsed[max_entities:],
+        )
+        collapsed = collapsed[:max_entities]
+    return collapsed
+
+
 def is_company_leaders_question(question: str) -> bool:
     """True for 'which companies dominate/lead/make X' — a company-centric
     question that needs a company-naming synthesis, not the mechanism-centric
@@ -244,6 +335,14 @@ class CTXQueryPipeline:
             else:
                 entity_name = section_name.lower()
             entities.append(entity_name)
+
+        # Collapse configuration fragments of the same drug ("semaglutide
+        # injection" / "semaglutide pen" → "semaglutide") so retrieve() hydrates
+        # the canonical once instead of fanning out to 50+ rows (147s) and
+        # flooding synthesis with near-duplicate noise. Only keyword-index
+        # matches are collapsed; entities named explicitly in a compare are
+        # appended verbatim below so a disambiguation compare survives.
+        entities = _collapse_entity_fragments(entities)
 
         # Also try to extract entities from the compare pattern
         compare_match = re.search(r'(.+?)\s+vs\.?\s+(.+?)(?:\?|$)', resolved, re.IGNORECASE)

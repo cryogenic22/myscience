@@ -114,6 +114,16 @@ adds `n_supporting`/`n_contradicting` to the *existing* ledger (NOT a 2nd table)
 - **PROTOCOL (stop the re-dup): claim a Helix loop in this §6 BEFORE starting it.**
   Data lane reserves the next migration number (next = **095**).
 
+**Platform (this session), 2026-06-13 — CLAIM L0b: unified-handler entity
+fan-out collapse.** `services/ctx_pipeline.py` `understand()` returns every CTX
+section matching a drug token as a separate detected entity ("semaglutide" →
+50+ injection/pen/oral/dose/combo fragments) → `retrieve()` + PLAN + synthesis
+fan out per-fragment → 147s/query and a wall of near-duplicate noise (the E0x
+grounding + perf root cause; makes the 59-q eval ~2.5h, un-runnable). Fixing in
+`ctx_pipeline.py` only (platform-owned; no data-lane seam). Collapses config
+fragments to the canonical base before retrieve hydrates. Unblocks clean eval
+measurement + the #215 merge.
+
 **Frontend (Antigravity):** see `docs/PRODUCT_BACKLOG.md` (feature/UI board).
 
 ---
