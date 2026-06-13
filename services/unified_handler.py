@@ -150,6 +150,68 @@ def _faers_safety_directive(evidence_items: list[dict]) -> str:
     )
 
 
+# ── Deterministic coverage-honesty layer (eval gate G2) ──────────────
+#
+# The platform ingests a fixed set of sources. A query that needs a source we do
+# NOT ingest (or only thinly) must ALWAYS carry an honest coverage limit — relying
+# on the LLM to remember to hedge fails the closed-world-honesty gate (7%). Each
+# entry: (query pattern, limitation text naming the gap, review_flag). Order =
+# emission order; deduped by flag+text. Patterns are conservative (word-bounded)
+# so a purely-clinical query is never over-hedged.
+_COVERAGE_LIMITS: list[tuple[re.Pattern, str, str]] = [
+    (re.compile(r"\b(ema|european medicines|eu label|eu approval|product information|epar)\b", re.I),
+     "EMA / EU product information is not ingested — EU-specific approvals, labels, and any "
+     "US/EU divergence cannot be established from platform data; OpenFDA labels are US-only "
+     "and partial.",
+     "SOURCE_COVERAGE_GAP"),
+    (re.compile(r"\b(payer|coverage|reimburse\w*|formulary|prior auth\w*|step edit|step therapy|tier|access barrier)\b", re.I),
+     "No payer policy, formulary, PBM, or HTA source is ingested — coverage, reimbursement, "
+     "and access claims cannot be made and require a named payer + geography + effective date.",
+     "SOURCE_COVERAGE_GAP"),
+    (re.compile(r"\b(wac|list price|net price|asp|price|pricing|cost per|launch price)\b", re.I),
+     "Only CMS NADAC pricing is ingested — WAC/list/net price, non-US pricing, and per-unit "
+     "cost basis are not available; do not infer a price without a unit basis and effective date.",
+     "SOURCE_COVERAGE_GAP"),
+    (re.compile(r"\b(biosimilar|purple book|interchangeab\w*)\b", re.I),
+     "The FDA Purple Book (biologics/biosimilars) is not ingested — biosimilar competition "
+     "and interchangeability cannot be assessed; Orange Book reflects small-molecule generics only.",
+     "SOURCE_COVERAGE_GAP"),
+    (re.compile(r"\b(sales|revenue|market share|units sold|prescription volume|trx|nbrx)\b", re.I),
+     "Actual sales / prescription-volume data is not ingested — company revenue figures (SEC) "
+     "are corporate disclosures, not observed market sales; market-share claims are not supportable.",
+     "SOURCE_COVERAGE_GAP"),
+]
+
+
+def _coverage_limitations(question: str) -> list[tuple[str, str]]:
+    """Deterministic (limitation_text, review_flag) for every not-ingested / thin
+    source the question implicates. Fires every time the pattern matches, so a
+    missing source can never silently become a confident answer (eval gate G2).
+    Returns [] for queries fully within ingested sources (no over-hedging)."""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    q = question or ""
+    for pat, text, flag in _COVERAGE_LIMITS:
+        if pat.search(q) and text not in seen:
+            seen.add(text)
+            out.append((text, flag))
+    return out
+
+
+def _coverage_directive(limitations: list[tuple[str, str]]) -> str:
+    """Turn coverage limits into a binding synthesis directive so the prose hedges
+    instead of over-asserting on a source we don't have."""
+    if not limitations:
+        return ""
+    bullets = "\n".join(f"  - {t}" for t, _f in limitations)
+    return (
+        "COVERAGE LIMITS (binding — state these explicitly; do NOT assert beyond them):\n"
+        + bullets
+        + "\nIf the question depends on one of these missing sources, say so plainly and "
+        "do not substitute a confident answer from an adjacent source."
+    )
+
+
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+|/[^)]*)\)")
 
 
@@ -380,7 +442,14 @@ class UnifiedChatHandler:
 
         # FAERS discipline only when adverse-event facts are actually in context.
         faers_directive = _faers_safety_directive(evidence_items)
-        synthesis_directive = "\n\n".join(d for d in (leaders_hint, faers_directive) if d)
+        # Deterministic coverage-honesty (eval gate G2): a query touching a
+        # not-ingested / thin source ALWAYS carries an explicit limit — in the
+        # prompt (so the prose hedges) AND in the response contract below.
+        coverage_limits = _coverage_limitations(question)
+        coverage_directive = _coverage_directive(coverage_limits)
+        synthesis_directive = "\n\n".join(
+            d for d in (leaders_hint, faers_directive, coverage_directive) if d
+        )
 
         # Call LLM with grounded, numbered evidence so citations validate.
         narrative = self._synthesize(
@@ -401,6 +470,11 @@ class UnifiedChatHandler:
         # so we render it in code from the source-tagged evidence (eval gate G1). The
         # connector names are not "claims" to be grounded, so they bypass the guard.
         narrative = (narrative or "") + _provenance_footer(evidence_items)
+
+        # Deterministic coverage-limit footer — guarantees the honest limit is
+        # present even if the LLM ignored the directive (eval gate G2).
+        if coverage_limits:
+            narrative += "\n\n**Coverage limits** — " + " ".join(t for t, _f in coverage_limits)
 
         # ── Build table data ──
         table_data = self._build_table(plan, metrics_data)
@@ -423,6 +497,11 @@ class UnifiedChatHandler:
                     "total_evidence_items": len(evidence_items),
                     "by_source": _count_by_source(evidence_items),
                 },
+                # Response-contract honesty fields (eval gates G2 / F1): the
+                # not-ingested/thin sources this query implicates, surfaced
+                # structurally so the frontend + judge see them deterministically.
+                "limitations": [t for t, _f in coverage_limits],
+                "review_flags": sorted({f for _t, f in coverage_limits}),
             },
             "table_data": table_data,
             "confidence": reasoning.confidence,
