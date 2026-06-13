@@ -281,42 +281,95 @@ def _faers_safety_directive(evidence_items: list[dict]) -> str:
 # entry: (query pattern, limitation text naming the gap, review_flag). Order =
 # emission order; deduped by flag+text. Patterns are conservative (word-bounded)
 # so a purely-clinical query is never over-hedged.
+# Genuinely-not-ingested domains: a deterministic limit with a SOURCE-SPECIFIC
+# flag (MZ-XR-20260613-002 — replace the generic SOURCE_COVERAGE_GAP so the
+# frontend can branch on the actual gap). These domains have no source at all, so
+# the wording is static; pricing is handled separately because NADAC IS ingested
+# and its state is live (see `_pricing_limitation`).
 _COVERAGE_LIMITS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"\b(ema|european medicines|eu label|eu approval|product information|epar)\b", re.I),
      "EMA / EU product information is not ingested — EU-specific approvals, labels, and any "
      "US/EU divergence cannot be established from platform data; OpenFDA labels are US-only "
      "and partial.",
-     "SOURCE_COVERAGE_GAP"),
+     "EMA_PRODUCT_INFO_NOT_INGESTED"),
     (re.compile(r"\b(payer|coverage|reimburse\w*|formulary|prior auth\w*|step edit|step therapy|tier|access barrier)\b", re.I),
      "No payer policy, formulary, PBM, or HTA source is ingested — coverage, reimbursement, "
      "and access claims cannot be made and require a named payer + geography + effective date.",
-     "SOURCE_COVERAGE_GAP"),
-    (re.compile(r"\b(wac|list price|net price|asp|price|pricing|cost per|launch price)\b", re.I),
-     "Drug pricing (WAC, list, net, ASP) is not reliably available — the only pricing connector "
-     "(CMS NADAC) is frequently sparse or empty, and non-US pricing is not ingested at all; do not "
-     "state or infer a price without verifying coverage, a unit basis, and an effective date.",
-     "SOURCE_COVERAGE_GAP"),
+     "NO_PAYER_SOURCE"),
     (re.compile(r"\b(biosimilar|purple book|interchangeab\w*)\b", re.I),
      "The FDA Purple Book (biologics/biosimilars) is not ingested — biosimilar competition "
      "and interchangeability cannot be assessed; Orange Book reflects small-molecule generics only.",
-     "SOURCE_COVERAGE_GAP"),
+     "NO_BIOSIMILAR_SOURCE"),
     (re.compile(r"\b(sales|revenue|market share|units sold|prescription volume|trx|nbrx)\b", re.I),
      "Actual sales / prescription-volume data is not ingested — company revenue figures (SEC) "
      "are corporate disclosures, not observed market sales; market-share claims are not supportable.",
-     "SOURCE_COVERAGE_GAP"),
+     "NO_SALES_VOLUME_SOURCE"),
 ]
 
+# Pricing is the source whose hardcoded wording drifted (MZ-XR-20260613-002): the
+# guard said "NADAC sparse or empty" after the data lane revived NADAC. Pricing is
+# bound to LIVE NADAC row state instead. `drug_pricing` is NADAC-dedicated (loaded
+# only by the post-run pricing task — scheduler/config.py), so a source-specific
+# COUNT here is NOT the shared-table overstatement of MZ-XR-20260613-001.
+_PRICING_PAT = re.compile(r"\b(wac|list price|net price|asp|price|pricing|cost per|launch price)\b", re.I)
 
-def _coverage_limitations(question: str) -> list[tuple[str, str]]:
+
+def _nadac_row_count(db: Any) -> Optional[int]:
+    """Live CMS-NADAC row count from the NADAC-dedicated drug_pricing table, or
+    None when no DB / the query fails (⇒ deterministic fallback wording)."""
+    if db is None:
+        return None
+    try:
+        row = db.fetch_one(
+            "SELECT COUNT(*) AS n FROM drug_pricing WHERE source_api = %s", ["cms_nadac"]
+        )
+        return int(row["n"]) if row and row.get("n") is not None else 0
+    except Exception:
+        return None
+
+
+def _pricing_limitation(db: Any) -> tuple[str, str]:
+    """(limitation, flag) for pricing, bound to live NADAC state so a query can
+    distinguish: no net-price source at all (fallback) · NADAC currently empty ·
+    NADAC has rows but they are acquisition cost, not list/WAC/net price."""
+    n = _nadac_row_count(db)
+    if n is None:
+        return (
+            "Drug pricing is limited — CMS NADAC is the only pricing source (pharmacy "
+            "ACQUISITION cost, not list/WAC/ASP or net price), no payer/PBM net-price source "
+            "is ingested, and non-US pricing is not ingested at all.",
+            "NO_NET_PRICE_SOURCE",
+        )
+    if n == 0:
+        return (
+            "CMS NADAC (the only pricing source) currently has NO rows ingested — no drug "
+            "pricing can be provided, and list/WAC/ASP/net price are not sourced at all.",
+            "NADAC_NO_ROWS",
+        )
+    return (
+        f"Pricing reflects CMS NADAC only ({n:,} rows) — NADAC is pharmacy ACQUISITION cost, "
+        "NOT list/WAC/ASP or net price; no payer/PBM net-price source is ingested and non-US "
+        "pricing is absent, so do not state a list/net price.",
+        "NADAC_HAS_ROWS",
+    )
+
+
+def _coverage_limitations(question: str, db: Any = None) -> list[tuple[str, str]]:
     """Deterministic (limitation_text, review_flag) for every not-ingested / thin
     source the question implicates. Fires every time the pattern matches, so a
     missing source can never silently become a confident answer (eval gate G2).
+    The pricing limit is bound to live NADAC state when ``db`` is supplied.
     Returns [] for queries fully within ingested sources (no over-hedging)."""
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
     q = question or ""
     for pat, text, flag in _COVERAGE_LIMITS:
         if pat.search(q) and text not in seen:
+            seen.add(text)
+            out.append((text, flag))
+    if _PRICING_PAT.search(q):
+        text, flag = _pricing_limitation(db)
+        if text not in seen:
             seen.add(text)
             out.append((text, flag))
     return out
@@ -566,7 +619,7 @@ class UnifiedChatHandler:
         # Deterministic coverage-honesty (eval gate G2): a query touching a
         # not-ingested / thin source ALWAYS carries an explicit limit — in the
         # prompt (so the prose hedges) AND in the response contract below.
-        coverage_limits = _coverage_limitations(question)
+        coverage_limits = _coverage_limitations(question, db=self.db)
         coverage_directive = _coverage_directive(coverage_limits)
         synthesis_directive = "\n\n".join(
             d for d in (leaders_hint, faers_directive, coverage_directive) if d
