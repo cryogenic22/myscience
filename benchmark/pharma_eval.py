@@ -52,6 +52,9 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Default stays v1 (the established measured bar — promoting v2 to the default
+# is an owner decision, not a builder one). The normalized 41-item
+# eval_pharma_v2.yaml ships alongside and is opt-in via --eval / eval_path.
 DEFAULT_EVAL = Path(__file__).parent / "eval_pharma_v1.yaml"
 DEFAULT_REPORT_DIR = Path(__file__).parent / "reports"
 
