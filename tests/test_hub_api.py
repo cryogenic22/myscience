@@ -132,6 +132,24 @@ def test_advance_without_start_404(client):
     assert r.status_code == 404
 
 
+def test_advance_unknown_status_400_not_409(client):
+    # A malformed status is a bad request, not a lifecycle conflict.
+    client.post("/hub/onboarding/s1", json={"action": "start"})
+    r = client.post("/hub/onboarding/s1", json={"action": "advance", "to_status": "bogus"})
+    assert r.status_code == 400
+    assert client._db.onboarding["s1"]["status"] == "draft"  # no write
+
+
+def test_start_is_idempotent(client):
+    # Start twice → one row, status unchanged (matches the service contract).
+    first = client.post("/hub/onboarding/s1", json={"action": "start", "owner": "a"})
+    second = client.post("/hub/onboarding/s1", json={"action": "start", "owner": "b"})
+    assert first.status_code == second.status_code == 200
+    assert second.json()["status"] == "draft"
+    assert len(client._db.onboarding) == 1            # not duplicated
+    assert client._db.onboarding["s1"]["owner"] == "a"  # first-call fields win
+
+
 def test_advance_requires_to_status(client):
     client.post("/hub/onboarding/s1", json={"action": "start"})
     r = client.post("/hub/onboarding/s1", json={"action": "advance"})

@@ -108,6 +108,13 @@ def post_onboarding(
     if action == "advance":
         if not body.to_status:
             raise HTTPException(status_code=400, detail="to_status is required for action=advance")
+        # A malformed status value is a bad request (400), distinct from a
+        # well-formed-but-illegal transition (409 below).
+        if body.to_status not in ct.ONBOARDING_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown status {body.to_status!r}; must be one of {list(ct.ONBOARDING_STATUSES)}",
+            )
         try:
             record = ct.advance_onboarding(db, source_id, body.to_status)
         except ct.OnboardingNotFound as e:
