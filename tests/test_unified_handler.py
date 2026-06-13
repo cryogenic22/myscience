@@ -471,7 +471,8 @@ class TestCoverageHonestyContract:
         result = handler.handle("Are GLP-1s covered by payers and what is the formulary tier?")
         data = result["data"]
         assert data["limitations"], "payer query must surface a coverage limitation"
-        assert "SOURCE_COVERAGE_GAP" in data["review_flags"]
+        # MZ-XR-002: source-specific flag replaces the generic SOURCE_COVERAGE_GAP.
+        assert "NO_PAYER_SOURCE" in data["review_flags"]
         assert "Coverage limits" in result["narrative"]
 
     def test_clinical_query_has_no_false_limitations(self, handler):
