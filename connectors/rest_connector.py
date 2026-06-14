@@ -380,6 +380,7 @@ class RestConnector(BaseConnector):
         offset = 0
         cursor: Optional[str] = None
         pages_fetched = 0
+        truncated = False
 
         while True:
             params = dict(base_params)
@@ -404,6 +405,7 @@ class RestConnector(BaseConnector):
             if cfg.pagination == "none" or not raw_list:
                 break
             if pages_fetched >= cfg.max_pages:
+                truncated = True
                 logger.warning(
                     "RestConnector(%s): hit max_pages cap (%d) — results may be truncated; "
                     "raise max_pages or narrow the query",
@@ -416,10 +418,28 @@ class RestConnector(BaseConnector):
             elif cfg.pagination == "offset":
                 offset += cfg.page_size
             elif cfg.pagination == "cursor":
-                cursor = _dig(payload, cfg.cursor_path)
-                if not cursor:
+                next_cursor = _dig(payload, cfg.cursor_path)
+                if not next_cursor:
                     break
+                # Stuck-cursor guard: a buggy API that keeps returning the SAME
+                # cursor would otherwise re-fetch + double-count up to max_pages.
+                # Stop loud rather than rely on the cap (reviewer hardening).
+                if next_cursor == cursor:
+                    truncated = True
+                    logger.warning(
+                        "RestConnector(%s): API returned an unchanged cursor %r — stopping "
+                        "to avoid a stuck-cursor loop", cfg.source_id, next_cursor,
+                    )
+                    break
+                cursor = next_cursor
 
+        # Per-fetch observability — the operational lane should see a generic
+        # connector's shape (pages, volume, truncation), not just a binary SUCCESS.
+        logger.info(
+            "RestConnector(%s): fetched %d page(s), emitted %d record(s)%s",
+            cfg.source_id, pages_fetched, len(records),
+            " [TRUNCATED]" if truncated else "",
+        )
         return records
 
     def health_check(self) -> HealthCheckResult:

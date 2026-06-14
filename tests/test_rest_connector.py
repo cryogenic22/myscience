@@ -267,6 +267,26 @@ class TestPagination:
         assert "cursor" not in fetch.calls[0][1]       # first call has no cursor
         assert fetch.calls[1][1].get("cursor") == "c2"  # second uses returned cursor
 
+    def test_cursor_stuck_guard_stops_loud(self, monkeypatch, caplog):
+        import logging
+        cfg = _cfg(pagination="cursor", cursor_param="cursor",
+                   cursor_path="next_cursor", max_pages=10)
+        # API bug: returns the SAME non-empty cursor every page. Without the guard
+        # this re-fetches + double-counts up to max_pages.
+        pages = [
+            _StubResp({"results": [{"id": "A"}], "next_cursor": "STUCK"}),
+            _StubResp({"results": [{"id": "B"}], "next_cursor": "STUCK"}),
+            _StubResp({"results": [{"id": "C"}], "next_cursor": "STUCK"}),
+        ]
+        fetch = _stub_fetch(pages)
+        monkeypatch.setattr(RestConnector, "_fetch_with_retry", fetch)
+        with caplog.at_level(logging.WARNING):
+            recs = RestConnector(cfg).fetch()
+        # page 1 (cursor None->STUCK), page 2 (cursor STUCK, sees STUCK again -> stop)
+        assert [r.external_id for r in recs] == ["A", "B"]
+        assert any("unchanged cursor" in m.lower() or "stuck" in m.lower()
+                   for m in caplog.messages)
+
     def test_max_pages_cap_is_logged(self, monkeypatch, caplog):
         import logging
         cfg = _cfg(pagination="page", page_size=1, max_pages=2)
