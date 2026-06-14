@@ -14,7 +14,12 @@ Run: pytest tests/test_coverage_honesty.py -v
 
 from __future__ import annotations
 
-from services.unified_handler import _coverage_limitations, _matrix_gap_limitations
+from services.unified_handler import (
+    _coverage_limitations,
+    _matrix_gap_limitations,
+    _matrix_coverage_table,
+    _trial_count_directive,
+)
 
 
 def _texts(question: str, db=None) -> list[str]:
@@ -126,6 +131,81 @@ _COMPARE_DECOMP = _decomp(
     ],
     gaps=["clinical_efficacy", "pricing"],
 )
+
+
+class TestTrialCountDirective:
+    """#1 — trial/development-breadth discipline. The compare path injects no
+    grounded count metric, so an unattributed/specific trial count is fabricated.
+    The directive forbids that, forces ClinicalTrials.gov attribution + scope, and
+    bars count-as-superiority over-interpretation."""
+
+    def test_fires_when_question_mentions_trials(self):
+        d = _trial_count_directive("Compare the trials of semaglutide vs tirzepatide", [])
+        assert d
+        assert "ClinicalTrials.gov" in d
+        # Forbids fabrication and over-interpretation.
+        assert "do not invent a number" in d.lower()
+        assert "not evidence of efficacy" in d.lower() or "superiority" in d.lower()
+
+    def test_fires_when_clinical_trial_evidence_present(self):
+        ev = [{"provenance": {"predicate": "clinical_trial"}, "content": "x"}]
+        assert _trial_count_directive("tell me about semaglutide", ev)
+
+    def test_silent_for_unrelated_query(self):
+        # A pure mechanism question with no trial evidence must NOT carry it.
+        assert _trial_count_directive("What is the mechanism of semaglutide?", []) == ""
+
+    def test_phase_and_pipeline_terms_trigger(self):
+        assert _trial_count_directive("phase 3 readouts", [])
+        assert _trial_count_directive("drug pipeline strength", [])
+
+
+class TestMatrixCoverageTable:
+    """F2/#5 — the PLAN matrix rendered as a per-lens coverage table (the
+    'render from an answer matrix' lever). Deterministic, built in code."""
+
+    def test_none_or_no_dims_returns_empty(self):
+        assert _matrix_coverage_table(None) == ""
+        assert _matrix_coverage_table({}) == ""
+        assert _matrix_coverage_table({"dimensions": []}) == ""
+
+    def test_renders_lens_coverage_source(self):
+        decomp = {
+            "entities": [{"entity_id": "sema", "label": "semaglutide"}],
+            "dimensions": [
+                {"key": "mechanism", "label": "Mechanism"},
+                {"key": "clinical_efficacy", "label": "Clinical efficacy"},
+            ],
+            "coverage_summary": {"mechanism": "covered", "clinical_efficacy": "gap"},
+            "cells": [
+                {"dimension": "mechanism", "entity_id": "sema", "coverage": "covered",
+                 "facts": [{"claim": "GLP-1 RA", "predicate": "mechanism_of_action"}]},
+                {"dimension": "clinical_efficacy", "entity_id": "sema", "coverage": "gap",
+                 "facts": []},
+            ],
+        }
+        out = _matrix_coverage_table(decomp)
+        # It's a markdown table with the header + both lenses.
+        assert "Coverage by lens" in out
+        assert "| Lens | Coverage | Source |" in out
+        assert "Mechanism" in out and "Clinical efficacy" in out
+        # Covered lens cites its named source (predicate→connector).
+        assert "MeSH / curated mechanism" in out
+        # Gap lens reads "not in retrieved evidence" (retrieval scope, not "doesn't exist").
+        assert "not in retrieved evidence" in out
+        # Coverage glyphs present.
+        assert "covered" in out and "gap" in out
+
+    def test_gap_source_is_retrieval_scoped_not_absent(self):
+        decomp = {
+            "dimensions": [{"key": "pricing", "label": "Pricing"}],
+            "coverage_summary": {"pricing": "gap"},
+            "cells": [{"dimension": "pricing", "entity_id": "x", "coverage": "gap", "facts": []}],
+        }
+        out = _matrix_coverage_table(decomp)
+        assert "not in retrieved evidence" in out
+        # Must NOT imply the data does not exist in the world.
+        assert "does not exist" not in out.lower()
 
 
 class TestMatrixGapLimitations:

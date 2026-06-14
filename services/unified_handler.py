@@ -246,6 +246,43 @@ def _snippet_for_evidence(it: dict) -> str:
     return f"{content} [source: {_display_source(it.get('source'), prov.get('predicate'))}]"
 
 
+_TRIAL_TERM_RE = re.compile(
+    r"\b(trials?|phase|pipeline|development|registered|footprint|breadth)\b", re.I
+)
+
+
+def _trial_count_directive(question: str, evidence_items: list[dict]) -> str:
+    """Discipline for trial / development-breadth claims (reviewer G1+G2).
+
+    The system does NOT currently compute a grounded per-drug total trial count
+    (the compare path injects no count metric; the matrix carries individual
+    trial facts, not totals), so a model that states "220 registered trials" is
+    FABRICATING. This directive fires only when the question or evidence
+    implicates trials (so it doesn't bloat every prompt) and binds synthesis to:
+    cite a count only if it is in the numbered evidence (attributed to
+    ClinicalTrials.gov, scoped as a registered-trial footprint across all
+    indications in the ingested subset), else describe breadth qualitatively
+    without inventing a number; and never treat count as efficacy, programme
+    maturity, or superiority. The structural fix (a grounded per-drug count as
+    citable evidence) is a follow-up — this prevents the fabrication meanwhile."""
+    implicates_trials = bool(_TRIAL_TERM_RE.search(question or "")) or any(
+        (it.get("provenance") or {}).get("predicate") in ("clinical_trial", "trial_result")
+        for it in evidence_items
+    )
+    if not implicates_trials:
+        return ""
+    return (
+        "TRIAL / DEVELOPMENT-BREADTH DISCIPLINE (binding): trial and Phase counts "
+        "derive from ClinicalTrials.gov (ingested registry) and are a REGISTERED-TRIAL "
+        "footprint across all indications in the ingested subset. Do NOT state a "
+        "specific trial count or Phase-N count unless that exact figure appears in the "
+        "numbered evidence — if it does, cite it with [N] and name ClinicalTrials.gov; "
+        "if it does not, describe development breadth qualitatively and do NOT invent a "
+        "number. Trial count is NOT evidence of efficacy, programme maturity, or "
+        "superiority — never imply that it is."
+    )
+
+
 def _faers_safety_directive(evidence_items: list[dict]) -> str:
     """When FAERS adverse-event facts are in context, inject spontaneous-reporting
     discipline so synthesis stops presenting raw reaction terms as drug properties
@@ -436,6 +473,55 @@ def _matrix_gap_limitations(decomposition: Optional[dict]) -> list[tuple[str, st
             "MATRIX_GAP_OVERFLOW",
         ))
     return out
+
+
+_COVERAGE_GLYPH = {"covered": "✓ covered", "thin": "~ partial", "gap": "✗ gap"}
+
+
+def _matrix_coverage_table(decomposition: Optional[dict]) -> str:
+    """Render the PLAN matrix as a per-lens coverage table — the reviewer's
+    "render from an answer matrix": every dimension a domain analyst examines,
+    its coverage state (covered / partial / gap) from the planner, and the named
+    source class backing it. Deterministic (built in code from the matrix, not
+    narrated by the LLM), so the user gets an intelligence answer, not just a
+    paragraph. A gap reads "not in retrieved evidence" (retrieval scope, never
+    "the data doesn't exist"). Returns "" when there is no matrix."""
+    if not decomposition:
+        return ""
+    dims = decomposition.get("dimensions") or []
+    if not dims:
+        return ""
+    summary = decomposition.get("coverage_summary") or {}
+    # Named source class per dimension, taken from the first grounded fact's
+    # predicate in any of that dimension's cells (the same predicate→connector
+    # map the provenance footer uses, so the table and citations agree).
+    src_by_dim: dict[str, str] = {}
+    for cell in (decomposition.get("cells") or []):
+        dim = cell.get("dimension")
+        if not dim or dim in src_by_dim:
+            continue
+        for f in (cell.get("facts") or []):
+            pred = f.get("predicate")
+            if pred:
+                src_by_dim[dim] = _display_source(None, pred)
+                break
+    rows: list[str] = []
+    for d in dims:
+        key = d.get("key")
+        label = d.get("label") or key or ""
+        state = summary.get(key, "gap")
+        glyph = _COVERAGE_GLYPH.get(state, state)
+        if state == "gap":
+            src = "not in retrieved evidence"
+        else:
+            src = src_by_dim.get(key) or "platform knowledge base"
+        rows.append(f"| {label} | {glyph} | {src} |")
+    if not rows:
+        return ""
+    return (
+        "**Coverage by lens** — what the retrieved evidence supports:\n\n"
+        "| Lens | Coverage | Source |\n|---|---|---|\n" + "\n".join(rows)
+    )
 
 
 def _coverage_directive(limitations: list[tuple[str, str]]) -> str:
@@ -679,6 +765,9 @@ class UnifiedChatHandler:
 
         # FAERS discipline only when adverse-event facts are actually in context.
         faers_directive = _faers_safety_directive(evidence_items)
+        # Trial / development-breadth discipline (reviewer G1+G2): forbid fabricated
+        # or unattributed trial counts and count-as-superiority over-interpretation.
+        trial_directive = _trial_count_directive(question, evidence_items)
         # Deterministic coverage-honesty (eval gate G2): a query touching a
         # not-ingested / thin source ALWAYS carries an explicit limit — in the
         # prompt (so the prose hedges) AND in the response contract below.
@@ -694,7 +783,7 @@ class UnifiedChatHandler:
                 _seen_limit.add(t)
         coverage_directive = _coverage_directive(coverage_limits)
         synthesis_directive = "\n\n".join(
-            d for d in (leaders_hint, faers_directive, coverage_directive) if d
+            d for d in (leaders_hint, faers_directive, trial_directive, coverage_directive) if d
         )
 
         # Call LLM with grounded, numbered evidence so citations validate.
@@ -716,6 +805,15 @@ class UnifiedChatHandler:
         # so we render it in code from the source-tagged evidence (eval gate G1). The
         # connector names are not "claims" to be grounded, so they bypass the guard.
         narrative = (narrative or "") + _provenance_footer(evidence_items)
+
+        # Deterministic per-lens coverage matrix — renders the decomposition as a
+        # scannable Lens/Coverage/Source table so the answer is an intelligence
+        # answer, not a paragraph (reviewer: "render from an answer matrix"). Built
+        # from the matrix in code, so it's present even when the LLM's prose isn't
+        # structured.
+        coverage_table = _matrix_coverage_table(decomposition)
+        if coverage_table:
+            narrative += "\n\n" + coverage_table
 
         # Deterministic coverage-limit footer — guarantees the honest limit is
         # present even if the LLM ignored the directive (eval gate G2).

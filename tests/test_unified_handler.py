@@ -543,3 +543,27 @@ class TestCoverageHonestyContract:
         assert "MATRIX_GAP_PRICING" in data["review_flags"]
         assert any("pricing & access" in t.lower() for t in data["limitations"])
         assert "Coverage limits" in result["narrative"]
+
+    def test_matrix_coverage_table_surfaces_in_narrative(self, handler, monkeypatch):
+        """#5 wiring: when a matrix exists, handle() renders the per-lens coverage
+        table into the narrative (Lens/Coverage/Source) — the 'render from an
+        answer matrix' surface, not just prose."""
+        decomp = {
+            "entities": [{"entity_id": "sema", "label": "semaglutide"}],
+            "dimensions": [
+                {"key": "mechanism", "label": "Mechanism"},
+                {"key": "pricing", "label": "Pricing & access"},
+            ],
+            "coverage_summary": {"mechanism": "covered", "pricing": "gap"},
+            "cells": [
+                {"dimension": "mechanism", "entity_id": "sema", "coverage": "covered",
+                 "facts": [{"claim": "GLP-1 RA", "predicate": "mechanism_of_action"}]},
+                {"dimension": "pricing", "entity_id": "sema", "coverage": "gap", "facts": []},
+            ],
+        }
+        monkeypatch.setattr(handler, "_plan_decomposition", lambda plan: decomp)
+        result = handler.handle("Tell me about semaglutide")
+        narrative = result["narrative"]
+        assert "Coverage by lens" in narrative
+        assert "| Lens | Coverage | Source |" in narrative
+        assert "Mechanism" in narrative and "Pricing & access" in narrative
