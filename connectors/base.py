@@ -79,6 +79,7 @@ class SourceType(str, Enum):
     # lives in the string-keyed `sources` registry, not a bespoke enum member).
     CSV_FILE = "csv_file"
     RSS = "rss"
+    REST = "rest"
 
 
 class RecordType(str, Enum):
