@@ -863,7 +863,7 @@ class UnifiedChatHandler:
                 if not claim:
                     continue
                 predicate = f.get("predicate")
-            items.append({
+                items.append({
                     # The named connector (from predicate) so the claim is
                     # attributable; the internal dimension is kept in provenance.
                     "source": _display_source(None, predicate),
