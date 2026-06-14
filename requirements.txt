@@ -20,7 +20,14 @@ APScheduler>=3.10.4
 python-dotenv>=1.0.1    # .env file loading
 
 # API layer
-fastapi>=0.109.0
+# Upper bounds pin below the breaking FastAPI/Starlette major: starlette 1.x
+# changed include_router to nest child routes under a mount wrapper, which the
+# app is not yet validated against (and which silently dropped flat-route
+# introspection in CI once deps floated). starlette is pinned EXPLICITLY so the
+# previously-invisible transitive float is visible and gated. Lift deliberately
+# (validate the app on starlette 1.x) rather than letting it drift.
+fastapi>=0.109.0,<0.116
+starlette>=0.40.0,<0.42
 uvicorn>=0.27.0
 pydantic>=2.5.0
 
