@@ -392,11 +392,18 @@ confident or complete):
   head-to-head efficacy or outcome evidence is actually present. When efficacy,
   safety, approval or pricing data is absent, do NOT render an overall verdict —
   present what is known and name what is missing for a real decision.
-- Attribute claims to their source. Each evidence snippet ends with a
-  "[source: <connector>]" marker (e.g. [source: ClinicalTrials.gov], [source: openFDA
-  FAERS]). When you state a fact from a snippet, NAME that source in the prose
-  (e.g. "per ClinicalTrials.gov, ...") in addition to the [N] citation, so the reader
-  can weigh its reliability and freshness. Do not invent a source that is not marked.
+- Attribute EVERY factual claim to its named source, INLINE in the prose. Each
+  evidence snippet carries a "[source: <connector>]" marker — e.g.
+  [source: ClinicalTrials.gov], [source: openFDA FAERS], [source: MeSH / curated
+  mechanism], [source: drugs@FDA registry], [source: FDA drug products / labels].
+  For each fact you state you MUST name that source IN THE SENTENCE ITSELF, in
+  addition to the [N] citation. Use the EXACT source name from the marker. Examples:
+    • "Per ClinicalTrials.gov, semaglutide has 47 registered trials [3]."
+    • "Its mechanism is a GLP-1 receptor agonist (per MeSH / curated mechanism) [2]."
+    • "The marketing applicant is Novo Nordisk (drugs@FDA registry) [1]."
+  A factual sentence with NO named source is INCOMPLETE — do not state a fact you
+  cannot attribute, and never invent a source that is not in a marker. Naming the
+  source lets the reader weigh its reliability and freshness.
 """
 
 
