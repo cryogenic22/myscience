@@ -523,3 +523,23 @@ class TestCoverageHonestyContract:
         result = handler.handle("What is the mechanism of action of semaglutide?")
         assert result["data"]["limitations"] == []
         assert result["data"]["review_flags"] == []
+
+    def test_matrix_gap_surfaces_through_contract(self, handler, monkeypatch):
+        """F2 wiring: a decomposition with a real per-dimension gap surfaces a
+        grounded MATRIX_GAP_* flag + limitation through handle() into the
+        response contract AND the deterministic footer — not just the pure
+        function. The question is a plain clinical one (no keyword-driven limit),
+        so the limitation can ONLY come from the matrix gap path (eval gate G2)."""
+        gappy = {
+            "entities": [{"entity_id": "sema", "label": "semaglutide"}],
+            "dimensions": [{"key": "pricing", "label": "Pricing & access"}],
+            "cells": [{"dimension": "pricing", "entity_id": "sema",
+                       "coverage": "gap", "facts": []}],
+            "gaps": ["pricing"],
+        }
+        monkeypatch.setattr(handler, "_plan_decomposition", lambda plan: gappy)
+        result = handler.handle("What is the mechanism of action of semaglutide?")
+        data = result["data"]
+        assert "MATRIX_GAP_PRICING" in data["review_flags"]
+        assert any("pricing & access" in t.lower() for t in data["limitations"])
+        assert "Coverage limits" in result["narrative"]

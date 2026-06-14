@@ -14,7 +14,7 @@ Run: pytest tests/test_coverage_honesty.py -v
 
 from __future__ import annotations
 
-from services.unified_handler import _coverage_limitations
+from services.unified_handler import _coverage_limitations, _matrix_gap_limitations
 
 
 def _texts(question: str, db=None) -> list[str]:
@@ -104,3 +104,88 @@ class TestPricingIsSourceStateDriven:
         assert "NO_PAYER_SOURCE" in _flags("formulary tier")
         assert "NADAC_NO_ROWS" in _flags(self.PRICING_Q, _FakeDB(0))
         assert "NADAC_HAS_ROWS" in _flags(self.PRICING_Q, _FakeDB(10))
+
+
+def _decomp(entities, dimensions, cells, gaps):
+    return {"entities": entities, "dimensions": dimensions, "cells": cells, "gaps": gaps}
+
+
+_COMPARE_DECOMP = _decomp(
+    entities=[{"entity_id": "sema", "label": "semaglutide"},
+              {"entity_id": "tirz", "label": "tirzepatide"}],
+    dimensions=[{"key": "mechanism", "label": "Mechanism"},
+                {"key": "clinical_efficacy", "label": "Clinical efficacy"},
+                {"key": "pricing", "label": "Pricing & access"}],
+    cells=[
+        {"dimension": "mechanism", "entity_id": "sema", "coverage": "covered"},
+        {"dimension": "mechanism", "entity_id": "tirz", "coverage": "covered"},
+        {"dimension": "clinical_efficacy", "entity_id": "sema", "coverage": "gap"},
+        {"dimension": "clinical_efficacy", "entity_id": "tirz", "coverage": "gap"},
+        {"dimension": "pricing", "entity_id": "sema", "coverage": "gap"},
+        {"dimension": "pricing", "entity_id": "tirz", "coverage": "covered"},
+    ],
+    gaps=["clinical_efficacy", "pricing"],
+)
+
+
+class TestMatrixGapLimitations:
+    """F2 — G2 honesty driven by the PLAN matrix's OWN per-dimension gaps
+    (planner coverage state), not just question keywords. A dimension the
+    decomposition could not ground becomes an explicit, named gap so synthesis
+    cannot quietly fill it."""
+
+    def test_none_or_no_gaps_returns_empty(self):
+        assert _matrix_gap_limitations(None) == []
+        assert _matrix_gap_limitations({}) == []
+        # A fully-covered decomposition produces no false limitations.
+        covered = _decomp(
+            entities=[{"entity_id": "sema", "label": "semaglutide"}],
+            dimensions=[{"key": "mechanism", "label": "Mechanism"}],
+            cells=[{"dimension": "mechanism", "entity_id": "sema", "coverage": "covered"}],
+            gaps=[],
+        )
+        assert _matrix_gap_limitations(covered) == []
+
+    def test_gap_dimension_becomes_named_limitation(self):
+        out = _matrix_gap_limitations(_COMPARE_DECOMP)
+        flags = {f for _t, f in out}
+        texts = [t for t, _f in out]
+        # Each gap dimension is flagged with a grounded, dimension-specific flag.
+        assert "MATRIX_GAP_CLINICAL_EFFICACY" in flags
+        assert "MATRIX_GAP_PRICING" in flags
+        # The covered dimension is NOT flagged (no over-hedging).
+        assert not any("mechanism" in t.lower() for t in texts)
+        # The dimension label appears in the limitation text.
+        assert any("clinical efficacy" in t.lower() for t in texts)
+
+    def test_limitation_names_only_the_gap_entities(self):
+        out = dict((f, t) for t, f in _matrix_gap_limitations(_COMPARE_DECOMP))
+        # clinical_efficacy is a gap for BOTH drugs → both named.
+        eff = out["MATRIX_GAP_CLINICAL_EFFICACY"].lower()
+        assert "semaglutide" in eff and "tirzepatide" in eff
+        # pricing is a gap only for semaglutide (tirz is covered) → only sema named.
+        price = out["MATRIX_GAP_PRICING"].lower()
+        assert "semaglutide" in price and "tirzepatide" not in price
+
+    def test_returns_text_and_flag_pairs(self):
+        for item in _matrix_gap_limitations(_COMPARE_DECOMP):
+            assert isinstance(item, tuple) and len(item) == 2
+            text, flag = item
+            assert isinstance(text, str) and text
+            assert flag.startswith("MATRIX_GAP_")
+
+    def test_many_gaps_are_capped_with_transparent_overflow(self):
+        # No silent truncation: when more gap dimensions exist than the cap,
+        # an explicit overflow limitation states how many were omitted.
+        dims = [{"key": f"d{i}", "label": f"Dim {i}"} for i in range(8)]
+        cells = [{"dimension": f"d{i}", "entity_id": "x", "coverage": "gap"}
+                 for i in range(8)]
+        decomp = _decomp(
+            entities=[{"entity_id": "x", "label": "drugX"}],
+            dimensions=dims, cells=cells, gaps=[f"d{i}" for i in range(8)],
+        )
+        out = _matrix_gap_limitations(decomp)
+        flags = {f for _t, f in out}
+        assert "MATRIX_GAP_OVERFLOW" in flags
+        # Capped: fewer emitted than the 8 raw gaps, but overflow is explicit.
+        assert len(out) < 8
