@@ -59,6 +59,17 @@ def test_guard_forbids_negative_inference_from_absence():
     assert "Surface such gaps as explicit unknowns" in g
 
 
+def test_guard_demands_per_claim_inline_source_attribution():
+    # H2-prose (eval gate G1): the guard must require naming the source IN the
+    # sentence, with worked examples, not just "cite [N]". The judge scores G1 on
+    # a sentence that attributes a claim to a named source.
+    g = _CLOSED_WORLD_PROTOCOL
+    assert "INLINE in the prose" in g
+    assert "IN THE SENTENCE ITSELF" in g
+    assert "Per ClinicalTrials.gov" in g  # a worked attribution example
+    assert "INCOMPLETE" in g               # a sentence with no named source fails
+
+
 def test_computed_differentials_are_neutral_not_count_fallacy():
     """The system feeds COMPUTED DIFFERENTIALS to the LLM verbatim, so the framing
     here IS the count fallacy if it crowns a winner. Pin neutral, labelled output
