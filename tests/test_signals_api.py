@@ -241,9 +241,14 @@ def test_signals_route_module_exists():
 def test_signals_routes_registered():
     from api.app import create_app
     app = create_app()
-    paths = {getattr(r, "path", None) for r in app.routes}
-    assert any(p and p.endswith("/signals") for p in paths)
-    assert any(p and "/signals/" in (p or "") for p in paths)
+    # Version-agnostic: assert via the OpenAPI path table, which reflects the
+    # routes that are ACTUALLY registered regardless of how the framework
+    # structures app.routes internally. (A flat `r.path` scan silently missed
+    # the routes once FastAPI/Starlette began nesting included routers under a
+    # mount wrapper — the routes were registered, the introspection was naive.)
+    paths = set(app.openapi().get("paths", {}))
+    assert any(p.endswith("/signals") for p in paths)
+    assert any("/signals/" in p for p in paths)
 
 
 # ────────────────────────────────────────────────────────────────────
