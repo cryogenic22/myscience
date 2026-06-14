@@ -438,6 +438,55 @@ def _matrix_gap_limitations(decomposition: Optional[dict]) -> list[tuple[str, st
     return out
 
 
+_COVERAGE_GLYPH = {"covered": "✓ covered", "thin": "~ partial", "gap": "✗ gap"}
+
+
+def _matrix_coverage_table(decomposition: Optional[dict]) -> str:
+    """Render the PLAN matrix as a per-lens coverage table — the reviewer's
+    "render from an answer matrix": every dimension a domain analyst examines,
+    its coverage state (covered / partial / gap) from the planner, and the named
+    source class backing it. Deterministic (built in code from the matrix, not
+    narrated by the LLM), so the user gets an intelligence answer, not just a
+    paragraph. A gap reads "not in retrieved evidence" (retrieval scope, never
+    "the data doesn't exist"). Returns "" when there is no matrix."""
+    if not decomposition:
+        return ""
+    dims = decomposition.get("dimensions") or []
+    if not dims:
+        return ""
+    summary = decomposition.get("coverage_summary") or {}
+    # Named source class per dimension, taken from the first grounded fact's
+    # predicate in any of that dimension's cells (the same predicate→connector
+    # map the provenance footer uses, so the table and citations agree).
+    src_by_dim: dict[str, str] = {}
+    for cell in (decomposition.get("cells") or []):
+        dim = cell.get("dimension")
+        if not dim or dim in src_by_dim:
+            continue
+        for f in (cell.get("facts") or []):
+            pred = f.get("predicate")
+            if pred:
+                src_by_dim[dim] = _display_source(None, pred)
+                break
+    rows: list[str] = []
+    for d in dims:
+        key = d.get("key")
+        label = d.get("label") or key or ""
+        state = summary.get(key, "gap")
+        glyph = _COVERAGE_GLYPH.get(state, state)
+        if state == "gap":
+            src = "not in retrieved evidence"
+        else:
+            src = src_by_dim.get(key) or "platform knowledge base"
+        rows.append(f"| {label} | {glyph} | {src} |")
+    if not rows:
+        return ""
+    return (
+        "**Coverage by lens** — what the retrieved evidence supports:\n\n"
+        "| Lens | Coverage | Source |\n|---|---|---|\n" + "\n".join(rows)
+    )
+
+
 def _coverage_directive(limitations: list[tuple[str, str]]) -> str:
     """Turn coverage limits into a binding synthesis directive so the prose hedges
     instead of over-asserting on a source we don't have."""
@@ -716,6 +765,15 @@ class UnifiedChatHandler:
         # so we render it in code from the source-tagged evidence (eval gate G1). The
         # connector names are not "claims" to be grounded, so they bypass the guard.
         narrative = (narrative or "") + _provenance_footer(evidence_items)
+
+        # Deterministic per-lens coverage matrix — renders the decomposition as a
+        # scannable Lens/Coverage/Source table so the answer is an intelligence
+        # answer, not a paragraph (reviewer: "render from an answer matrix"). Built
+        # from the matrix in code, so it's present even when the LLM's prose isn't
+        # structured.
+        coverage_table = _matrix_coverage_table(decomposition)
+        if coverage_table:
+            narrative += "\n\n" + coverage_table
 
         # Deterministic coverage-limit footer — guarantees the honest limit is
         # present even if the LLM ignored the directive (eval gate G2).
