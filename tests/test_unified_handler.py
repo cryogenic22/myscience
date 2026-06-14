@@ -349,6 +349,50 @@ class TestPlanStage:
         assert "Phase 3 readout positive" in ev[0]["content"]
         assert set(ev[0]) >= {"source", "entity_type", "entity_id", "content", "relevance", "provenance"}
 
+    def test_matrix_to_evidence_keeps_all_facts_per_cell(self, handler):
+        """Conservation: every grounded fact in a cell (capped at 3) must become
+        its own citable evidence item — not just the last one. Each item carries
+        its OWN claim/predicate/id (no leak from the last loop iteration). A
+        regression here silently starves the synthesis prompt of attributable
+        claims (eval gate G1)."""
+        decomposition = {
+            "cells": [
+                {"dimension": "clinical_efficacy", "entity_id": "d1",
+                 "facts": [
+                     {"id": "f1", "claim": "STEP 1 met primary endpoint",
+                      "predicate": "clinical_trial", "fact_class": "outcome"},
+                     {"id": "f2", "claim": "GLP-1 receptor agonist",
+                      "predicate": "mechanism_of_action", "fact_class": "mechanism"},
+                     {"id": "f3", "claim": "Approved 2021",
+                      "predicate": "approval_event", "fact_class": "regulatory"},
+                 ]},
+            ]
+        }
+        ev = handler._matrix_to_evidence(decomposition)
+        assert len(ev) == 3
+        claims = [e["content"] for e in ev]
+        assert any("STEP 1 met primary endpoint" in c for c in claims)
+        assert any("GLP-1 receptor agonist" in c for c in claims)
+        assert any("Approved 2021" in c for c in claims)
+        # Each item carries its OWN predicate (no leak from the last fact).
+        preds = {e["provenance"]["predicate"] for e in ev}
+        assert preds == {"clinical_trial", "mechanism_of_action", "approval_event"}
+        # Each item carries its OWN fact id.
+        assert {e["entity_id"] for e in ev} == {"f1", "f2", "f3"}
+
+    def test_matrix_to_evidence_caps_at_three_per_cell(self, handler):
+        """The [:3] cap per cell is intentional (readability/budget) — keep it."""
+        decomposition = {
+            "cells": [
+                {"dimension": "clinical_efficacy", "entity_id": "d1",
+                 "facts": [{"id": f"f{i}", "claim": f"trial {i}",
+                            "predicate": "clinical_trial", "fact_class": "outcome"}
+                           for i in range(5)]},
+            ]
+        }
+        ev = handler._matrix_to_evidence(decomposition)
+        assert len(ev) == 3
+
     def test_matrix_to_evidence_empty(self, handler):
         assert handler._matrix_to_evidence(None) == []
         assert handler._matrix_to_evidence({"cells": []}) == []
@@ -479,3 +523,23 @@ class TestCoverageHonestyContract:
         result = handler.handle("What is the mechanism of action of semaglutide?")
         assert result["data"]["limitations"] == []
         assert result["data"]["review_flags"] == []
+
+    def test_matrix_gap_surfaces_through_contract(self, handler, monkeypatch):
+        """F2 wiring: a decomposition with a real per-dimension gap surfaces a
+        grounded MATRIX_GAP_* flag + limitation through handle() into the
+        response contract AND the deterministic footer — not just the pure
+        function. The question is a plain clinical one (no keyword-driven limit),
+        so the limitation can ONLY come from the matrix gap path (eval gate G2)."""
+        gappy = {
+            "entities": [{"entity_id": "sema", "label": "semaglutide"}],
+            "dimensions": [{"key": "pricing", "label": "Pricing & access"}],
+            "cells": [{"dimension": "pricing", "entity_id": "sema",
+                       "coverage": "gap", "facts": []}],
+            "gaps": ["pricing"],
+        }
+        monkeypatch.setattr(handler, "_plan_decomposition", lambda plan: gappy)
+        result = handler.handle("What is the mechanism of action of semaglutide?")
+        data = result["data"]
+        assert "MATRIX_GAP_PRICING" in data["review_flags"]
+        assert any("pricing & access" in t.lower() for t in data["limitations"])
+        assert "Coverage limits" in result["narrative"]

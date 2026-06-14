@@ -377,6 +377,67 @@ def _coverage_limitations(question: str, db: Any = None) -> list[tuple[str, str]
     return out
 
 
+_MAX_MATRIX_GAP_LIMITS = 4
+
+
+def _matrix_gap_limitations(decomposition: Optional[dict]) -> list[tuple[str, str]]:
+    """Coverage limits grounded in the PLAN matrix's OWN per-dimension gaps
+    (planner coverage state) rather than question keywords. A dimension the
+    decomposition could not fill for an entity is stated as an explicit, named
+    gap so synthesis cannot quietly fill it (eval gate G2). This complements the
+    source-level ``_coverage_limitations`` (keyword-driven); the caller dedupes
+    across both.
+
+    Capped at ``_MAX_MATRIX_GAP_LIMITS`` with an explicit overflow limitation, so
+    a large all-gap matrix surfaces a bounded list without silently truncating
+    (conservation: no silent loss)."""
+    if not decomposition:
+        return []
+    gap_keys = list(decomposition.get("gaps") or [])
+    if not gap_keys:
+        return []
+    labels = {
+        d.get("key"): (d.get("label") or d.get("key"))
+        for d in (decomposition.get("dimensions") or [])
+    }
+    ent_label = {
+        e.get("entity_id"): (e.get("label") or e.get("entity_id"))
+        for e in (decomposition.get("entities") or [])
+    }
+    # Which entities are a gap for each dimension (so the limit names only the
+    # entity that actually lacks the data, not a covered sibling in a compare).
+    gap_entities: dict[str, list[str]] = {}
+    for cell in (decomposition.get("cells") or []):
+        if cell.get("coverage") != "gap":
+            continue
+        key = cell.get("dimension")
+        name = ent_label.get(cell.get("entity_id"), cell.get("entity_id"))
+        if name and name not in gap_entities.setdefault(key, []):
+            gap_entities[key].append(name)
+
+    out: list[tuple[str, str]] = []
+    for key in gap_keys[:_MAX_MATRIX_GAP_LIMITS]:
+        label = str(labels.get(key, key) or key)
+        names = gap_entities.get(key) or []
+        who = f" for {', '.join(names)}" if names else ""
+        out.append((
+            f"No {label.lower()} facts{who} in the knowledge base — this dimension "
+            f"is a gap and cannot be assessed from ingested evidence.",
+            f"MATRIX_GAP_{str(key).upper()}",
+        ))
+    extra = len(gap_keys) - _MAX_MATRIX_GAP_LIMITS
+    if extra > 0:
+        more = ", ".join(
+            str(labels.get(k, k) or k) for k in gap_keys[_MAX_MATRIX_GAP_LIMITS:]
+        )
+        out.append((
+            f"{extra} further dimension(s) are also gaps in the knowledge base "
+            f"({more}) — not assessable from ingested evidence.",
+            "MATRIX_GAP_OVERFLOW",
+        ))
+    return out
+
+
 def _coverage_directive(limitations: list[tuple[str, str]]) -> str:
     """Turn coverage limits into a binding synthesis directive so the prose hedges
     instead of over-asserting on a source we don't have."""
@@ -622,6 +683,15 @@ class UnifiedChatHandler:
         # not-ingested / thin source ALWAYS carries an explicit limit — in the
         # prompt (so the prose hedges) AND in the response contract below.
         coverage_limits = _coverage_limitations(question, db=self.db)
+        # Ground further limits in the matrix's OWN per-dimension gaps (G2): a
+        # dimension the decomposition could not fill is a real, named gap the
+        # prose must state — sourced from the planner's coverage state, not a
+        # keyword pattern. Deduped against the source-level limits above.
+        _seen_limit = {t for t, _f in coverage_limits}
+        for t, f in _matrix_gap_limitations(decomposition):
+            if t not in _seen_limit:
+                coverage_limits.append((t, f))
+                _seen_limit.add(t)
         coverage_directive = _coverage_directive(coverage_limits)
         synthesis_directive = "\n\n".join(
             d for d in (leaders_hint, faers_directive, coverage_directive) if d
@@ -858,12 +928,19 @@ class UnifiedChatHandler:
             dim = cell.get("dimension", "") or ""
             ent = cell.get("entity_id", "") or ""
             label = dim.replace("_", " ").strip()
-            for f in (cell.get("facts") or [])[:3]:
+            cell_facts = cell.get("facts") or []
+            if len(cell_facts) > 3:
+                # Observable cap (conservation hygiene): the [:3] truncation is an
+                # intentional readability/budget bound on synthesis input, but a
+                # silently-dropped 4th+ fact should at least be logged.
+                logger.debug("matrix cell %s/%s has %d facts; citing first 3",
+                             dim, ent, len(cell_facts))
+            for f in cell_facts[:3]:
                 claim = f.get("claim")
                 if not claim:
                     continue
                 predicate = f.get("predicate")
-            items.append({
+                items.append({
                     # The named connector (from predicate) so the claim is
                     # attributable; the internal dimension is kept in provenance.
                     "source": _display_source(None, predicate),
