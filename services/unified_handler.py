@@ -246,6 +246,43 @@ def _snippet_for_evidence(it: dict) -> str:
     return f"{content} [source: {_display_source(it.get('source'), prov.get('predicate'))}]"
 
 
+_TRIAL_TERM_RE = re.compile(
+    r"\b(trials?|phase|pipeline|development|registered|footprint|breadth)\b", re.I
+)
+
+
+def _trial_count_directive(question: str, evidence_items: list[dict]) -> str:
+    """Discipline for trial / development-breadth claims (reviewer G1+G2).
+
+    The system does NOT currently compute a grounded per-drug total trial count
+    (the compare path injects no count metric; the matrix carries individual
+    trial facts, not totals), so a model that states "220 registered trials" is
+    FABRICATING. This directive fires only when the question or evidence
+    implicates trials (so it doesn't bloat every prompt) and binds synthesis to:
+    cite a count only if it is in the numbered evidence (attributed to
+    ClinicalTrials.gov, scoped as a registered-trial footprint across all
+    indications in the ingested subset), else describe breadth qualitatively
+    without inventing a number; and never treat count as efficacy, programme
+    maturity, or superiority. The structural fix (a grounded per-drug count as
+    citable evidence) is a follow-up — this prevents the fabrication meanwhile."""
+    implicates_trials = bool(_TRIAL_TERM_RE.search(question or "")) or any(
+        (it.get("provenance") or {}).get("predicate") in ("clinical_trial", "trial_result")
+        for it in evidence_items
+    )
+    if not implicates_trials:
+        return ""
+    return (
+        "TRIAL / DEVELOPMENT-BREADTH DISCIPLINE (binding): trial and Phase counts "
+        "derive from ClinicalTrials.gov (ingested registry) and are a REGISTERED-TRIAL "
+        "footprint across all indications in the ingested subset. Do NOT state a "
+        "specific trial count or Phase-N count unless that exact figure appears in the "
+        "numbered evidence — if it does, cite it with [N] and name ClinicalTrials.gov; "
+        "if it does not, describe development breadth qualitatively and do NOT invent a "
+        "number. Trial count is NOT evidence of efficacy, programme maturity, or "
+        "superiority — never imply that it is."
+    )
+
+
 def _faers_safety_directive(evidence_items: list[dict]) -> str:
     """When FAERS adverse-event facts are in context, inject spontaneous-reporting
     discipline so synthesis stops presenting raw reaction terms as drug properties
@@ -728,6 +765,9 @@ class UnifiedChatHandler:
 
         # FAERS discipline only when adverse-event facts are actually in context.
         faers_directive = _faers_safety_directive(evidence_items)
+        # Trial / development-breadth discipline (reviewer G1+G2): forbid fabricated
+        # or unattributed trial counts and count-as-superiority over-interpretation.
+        trial_directive = _trial_count_directive(question, evidence_items)
         # Deterministic coverage-honesty (eval gate G2): a query touching a
         # not-ingested / thin source ALWAYS carries an explicit limit — in the
         # prompt (so the prose hedges) AND in the response contract below.
@@ -743,7 +783,7 @@ class UnifiedChatHandler:
                 _seen_limit.add(t)
         coverage_directive = _coverage_directive(coverage_limits)
         synthesis_directive = "\n\n".join(
-            d for d in (leaders_hint, faers_directive, coverage_directive) if d
+            d for d in (leaders_hint, faers_directive, trial_directive, coverage_directive) if d
         )
 
         # Call LLM with grounded, numbered evidence so citations validate.

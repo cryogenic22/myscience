@@ -18,6 +18,7 @@ from services.unified_handler import (
     _coverage_limitations,
     _matrix_gap_limitations,
     _matrix_coverage_table,
+    _trial_count_directive,
 )
 
 
@@ -130,6 +131,33 @@ _COMPARE_DECOMP = _decomp(
     ],
     gaps=["clinical_efficacy", "pricing"],
 )
+
+
+class TestTrialCountDirective:
+    """#1 — trial/development-breadth discipline. The compare path injects no
+    grounded count metric, so an unattributed/specific trial count is fabricated.
+    The directive forbids that, forces ClinicalTrials.gov attribution + scope, and
+    bars count-as-superiority over-interpretation."""
+
+    def test_fires_when_question_mentions_trials(self):
+        d = _trial_count_directive("Compare the trials of semaglutide vs tirzepatide", [])
+        assert d
+        assert "ClinicalTrials.gov" in d
+        # Forbids fabrication and over-interpretation.
+        assert "do not invent a number" in d.lower()
+        assert "not evidence of efficacy" in d.lower() or "superiority" in d.lower()
+
+    def test_fires_when_clinical_trial_evidence_present(self):
+        ev = [{"provenance": {"predicate": "clinical_trial"}, "content": "x"}]
+        assert _trial_count_directive("tell me about semaglutide", ev)
+
+    def test_silent_for_unrelated_query(self):
+        # A pure mechanism question with no trial evidence must NOT carry it.
+        assert _trial_count_directive("What is the mechanism of semaglutide?", []) == ""
+
+    def test_phase_and_pipeline_terms_trigger(self):
+        assert _trial_count_directive("phase 3 readouts", [])
+        assert _trial_count_directive("drug pipeline strength", [])
 
 
 class TestMatrixCoverageTable:
