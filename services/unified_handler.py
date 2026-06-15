@@ -1380,10 +1380,12 @@ class UnifiedChatHandler:
                 row = self.db.fetch_one(
                     "SELECT count(*) AS n FROM clinical_trials WHERE drug_id = %s", [did]
                 )
+                # Coerce INSIDE the try so a malformed count skips just THIS drug
+                # (per the docstring) rather than aborting every trial total.
+                n = int((row or {}).get("n") or 0)
             except Exception:
                 logger.debug("trial-total count failed for %s", did, exc_info=True)
                 continue
-            n = int((row or {}).get("n") or 0)
             if n > 0:
                 entity_counts.append((str(did), ent.get("label") or "This drug", n))
         return _trial_total_evidence_items(entity_counts)
