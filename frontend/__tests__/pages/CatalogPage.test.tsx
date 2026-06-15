@@ -27,13 +27,18 @@ vi.mock('../../src/api', () => ({
 import { api } from '../../src/api';
 import CatalogPage from '../../src/pages/CatalogPage';
 
+// Prod-shaped fixture: dataset_name is the COMPOSITE '<source_type>.<table>' grain
+// (the real dataset_catalog values), NOT 1:1 with source_type. clinical_trials_gov
+// has TWO datasets — the case the old 1:1 fixture never exercised, which masked
+// both the universal /fair 404 (every click sent a bare source_type to a
+// dataset_name-keyed endpoint) and the duplicate-React-key card collision.
 const DATASETS = {
   datasets: [
     {
-      dataset_name: 'ClinicalTrials.gov',
+      dataset_name: 'clinical_trials_gov.trials',
       source_type: 'clinical_trials_gov',
       entity_type: 'trial',
-      table_name: 'clinical_trials',
+      table_name: 'trials',
       row_count: 12450,
       last_refreshed_at: '2026-06-12T00:00:00Z',
       refresh_frequency: 'daily',
@@ -44,7 +49,21 @@ const DATASETS = {
       fair_overall: 0.94, // D-API-2 composite — preferred over the raw quality score
     },
     {
-      dataset_name: 'SEC EDGAR',
+      dataset_name: 'clinical_trials_gov.sponsors',
+      source_type: 'clinical_trials_gov', // SAME source_type, different dataset
+      entity_type: 'company',
+      table_name: 'sponsors',
+      row_count: 800,
+      last_refreshed_at: '2026-06-12T00:00:00Z',
+      refresh_frequency: 'daily',
+      license_name: 'free · public domain',
+      quality_score_avg: 0.7,
+      completeness_pct: 0.6,
+      freshness_days: 1,
+      fair_overall: 0.61,
+    },
+    {
+      dataset_name: 'sec_edgar.filings',
       source_type: 'sec_edgar',
       entity_type: 'company',
       table_name: 'companies',
@@ -57,7 +76,7 @@ const DATASETS = {
       freshness_days: 11,
     },
   ],
-  count: 2,
+  count: 3,
 };
 
 const PIPELINE = {
@@ -122,19 +141,26 @@ describe('CatalogPage container', () => {
     expect(screen.getByTestId('catalog-loading')).toBeInTheDocument();
   });
 
-  it('renders the grid joined from datasets × pipeline-status', async () => {
+  it('renders the grid joined from datasets × pipeline-status (one card per DATASET, distinct keys)', async () => {
     (api.catalogDatasets as any).mockResolvedValue(DATASETS);
     (api.catalogPipelineStatus as any).mockResolvedValue(PIPELINE);
     const { container } = render(<CatalogPage />);
     await waitFor(() =>
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
     );
-    // One card per dataset.
-    expect(container.querySelectorAll('[data-source-card]').length).toBe(2);
-    // The pipeline-status verdict is carried onto the card.
-    const sec = container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement;
+    // One card per dataset — 3 DISTINCT dataset_name keys, NOT collapsed onto 2
+    // source_types. The bug: key={source_type} collided the two clinical_trials_gov
+    // datasets into one card; the old 1:1 fixture never exercised it.
+    const cards = container.querySelectorAll('[data-source-card]');
+    expect(cards.length).toBe(3);
+    const keys = Array.from(cards).map((c) => c.getAttribute('data-source-card'));
+    expect(new Set(keys).size).toBe(3); // all distinct — no collision
+    expect(keys).toContain('clinical_trials_gov.trials');
+    expect(keys).toContain('clinical_trials_gov.sponsors');
+    // The pipeline-status verdict (keyed by source_type) is carried onto the card.
+    const sec = container.querySelector('[data-source-card="sec_edgar.filings"]') as HTMLElement;
     expect(sec.querySelector('[data-status-badge="stale"]')).not.toBeNull();
-    const ct = container.querySelector('[data-source-card="clinical_trials_gov"]') as HTMLElement;
+    const ct = container.querySelector('[data-source-card="clinical_trials_gov.trials"]') as HTMLElement;
     expect(ct.querySelector('[data-status-badge="fresh"]')).not.toBeNull();
   });
 
@@ -145,11 +171,11 @@ describe('CatalogPage container', () => {
     await waitFor(() =>
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
     );
-    const ct = container.querySelector('[data-source-card="clinical_trials_gov"]') as HTMLElement;
+    const ct = container.querySelector('[data-source-card="clinical_trials_gov.trials"]') as HTMLElement;
     // 0.94 (fair_overall) preferred over 0.88 (quality_score_avg).
     expect((ct.querySelector('[data-quality-ring]') as HTMLElement).textContent).toBe('94');
-    // SEC has neither → placeholder ring (en-dash), not a fabricated number.
-    const sec = container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement;
+    // SEC filings has neither → placeholder ring (en-dash), not a fabricated number.
+    const sec = container.querySelector('[data-source-card="sec_edgar.filings"]') as HTMLElement;
     expect((sec.querySelector('[data-quality-ring]') as HTMLElement).textContent).toBe('–');
   });
 
@@ -162,18 +188,42 @@ describe('CatalogPage container', () => {
     await waitFor(() =>
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
     );
-    fireEvent.click(container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-source-card="sec_edgar.filings"]') as HTMLElement);
     await waitFor(() =>
       expect(container.querySelector('[data-source-dossier="sec_edgar"]')).not.toBeNull(),
     );
+    // The dual grain: the bare source_type drives /profile (source-level schema),
+    // the composite dataset_name drives /fair (the clicked dataset's breakdown).
     expect(api.datasetProfile).toHaveBeenCalledWith('sec_edgar');
-    expect(api.datasetFair).toHaveBeenCalledWith('sec_edgar');
+    expect(api.datasetFair).toHaveBeenCalledWith('sec_edgar.filings');
     expect(container.querySelector('[data-schema-field="cik"]')).not.toBeNull();
     // The real D-API-2 dimensions render; no "FAIR" language.
     expect(container.querySelector('[data-quality-dim="completeness"]')).not.toBeNull();
     expect(container.querySelector('[data-quality-dim="accessibility"]')).not.toBeNull();
     expect(screen.getByText(/Quality profile/i)).toBeInTheDocument();
     expect(screen.queryByText(/FAIR profile/i)).toBeNull();
+  });
+
+  it('a multi-dataset source sends the CLICKED dataset composite name to /fair (not the bare source_type)', async () => {
+    // The headline regression: clicking any clinical_trials_gov card sent the bare
+    // source_type 'clinical_trials_gov' to /fair, which 404s (dataset_catalog keys
+    // on the composite name) → every dossier's Quality breakdown silently died.
+    (api.catalogDatasets as any).mockResolvedValue(DATASETS);
+    (api.catalogPipelineStatus as any).mockResolvedValue(PIPELINE);
+    (api.datasetProfile as any).mockImplementation((k: string) =>
+      Promise.resolve({ ...PROFILE, source_key: k, display_name: k }));
+    (api.datasetFair as any).mockResolvedValue(FAIR);
+    const { container } = render(<CatalogPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(
+      container.querySelector('[data-source-card="clinical_trials_gov.trials"]') as HTMLElement,
+    );
+    await waitFor(() => expect(api.datasetFair).toHaveBeenCalled());
+    expect(api.datasetFair).toHaveBeenCalledWith('clinical_trials_gov.trials'); // composite → /fair
+    expect(api.datasetProfile).toHaveBeenCalledWith('clinical_trials_gov');      // source_type → /profile
+    expect(api.datasetFair).not.toHaveBeenCalledWith('clinical_trials_gov');     // never the bare type
   });
 
   it('shows an explicit error+retry dossier when the profile load fails (not a silent empty card)', async () => {
@@ -185,7 +235,7 @@ describe('CatalogPage container', () => {
     await waitFor(() =>
       expect(screen.getByRole('main', { name: /data catalog/i })).toBeInTheDocument(),
     );
-    fireEvent.click(container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-source-card="sec_edgar.filings"]') as HTMLElement);
     await waitFor(() =>
       expect(container.querySelector('[data-dossier-error="sec_edgar"]')).not.toBeNull(),
     );
