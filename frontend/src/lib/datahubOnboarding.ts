@@ -153,6 +153,13 @@ export interface RegisterResult {
   record?: OnboardingRecordDTO;
   /** Validation errors that block registration (the wizard surfaces these). */
   errors: string[];
+  /**
+   * TRUE when the contract was validated locally but NOT persisted to the
+   * backend (the write-path is still pending — see registerSource). The wizard
+   * MUST show an honest "preview, not persisted" state for these, never a green
+   * "registered" confirmation. Absent/false ⇒ a real backend write succeeded.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -185,12 +192,18 @@ export function validateContract(draft: OnboardingDraft): string[] {
 }
 
 /**
- * Register a source + start its onboarding lifecycle at `draft`.
+ * Validate a source's contract and PREVIEW the draft record the backend will
+ * return — it does NOT persist anything yet.
  *
- * ⚠️ STUB — D-API-1 (`POST /hub/onboarding/{source_id}`) is not exposed yet.
- * This validates the contract locally and echoes the draft record the backend
- * WILL return. When the endpoint lands, replace the body with the real POST and
- * keep this signature.
+ * ⚠️ PREVIEW-ONLY. The real write-path needs a two-stage backend flow
+ * (POST /sources to register the source, then POST /hub/onboarding/{id} for the
+ * lifecycle) AND backend storage for the full contract (config/mappings/
+ * trust_tier/must_capture/license). StartOnboardingBody silently ignores those
+ * fields today, so a naive POST would 201 while dropping the contract this
+ * wizard exists to enforce — a silent conservation violation. Until the
+ * cross-lane contract storage lands (COORDINATION §8.1), this returns
+ * `preview: true` so the wizard tells the truth: "validated, not persisted".
+ * When the backend is ready, do the POST and return `preview: false`.
  */
 export async function registerSource(draft: OnboardingDraft): Promise<RegisterResult> {
   const errors = validateContract(draft);
@@ -198,13 +211,12 @@ export async function registerSource(draft: OnboardingDraft): Promise<RegisterRe
     return { ok: false, errors };
   }
   const now = new Date().toISOString();
-  // TODO(D-API-1): swap for
-  //   const res = await fetch(`${BASE}/hub/onboarding/${encodeURIComponent(draft.source_key)}`,
-  //     { method: 'POST', headers: {...}, body: JSON.stringify(draft) });
-  //   return await res.json();
+  // TODO(write-path): two-stage POST /sources → POST /hub/onboarding/{id} once
+  // the backend persists the full contract; then drop `preview`.
   return {
     ok: true,
     errors: [],
+    preview: true, // validated locally; nothing persisted to the backend yet
     record: {
       source_id: draft.source_key,
       status: 'draft',

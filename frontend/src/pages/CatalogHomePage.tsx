@@ -98,6 +98,9 @@ export interface CatalogHomePageProps {
   onRefresh?: () => void;
   /** Open the Connect-a-source wizard (F5). Omitted ⇒ no entry point rendered. */
   onConnect?: () => void;
+  /** Navigate to the /connectors operational surface (client-side — a bare
+   *  <a href> would hit the deprecated /connectors JSON API). Omitted ⇒ no link. */
+  onViewConnectors?: () => void;
 }
 
 // ── Tones ───────────────────────────────────────────────────────────
@@ -504,7 +507,7 @@ const ALL_TYPES = '__all__';
 const ALL_STATUS = '__all__';
 
 export function CatalogHomePage(props: CatalogHomePageProps) {
-  const { sources, selected, selectedLoading, onSelectSource, onCloseDetail, onRefresh, onConnect } = props;
+  const { sources, selected, selectedLoading, onSelectSource, onCloseDetail, onRefresh, onConnect, onViewConnectors } = props;
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES);
   const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUS);
@@ -624,6 +627,25 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
               Refresh
             </button>
           )}
+          {onViewConnectors && (
+            <button
+              type="button"
+              data-action="view-connectors"
+              onClick={onViewConnectors}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--color-line)',
+                borderRadius: 8,
+                color: 'var(--color-ink-2)',
+                cursor: 'pointer',
+                padding: '4px 12px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+              }}
+            >
+              Connectors →
+            </button>
+          )}
           {onConnect && (
             <button
               type="button"
@@ -652,7 +674,7 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
         <input
           type="search"
           aria-label="Search sources"
-          placeholder="Search sources, datasets, entities…"
+          placeholder="Search sources & datasets…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{

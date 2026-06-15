@@ -962,6 +962,12 @@ def create_app() -> FastAPI:
         @app.get("/bridge")
         @app.get("/briefs")
         @app.get("/briefs/new")
+        # DataHub React routes. Their first segment ('hub') is auto-collected as an
+        # API prefix (the /hub router is mounted), so without these explicit
+        # handlers a hard-refresh / deep-link of /hub/catalog or /hub/connect hit
+        # the /hub router's 404 instead of the SPA. Same collision as /bridge.
+        @app.get("/hub/catalog")
+        @app.get("/hub/connect")
         async def serve_frontend_routes():
             return FileResponse(str(FRONTEND_DIR / "index.html"))
 

@@ -124,4 +124,33 @@ describe('ConnectWizard', () => {
       expect(document.querySelector('[data-register-success]')).toBeInTheDocument(),
     );
   });
+
+  it('the DEFAULT (no onRegister) path is honest: a PREVIEW, not a green "Registered" success', async () => {
+    // The production wizard mounts with NO onRegister, so it uses the registerSource
+    // stub, which validates the contract but persists NOTHING. The earlier injected-
+    // onRegister test masked this. Assert the default path shows an honest preview
+    // state and does NOT fire onDone (nothing was actually persisted).
+    const onDone = vi.fn();
+    render(<ConnectWizard onDone={onDone} />);
+
+    fireEvent.change(screen.getByLabelText('Source key'), { target: { value: 'ema_chmp' } });
+    fireEvent.change(screen.getByLabelText('Display label'), { target: { value: 'EMA CHMP' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.ema.europa.eu' } });
+    fireEvent.click(screen.getByText('Next →')); // → mapping
+    fireEvent.click(screen.getByText('Next →')); // → contract
+    fireEvent.click(document.querySelector('[data-trust-tier="1"]')!);
+    fireEvent.change(screen.getByLabelText('Must-capture field 1'), { target: { value: 'source_doc_id' } });
+    fireEvent.click(screen.getByText('Next →')); // → review
+
+    fireEvent.click(screen.getByRole('button', { name: /register source/i }));
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-register-preview]')).toBeInTheDocument(),
+    );
+    // The lie we removed: no green "Registered" confirmation over an empty backend.
+    expect(document.querySelector('[data-register-success]')).toBeNull();
+    expect(screen.getByText(/not yet persisted/i)).toBeInTheDocument();
+    // A preview is not completion — onDone must not fire.
+    expect(onDone).not.toHaveBeenCalled();
+  });
 });

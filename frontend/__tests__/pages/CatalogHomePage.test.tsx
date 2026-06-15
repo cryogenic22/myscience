@@ -171,6 +171,17 @@ describe('CatalogHomePage — catalog home grid', () => {
     const { container } = setup();
     expect(container.querySelector('[data-action="connect-source"]')).toBeNull();
   });
+
+  it('renders a Connectors cross-link that fires onViewConnectors (discoverability)', () => {
+    const onViewConnectors = vi.fn();
+    const { container } = setup({ onViewConnectors });
+    const link = container.querySelector('[data-action="view-connectors"]') as HTMLElement;
+    expect(link).not.toBeNull();
+    fireEvent.click(link);
+    // Must be a callback (client-side nav) — a bare href would hit the deprecated
+    // /connectors JSON API, not the React page.
+    expect(onViewConnectors).toHaveBeenCalled();
+  });
 });
 
 describe('CatalogHomePage — search + filter', () => {
