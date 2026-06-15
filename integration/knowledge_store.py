@@ -92,10 +92,14 @@ class KnowledgeStore:
             logger.exception("event relink: null-primary query failed")
             rows = []
 
+        # Link directly here (not via _link_headline, which is pinned to the
+        # forward floor) so `min_confidence` is honoured in both directions.
+        linker = self._get_event_linker()
         scanned = relinked = 0
         for r in rows:
             scanned += 1
-            hit = self._link_headline(r.get("description"))
+            text = (r.get("description") or "").strip()
+            hit = linker.link(text) if text else None
             if hit is None or hit.confidence < min_confidence:
                 continue
             try:

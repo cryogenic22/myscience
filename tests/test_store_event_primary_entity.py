@@ -187,6 +187,46 @@ def test_structured_link_skips_headline_linker():
     assert stub.calls == 0  # structured hit short-circuits before the linker
 
 
+def test_linker_build_failure_degrades_to_null_not_crash(monkeypatch):
+    # The central ingest-safety claim: if the gazetteer can't be built, the
+    # store falls back to a never-linking sentinel (cached, no retry storm) and
+    # still writes the event with NULL primary — ingest must not break.
+    import services.entity_linker as el
+    from integration.knowledge_store import _NULL_LINKER
+
+    class _Boom:
+        def __init__(self, db):
+            pass
+
+        def load(self, **k):
+            raise RuntimeError("gazetteer unavailable")
+
+    monkeypatch.setattr(el, "EntityLinker", _Boom)
+    db = _FakeDB()
+    store = KnowledgeStore(db)
+    new_id, was_insert = store._store_event(
+        _event_record(drug_id=None, company_id=None,
+                      description="AstraZeneca stock falls after FDA panel vote"), "run-1")
+    assert was_insert
+    p = _event_insert_params(db)
+    assert p[-3] is None and p[-2] is None and p[-1] is None
+    assert store._event_linker is _NULL_LINKER  # cached sentinel — no rebuild
+
+
+def test_headline_link_accepts_at_floor_inclusive():
+    # 0.85 (a hand-vetted priority alias) is inclusive — pins the boundary so a
+    # regression to a strict > comparison is caught.
+    db = _FakeDB()
+    store = KnowledgeStore(db)
+    store._event_linker = _StubLinker(
+        "bms", LinkResult("company", "co-bms", "Bristol Myers Squibb", 0.85, "bms"))
+    store._store_event(
+        _event_record(drug_id=None, company_id=None,
+                      description="bms acquires obesity biotech"), "run-1")
+    p = _event_insert_params(db)
+    assert p[-3] == "co-bms"
+
+
 def test_relink_null_primary_events_grounds_existing_via_headline():
     db = _FakeDB()
     rows = [{"id": "e1", "description": "AstraZeneca stock falls after FDA panel vote"},
