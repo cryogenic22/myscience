@@ -58,6 +58,20 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("Drug consolidation failed: %s", e)
         results["consolidate_drugs"] = {"error": str(e)}
 
+    # 2.6. fact_class reconcile (D-Q1 §8.2): registry/regulatory facts that fell
+    # into the 'corporate' default get the honest 'reference' class BY SOURCE, so the
+    # coverage lens reflects real data. Idempotent + self-healing each cycle — the
+    # forward fix (emit_one) keeps new facts honest; this reconciles any drift.
+    logger.info("Step 2.6: fact_class reconcile")
+    try:
+        from scripts.backfill_fact_class import run as run_factclass
+        t0 = time.time()
+        results["fact_class_reconcile"] = run_factclass(dry_run=dry_run)
+        results["fact_class_reconcile"]["elapsed_s"] = round(time.time() - t0, 1)
+    except Exception as e:
+        logger.error("fact_class reconcile failed: %s", e)
+        results["fact_class_reconcile"] = {"error": str(e)}
+
     # 3. Mechanism backfill (before TA linkage — mechanisms feed TA links)
     logger.info("Step 3/9: Mechanism backfill")
     try:

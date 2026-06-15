@@ -454,9 +454,11 @@ def test_fact_to_dict_is_camelcase():
 
 
 def test_fact_class_coerced_to_valid():
+    # D-Q1 (§8.2): an out-of-vocab class defaults to the honest CONTEXTUAL class
+    # `corporate` (matching facts_ledger.DEFAULT_FACT_CLASS), not lowest-trust `signal`.
     domains, _, _ = build_domains([_fact("wac_usd_monthly", "bogus_class")])
     by = {d.domain: d for d in domains}
-    assert by["pricing_and_access"].facts[0].fact_class == "signal"
+    assert by["pricing_and_access"].facts[0].fact_class == "corporate"
 
 
 def test_fact_carries_source_url_for_drillthrough():

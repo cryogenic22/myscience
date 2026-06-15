@@ -433,7 +433,10 @@ def _render_value(object_value: Any) -> str:
 def _coerce_fact_class(value: Any) -> str:
     if isinstance(value, str) and value in VALID_FACT_CLASSES:
         return value
-    return "signal"  # sensible default for un-classed observed facts
+    # D-Q1 §8.2: un-classed/dirty facts default to the honest CONTEXTUAL class
+    # `corporate` (matching facts_ledger.DEFAULT_FACT_CLASS) — never the lowest-trust
+    # `signal`, which silently downgraded provenance and depressed dossier readiness.
+    return "corporate"
 
 
 def _fact_to_dossier_fact(fact: dict) -> DossierFact:

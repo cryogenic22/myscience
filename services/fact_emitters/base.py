@@ -37,6 +37,38 @@ CREATED_BY = "fact_emitter"
 _MAX_EVIDENCE_CHARS = 65536  # evidence_records.extracted_text CHECK ceiling
 
 
+# ── D-Q1 (COORDINATION §8.2, Design A): fact_class by SOURCE ──────────────────
+# A registry/regulatory record is authoritative ground truth = `reference`-grade,
+# not the `corporate` default these emitters historically declared. resolve_fact_class
+# UPGRADES the corporate default to `reference` for these sources only; any class set
+# DELIBERATELY (`signal` FAERS, `inferred` derivations, genuine `corporate` news) is
+# returned unchanged, so it never over-upgrades. Single source of truth for the
+# source→class policy — also used by scripts/backfill_fact_class.py to reconcile
+# existing rows. Classifying by SOURCE (not predicate) is what distinguishes a
+# registry trial readout from a news mention of the same trial.
+AUTHORITATIVE_SOURCES = frozenset({
+    "clinical_trials_gov",   # ClinicalTrials.gov registry (trials, phase transitions)
+    "fda_orange_book",       # FDA Orange Book / regulatory submissions
+    "fda_shortages",         # FDA drug-shortage records
+    "openfda_labels",        # openFDA structured product labels (SPL)
+    "fda_spl",               # SPL labels — drug_labels emitter code default
+})
+
+
+def resolve_fact_class(source_id: Optional[str], declared_class: str) -> str:
+    """Final stored fact_class for an emitted fact (D-Q1, §8.2 Design A).
+
+    A fact that fell into the `corporate` default but originates from an
+    authoritative registry/regulatory source is reference-grade ground truth, so
+    it is upgraded to `reference`. A class the emitter set deliberately (`signal`,
+    `inferred`, or `corporate` from a non-authoritative source) is returned
+    unchanged — this only rescues the default catch-all, never over-upgrades."""
+    if declared_class == DEFAULT_FACT_CLASS \
+            and (source_id or "").strip().lower() in AUTHORITATIVE_SOURCES:
+        return "reference"
+    return declared_class
+
+
 @dataclass
 class EmittedFact:
     """A pure, DB-free description of a fact lifted from an entity row."""
@@ -209,7 +241,9 @@ def emit_one(db, emitter_name: str, fact: EmittedFact, *,
         confidence=fact.confidence,
         source_doc_id=source_doc_id,
         created_by=CREATED_BY,
-        fact_class=fact.fact_class,
+        # D-Q1 §8.2: the stored class is resolved by SOURCE — an authoritative
+        # registry/regulatory fact is `reference`, not the `corporate` default.
+        fact_class=resolve_fact_class(fact.source_id, fact.fact_class),
     )
     return ("asserted", fid)
 

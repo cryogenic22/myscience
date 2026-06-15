@@ -14,15 +14,17 @@ set*: the distinct phases its trials reached describe the development trajectory
 
   * ``phase_transition`` — for each upward step between consecutive phases the
     drug actually reached (e.g. it has both Phase 2 and Phase 3 trials), one
-    fact dated at the earliest start of the higher phase. ``corporate`` class:
-    the registry records each trial's phase directly; the "advanced" framing is
-    a light, faithful aggregation.
+    fact dated at the earliest start of the higher phase. The registry records
+    each trial's phase directly, so the declared ``corporate`` default is resolved
+    to ``reference`` by SOURCE in ``emit_one`` (D-Q1 §8.2); the "advanced" framing
+    is a light, faithful aggregation.
   * ``approval_event`` — a Phase 4 (post-marketing) trial implies the drug
     reached market in at least one jurisdiction. That is an *inference*, so the
     fact is ``inferred`` class at lower confidence — never asserted as a
     ground-truth regulatory approval (that belongs to the regulatory tables).
   * ``discontinuation`` — one fact per TERMINATED / WITHDRAWN / SUSPENDED trial
-    (registry status is authoritative → ``corporate``). A terminated trial is a
+    (registry status is authoritative → declared ``corporate``, resolved to
+    ``reference`` by SOURCE in emit_one, D-Q1 §8.2). A terminated trial is a
     development setback signal, not necessarily a discontinued *drug* — the claim
     is phrased at the trial level to avoid over-claiming.
 
