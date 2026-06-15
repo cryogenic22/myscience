@@ -292,11 +292,13 @@ def promote_events(
         logger.exception("signal promoter: market_events query failed")
         events = []
 
-    # Loop ① — build the gazetteer once for this batch.
+    # Loop ① — build the gazetteer once for this batch. Full company/drug
+    # universe + curated priority short-forms (not the 18-entity priority list)
+    # so events naming any known entity resolve, not just the GLP-1 field.
     linker = None
     try:
         from services.entity_linker import EntityLinker
-        linker = EntityLinker(db).load(priority_only=True)
+        linker = EntityLinker(db).load(with_priority_aliases=True)
     except Exception:
         logger.exception("signal promoter: entity linker unavailable; using market fallback")
 
@@ -322,13 +324,27 @@ def promote_events(
     return res
 
 
-def relink_market_signals(db, *, limit: int = 5000) -> dict:
+_RELINK_MIN_CONFIDENCE = 0.85  # backfill floor: full canonical names (0.9) +
+#                                curated priority aliases (0.85); excludes
+#                                ordinary auto-aliases (0.72) so a prod backfill
+#                                of already-unresolved rows stays precision-safe.
+
+
+def relink_market_signals(
+    db, *, limit: int = 5000, min_confidence: float = _RELINK_MIN_CONFIDENCE
+) -> dict:
     """Backfill: re-resolve existing signals stuck in the 'market' bucket by
-    mining their headline. Idempotent; only updates rows that newly resolve.
+    mining their headline against the full company/drug gazetteer (+ curated
+    priority short-forms). Idempotent; only updates rows that newly resolve.
+
+    `min_confidence` defaults to a precision-first floor (0.85) that accepts
+    full canonical-name and hand-vetted-alias matches but not ordinary
+    auto-generated single-token aliases. Lower it (e.g. 0.6) to opt into broader
+    recall once a precision-first pass has been eyeballed on prod.
     """
     from services.entity_linker import EntityLinker
 
-    linker = EntityLinker(db).load(priority_only=True)
+    linker = EntityLinker(db).load(with_priority_aliases=True)
     try:
         rows = db.fetch_all(
             """SELECT id, headline, summary FROM signals
@@ -345,7 +361,7 @@ def relink_market_signals(db, *, limit: int = 5000) -> dict:
         scanned += 1
         text = " ".join(filter(None, [r.get("headline"), r.get("summary")]))
         hit = linker.link(text)
-        if hit is None or hit.confidence < _LINK_MIN_CONFIDENCE:
+        if hit is None or hit.confidence < min_confidence:
             continue
         try:
             db.execute(

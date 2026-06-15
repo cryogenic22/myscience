@@ -47,7 +47,12 @@ _EXCLUDE_COMPANY_RE = re.compile(
     r"medical\s+cent|medical\s+supply|health\s+(?:system|service|network|authorit)|"
     r"department\s+of|school\s+of|\bmilitary|\barmy\b|\bnavy\b|\bgovernment|"
     r"research\s+cent|cancer\s+cent|cancer\s+institut|oncology\s+group|"
-    r"\bacademy|\bconsortium|\bregistry|center\s+of|centre\s+of",
+    r"\bacademy|\bconsortium|\bregistry|center\s+of|centre\s+of|"
+    # research networks / professional bodies / care sites / named individuals —
+    # surfaced as prod gazetteer pollution by the relink precision probe.
+    r"research\s+network|prevention\s+cent|\bphysician|\bsociety\b|"
+    r"cancer\s+research|\bcollaboration\b|\bassociation\b|cardiology|psychiatric|"
+    r"\bMD\b|\bPhD\b|prevention\s+research",
     re.IGNORECASE,
 )
 
@@ -74,13 +79,21 @@ _ALIAS_STOPWORDS = {
     "general", "royal", "federal", "partners", "ventures", "capital",
     "systems", "solutions", "technologies", "digital", "biotech", "medicine",
     "first", "new", "gen", "bio", "labs", "holdings", "people", "company",
+    # generic-word company rows that matched real headlines in the prod probe
+    "response", "leading", "active", "products", "medicines", "medication",
+    "msn", "met", "intervention", "control", "network", "products",
 }
 
 # Non-drug rows that exist in the drugs table as data errors / generic phrases.
+# A name is excluded only when its WHOLE normalized form equals one of these,
+# so real drugs ("insulin glargine") are unaffected by a class term ("insulin").
 _DRUG_STOPLIST = {
     "weight loss", "obesity", "placebo", "saline", "diabetes", "control",
     "standard of care", "vehicle", "comparator", "best supportive care",
     "weight management", "lifestyle", "diet", "exercise",
+    # drug-class labels and trial-arm rows the prod probe mis-matched as drugs
+    "glp 1", "glp1", "medication", "met", "active control", "intervention",
+    "insulin", "sglt2", "soc", "active comparator", "study drug",
 }
 
 
@@ -131,28 +144,49 @@ class EntityLinker:
     """Gazetteer linker. Call load() once, then link(headline) per signal."""
 
     # confidence by how the name was matched
-    _CONF_FULL = 0.9        # full canonical name appeared
-    _CONF_ALIAS = 0.72      # a distinctive short-form token appeared
+    _CONF_FULL = 0.9            # full canonical name appeared
+    _CONF_PRIORITY_ALIAS = 0.85  # a hand-vetted short-form (bms, jnj…) appeared
+    _CONF_ALIAS = 0.72         # a distinctive auto-generated short-form token appeared
 
     def __init__(self, db):
         self.db = db
         # normalized phrase -> (entity_type, entity_id, canonical_name, is_full)
         self._index: dict[str, tuple[str, str, str, bool]] = {}
+        # phrases that are hand-vetted priority short-forms — trusted above
+        # ordinary auto-aliases so a precision-first backfill can accept them.
+        self._priority_alias_phrases: set[str] = set()
         self._loaded = False
         self._priority_only = False
 
     # ── build ──────────────────────────────────────────────────────
-    def load(self, priority_only: bool = False) -> "EntityLinker":
+    def load(
+        self, priority_only: bool = False, with_priority_aliases: bool = False
+    ) -> "EntityLinker":
+        """Build the gazetteer.
+
+        priority_only        — only the ~18 curated GLP-1 entities (highest
+                               precision, lowest recall).
+        with_priority_aliases — full company/drug universe PLUS the curated
+                               short-form initialisms (bms, jnj…) the full
+                               gazetteer's 4-char token rule would drop. This is
+                               the mode the signal promoter uses: broad recall,
+                               with the hand-vetted aliases kept high-confidence.
+        """
         self._index = {}
+        self._priority_alias_phrases = set()
         self._priority_only = priority_only
         if priority_only:
             self._load_priority()
         else:
             self._load_companies()
             self._load_drugs()
+            if with_priority_aliases:
+                self._load_priority_aliases()
         self._loaded = True
-        logger.info("entity linker: indexed %d phrases (priority_only=%s)",
-                    len(self._index), priority_only)
+        logger.info(
+            "entity linker: indexed %d phrases (priority_only=%s, priority_aliases=%s)",
+            len(self._index), priority_only, with_priority_aliases,
+        )
         return self
 
     def _find_company(self, name: str) -> dict | None:
@@ -213,6 +247,13 @@ class EntityLinker:
         norm = _normalize(phrase)
         if len(norm) < _MIN_NAME_LEN:
             return
+        # A single-token name that is a generic English/industry word (e.g. a
+        # company row literally named "center"/"MSN" or a drug row "Medication")
+        # is a data-quality artifact, not an entity — never index it, even as a
+        # full name. Multi-token names ("Jazz Pharmaceuticals") are unaffected,
+        # and distinctive single tokens ("incyte", "jazz") aren't in the set.
+        if " " not in norm and norm in _ALIAS_STOPWORDS:
+            return
         # Full-name entries win over alias entries for the same phrase.
         existing = self._index.get(norm)
         if existing is None or (is_full and not existing[3]):
@@ -261,6 +302,33 @@ class EntityLinker:
             if brand and _normalize(brand) not in _DRUG_STOPLIST:
                 self._add(brand, "drug", r["id"], canonical, True)
 
+    def _load_priority_aliases(self) -> None:
+        """Overlay the curated company short-forms (bms, jnj, lilly…) on top of
+        the full gazetteer.
+
+        The full loader drops initialisms (<4 chars) and most short-forms via
+        the token rules, so "bms acquires…" or "Lilly pens…" would only land on
+        the polluted-table auto-alias (or nothing). These hand-vetted forms are
+        marked as priority aliases (higher confidence) so a precision-first
+        backfill trusts them without trusting every auto-generated token.
+        """
+        canon: dict[str, dict] = {}
+        for pname in _PRIORITY_COMPANIES:
+            row = self._find_company(pname)
+            if row:
+                canon[pname] = row
+        for alias, target in _PRIORITY_COMPANY_ALIASES.items():
+            row = canon.get(target) or self._find_company(target)
+            if not row:
+                continue
+            norm = _normalize(alias)
+            if len(norm) < _MIN_NAME_LEN:
+                continue  # too short/ambiguous to index safely (e.g. "az", "bi")
+            # Priority aliases win the phrase outright (overwrite any auto-alias)
+            # and are tracked so link() can grade them above ordinary aliases.
+            self._index[norm] = ("company", str(row["id"]), target, False)
+            self._priority_alias_phrases.add(norm)
+
     # ── link ───────────────────────────────────────────────────────
     def link(self, text: str) -> LinkResult | None:
         """Return the best canonical entity mentioned in `text`, or None.
@@ -292,10 +360,16 @@ class EntityLinker:
             return None
         phrase = best[3]
         etype, eid, cname, is_full = self._index[phrase]
+        if is_full:
+            confidence = self._CONF_FULL
+        elif phrase in self._priority_alias_phrases:
+            confidence = self._CONF_PRIORITY_ALIAS
+        else:
+            confidence = self._CONF_ALIAS
         return LinkResult(
             entity_type=etype,
             entity_id=eid,
             canonical_name=cname,
-            confidence=self._CONF_FULL if is_full else self._CONF_ALIAS,
+            confidence=confidence,
             matched_text=phrase,
         )
