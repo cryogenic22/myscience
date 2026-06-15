@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Market Zero — Data &amp; Intelligence Layer: State of Strategy (15 Jun 2026)</title>
+<style>
+  :root{
+    --bg:#0b0d11; --surface:#13161c; --surface2:#1a1e26; --surface3:#222732;
+    --ink:#eceef2; --ink2:#c2c7d0; --ink3:#8b919e; --ink4:#5d636f;
+    --line:#262b35; --accent:#5b8cff; --teal:#5eead4;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa; --zs:#F26C0D;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Fraunces",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.62 var(--sans);-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:54px 28px 130px;}
+  h1{font-family:var(--serif);font-weight:500;font-size:37px;letter-spacing:-.02em;margin:0 0 8px;}
+  h2{font-family:var(--serif);font-weight:500;font-size:25px;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line);}
+  h3{font-size:14.5px;letter-spacing:.01em;margin:24px 0 8px;color:var(--ink);}
+  p{color:var(--ink2);margin:0 0 14px;} .sub{color:var(--ink3);font-size:15.5px;margin:0 0 26px;}
+  code{font-family:var(--mono);font-size:.83em;background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--teal);}
+  .mono{font-family:var(--mono);}
+  .num-row{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0;}
+  .stat{flex:1;min-width:120px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .stat .v{font-family:var(--serif);font-size:26px;color:var(--ink);line-height:1;}
+  .stat .l{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);margin-top:7px;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;}
+  th,td{text-align:left;padding:9px 11px;vertical-align:top;border-bottom:1px solid var(--line);}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);}
+  td{color:var(--ink2);} td.c{font-family:var(--mono);color:var(--accent);font-weight:600;white-space:nowrap;}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.03em;text-transform:uppercase;padding:3px 8px;border-radius:999px;font-weight:600;white-space:nowrap;}
+  .lead{background:rgba(52,211,153,.15);color:var(--green);} .par{background:rgba(91,140,255,.16);color:var(--accent);}
+  .lag{background:rgba(248,113,113,.15);color:var(--red);} .partial{background:rgba(251,191,36,.15);color:var(--amber);}
+  .live{background:rgba(52,211,153,.13);color:var(--green);} .built{background:rgba(91,140,255,.12);color:var(--accent);}
+  .new{background:rgba(167,139,250,.16);color:var(--violet);} .gap{background:rgba(248,113,113,.12);color:var(--red);}
+  .grade{font-family:var(--serif);font-weight:600;font-size:15px;}
+  .callout{background:var(--surface);border-radius:14px;padding:18px 22px;margin:18px 0;border-left:3px solid var(--teal);}
+  .callout.amber{border-left-color:var(--amber);} .callout.violet{border-left-color:var(--violet);}
+  .callout.green{border-left-color:var(--green);} .callout.orange{border-left-color:var(--zs);} .callout.red{border-left-color:var(--red);}
+  ul{margin:6px 0 16px;padding-left:22px;color:var(--ink2)} li{margin:6px 0}
+  .mock{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;line-height:1.75;white-space:pre-wrap;}
+  .mock .t{color:var(--teal);} .mock .o{color:var(--zs);} .mock .g{color:var(--green);} .mock .d{color:var(--ink4);} .mock .r{color:var(--red);} .mock .a{color:var(--violet);}
+  .foot{margin-top:56px;color:var(--ink4);font-size:12.5px;font-family:var(--mono);border-top:1px solid var(--line);padding-top:18px;}
+  .bar{height:7px;border-radius:4px;background:var(--surface3);overflow:hidden;margin-top:5px;}
+  .bar > i{display:block;height:100%;border-radius:4px;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;} @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;}
+  .card h4{margin:0 0 4px;font-family:var(--serif);font-size:16px;color:var(--ink);}
+  .card .role{font-family:var(--mono);font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mono" style="color:var(--ink4);font-size:12px">MARKET ZERO · DATA &amp; INTELLIGENCE LAYER · STATE OF STRATEGY · 15 JUN 2026</div>
+  <h1>The data layer is the product</h1>
+  <p class="sub">An honest, prod-grounded assessment of the data &amp; intelligence layer: the architecture, the core
+  components and how each rates against best-in-class, what has actually been achieved (with live numbers), what is
+  still pending, and the path forward. Every figure here is from a live Railway prod probe or a merged/open PR this
+  session — nothing is aspirational unless labelled so.</p>
+
+  <div class="num-row">
+    <div class="stat"><div class="v">15+3</div><div class="l">active + generic connectors</div></div>
+    <div class="stat"><div class="v">~19.8k</div><div class="l">facts (14.1k reference)</div></div>
+    <div class="stat"><div class="v">12,395</div><div class="l">evidence records</div></div>
+    <div class="stat"><div class="v">~12M</div><div class="l">entity-graph edges</div></div>
+    <div class="stat"><div class="v">313</div><div class="l">signal↔fact links</div></div>
+  </div>
+
+  <!-- ───────────────────────────── -->
+  <h2>1 · The architecture in one picture</h2>
+  <p>The thesis the whole system is built on: <strong>one knowledge store; everything else is a lens over it.</strong>
+  A signal, a dossier domain, a KBQ view, a scenario prior — none is a separate store; each is a scored, timed,
+  routed <em>view</em> of the same facts ledger. Data of any kind (public API, licensed feed, uploaded PDF, meeting
+  transcript) enters through one spine; the difference between source tiers is how data <em>enters</em>, not how it flows.</p>
+
+  <div class="mock"><span class="d">┌─ SOURCES ────────────────────────────────────────────────────────────┐</span>
+  <span class="t">Tier 1 PUBLIC</span> (live: FDA · ClinicalTrials · PubMed · SEC · EMA · ChEMBL · NADAC · News …)
+  <span class="d">Tier 2 LICENSED · Tier 3 INTERNAL · Tier 4 CONTRIBUTED · Tier 5 LEARNED  (aperture to widen)</span>
+<span class="d">└───────────────────────────────────┬───────────────────────────────────┘</span>
+                                    ↓
+<span class="d">┌─</span> <span class="a">INTEGRATION SPINE</span> <span class="d">(5 stages + 7 hooks) ───────────────────────────────┐</span>
+  FETCH → NORMALISE → <span class="t">RESOLVE</span> (6-strategy cascade) → EMBED → STORE → CROSS-LINK
+  ValidationGate · ChangeDetection · QualityGate · NewEntityReview · Staleness …   <span class="r">DLQ</span>
+<span class="d">└───────────────────────────────────┬───────────────────────────────────┘</span>
+                                    ↓
+<span class="d">┌─</span> <span class="g">KNOWLEDGE MODEL</span> <span class="d">(the agentic-ready substrate) ─────────────────────────┐</span>
+  Entities · <span class="t">Facts</span> (temporal · fact_class · provenance) · Evidence ledger · Graph · Embeddings
+<span class="d">└───────────────────────────────────┬───────────────────────────────────┘</span>
+                                    ↓   <span class="d">(lenses — not stores)</span>
+  <span class="o">SENSE</span> (signal = scored fact) → <span class="o">FRAME</span> → <span class="o">SIMULATE/WAR-GAME</span> → <span class="o">DECIDE</span> → <span class="o">LEARN</span>
+       └── Dossier (8 domains) · KBQ views · Scenario priors · Chat/synthesis · War-room</div>
+
+  <p class="sub" style="margin-top:6px">The flywheel goal: compress signal→decision latency from 4–12 weeks to &lt;24h
+  for high-materiality signals, and self-calibrate over time. The load-bearing invariant is a
+  <strong>validated provenance graph</strong> — <code>signal → fact → insight → scenario → decision → outcome</code>,
+  every edge resolvable, nothing asserted without a source.</p>
+
+  <!-- ───────────────────────────── -->
+  <h2>2 · Core components — scorecard</h2>
+  <p>Maturity = is it built / wired / running. <span class="chip lead">lead</span> /
+  <span class="chip par">par</span> / <span class="chip lag">lag</span> = how it rates against best-in-class CI/data
+  tooling. Ratings are deliberately conservative.</p>
+
+  <table>
+    <thead><tr><th style="width:20%">Component</th><th style="width:34%">What it is</th><th style="width:13%">Maturity</th><th style="width:10%">vs market</th><th>Why that rating</th></tr></thead>
+    <tbody>
+      <tr><td class="c">Connector fleet</td><td>15 active (regulatory/clinical/literature/financial/pricing/news) + 3 generic config-driven (CSV/RSS/REST)</td><td><span class="chip live">running</span></td><td><span class="chip par">par</span></td><td>Strong public coverage + a generic-connector pattern most tools lack; but public-only — no licensed (IQVIA/Citeline) or internal feeds yet.</td></tr>
+      <tr><td class="c">Integration pipeline</td><td>5-stage (fetch→normalise→resolve→embed→store→cross-link) + 7 lifecycle hooks + DLQ</td><td><span class="chip live">running</span></td><td><span class="chip lead">lead</span></td><td>Production-grade, hook-extensible, change-detected (SHA-256 dedup). Most CI tools have no integration spine at all.</td></tr>
+      <tr><td class="c">Entity resolver</td><td>6-strategy cascade: exact→alias→fuzzy(pg_trgm)→embedding→LLM→auto-create, with a resolution audit trail</td><td><span class="chip live">running</span></td><td><span class="chip lead">lead</span></td><td>Best-in-class primitive; richness-ranks duplicate rows so the evidence-owning entity wins. Gap: signal-side resolution (next loop).</td></tr>
+      <tr><td class="c">Facts ledger</td><td>Append-only temporal ledger: predicate · object_value · <code>fact_class</code> · valid_from/to · epistemic timestamps · superseded_by</td><td><span class="chip live">running</span></td><td><span class="chip lead">lead</span></td><td>The spine. Temporal + epistemic + append-only (no silent loss) is rare. ~19.8k facts; supports as-of + anticipatory facts for war-gaming.</td></tr>
+      <tr><td class="c">Evidence ledger</td><td>Content-addressed provenance: claims → evidence_records (SHA-256 deduped) → source</td><td><span class="chip live">running</span></td><td><span class="chip par">par</span></td><td>12,395 rows (was ~1) — provenance is now operational, not theoretical. Edge being wired: per-signal evidence cardinality.</td></tr>
+      <tr><td class="c">fact_class trust tiers</td><td>reference / corporate / signal / inferred — an agentic-ceiling per fact, classified <em>by source</em></td><td><span class="chip new">just hardened</span></td><td><span class="chip lead">lead</span></td><td>D-Q1 (PR #279): registry/regulatory facts now class <code>reference</code> by source, not the <code>corporate</code> default. 14.1k reference (was 3.2k). Honest trust grading per fact is uncommon.</td></tr>
+      <tr><td class="c">Entity graph</td><td>typed M:N <code>entity_links</code> (OWNS/SPONSORS/COMPETES_WITH/…) + traversal/clusters/influence</td><td><span class="chip live">running</span></td><td><span class="chip par">par</span></td><td>~12M edges, clean referential integrity. But 96% are trial→location noise and the sensing-relevant subgraph reaches ≤27% of drugs — rich plumbing, thin reach.</td></tr>
+      <tr><td class="c">Sensing layer</td><td>signal = a scored/surfaced fact-or-event; <code>signal_facts</code> join = the provenance edge</td><td><span class="chip new">now turning</span></td><td><span class="chip partial">maturing</span></td><td>Was conversion-dead (signals 11d stale). PR #283 put promotion on a cadence; signal↔fact links 66→313. Signal→entity resolution now spans the full company/drug universe (was capped to 18) — the unresolved 'market' bucket is ~24% and shrinking.</td></tr>
+      <tr><td class="c">Dossier (8 domains)</td><td>assemble facts→8 ZS domains + KBQ views + readiness + gaps</td><td><span class="chip live">running</span></td><td><span class="chip par">par</span></td><td>Keystone works (fact_class drives domain "complete"/readiness). Richness gaps: gaps are state-only, KOLs unwired, competitors are bare edges.</td></tr>
+      <tr><td class="c">Quality / FAIR + steward</td><td>6-rule quality engine · 5-dim FAIR source scoring · signal-driven autonomous curation</td><td><span class="chip built">partial</span></td><td><span class="chip par">par</span></td><td>Engine is solid + rule-driven. But the quality-delta monitor hook is unregistered and steward FAIR-before/after telemetry is never populated.</td></tr>
+      <tr><td class="c">Scenario / decide vertebra</td><td>probabilistic, fact-grounded scenarios → options (NPV) → payoff matrix → calibration</td><td><span class="chip gap">thin</span></td><td><span class="chip lag">lag→novel</span></td><td>The benchmark's structural hole: scenarios are deterministic what-if, no probability/provenance/calibration. But almost no market tool attempts this at all — it's where "intelligence" becomes "war-gaming".</td></tr>
+      <tr><td class="c">CTX synthesis pipeline</td><td>staged understand→retrieve→reason; per-claim source attribution into chat</td><td><span class="chip live">running</span></td><td><span class="chip par">par</span></td><td>Grounding (G1/G2) improving via per-claim attribution; structurally blind to fact_class today — the substrate is richer than synthesis currently exploits.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────────── -->
+  <h2>3 · What has been achieved</h2>
+  <div class="callout green">
+    <strong style="color:var(--ink)">The substrate is real and production-grade — and three conversion joints were unblocked this cycle.</strong>
+    <p style="margin:8px 0 0">The hard part (a genuine knowledge model with entity resolution, an append-only temporal
+    fact ledger, content-addressed evidence, a typed entity graph, embeddings, and FAIR quality scoring) <em>exists and runs</em>.
+    This cycle moved the system from "ingest-rich but conversion-dead" toward "ingest-rich and converting."</p>
+  </div>
+  <ul>
+    <li><strong>Honest fact-class trust grading (PR #279, prod-applied).</strong> 79.8% of facts sat in a <code>corporate</code>
+      catch-all that was 98.8% authoritative registry/regulatory data (not news). Now classified <em>by source</em>:
+      <code>reference</code> 3,160→<strong>14,092</strong>; the lens can finally tell a CT.gov readout from a press release.</li>
+    <li><strong>Pricing now reaches the ledger (PR #280, prod-applied).</strong> 290 landed NADAC rows that never became
+      facts now bridge to <code>net_price</code> facts, honestly labelled as Medicaid acquisition cost (not WAC).</li>
+    <li><strong>Sensing turned on (PR #283, prod-applied).</strong> The conversion step (events+facts→signals) ran on
+      <em>no cadence</em> — signals were 11 days stale. Now scheduled (6-hourly), filtered to high-significance events:
+      feed fresh to today, <strong>signal↔fact provenance links 66→313</strong>, 50 high-value signals shipped, recall
+      noise retracted. This is the first edge of the provenance graph going live.</li>
+    <li><strong>Signal→entity resolution un-capped (prod-applied this session).</strong> The promoter and backfill
+      resolved headlines against only ~18 curated entities, so the backfill resolved <em>zero</em>. Now the gazetteer
+      spans the full company/drug universe at a precision-safe floor (full canonical names + hand-vetted aliases). A
+      read-before-write prod probe caught — and hardened away — junk-row mis-matches (drug classes, trial arms,
+      generic-word companies) <em>before</em> mutating; the reversible backfill then moved the 'market' bucket
+      <strong>747→701</strong>, every relink precision-verified. The second provenance edge (signal→entity) is now wired.</li>
+    <li><strong>Conservation discipline held throughout.</strong> Every prod mutation was idempotent + reversible + counted;
+      every change RED→GREEN tested and independently reviewed; no protected gate edited to pass.</li>
+    <li><strong>The full pipeline was prod-audited</strong> end-to-end (corporate/pricing/news → schema → linkage → sensing),
+      separating stale doc claims from real gaps against live data.</li>
+  </ul>
+
+  <!-- ───────────────────────────── -->
+  <h2>4 · What is pending — the conversion joints</h2>
+  <p>The diagnosis: the system <strong>ingests richly and freshly but converts at specific, identifiable joints</strong>.
+  Each is a logged, prioritised fix (data-lane unless noted).</p>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:26%">Gap (prod-verified)</th><th style="width:14%">Status</th><th>What it unblocks</th></tr></thead>
+    <tbody>
+      <tr><td class="c">A</td><td><strong>signal→entity</strong> resolution in promotion — ~24% of signals sat unresolved in the 'market' bucket; the resolver was capped to 18 entities</td><td><span class="chip partial">shipping</span></td><td>The second provenance edge. Now resolves against the full company/drug universe at a precision-safe floor; first reversible backfill 747→701 (all 46 precision-verified). Remaining cap is gazetteer pollution, not mechanism.</td></tr>
+      <tr><td class="c">B</td><td>News entity-linkage at ingest — 90% of fresh news events never become facts</td><td><span class="chip gap">pending</span></td><td>Turns the freshest source (1.5k news events) into linked, reachable intelligence.</td></tr>
+      <tr><td class="c">C</td><td>Dead-letter queue is write-only — 4,491 failed records, never drained, invisible to gates</td><td><span class="chip gap">pending</span></td><td>Operational integrity; recovers silently-abandoned ingestion failures.</td></tr>
+      <tr><td class="c">D</td><td>SEC 8-K pipeline built but gated off (8-K excluded + flag false) — 0 deals/financials</td><td><span class="chip gap">pending</span></td><td>Corporate depth (M&amp;A, exec changes, XBRL financials) — needs owner env (flag + LLM key + CIKs).</td></tr>
+      <tr><td class="c">E</td><td>Event de-dup + competitive-cluster coverage (38k recalls→25 drugs; mechanism_id 52% NULL)</td><td><span class="chip gap">pending</span></td><td>Impact sensing + competitive clusters that reach &gt;27% of the drug universe.</td></tr>
+      <tr><td class="c">F</td><td>Scenario vertebra: probabilistic, fact-grounded, signal-calibrated (the benchmark's hole)</td><td><span class="chip gap">decide-lane</span></td><td>Where intelligence becomes war-gaming; the spine's keystone above sensing. Largely Platform.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout amber">
+    <strong style="color:var(--ink)">Explicitly NOT building (yet).</strong>
+    <p style="margin:8px 0 0">Numeric materiality scoring, "Moments" clustering, Stackelberg/Bayesian adversary
+    posteriors — these are aspirations <em>not present even in the v8 reference exemplar</em>. Building them now would be
+    speculative new surface. WIRE-BEFORE-BUILD: finish the provenance edges and the decide vertebra on the data we
+    already hold first.</p>
+  </div>
+
+  <!-- ───────────────────────────── -->
+  <h2>5 · Assessment</h2>
+
+  <h3>5.1 · Best-in-class &amp; value vs the market</h3>
+  <p>The honest one-liner: <strong>architecturally best-in-class for a knowledge model; operationally maturing;
+  data-breadth behind the licensed incumbents.</strong> Most pharma-CI tools (IQVIA, Evaluate, Citeline, Cortellis,
+  Datamonitor) win on <em>licensed data breadth</em> and go straight from API → dashboard → slide. Market Zero is the
+  rare one that puts a <strong>real knowledge model + provenance graph</strong> underneath — that is the moat.</p>
+  <table>
+    <thead><tr><th style="width:24%">Dimension</th><th style="width:14%">Us</th><th style="width:30%">Typical market tool</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="c">Knowledge model / entity resolution</td><td><span class="chip lead">lead</span></td><td>thin or none (data tables, not a graph)</td><td>Clear differentiator — 6-strategy resolver + typed graph.</td></tr>
+      <tr><td class="c">Provenance / auditability</td><td><span class="chip lead">lead</span></td><td>source citation at best, no claim→evidence chain</td><td>Content-addressed evidence + append-only ledger is rare; the validated spine is the product.</td></tr>
+      <tr><td class="c">Agentic-readiness</td><td><span class="chip lead">lead</span></td><td>dashboards, not agent-consumable</td><td>Entity-resolved + provenance-traced + confidence-tiered + graph-linked + embedding-indexed.</td></tr>
+      <tr><td class="c">Data breadth (licensed/commercial)</td><td><span class="chip lag">lag</span></td><td>their core strength (Rx volume, forecasts, payer)</td><td>Public-only today; deep on regulatory/clinical, thin on commercial/payer/RWD.</td></tr>
+      <tr><td class="c">Real-time sensing</td><td><span class="chip partial">maturing</span></td><td>batch dashboards / alerts</td><td>Now on a cadence (6h); webhook/streaming is later.</td></tr>
+      <tr><td class="c">Decision / war-gaming</td><td><span class="chip partial">novel</span></td><td>essentially nobody attempts this</td><td>Nascent vertebra, but a category most tools don't even have — high upside.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="two" style="margin-top:18px">
+    <div class="card">
+      <div class="role">Architecture rigor</div>
+      <h4>A&#8209; &mdash; strong, with discipline</h4>
+      <div class="bar"><i style="width:86%;background:var(--green)"></i></div>
+      <ul style="margin-top:12px;font-size:13px">
+        <li><strong>Separation of concerns</strong> is real: connectors ⟂ pipeline ⟂ knowledge model ⟂ lenses.</li>
+        <li><strong>Conservation gates</strong> (append-only ledger, no-silent-loss, RED→GREEN, two-lane CI, protected-surface + CODEOWNERS) are a genuine engineering floor most teams skip.</li>
+        <li><strong>"Lens, not store"</strong> is a disciplined invariant — signals/dossier/KBQ/scenarios all derive from one ledger.</li>
+        <li>Honest deduction: two divergent post-task runners + inert hooks show some accretion — rigor is high but not perfect.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="role">Modularity</div>
+      <h4>A &mdash; genuinely pluggable</h4>
+      <div class="bar"><i style="width:90%;background:var(--green)"></i></div>
+      <ul style="margin-top:12px;font-size:13px">
+        <li><code>BaseConnector</code> (fetch + health + source_type) — adding a source = one class.</li>
+        <li><code>FactEmitter</code> framework — entity-table→facts in one pure <code>row_to_facts</code>; 10 emitters, all idempotent.</li>
+        <li>Generic config-driven connectors (CSV/RSS/REST) — onboard without code.</li>
+        <li>Predicate/fact_class taxonomies as single sources of truth; declarative cross-link rules.</li>
+        <li>One caveat: a new predicate must register in 4 routing maps or it silently degrades — modular but with a coupling tax.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>5.2 · Data richness</h3>
+  <p><strong>B — deep where it is deep, with honest holes.</strong> The substrate is genuinely rich on
+  regulatory/clinical/scientific and now carries honest provenance + trust grading; it is thin on the commercial and
+  qualitative data that differentiates a real engagement.</p>
+  <table>
+    <thead><tr><th style="width:22%">Data class</th><th style="width:14%">Depth</th><th>Notes (prod-grounded)</th></tr></thead>
+    <tbody>
+      <tr><td class="c">Regulatory / Clinical</td><td><span class="chip lead">deep</span></td><td>FDA OB/labels/shortages, CT.gov, EMA; ~9.7k clinical + regulatory facts now correctly <code>reference</code>-class.</td></tr>
+      <tr><td class="c">Scientific / Mechanism</td><td><span class="chip par">good</span></td><td>PubMed/PMC/ChEMBL/MeSH/Open Targets; mechanism ontology thin (52 mechanisms) → caps competitive clustering.</td></tr>
+      <tr><td class="c">Provenance / evidence</td><td><span class="chip lead">strong</span></td><td>12,395 evidence records; ~100% of facts carry a source_doc_id. The chain is operational.</td></tr>
+      <tr><td class="c">Corporate / financial</td><td><span class="chip partial">thin</span></td><td>SEC 8-K/XBRL built-but-gated → deals/financials = 0; corporate facts are news-derived (91 over 24 companies).</td></tr>
+      <tr><td class="c">Pricing</td><td><span class="chip partial">narrow</span></td><td>NADAC (generic acquisition cost) bridged; branded WAC/ASP needs CMS-ASP/licensed — the commercially decisive slice.</td></tr>
+      <tr><td class="c">News / signal</td><td><span class="chip par">fresh</span></td><td>1.5k fresh news events; linkage is the bottleneck (90% unlinked) — being fixed next.</td></tr>
+      <tr><td class="c">Payer / RWD / commercial</td><td><span class="chip lag">missing</span></td><td>No claims, formulary, sales-volume, or RWD; the licensed/internal aperture (Tiers 2–3) is unopened.</td></tr>
+      <tr><td class="c">Qualitative / contributed</td><td><span class="chip partial">dormant</span></td><td>UserDocumentConnector live via upload (PDF→entities) but not scheduled; transcripts/KOL not yet wired — the highest-uniqueness data.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────────── -->
+  <h2>6 · Path forward</h2>
+  <p>Ordered so the <strong>provenance spine closes first</strong> (it is the precondition for everything above it),
+  then breadth and the decide vertebra. WIRE-BEFORE-BUILD throughout: activate and connect what exists before adding surface.</p>
+  <table>
+    <thead><tr><th style="width:8%">Phase</th><th style="width:32%">Move</th><th>Outcome</th></tr></thead>
+    <tbody>
+      <tr><td class="c">Now</td><td><strong>Close the sensing spine</strong>: signal→entity resolution-in-promotion; news entity-linkage at ingest</td><td>Signals resolve to real entities + carry fact links → the feed, Watchlist, and KBQ rollups become live, not bucketed.</td></tr>
+      <tr><td class="c">Next</td><td><strong>Operational integrity</strong>: drain the DLQ + a gate on it; register the quality-delta monitor; populate steward FAIR telemetry</td><td>No silent data loss; quality regressions become visible; the learn-loop measures something.</td></tr>
+      <tr><td class="c">Then</td><td><strong>Corporate &amp; competitive depth</strong>: enable SEC 8-K/XBRL (owner env); event de-dup + cluster coverage; mechanism/TA backfill</td><td>Company dossiers stop being empty; the competitive graph reaches most of the universe.</td></tr>
+      <tr><td class="c">Decide</td><td><strong>The scenario vertebra</strong> (Platform-led): probabilistic, fact-grounded scenarios + signal-driven calibration + NPV options + payoff matrix</td><td>Where intelligence becomes war-gaming; closes the flywheel the exemplar demonstrates.</td></tr>
+      <tr><td class="c">Aperture</td><td><strong>Widen the source tiers</strong>: a licensed-connector pattern (credentials + engagement scoping); activate contributed/transcript ingestion</td><td>The data that differentiates an engagement — client-unique qualitative + licensed commercial — enters the same spine.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout orange">
+    <strong style="color:var(--ink)">The bottom line.</strong>
+    <p style="margin:8px 0 0">Market Zero's bet — <em>the data layer is the product</em> — is sound and largely built.
+    The knowledge model, provenance ledger, entity graph, and conservation discipline are best-in-class for the category
+    and are the durable moat; few CI tools have anything like them. The honest gaps are (1) the provenance spine's
+    second edge (signal→entity), now next; (2) the decide/war-game vertebra, the highest-value frontier; and (3) data
+    breadth beyond public sources. None is an architecture problem — they are activation, connection, and aperture.
+    The system is closer to its vision than it looks, and every fix compounds because everything is a lens over one store.</p>
+  </div>
+
+  <div class="foot">
+    Market Zero · data &amp; intelligence layer — state of strategy · 15 Jun 2026 · grounded in live Railway prod probes +
+    merged/open PRs (#279 fact_class · #280 pricing · #283 sensing · signal→entity resolution) + the 6-path gap analysis + the Helix v8 benchmark &amp;
+    CagriSema exemplar. Ratings are conservative and evidence-tied; gaps are stated plainly.
+  </div>
+
+</div>
+</body>
+</html>
