@@ -348,7 +348,7 @@ class IntegrationPipeline:
                 if hasattr(link_info, 'method') and link_info.method == 'auto_create':
                     new_entity_ctx = HookContext(
                         hook_point="ON_NEW_ENTITY",
-                        entity_type=RECORD_TYPE_TO_ENTITY.get(record.record_type),
+                        entity_type=self._record_type_to_entity.get(record.record_type.value),
                         entity_id=link_info.entity_id if hasattr(link_info, 'entity_id') else None,
                         etl_run_id=etl_run_id,
                         source_type=record.provenance.source_type.value,
