@@ -235,7 +235,9 @@ export function ConnectWizard({ onRegister, onDone, onCancel }: ConnectWizardPro
     try {
       const res = await register(draft);
       setResult(res);
-      if (res.ok && res.record) onDone?.(res.record.source_id);
+      // Only signal completion when the source was actually PERSISTED. A preview
+      // (contract validated, nothing written) must not read as "done".
+      if (res.ok && res.record && !res.preview) onDone?.(res.record.source_id);
     } finally {
       setSubmitting(false);
     }
@@ -516,7 +518,26 @@ export function ConnectWizard({ onRegister, onDone, onCancel }: ConnectWizardPro
               </div>
             )}
 
-            {result && result.ok && (
+            {result && result.ok && result.preview && (
+              <div
+                data-register-preview
+                role="status"
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  border: '1px solid var(--color-amber)',
+                  color: 'var(--color-amber)',
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Preview only — not yet persisted.</strong> The contract for{' '}
+                <strong>{result.record?.source_id}</strong> is valid, but the backend
+                write-path isn’t wired yet, so nothing was saved. Onboarding will land
+                once source-contract storage ships (tracked in COORDINATION §8.1).
+              </div>
+            )}
+            {result && result.ok && !result.preview && (
               <div
                 data-register-success
                 role="status"
@@ -571,7 +592,13 @@ export function ConnectWizard({ onRegister, onDone, onCancel }: ConnectWizardPro
                 cursor: !contractComplete || submitting || result?.ok ? 'not-allowed' : 'pointer',
               }}
             >
-              {submitting ? 'Registering…' : result?.ok ? 'Registered ✓' : 'Register source'}
+              {submitting
+                ? 'Validating…'
+                : result?.ok
+                  ? result.preview
+                    ? 'Preview ready'
+                    : 'Registered ✓'
+                  : 'Register source'}
             </button>
           )}
         </div>

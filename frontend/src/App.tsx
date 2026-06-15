@@ -99,7 +99,13 @@ function AppRoutes() {
         <Route path="/connectors" element={<ConnectorsPage key="connectors" />} />
         <Route
           path="/hub/catalog"
-          element={<CatalogPage key="hub-catalog" onConnect={() => navigate('/hub/connect')} />}
+          element={
+            <CatalogPage
+              key="hub-catalog"
+              onConnect={() => navigate('/hub/connect')}
+              onViewConnectors={() => navigate('/connectors')}
+            />
+          }
         />
         <Route
           path="/hub/connect"

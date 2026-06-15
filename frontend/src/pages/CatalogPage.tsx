@@ -142,7 +142,9 @@ function toDetail(
   };
 }
 
-export default function CatalogPage({ onConnect }: { onConnect?: () => void } = {}) {
+export default function CatalogPage(
+  { onConnect, onViewConnectors }: { onConnect?: () => void; onViewConnectors?: () => void } = {},
+) {
   const [sources, setSources] = useState<CatalogSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -287,6 +289,7 @@ export default function CatalogPage({ onConnect }: { onConnect?: () => void } = 
       onCloseDetail={closeDetail}
       onRefresh={load}
       onConnect={onConnect}
+      onViewConnectors={onViewConnectors}
     />
   );
 }
