@@ -67,6 +67,28 @@ class TestCoverageLimitations:
     def test_pure_clinical_query_has_no_false_limitations(self):
         # A query fully within ingested sources must NOT be over-hedged.
         assert _coverage_limitations("What is the mechanism of action of semaglutide?") == []
+        # Trial/mechanism/safety questions stay un-hedged by the broadened domains too.
+        assert _coverage_limitations("What trials and adverse events exist for semaglutide?") == []
+
+    def test_broadened_domains_each_emit_specific_flag(self):
+        """P4: the un-ingested/unreachable domains the eval probes (genetics,
+        bioactivity, epidemiology, RWE, shortage-status, exclusivity, SEC filings,
+        HTA, internal) must each emit a SPECIFIC source-named limit so the G2 judge
+        can quote it. Previously these produced NO limit -> G2 fail-closed."""
+        cases = {
+            "What does Open Targets genetics say about the GLP-1 target?": "NO_GENETICS_SOURCE",
+            "Compare the binding affinity / IC50 potency of these molecules": "BIOACTIVITY_NOT_REACHABLE",
+            "What is the prevalence and addressable market size for obesity?": "NO_EPIDEMIOLOGY_SOURCE",
+            "What is the real-world persistence and adherence for GLP-1s?": "NO_RWE_SOURCE",
+            "Is amoxicillin currently in shortage?": "SHORTAGE_STATUS_NOT_QUERYABLE",
+            "When does semaglutide lose exclusivity / face generic entry?": "EXCLUSIVITY_NOT_REACHABLE",
+            "What did the latest 10-K earnings guidance say about deal terms?": "SEC_FILINGS_RAG_ONLY",
+            "What is the cost-effectiveness / QALY / ICER for this drug?": "NO_HTA_SOURCE",
+            "What does our internal proprietary pipeline forecast show?": "NO_INTERNAL_SOURCE",
+        }
+        for q, flag in cases.items():
+            assert flag in _flags(q), f"{q!r} should emit {flag}"
+            assert _texts(q), f"{q!r} should emit a limit sentence"
 
     def test_returns_text_and_flag_pairs(self):
         out = _coverage_limitations("payer coverage and pricing for tirzepatide")
