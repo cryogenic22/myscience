@@ -6,6 +6,8 @@ import GraphExplorer from '../GraphExplorer';
 vi.mock('../../api', () => ({
   api: {
     listEntities: vi.fn().mockResolvedValue({ results: [] }),
+    searchSuggest: vi.fn().mockResolvedValue({ suggestions: [] }),
+    traverse: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
     graphNeighborhood: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
     entitySummary: vi.fn().mockResolvedValue({ summary: '', links: [] }),
     graphPath: vi.fn().mockResolvedValue({ path: [], edges: [] }),
@@ -38,7 +40,15 @@ vi.mock('../graph/graph-constants', () => ({
     mechanism: '#F59E0B',
     therapeutic_area: '#8B5CF6',
     literature: '#EF4444',
+    unknown: '#64748b',
   },
+  GRAPH_LENSES: [
+    { id: 'neighborhood', label: 'Neighborhood', description: 'All relationships.', linkTypes: null },
+    { id: 'competitive', label: 'Competitive', description: 'Rivals.', linkTypes: ['COMPETES_WITH'] },
+    { id: 'evidence', label: 'Evidence', description: 'Trial evidence.', linkTypes: ['INVESTIGATES'] },
+    { id: 'regulatory', label: 'Regulatory', description: 'Patents.', linkTypes: ['HAS_PATENT'] },
+    { id: 'safety', label: 'Safety', description: 'Adverse events.', linkTypes: ['HAS_ADVERSE_EVENT'] },
+  ],
 }));
 
 // Mock Drawer
@@ -54,13 +64,15 @@ describe('GraphExplorer', () => {
     expect(searchInput).toBeInTheDocument();
   });
 
-  it('renders objective buttons', () => {
+  it('renders lens control buttons', () => {
     render(<GraphExplorer />);
-    // The objectives are rendered as button text
-    expect(screen.getByRole('button', { name: 'Entity Neighborhood' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Trial Evidence Map' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Portfolio Network' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mechanism Landscape' })).toBeInTheDocument();
+    // The objective pills were replaced by a real Lens segmented control whose
+    // options map to actual link_type filters forwarded to the traverse call.
+    expect(screen.getByRole('button', { name: 'Neighborhood' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Competitive' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Evidence' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Regulatory' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Safety' })).toBeInTheDocument();
   });
 
   it('renders graph explorer title', () => {
@@ -68,8 +80,11 @@ describe('GraphExplorer', () => {
     expect(screen.getByText('Graph Explorer')).toBeInTheDocument();
   });
 
-  it('renders hops selector', () => {
+  it('renders hops selector with a 1-4 range', () => {
     render(<GraphExplorer />);
     expect(screen.getByText('Hops')).toBeInTheDocument();
+    // API allows le=4 — the UI cap was raised from 3 to 4.
+    const hopsOptions = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(hopsOptions).toEqual(['1', '2', '3', '4']);
   });
 });

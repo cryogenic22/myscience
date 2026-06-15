@@ -12,7 +12,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pill as PillIcon,
-  Search,
   ShieldCheck,
   Target,
   Dna,
@@ -21,7 +20,6 @@ import {
 } from 'lucide-react';
 import {
   api,
-  type EntityListItem,
   type EntitySummary,
   type GraphEdge,
   type GraphNode,
@@ -30,7 +28,8 @@ import {
 import { displayName, isUUID } from '../brand';
 import KnowledgeGraph from './KnowledgeGraph';
 import GraphContextMenu from './graph/GraphContextMenu';
-import { NODE_COLORS } from './graph/graph-constants';
+import { NODE_COLORS, GRAPH_LENSES } from './graph/graph-constants';
+import EntitySearch, { type PickedEntity } from './graph/EntitySearch';
 import { Drawer } from './ui/Drawer';
 import ProvenanceCaption, { graphEdgeProvenanceCaption } from './canvas/ProvenanceCaption';
 
@@ -43,34 +42,7 @@ const ENTITY_CONFIG: Record<string, { icon: ReactNode; color: string; label: str
   literature: { icon: <FileText size={14} />, color: NODE_COLORS.literature, label: 'Literature' },
 };
 
-const OBJECTIVES = [
-  {
-    id: 'adjacency',
-    label: 'Entity Neighborhood',
-    description: 'Inspect direct and second-order relationships around a selected node.',
-    preferredTypes: [] as string[],
-  },
-  {
-    id: 'trial_evidence',
-    label: 'Trial Evidence Map',
-    description: 'Prioritize trial and literature connections for evidence review.',
-    preferredTypes: ['trial', 'drug', 'literature'],
-  },
-  {
-    id: 'portfolio',
-    label: 'Portfolio Network',
-    description: 'Traverse company, drug, and trial connections for portfolio analysis.',
-    preferredTypes: ['company', 'drug', 'trial'],
-  },
-  {
-    id: 'mechanism',
-    label: 'Mechanism Landscape',
-    description: 'Trace mechanism-to-drug and therapeutic area link structure.',
-    preferredTypes: ['mechanism', 'therapeutic_area', 'drug'],
-  },
-] as const;
-
-type ObjectiveId = typeof OBJECTIVES[number]['id'];
+type LensId = typeof GRAPH_LENSES[number]['id'];
 
 interface GraphExplorerProps {
   /** Pre-load this entity on mount (from cross-module navigation) */
@@ -83,10 +55,8 @@ interface GraphExplorerProps {
 
 export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }: GraphExplorerProps = {}) {
   const [railCollapsed, setRailCollapsed] = useState(false);
-  const [objective, setObjective] = useState<ObjectiveId>('adjacency');
-  const [entityLookupQuery, setEntityLookupQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<(EntityListItem & { _type: string })[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [lens, setLens] = useState<LensId>('neighborhood');
+  const [anchorLabel, setAnchorLabel] = useState('');
   const [hops, setHops] = useState(2);
   const [nodeTypeFilter, setNodeTypeFilter] = useState<string>('all');
   const [linkTypeFilter, setLinkTypeFilter] = useState<string>('all');
@@ -103,23 +73,14 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     node: GraphNode;
     position: { x: number; y: number };
   } | null>(null);
-  const suggestTimeoutRef = useRef<number>(0);
 
   // Path-finding mode state
   const [pathMode, setPathMode] = useState(false);
-  const [pathFromQuery, setPathFromQuery] = useState('');
-  const [pathToQuery, setPathToQuery] = useState('');
-  const [pathFromEntity, setPathFromEntity] = useState<{ id: string; type: string; label: string } | null>(null);
-  const [pathToEntity, setPathToEntity] = useState<{ id: string; type: string; label: string } | null>(null);
-  const [pathFromSuggestions, setPathFromSuggestions] = useState<(EntityListItem & { _type: string })[]>([]);
-  const [pathToSuggestions, setPathToSuggestions] = useState<(EntityListItem & { _type: string })[]>([]);
-  const [showPathFromSuggestions, setShowPathFromSuggestions] = useState(false);
-  const [showPathToSuggestions, setShowPathToSuggestions] = useState(false);
+  const [pathFromEntity, setPathFromEntity] = useState<PickedEntity | null>(null);
+  const [pathToEntity, setPathToEntity] = useState<PickedEntity | null>(null);
   const [pathLoading, setPathLoading] = useState(false);
   const [pathError, setPathError] = useState<string | null>(null);
   const [pathResult, setPathResult] = useState<GraphPathResponse | null>(null);
-  const pathFromTimeoutRef = useRef<number>(0);
-  const pathToTimeoutRef = useRef<number>(0);
 
   const autoLoadedRef = useRef(false);
 
@@ -151,55 +112,23 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     // Demo mode — pre-render semaglutide neighbourhood
     void (async () => {
       try {
-        const res = await api.listEntities('drug', 'semaglutide', 5);
+        const res = await api.searchSuggest('semaglutide', 5);
+        const items = res.suggestions ?? [];
         // Pick the best match — prefer exact "semaglutide" over combo drugs
-        const best = res.results.find(r => r.label.toLowerCase() === 'semaglutide')
-          ?? res.results.find(r => r.label.toLowerCase().startsWith('semaglutide'))
-          ?? res.results[0];
+        const best = items.find((s) => s.label.toLowerCase() === 'semaglutide')
+          ?? items.find((s) => s.label.toLowerCase().startsWith('semaglutide'))
+          ?? items[0];
         if (best) {
-          void loadGraph(best.entity_id, 'drug', best.label, 1);
+          void loadGraph(best.entity_id, best.entity_type, best.label, 1);
         }
       } catch { /* silently fail — empty state is still fine */ }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const activeObjective = useMemo(
-    () => OBJECTIVES.find((item) => item.id === objective) ?? OBJECTIVES[0],
-    [objective],
+  const activeLens = useMemo(
+    () => GRAPH_LENSES.find((item) => item.id === lens) ?? GRAPH_LENSES[0],
+    [lens],
   );
-
-  const handleLookupChange = useCallback((value: string) => {
-    setEntityLookupQuery(value);
-    clearTimeout(suggestTimeoutRef.current);
-    if (value.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    suggestTimeoutRef.current = window.setTimeout(async () => {
-      try {
-        const [drugs, companies, trials, mechanisms, therapeuticAreas] = await Promise.all([
-          api.listEntities('drug', value, 4),
-          api.listEntities('company', value, 4),
-          api.listEntities('trial', value, 4),
-          api.listEntities('mechanism', value, 3),
-          api.listEntities('therapeutic_area', value, 3),
-        ]);
-        const all = [
-          ...drugs.results.map((result) => ({ ...result, _type: 'drug' })),
-          ...companies.results.map((result) => ({ ...result, _type: 'company' })),
-          ...trials.results.map((result) => ({ ...result, _type: 'trial' })),
-          ...mechanisms.results.map((result) => ({ ...result, _type: 'mechanism' })),
-          ...therapeuticAreas.results.map((result) => ({ ...result, _type: 'therapeutic_area' })),
-        ];
-        setSuggestions(all.slice(0, 12));
-        setShowSuggestions(all.length > 0);
-      } catch {
-        setSuggestions([]);
-        setShowSuggestions(false);
-      }
-    }, 220);
-  }, []);
 
   const loadGraph = useCallback(async (
     entityId: string,
@@ -209,8 +138,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     options?: { openDetails?: boolean },
   ) => {
     setSelectedEntity({ id: entityId, type: entityType, label });
-    setEntityLookupQuery(label);
-    setShowSuggestions(false);
+    setAnchorLabel(label);
     setShowDemoBanner(false);
     setIsLoading(true);
     setSummaryLoading(true);
@@ -220,9 +148,11 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     setNodeTypeFilter('all');
     setGraphError(null);
 
+    const lensLinkTypes = activeLens.linkTypes ?? undefined;
+
     try {
       const [graph, summary] = await Promise.all([
-        api.traverse(entityType, entityId, traversalHops),
+        api.traverse(entityType, entityId, traversalHops, { linkTypes: lensLinkTypes }),
         api.entitySummary(entityType, entityId).catch(() => null),
       ]);
       setGraphData(graph);
@@ -236,7 +166,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
       setIsLoading(false);
       setSummaryLoading(false);
     }
-  }, [hops]);
+  }, [hops, activeLens]);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     setContextMenu(null);
@@ -256,71 +186,16 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
   // -- Path-finding helpers --
 
-  const searchEntitiesForPath = useCallback((
-    value: string,
-    setSuggestions: (s: (EntityListItem & { _type: string })[]) => void,
-    setShowSuggestions: (s: boolean) => void,
-    timeoutRef: React.MutableRefObject<number>,
-  ) => {
-    clearTimeout(timeoutRef.current);
-    if (value.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    timeoutRef.current = window.setTimeout(async () => {
-      try {
-        const [drugs, companies, trials, mechanisms, therapeuticAreas] = await Promise.all([
-          api.listEntities('drug', value, 4),
-          api.listEntities('company', value, 4),
-          api.listEntities('trial', value, 4),
-          api.listEntities('mechanism', value, 3),
-          api.listEntities('therapeutic_area', value, 3),
-        ]);
-        const all = [
-          ...drugs.results.map((r) => ({ ...r, _type: 'drug' })),
-          ...companies.results.map((r) => ({ ...r, _type: 'company' })),
-          ...trials.results.map((r) => ({ ...r, _type: 'trial' })),
-          ...mechanisms.results.map((r) => ({ ...r, _type: 'mechanism' })),
-          ...therapeuticAreas.results.map((r) => ({ ...r, _type: 'therapeutic_area' })),
-        ];
-        setSuggestions(all.slice(0, 10));
-        setShowSuggestions(all.length > 0);
-      } catch {
-        setSuggestions([]);
-        setShowSuggestions(false);
-      }
-    }, 220);
-  }, []);
-
-  const handlePathFromChange = useCallback((value: string) => {
-    setPathFromQuery(value);
-    setPathFromEntity(null);
+  const selectPathFrom = useCallback((entity: PickedEntity) => {
+    setPathFromEntity(entity);
     setPathResult(null);
     setPathError(null);
-    searchEntitiesForPath(value, setPathFromSuggestions, setShowPathFromSuggestions, pathFromTimeoutRef);
-  }, [searchEntitiesForPath]);
-
-  const handlePathToChange = useCallback((value: string) => {
-    setPathToQuery(value);
-    setPathToEntity(null);
-    setPathResult(null);
-    setPathError(null);
-    searchEntitiesForPath(value, setPathToSuggestions, setShowPathToSuggestions, pathToTimeoutRef);
-  }, [searchEntitiesForPath]);
-
-  const selectPathFrom = useCallback((entity: EntityListItem & { _type: string }) => {
-    setPathFromEntity({ id: entity.entity_id, type: entity._type, label: entity.label });
-    setPathFromQuery(entity.label);
-    setShowPathFromSuggestions(false);
-    setPathFromSuggestions([]);
   }, []);
 
-  const selectPathTo = useCallback((entity: EntityListItem & { _type: string }) => {
-    setPathToEntity({ id: entity.entity_id, type: entity._type, label: entity.label });
-    setPathToQuery(entity.label);
-    setShowPathToSuggestions(false);
-    setPathToSuggestions([]);
+  const selectPathTo = useCallback((entity: PickedEntity) => {
+    setPathToEntity(entity);
+    setPathResult(null);
+    setPathError(null);
   }, []);
 
   const executePath = useCallback(async () => {
@@ -379,14 +254,8 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
   const clearPathMode = useCallback(() => {
     setPathMode(false);
-    setPathFromQuery('');
-    setPathToQuery('');
     setPathFromEntity(null);
     setPathToEntity(null);
-    setPathFromSuggestions([]);
-    setPathToSuggestions([]);
-    setShowPathFromSuggestions(false);
-    setShowPathToSuggestions(false);
     setPathLoading(false);
     setPathError(null);
     setPathResult(null);
@@ -498,12 +367,6 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     return (edges / nodes).toFixed(1);
   }, [filteredGraphData]);
 
-  const objectiveTypeHint = useMemo(() => {
-    if (!selectedEntity || activeObjective.preferredTypes.length === 0) return null;
-    if ((activeObjective.preferredTypes as readonly string[]).includes(selectedEntity.type)) return null;
-    return `Tip: ${activeObjective.label} works best with ${activeObjective.preferredTypes.map(prettyType).join(', ')} anchors.`;
-  }, [activeObjective, selectedEntity]);
-
   const selectedEntityNode = useMemo(() => {
     if (!selectedEntity || !graphData) return null;
     return graphData.nodes.find((node) => node.entity_id === selectedEntity.id) ?? null;
@@ -588,21 +451,58 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 <option value={1}>1</option>
                 <option value={2}>2</option>
                 <option value={3}>3</option>
+                <option value={4}>4</option>
               </select>
               </div>
             </div>
           </div>
 
+          <div className="mt-4">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Anchor entity</div>
+            <EntitySearch
+              value={anchorLabel}
+              onPick={(picked) => void loadGraph(picked.id, picked.type, picked.label)}
+              placeholder="Search a drug, company, trial, mechanism, or therapeutic area..."
+            />
+            {graphError && (
+              <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 text-xs text-rose-700" style={{ padding: '8px 12px' }}>
+                {graphError}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Exploration objective</div>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Lens</div>
             <div className="flex flex-wrap gap-1.5">
-              {OBJECTIVES.map((item) => (
+              {GRAPH_LENSES.map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setObjective(item.id)}
+                  onClick={() => {
+                    setLens(item.id);
+                    // Re-run the traversal for the active anchor under the new lens.
+                    if (selectedEntity) {
+                      const linkTypes = item.linkTypes ?? undefined;
+                      void (async () => {
+                        setIsLoading(true);
+                        setGraphError(null);
+                        setLinkTypeFilter('all');
+                        setNodeTypeFilter('all');
+                        try {
+                          const graph = await api.traverse(
+                            selectedEntity.type, selectedEntity.id, hops, { linkTypes },
+                          );
+                          setGraphData(graph);
+                        } catch (err) {
+                          setGraphError(err instanceof Error ? err.message : 'Unable to load graph data');
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      })();
+                    }
+                  }}
                   className={`rounded-md border text-[11px] transition-colors ${
-                    objective === item.id
+                    lens === item.id
                       ? 'border-ink bg-ink text-white'
                       : 'border-line bg-white text-ink-3 hover:border-line hover:bg-surface-2'
                   }`}
@@ -612,53 +512,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 </button>
               ))}
             </div>
-            <div className="mt-2 text-[11px] text-ink-3">{activeObjective.description}</div>
-          </div>
-
-          <div className="mt-4">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Anchor entity</div>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-ink-4" size={16} />
-              <input
-                value={entityLookupQuery}
-                onChange={(event) => handleLookupChange(event.target.value)}
-                placeholder="Search a drug, trial, company, mechanism, or therapeutic area..."
-                className="input-surface h-[48px] w-full rounded-lg text-sm outline-none transition-all focus:ring-2 focus:ring-brand/15"
-                style={{ padding: '8px 16px 8px 40px' }}
-              />
-              {showSuggestions && (
-                <div className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl">
-                  {suggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.entity_id}
-                      type="button"
-                      onClick={() => void loadGraph(suggestion.entity_id, suggestion._type, suggestion.label)}
-                      className="flex w-full items-center gap-3 text-left transition-colors hover:bg-surface-2"
-                      style={{ padding: '12px 16px' }}
-                    >
-                      <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '6px' }}>
-                        {ENTITY_CONFIG[suggestion._type]?.icon ?? <Network size={14} />}
-                      </span>
-                      <div>
-                        <div className="text-sm font-medium text-ink">{suggestion.label}</div>
-                        <div className="text-xs capitalize text-ink-3">{prettyType(suggestion._type)}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {objectiveTypeHint && (
-              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-[11px] text-amber-700" style={{ padding: '8px 12px' }}>
-                <Compass size={12} />
-                {objectiveTypeHint}
-              </div>
-            )}
-            {graphError && (
-              <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 text-xs text-rose-700" style={{ padding: '8px 12px' }}>
-                {graphError}
-              </div>
-            )}
+            <div className="mt-2 text-[11px] text-ink-3">{activeLens.description}</div>
           </div>
 
           {/* Path-finding toggle */}
@@ -727,95 +581,27 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 {/* From entity */}
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-ink-3, #6b7280)', marginBottom: '4px' }}>From</div>
-                  <div className="relative">
-                    <input
-                      value={pathFromQuery}
-                      onChange={(e) => handlePathFromChange(e.target.value)}
-                      placeholder="Search starting entity..."
-                      style={{
-                        width: '100%',
-                        height: '36px',
-                        padding: '0 10px',
-                        borderRadius: '6px',
-                        border: pathFromEntity
-                          ? '1.5px solid var(--color-accent, #2563eb)'
-                          : '1px solid var(--color-line, #e2e8f0)',
-                        background: 'var(--color-surface, #ffffff)',
-                        color: 'var(--color-ink, #111827)',
-                        fontSize: '12px',
-                        outline: 'none',
-                        fontFamily: 'inherit',
-                      }}
-                    />
-                    {showPathFromSuggestions && (
-                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
-                        {pathFromSuggestions.map((s) => (
-                          <button
-                            key={s.entity_id}
-                            type="button"
-                            onClick={() => selectPathFrom(s)}
-                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-surface-2"
-                            style={{ padding: '8px 12px' }}
-                          >
-                            <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '4px' }}>
-                              {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
-                            </span>
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink, #111827)' }}>{s.label}</div>
-                              <div style={{ fontSize: '10px', color: 'var(--color-ink-4, #a1a1aa)', textTransform: 'capitalize' as const }}>{prettyType(s._type)}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <EntitySearch
+                    compact
+                    limit={10}
+                    selected={!!pathFromEntity}
+                    value={pathFromEntity?.label ?? ''}
+                    onPick={selectPathFrom}
+                    placeholder="Search starting entity..."
+                  />
                 </div>
 
                 {/* To entity */}
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-ink-3, #6b7280)', marginBottom: '4px' }}>To</div>
-                  <div className="relative">
-                    <input
-                      value={pathToQuery}
-                      onChange={(e) => handlePathToChange(e.target.value)}
-                      placeholder="Search target entity..."
-                      style={{
-                        width: '100%',
-                        height: '36px',
-                        padding: '0 10px',
-                        borderRadius: '6px',
-                        border: pathToEntity
-                          ? '1.5px solid var(--color-accent, #2563eb)'
-                          : '1px solid var(--color-line, #e2e8f0)',
-                        background: 'var(--color-surface, #ffffff)',
-                        color: 'var(--color-ink, #111827)',
-                        fontSize: '12px',
-                        outline: 'none',
-                        fontFamily: 'inherit',
-                      }}
-                    />
-                    {showPathToSuggestions && (
-                      <div className="animate-fade-in absolute left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl" style={{ zIndex: 30, maxHeight: '180px', overflowY: 'auto' }}>
-                        {pathToSuggestions.map((s) => (
-                          <button
-                            key={s.entity_id}
-                            type="button"
-                            onClick={() => selectPathTo(s)}
-                            className="flex w-full items-center gap-2.5 text-left transition-colors hover:bg-surface-2"
-                            style={{ padding: '8px 12px' }}
-                          >
-                            <span className="rounded-sm bg-surface-3 text-ink-3" style={{ padding: '4px' }}>
-                              {ENTITY_CONFIG[s._type]?.icon ?? <Network size={12} />}
-                            </span>
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-ink, #111827)' }}>{s.label}</div>
-                              <div style={{ fontSize: '10px', color: 'var(--color-ink-4, #a1a1aa)', textTransform: 'capitalize' as const }}>{prettyType(s._type)}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <EntitySearch
+                    compact
+                    limit={10}
+                    selected={!!pathToEntity}
+                    value={pathToEntity?.label ?? ''}
+                    onPick={selectPathTo}
+                    placeholder="Search target entity..."
+                  />
                 </div>
 
                 {/* Action buttons */}
@@ -1107,14 +893,15 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   key={example.label}
                   type="button"
                   onClick={() => {
-                    setEntityLookupQuery(example.label);
-                    // Trigger search
+                    setAnchorLabel(example.label);
+                    // Trigger search via the shared trigram suggest endpoint.
                     void (async () => {
                       try {
-                        const res = await api.listEntities(example.type, example.label, 1);
-                        if (res.results.length > 0) {
-                          const r = res.results[0];
-                          void loadGraph(r.entity_id, example.type, r.label, hops);
+                        const res = await api.searchSuggest(example.label, 1);
+                        const items = res.suggestions ?? [];
+                        if (items.length > 0) {
+                          const r = items[0];
+                          void loadGraph(r.entity_id, r.entity_type, r.label, hops);
                         }
                       } catch { /* ignore */ }
                     })();
@@ -1128,10 +915,10 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               ))}
             </div>
             <div className="mt-6 grid max-w-lg grid-cols-2 gap-3 text-left">
-              {OBJECTIVES.map((obj) => (
-                <div key={obj.id} className="rounded-lg border border-line bg-white/80" style={{ padding: '8px 12px' }}>
-                  <div className="text-[11px] font-semibold text-ink-2">{obj.label}</div>
-                  <div className="mt-0.5 text-[10px] leading-relaxed text-ink-4">{obj.description}</div>
+              {GRAPH_LENSES.map((item) => (
+                <div key={item.id} className="rounded-lg border border-line bg-white/80" style={{ padding: '8px 12px' }}>
+                  <div className="text-[11px] font-semibold text-ink-2">{item.label}</div>
+                  <div className="mt-0.5 text-[10px] leading-relaxed text-ink-4">{item.description}</div>
                 </div>
               ))}
             </div>
