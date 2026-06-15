@@ -45,7 +45,13 @@ export interface QualityBreakdown {
 
 /** One row in the catalog grid — a connected source / dataset. */
 export interface CatalogSource {
+  /** Bare source_type (e.g. "clinical_trials_gov") — drives the source-level
+   *  /profile lookup (DATASET_PROFILES is keyed by source_type). NOT unique when
+   *  a source feeds multiple datasets, so it must NOT be the React key. */
   source_key: string;
+  /** Composite dataset key (e.g. "clinical_trials_gov.trials") — unique per row.
+   *  This is the grid React key + drill-in identity, and the grain /fair expects. */
+  dataset_name: string;
   /** Display label (falls back to source_key). */
   label: string;
   /** Connector kind, e.g. "regulatory_api", "rest", "csv". */
@@ -62,6 +68,9 @@ export interface CatalogSource {
 /** The drill-in dossier for one source. */
 export interface SourceDetail {
   source_key: string;
+  /** The composite dataset the FAIR breakdown is for — carried so the retry
+   *  handler can re-resolve /fair at the dataset grain (falls back to source_key). */
+  dataset_name?: string;
   label: string;
   connector_type: string;
   schedule: string;
@@ -84,7 +93,7 @@ export interface CatalogHomePageProps {
   /** The open dossier, or null when the grid is shown. */
   selected: SourceDetail | null;
   selectedLoading?: boolean;
-  onSelectSource: (sourceKey: string) => void;
+  onSelectSource: (sourceKey: string, datasetName: string) => void;
   onCloseDetail: () => void;
   onRefresh?: () => void;
   /** Open the Connect-a-source wizard (F5). Omitted ⇒ no entry point rendered. */
@@ -215,7 +224,7 @@ function SourceDossier({
   detail: SourceDetail | null;
   loading: boolean;
   onClose: () => void;
-  onRetry: (sourceKey: string) => void;
+  onRetry: (sourceKey: string, datasetName: string) => void;
 }) {
   return (
     <section
@@ -322,7 +331,7 @@ function SourceDossier({
           <button
             type="button"
             data-action="retry-dossier"
-            onClick={() => onRetry(detail.source_key)}
+            onClick={() => onRetry(detail.source_key, detail.dataset_name ?? detail.source_key)}
             style={{
               alignSelf: 'flex-start',
               padding: '6px 12px',
@@ -706,8 +715,10 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
       <section>
         <SectionLabel>
           {visible.length === sources.length
-            ? `${sources.length} connected sources`
-            : `${visible.length} of ${sources.length} sources`}
+            ? `${sources.length} ${sources.length === 1 ? 'dataset' : 'datasets'} · ${
+                new Set(sources.map((s) => s.source_key)).size
+              } ${new Set(sources.map((s) => s.source_key)).size === 1 ? 'source' : 'sources'}`
+            : `${visible.length} of ${sources.length} datasets`}
         </SectionLabel>
         {visible.length === 0 ? (
           <div
@@ -732,15 +743,15 @@ export function CatalogHomePage(props: CatalogHomePageProps) {
           >
             {visible.map((s) => (
               <div
-                key={s.source_key}
-                data-source-card={s.source_key}
+                key={s.dataset_name}
+                data-source-card={s.dataset_name}
                 role="button"
                 tabIndex={0}
-                onClick={() => onSelectSource(s.source_key)}
+                onClick={() => onSelectSource(s.source_key, s.dataset_name)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    onSelectSource(s.source_key);
+                    onSelectSource(s.source_key, s.dataset_name);
                   }
                 }}
                 style={{

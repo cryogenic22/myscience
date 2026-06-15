@@ -18,6 +18,7 @@ import {
 const SOURCES: CatalogSource[] = [
   {
     source_key: 'clinical_trials_gov',
+    dataset_name: 'clinical_trials_gov.trials',
     label: 'ClinicalTrials.gov',
     connector_type: 'regulatory_api',
     data_type: 'trial',
@@ -28,6 +29,7 @@ const SOURCES: CatalogSource[] = [
   },
   {
     source_key: 'sec_edgar',
+    dataset_name: 'sec_edgar.filings',
     label: 'SEC EDGAR',
     connector_type: 'corporate_filing',
     data_type: 'company',
@@ -38,6 +40,7 @@ const SOURCES: CatalogSource[] = [
   },
   {
     source_key: 'pubmed',
+    dataset_name: 'pubmed.articles',
     label: 'PubMed',
     connector_type: 'scientific_literature',
     data_type: 'article',
@@ -48,6 +51,7 @@ const SOURCES: CatalogSource[] = [
   },
   {
     source_key: 'nadac_pricing',
+    dataset_name: 'nadac_pricing.prices',
     label: 'NADAC pricing',
     connector_type: 'csv',
     data_type: null,
@@ -60,6 +64,7 @@ const SOURCES: CatalogSource[] = [
 
 const SEC_DETAIL: SourceDetail = {
   source_key: 'sec_edgar',
+  dataset_name: 'sec_edgar.filings',
   label: 'SEC EDGAR',
   connector_type: 'corporate_filing',
   schedule: 'daily',
@@ -108,7 +113,7 @@ describe('CatalogHomePage — catalog home grid', () => {
 
   it('shows connector type, status verdict, and rows on each card', () => {
     const { container } = setup();
-    const sec = container.querySelector('[data-source-card="sec_edgar"]') as HTMLElement;
+    const sec = container.querySelector('[data-source-card="sec_edgar.filings"]') as HTMLElement;
     expect(within(sec).getByText('SEC EDGAR')).toBeInTheDocument();
     expect(within(sec).getByText(/corporate filing/i)).toBeInTheDocument();
     expect(sec.querySelector('[data-status-badge="stale"]')).not.toBeNull();
@@ -117,7 +122,7 @@ describe('CatalogHomePage — catalog home grid', () => {
 
   it('renders a Quality ring with the rounded overall score', () => {
     const { container } = setup();
-    const ct = container.querySelector('[data-source-card="clinical_trials_gov"]') as HTMLElement;
+    const ct = container.querySelector('[data-source-card="clinical_trials_gov.trials"]') as HTMLElement;
     const ring = ct.querySelector('[data-quality-ring]') as HTMLElement;
     expect(ring).not.toBeNull();
     expect(ring.textContent).toBe('88');
@@ -128,16 +133,29 @@ describe('CatalogHomePage — catalog home grid', () => {
 
   it('shows a placeholder ring for a source still profiling (null quality)', () => {
     const { container } = setup();
-    const nadac = container.querySelector('[data-source-card="nadac_pricing"]') as HTMLElement;
+    const nadac = container.querySelector('[data-source-card="nadac_pricing.prices"]') as HTMLElement;
     const ring = nadac.querySelector('[data-quality-ring]') as HTMLElement;
     expect(ring.textContent).toBe('–'); // en-dash placeholder
   });
 
-  it('clicking a card fires onSelectSource with the source key', () => {
+  it('clicking a card fires onSelectSource with BOTH the source_type and the dataset_name', () => {
     const { container, onSelectSource } = setup();
-    const card = container.querySelector('[data-source-card="pubmed"]') as HTMLElement;
+    const card = container.querySelector('[data-source-card="pubmed.articles"]') as HTMLElement;
     fireEvent.click(card);
-    expect(onSelectSource).toHaveBeenCalledWith('pubmed');
+    // The container needs both: source_type → /profile, composite dataset_name → /fair.
+    expect(onSelectSource).toHaveBeenCalledWith('pubmed', 'pubmed.articles');
+  });
+
+  it('renders distinct cards for two datasets of the SAME source (no key collision)', () => {
+    const twoOfOne: CatalogSource[] = [
+      { ...SOURCES[0], source_key: 'clinical_trials_gov', dataset_name: 'clinical_trials_gov.trials' },
+      { ...SOURCES[0], source_key: 'clinical_trials_gov', dataset_name: 'clinical_trials_gov.sponsors', data_type: 'company' },
+    ];
+    const { container } = setup({ sources: twoOfOne });
+    const cards = container.querySelectorAll('[data-source-card]');
+    expect(cards.length).toBe(2); // two distinct cards, not collapsed to one
+    expect(container.querySelector('[data-source-card="clinical_trials_gov.trials"]')).not.toBeNull();
+    expect(container.querySelector('[data-source-card="clinical_trials_gov.sponsors"]')).not.toBeNull();
   });
 
   it('renders a "Connect a source" entry that fires onConnect (F5 discoverability)', () => {
@@ -162,7 +180,7 @@ describe('CatalogHomePage — search + filter', () => {
     fireEvent.change(input, { target: { value: 'edgar' } });
     const cards = container.querySelectorAll('[data-source-card]');
     expect(cards.length).toBe(1);
-    expect(container.querySelector('[data-source-card="sec_edgar"]')).not.toBeNull();
+    expect(container.querySelector('[data-source-card="sec_edgar.filings"]')).not.toBeNull();
   });
 
   it('connector-type filter shows only matching sources', () => {
@@ -171,7 +189,7 @@ describe('CatalogHomePage — search + filter', () => {
     fireEvent.change(select, { target: { value: 'csv' } });
     const cards = container.querySelectorAll('[data-source-card]');
     expect(cards.length).toBe(1);
-    expect(container.querySelector('[data-source-card="nadac_pricing"]')).not.toBeNull();
+    expect(container.querySelector('[data-source-card="nadac_pricing.prices"]')).not.toBeNull();
   });
 
   it('status filter shows only matching sources', () => {
@@ -180,7 +198,7 @@ describe('CatalogHomePage — search + filter', () => {
     fireEvent.change(select, { target: { value: 'fresh' } });
     const cards = container.querySelectorAll('[data-source-card]');
     expect(cards.length).toBe(1);
-    expect(container.querySelector('[data-source-card="clinical_trials_gov"]')).not.toBeNull();
+    expect(container.querySelector('[data-source-card="clinical_trials_gov.trials"]')).not.toBeNull();
   });
 
   it('shows an empty state when no source matches', () => {
@@ -242,7 +260,8 @@ describe('CatalogHomePage — source dossier (Screen 2)', () => {
     expect(container.querySelector('[data-quality-dim]')).toBeNull();
     const retry = container.querySelector('[data-action="retry-dossier"]') as HTMLElement;
     fireEvent.click(retry);
-    expect(onSelectSource).toHaveBeenCalledWith('sec_edgar');
+    // Retry re-drives the same drill-in: both grains, so /fair can re-resolve.
+    expect(onSelectSource).toHaveBeenCalledWith('sec_edgar', 'sec_edgar.filings');
   });
 
   it('renders a schema preview of the fields collected', () => {

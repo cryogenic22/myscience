@@ -81,6 +81,9 @@ function toSource(
       : 'never';
   return {
     source_key: key,
+    // Composite dataset key — unique per row (a source can feed many datasets).
+    // This is the grid key + drill-in identity + the grain /fair expects.
+    dataset_name: ds.dataset_name || key,
     label: ds.dataset_name || key,
     connector_type: deriveConnectorType(ds),
     data_type: ds.entity_type,
@@ -112,9 +115,17 @@ function toQuality(f: DatasetFairResponse): QualityBreakdown {
   return { overall: f.fair_overall, dimensions };
 }
 
-function toDetail(p: DatasetProfile, quality: QualityBreakdown | null): SourceDetail {
+function toDetail(
+  p: DatasetProfile,
+  quality: QualityBreakdown | null,
+  datasetName: string,
+): SourceDetail {
   return {
     source_key: p.source_key,
+    // The dossier has a DUAL grain (authored choice): /profile is source-level
+    // (schema, coverage — keyed by source_type), while `quality` below is the
+    // specific clicked dataset's FAIR breakdown (keyed by composite dataset_name).
+    dataset_name: datasetName,
     label: p.display_name || p.source_key,
     connector_type: p.collection_method || 'source',
     schedule: p.refresh_schedule || 'unknown',
@@ -166,18 +177,23 @@ export default function CatalogPage({ onConnect }: { onConnect?: () => void } = 
 
   useEffect(() => load(), [load]);
 
-  const openSource = useCallback((sourceKey: string) => {
+  const openSource = useCallback((sourceKey: string, datasetName: string) => {
     setSelected(null);
     setSelectedLoading(true);
     // Fetch the dossier profile + the D-API-2 quality breakdown independently:
     // the profile drives the dossier, the FAIR breakdown is an enhancement that
     // degrades to null on its own without failing the whole view.
-    Promise.allSettled([api.datasetProfile(sourceKey), api.datasetFair(sourceKey)])
+    //
+    // DUAL GRAIN (the fix for the universal dossier 404): /profile is keyed by the
+    // bare source_type (DATASET_PROFILES), but /fair is keyed by the COMPOSITE
+    // dataset_name (dataset_catalog.dataset_name, e.g. 'clinical_trials_gov.trials').
+    // Sending the source_type to /fair 404'd every click; send each its own grain.
+    Promise.allSettled([api.datasetProfile(sourceKey), api.datasetFair(datasetName)])
       .then(([profileRes, fairRes]) => {
         const quality =
           fairRes.status === 'fulfilled' ? toQuality(fairRes.value) : null;
         if (profileRes.status === 'fulfilled') {
-          setSelected(toDetail(profileRes.value, quality));
+          setSelected(toDetail(profileRes.value, quality, datasetName));
           return;
         }
         // Profile load FAILED — surface an explicit error+retry dossier (with the
@@ -189,6 +205,7 @@ export default function CatalogPage({ onConnect }: { onConnect?: () => void } = 
             : String(profileRes.reason);
         setSelected({
           source_key: sourceKey,
+          dataset_name: datasetName,
           label: sourceKey,
           connector_type: 'source',
           schedule: 'unknown',

@@ -409,6 +409,9 @@ export interface DatasetFairDimension {
  *  underlying metric is absent. */
 export interface DatasetFairResponse {
   source_key: string;
+  /** The composite dataset actually scored — equals source_key for a composite
+   *  hit, or the resolved primary dataset when a bare source_type was passed. */
+  dataset_name?: string;
   fair_overall: number | null;
   by_dimension: Record<string, DatasetFairDimension>;
   freshness_days: number | null;

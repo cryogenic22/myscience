@@ -577,16 +577,28 @@ def list_datasets(db: Database = Depends(get_db)):
 @router.get("/datasets/{source_key}/fair")
 def dataset_fair(source_key: str, db: Database = Depends(get_db)):
     """Source-level FAIR breakdown for a dataset (D-API-2) — composite + the
-    per-dimension values behind it, for the F1 dossier ring. 404 if unknown."""
+    per-dimension values behind it, for the F1 dossier ring. 404 if unknown.
+
+    Accepts BOTH key grains. The grid/dossier sends the composite `dataset_name`
+    (e.g. 'clinical_trials_gov.trials' — the per-dataset grain), which matches
+    exactly. Older callers / deep-links may send a bare `source_type`
+    ('clinical_trials_gov'); rather than 404 (the bug where every source_type
+    click died because the table keys on composite dataset_name), we resolve it
+    to that source's primary — largest row_count — dataset. The response names
+    the dataset actually scored so the grain is unambiguous to the caller.
+    """
+    _SELECT = (
+        "SELECT dataset_name, row_count, license_name, quality_score_avg, "
+        "completeness_pct, freshness_days FROM dataset_catalog "
+    )
     try:
-        row = db.fetch_one(
-            """
-            SELECT dataset_name, row_count, license_name, quality_score_avg,
-                   completeness_pct, freshness_days
-            FROM dataset_catalog WHERE dataset_name = %s
-            """,
-            [source_key],
-        )
+        row = db.fetch_one(_SELECT + "WHERE dataset_name = %s", [source_key])
+        if not row:
+            # Belt-and-suspenders: a bare source_type → its primary dataset.
+            row = db.fetch_one(
+                _SELECT + "WHERE source_type = %s ORDER BY row_count DESC NULLS LAST LIMIT 1",
+                [source_key],
+            )
     except Exception:
         row = None
     if not row:
@@ -594,6 +606,9 @@ def dataset_fair(source_key: str, db: Database = Depends(get_db)):
     composite, dims, freshness_days = _dataset_fair(row)
     return {
         "source_key": source_key,
+        # The dataset actually scored — equals source_key for a composite hit, or
+        # the resolved primary dataset when a bare source_type was passed.
+        "dataset_name": row.get("dataset_name"),
         "fair_overall": composite,
         "by_dimension": dims,
         "freshness_days": freshness_days,
