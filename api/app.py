@@ -484,8 +484,20 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     def healthz():
-        """Lightweight liveness probe — no DB, instant 200."""
-        return {"status": "ok"}
+        """Lightweight liveness probe — no DB, instant 200.
+
+        Reports the deployed commit so a deploy is verifiable with one curl
+        (Railway/Nixpacks builds without .git, so the SHA comes from the
+        platform-injected env, not `git`). ``unknown`` when not set locally.
+        """
+        import os as _os
+        sha = (
+            _os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+            or _os.environ.get("GIT_COMMIT_SHA")
+            or _os.environ.get("SOURCE_COMMIT")
+            or "unknown"
+        )
+        return {"status": "ok", "commit": sha[:12]}
 
     @app.get("/health")
     def health():
