@@ -408,3 +408,65 @@ owed **D-API-1** (REST for the L2 connector-taxonomy/onboarding service) +
 **D-API-2 is now MERGED (#256)** → F1 can wire the real FAIR ring (`fair_overall`
 per `/catalog/datasets` row + `GET /catalog/datasets/{key}/fair`); the catalog
 page currently still proxies `quality_score_avg` + nulls the dossier breakdown.
+
+---
+
+## 8. Cross-lane coordination protocol (binds Platform + Data; owner-ratified 15 Jun)
+
+The crossed-message incident (Platform "froze" Design B in chat while the owner picked
+Design A in a parallel prompt → two authorities, a contested fork) showed the failure
+mode. The fix is structural, not goodwill:
+
+**P1 — COORDINATION.md is the ONLY source of truth for cross-lane decisions.** A contract/
+decision is real *only* when written here. Chat/terminal messages are PROPOSALS until
+recorded. If it isn't in this file, do not build on it.
+
+**P2 — Strict lanes; never edit across the seam.**
+- **Platform:** synthesis/chat (`services/llm.py`, `unified_handler.py`, `ctx_pipeline.py`,
+  `chat_handlers/`, `domain_intelligence/{planner,synthesis}` coverage/lens logic), API
+  (`api/`), search, eval-harness (`benchmark/`), dossier read-path, all `frontend/`.
+- **Data:** connectors/emitters/ingestion, migrations, **the fact vocabulary**
+  (`fact_class`, predicates, `_coerce_fact_class`, `VALID_FACT_CLASSES`, DB CHECKs),
+  schema, resolution.
+- Need something in the other lane? Write an **ASK** (P3) — don't reach in.
+
+**P3 — Cross-lane ASKs (§8.1 below):** one row each — requesting lane · need · why ·
+status `REQUESTED→ACK'D→DONE`. The owning lane ACKs + builds (or declines with reason).
+
+**P4 — Shared CONTRACTS (interfaces both touch) (§8.2 below):** one row — contract · OWNER
+(authors the source of truth) · consumers · status `PROPOSED→AGREED→LANDED`. **AGREED only
+when BOTH lanes' sign-off is recorded here.** Changes route through the OWNER.
+
+**P5 — One decision authority, recorded once.** Owner (human) decisions are captured here by
+the lane that asked; the other lane READS them here. **No parallel owner-prompts that fork
+authority.** Conflicting directives ⇒ **HOLD, reconcile in this file, do not build** (Data
+did this correctly in the B/A incident).
+
+**P6 — Sequencing is explicit.** Write deps as "X gated on Y"; the gating lane posts "Y
+cleared" here when done. The gated lane does read-only prep meanwhile.
+
+**P7 — Each lane verifies its OWN surface.** Data verifies the substrate (e.g. facts get the
+right class, pasted prod probe); Platform verifies the consumer (e.g. lens/eval flips). No
+cross-seam verification claims.
+
+### 8.1 Cross-lane ASKs
+| # | From | Need | Why | Status |
+|---|---|---|---|---|
+| (none open) | | | | |
+
+### 8.2 Shared CONTRACTS
+| Contract | Owner | Consumers | Status | Definition |
+|---|---|---|---|---|
+| **fact_class taxonomy** | Data | Platform coverage/lens (`planner._is_substantive`) | **AGREED — Design A (15 Jun)** | **Keep the 4-class vocab** `{reference, corporate, signal, inferred}` — NO migration, NO new classes. Classify by **SOURCE not predicate**: registry/regulatory facts (CT.gov, FDA/EMA) → `reference` (substantive); pharma-news → `corporate`; FAERS → `signal`; derived → `inferred`. Substantive set stays **`{reference}`**. Also: fix `_coerce_fact_class` default `signal`→`corporate` (honest contextual default). `internal`→contextual is a scoped follow-up. Rejected Design B (add clinical/regulatory classes + migration 097) — same goal, more machinery, more sync-point risk, zero current consumer reads the split (Platform's own minimalism test). |
+
+**fact_class contract — sequencing (P6):**
+- **Data (A, off current `main`):** emitter source-classing + source-keyed backfill of the
+  existing ~15.7k + coercion-default fix + spec + tests + prod re-probe. **#276-INDEPENDENT —
+  ships first.** Verifies its OWN surface (facts now carry honest class).
+- **Platform:** `_is_substantive` needs **NO change** (substantive already `{reference}`);
+  optional my-lane hardening = convert `_WEAK` denylist → explicit `{reference}` allowlist.
+  Then rebase **#276** (coverage-weighting, currently held — draft) onto A-inclusive `main`,
+  add the **lens-table source fix** (partial lenses show their real named source, not
+  "platform data"), and re-verify G1 (A's classing should flip real-registry lenses to
+  "covered | <source>", recovering the G1 the held #276 lost). Platform verifies the lens +
+  eval flip.
