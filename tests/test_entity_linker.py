@@ -84,6 +84,125 @@ class TestPriorityOnly:
         assert r is None
 
 
+class TestWithPriorityAliases:
+    """Full gazetteer + curated priority short-forms — the mode the signal
+    promoter/backfill uses. Widens recall to the whole company/drug universe
+    while keeping the hand-vetted initialisms (bms, jnj…) high-confidence so a
+    precision-first backfill can trust them."""
+
+    def _full_plus(self):
+        # Full company/drug list, AND _find_company ILIKE lookups for the
+        # priority-alias overlay resolve the curated names.
+        db = MagicMock()
+        priority_rows = {
+            "bristol myers squibb": {"id": "co-bms", "name": "Bristol Myers Squibb"},
+            "eli lilly": {"id": "co-lilly", "name": "Eli Lilly and Company"},
+            "novo nordisk": {"id": "co-novo", "name": "Novo Nordisk"},
+        }
+
+        def fetch_all(sql, params=None):
+            s = (sql or "").lower()
+            if "from companies" in s and "ilike" in s:
+                needle = str((params or [""])[0]).strip("%").lower()
+                for k, row in priority_rows.items():
+                    if needle and (needle in k or k in needle):
+                        return [row]
+                return []
+            if "from companies" in s:
+                return COMPANIES + [{"id": "co-regen", "name": "Regeneron Pharmaceuticals"}]
+            if "from drugs" in s:
+                return DRUGS
+            return []
+
+        db.fetch_all = MagicMock(side_effect=fetch_all)
+        return EntityLinker(db).load(with_priority_aliases=True)
+
+    def test_resolves_non_priority_company_by_full_name(self):
+        # Regeneron is NOT in the priority list; priority_only mode would miss it.
+        # Full mode resolves it via its canonical name → high confidence.
+        r = self._full_plus().link("Regeneron Pharmaceuticals reports positive Phase 3 data")
+        assert r is not None and r.entity_id == "co-regen"
+        assert r.confidence == EntityLinker._CONF_FULL
+
+    def test_curated_priority_alias_is_high_confidence(self):
+        # "bms" is a hand-vetted initialism dropped by the full gazetteer's
+        # 4-char token rule; the overlay re-adds it at priority-alias confidence.
+        r = self._full_plus().link("bms acquires obesity biotech")
+        assert r is not None and r.entity_id == "co-bms"
+        assert r.confidence == EntityLinker._CONF_PRIORITY_ALIAS
+
+    def test_auto_generated_alias_stays_low_confidence(self):
+        # A distinctive auto-alias ("regeneron" from "Regeneron Pharmaceuticals")
+        # is useful but NOT hand-vetted → ordinary alias confidence, so a
+        # precision-first backfill can exclude it.
+        r = self._full_plus().link("regeneron wins fda nod")
+        assert r is not None and r.entity_id == "co-regen"
+        assert r.confidence == EntityLinker._CONF_ALIAS
+
+    def test_without_flag_no_priority_overlay(self):
+        # Plain full mode (flag off) must not pull in the curated initialism.
+        db = MagicMock()
+        db.fetch_all = MagicMock(side_effect=lambda sql, p=None: (
+            COMPANIES if "from companies" in sql.lower() and "ilike" not in sql.lower()
+            else DRUGS if "from drugs" in sql.lower() else []
+        ))
+        r = EntityLinker(db).load().link("bms acquires obesity biotech")
+        assert r is None  # 'bms' only resolves with the priority overlay
+
+
+class TestGazetteerHardening:
+    """Junk rows the prod gazetteer carries must never become a match — they
+    were the false-positives a read-before-write prod probe surfaced (drug
+    classes, trial arms, generic-word companies, news-publisher rows)."""
+
+    def _linker(self, companies, drugs):
+        db = MagicMock()
+        db.fetch_all = MagicMock(side_effect=lambda sql, p=None: (
+            companies if "from companies" in sql.lower() and "ilike" not in sql.lower()
+            else drugs if "from drugs" in sql.lower() else []
+        ))
+        return EntityLinker(db).load()
+
+    def test_drug_class_and_trial_arm_rows_excluded(self):
+        drugs = [
+            {"id": "d1", "generic_name": "GLP-1", "brand_name": None},
+            {"id": "d2", "generic_name": "Medication", "brand_name": None},
+            {"id": "d3", "generic_name": "active control", "brand_name": None},
+            {"id": "d4", "generic_name": "intervention", "brand_name": None},
+            {"id": "d5", "generic_name": "MET", "brand_name": None},
+        ]
+        lk = self._linker([], drugs)
+        assert lk.link("Another oral GLP-1 wins FDA approval") is None
+        assert lk.link("FDA approves new blood pressure medication") is None
+        assert lk.link("active control arm enrolled patients") is None
+        assert lk.link("the intervention reduced events") is None
+        assert lk.link("Mitapivat Met its primary endpoint") is None
+
+    def test_generic_word_company_rows_excluded(self):
+        companies = [
+            {"id": "c1", "name": "MSN"},
+            {"id": "c2", "name": "center"},
+            {"id": "c3", "name": "LEADING"},
+            {"id": "c4", "name": "Response Pharmaceuticals"},
+            {"id": "c5", "name": "SWOG Cancer Research Network"},
+        ]
+        lk = self._linker(companies, [])
+        assert lk.link("Moderna covid-flu vaccine poised for approval - MSN") is None
+        assert lk.link("how to strengthen the center of the supply chain") is None
+        assert lk.link("a leading european generics maker expands") is None
+        assert lk.link("strong patient response observed in the trial") is None
+        assert lk.link("results from the SWOG cancer research network") is None
+
+    def test_real_word_like_company_names_still_resolve(self):
+        # The hardening must NOT kill genuine (if word-ish) company names.
+        companies = [{"id": "c-jazz", "name": "Jazz Pharmaceuticals"},
+                     {"id": "c-incyte", "name": "Incyte"}]
+        lk = self._linker(companies, [])
+        assert (lk.link("Jazz and PharmaMar lung cancer drug update") or
+                None) and lk.link("Jazz and PharmaMar lung cancer drug update").entity_id == "c-jazz"
+        assert lk.link("Incyte highlights new Phase 3 data").entity_id == "c-incyte"
+
+
 class TestLink:
     def test_full_company_name(self):
         r = _linker().link("Novo Nordisk reports Q1 results")

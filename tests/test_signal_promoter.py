@@ -169,15 +169,25 @@ class TestBuildSignalRow:
         assert row["primary_entity_id"] == "market"
 
     def test_linker_resolves_entityless_event(self):
-        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.72, "lilly"))
+        # A full canonical-name match (0.9) clears the precision-safe floor.
+        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.9, "eli lilly"))
         ev = _event(
             primary_entity_id=None, primary_entity_type=None, drug_id=None,
-            description="Lilly pens $202M deal for biotech",
+            description="Eli Lilly pens $202M deal for biotech",
         )
         row = build_signal_row(ev, linker)
         assert row["primary_entity_type"] == "company"
         assert row["primary_entity_id"] == "co-lilly"
         assert row["primary_entity_name"] == "Eli Lilly"
+
+    def test_forward_path_rejects_auto_alias_below_floor(self):
+        # Over the full gazetteer, an ordinary auto-alias (0.72) on a word-like
+        # token is too weak to attribute on a fresh signal → honest 'market'.
+        linker = _StubLinker("summit", LinkResult("company", "co-summit", "Summit", 0.72, "summit"))
+        ev = _event(primary_entity_id=None, primary_entity_type=None, drug_id=None,
+                    description="reached the summit of regulatory approval")
+        row = build_signal_row(ev, linker)
+        assert row["primary_entity_id"] == "market"
 
     def test_low_confidence_link_falls_back_to_market(self):
         linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.4, "lilly"))
@@ -309,3 +319,65 @@ class TestPromoteEvents:
         assert calls, "expected a market_events query"
         params = calls[0].args[1] if len(calls[0].args) > 1 else []
         assert any(isinstance(p, list) and "approval" in p for p in params)
+
+
+# ── relink precision (full gazetteer + min_confidence floor) ──────────
+
+def _relink_db(market_rows, companies, drugs=None):
+    """Mock DB for relink_market_signals: serves the market-bucket signals,
+    the full company/drug gazetteer, and the priority-alias ILIKE lookups."""
+    drugs = drugs or []
+
+    def fetch_all(sql, params=None):
+        s = (sql or "").lower()
+        if "from signals" in s and "primary_entity_id = 'market'" in s:
+            return market_rows
+        if "from companies" in s:  # both full-load and ILIKE overlay
+            return companies
+        if "from drugs" in s:
+            return drugs
+        return []
+
+    db = MagicMock()
+    db.fetch_all = MagicMock(side_effect=fetch_all)
+    db.execute = MagicMock()
+    return db
+
+
+class TestRelinkPrecision:
+    def test_resolves_non_priority_company_by_full_name(self):
+        # The win condition: a 'market' signal naming a NON-priority company by
+        # its canonical name now resolves (priority_only mode left it bucketed).
+        rows = [{"id": "s1", "headline": "Regeneron Pharmaceuticals reports Phase 3 win", "summary": None}]
+        companies = [{"id": "co-regen", "name": "Regeneron Pharmaceuticals"}]
+        db = _relink_db(rows, companies)
+        res = relink_market_signals(db)
+        assert res["scanned"] == 1 and res["relinked"] == 1
+        upd = [c for c in db.execute.call_args_list if "update signals" in (c.args[0] or "").lower()]
+        assert upd and "co-regen" in upd[0].args[1]
+
+    def test_default_floor_rejects_low_confidence_auto_alias(self):
+        # Headline names only the distinctive auto-alias ("Regeneron"), not the
+        # full canonical name → 0.72 < default 0.85 floor → stays 'market'.
+        rows = [{"id": "s1", "headline": "Regeneron wins FDA nod", "summary": None}]
+        companies = [{"id": "co-regen", "name": "Regeneron Pharmaceuticals"}]
+        db = _relink_db(rows, companies)
+        res = relink_market_signals(db)
+        assert res["scanned"] == 1 and res["relinked"] == 0
+
+    def test_min_confidence_param_opts_into_broader_recall(self):
+        # Same headline, but the owner lowers the floor to accept auto-aliases.
+        rows = [{"id": "s1", "headline": "Regeneron wins FDA nod", "summary": None}]
+        companies = [{"id": "co-regen", "name": "Regeneron Pharmaceuticals"}]
+        db = _relink_db(rows, companies)
+        res = relink_market_signals(db, min_confidence=0.6)
+        assert res["scanned"] == 1 and res["relinked"] == 1
+
+    def test_curated_priority_alias_passes_default_floor(self):
+        # Backwards-compatible: the GLP-1 short-form "Lilly" still relinks at the
+        # precision-safe default because it is a hand-vetted priority alias.
+        rows = [{"id": "s1", "headline": "Lilly pens $202M deal", "summary": None}]
+        companies = [{"id": "co-lilly", "name": "Eli Lilly and Company"}]
+        db = _relink_db(rows, companies)
+        res = relink_market_signals(db)
+        assert res["relinked"] == 1
