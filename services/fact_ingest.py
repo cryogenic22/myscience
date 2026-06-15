@@ -29,6 +29,11 @@ CREATED_BY = "data_automaton"
 # scientific-literature pipeline. Inferred class is produced by the
 # Intelligence Agent's synthesis, not by ingestion. Ingest emits only
 # corporate (the default) and signal.
+# D-Q1 §8.2 note: this event→fact path stays PREDICATE-based by design — a
+# market_event is a NEWS mention, not a registry record, so it is deliberately
+# NOT routed through services.fact_emitters.base.resolve_fact_class (which classes
+# the emitter substrate to `reference` by SOURCE). The source-vs-predicate split
+# is intentional: registry trial readout → reference, news mention → corporate.
 _PREDICATE_TO_CLASS: dict[str, str] = {
     "regulatory_approval":  "corporate",
     "regulatory_setback":   "corporate",

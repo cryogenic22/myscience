@@ -49,9 +49,11 @@ _MAX_EVIDENCE_CHARS = 65536  # evidence_records.extracted_text CHECK ceiling
 AUTHORITATIVE_SOURCES = frozenset({
     "clinical_trials_gov",   # ClinicalTrials.gov registry (trials, phase transitions)
     "fda_orange_book",       # FDA Orange Book / regulatory submissions
-    "fda_shortages",         # FDA drug-shortage records
     "openfda_labels",        # openFDA structured product labels (SPL)
-    "fda_spl",               # SPL labels — drug_labels emitter code default
+    "fda_shortages",         # FDA drug-shortage records — anticipatory (no corporate-emitter yet)
+    "ema",                   # EMA regulatory (§8.2 "FDA/EMA") — anticipatory (no EMA facts yet)
+    "fda_spl",               # drug_labels code-default fallback when source_api is NULL;
+                             # canonical value is `openfda_labels` above — NOT a SourceType enum member.
 })
 
 

@@ -79,6 +79,7 @@ def run(dry_run: bool = False, limit=None, predicate=None) -> dict:
     sql = _FETCH_SQL.format(where=where, limit=limit_sql)
 
     rows = db.fetch_all(sql, params)
+    before: Counter = Counter(r.get("fact_class") for r in rows)  # pre-state audit snapshot
     counts: Counter = Counter()
     changed = 0
     for r in rows:
@@ -96,6 +97,7 @@ def run(dry_run: bool = False, limit=None, predicate=None) -> dict:
     summary = {
         "scanned": len(rows),
         "changed": changed,
+        "before_distribution": dict(before),  # self-contained audit of the pre-state
         "transitions": dict(counts),
         "dry_run": dry_run,
     }

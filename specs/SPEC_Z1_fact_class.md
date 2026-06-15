@@ -2,6 +2,11 @@
 
 *Bucket 2 (Data model) loop 2. 30 May 2026.*
 
+> **Amended 15 Jun 2026 (D-Q1, COORDINATION §8.2).** `reference` now means peer-reviewed
+> scientific truth **OR** authoritative registry/regulatory ground truth, classified by
+> SOURCE. The predicate-based contract in the body below is superseded for source-classed
+> facts — see the **D-Q1 amendment** at the end of this doc.
+
 ## Problem
 The v7 design canon defines four fact classes — **◇ reference**, **◆ corporate**, **◈ signal**, **✦ inferred** — with differential agentic ceilings (L4 / L3 / L2 / L1 max). The facts table today has no `fact_class` column, so ceilings can only be enforced by convention, not structurally.
 
