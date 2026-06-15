@@ -246,6 +246,7 @@ def get_emitters() -> dict[str, FactEmitter]:
     from services.fact_emitters.clinical_trials import ClinicalTrialEmitter
     from services.fact_emitters.competition import CompetitionEmitter
     from services.fact_emitters.drug_labels import DrugLabelEmitter
+    from services.fact_emitters.drug_pricing import DrugPricingEmitter
     from services.fact_emitters.literature import LiteratureEmitter
     from services.fact_emitters.mechanisms import (
         BioactivityEmitter,
@@ -258,6 +259,7 @@ def get_emitters() -> dict[str, FactEmitter]:
         ClinicalTrialEmitter(),
         AdverseEventEmitter(),
         DrugLabelEmitter(),
+        DrugPricingEmitter(),
         MechanismEmitter(),
         BioactivityEmitter(),
         LiteratureEmitter(),
