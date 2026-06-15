@@ -339,7 +339,25 @@ class TestPlanStage:
         """Graceful: handler without a db must not crash and must omit/None the
         decomposition (falls back to the legacy retrieve path)."""
         result = handler.handle("Tell me about semaglutide")
-        assert result["data"].get("decomposition") in (None, {}, [])
+        # Frontend-canonical key (CanvasPanel reads `decomposition_matrix`).
+        assert result["data"].get("decomposition_matrix") in (None, {}, [])
+
+    def test_decomposition_uses_frontend_canonical_key(self, handler, monkeypatch):
+        """The live path must emit `decomposition_matrix` (what CanvasPanel/
+        DecompositionMatrix read) — not `decomposition` — or the matrix UI never
+        renders for unified-handler answers."""
+        decomp = {
+            "playbook_id": "compare.drug_x_drug", "intent": "compare",
+            "entities": [{"entity_id": "sema", "label": "semaglutide"}],
+            "dimensions": [{"key": "mechanism", "label": "Mechanism"}],
+            "cells": [{"dimension": "mechanism", "entity_id": "sema",
+                       "coverage": "covered", "facts": []}],
+            "coverage_summary": {"mechanism": "covered"}, "gaps": [],
+        }
+        monkeypatch.setattr(handler, "_plan_decomposition", lambda plan: decomp)
+        data = handler.handle("Compare semaglutide vs tirzepatide")["data"]
+        assert data.get("decomposition_matrix") == decomp
+        assert "decomposition" not in data  # no stale duplicate key
 
     def test_matrix_to_evidence_shape(self, handler):
         decomposition = {
