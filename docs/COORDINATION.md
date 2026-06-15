@@ -327,11 +327,18 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 | DataHub L2 — connector-type taxonomy + onboarding lifecycle (mig 096) | D-intel | **MERGED #245** |
 | DataHub L3 — generic config-driven `CsvConnector` (+ `SourceType.CSV_FILE`) | D-intel | **MERGED #247** |
 | DataHub L4a — generic `RssConnector` (+ `SourceType.RSS`) | D-intel | **MERGED #257** — RSS 2.0/Atom on stdlib ElementTree; prod-probed FDA RSS (20) + arXiv Atom (5); independent review APPROVE |
-| DataHub L4b — generic `WebScrapeConnector` | D-intel — `bs4` present; needs robots handling | open — NEXT |
-| DataHub L4c — generic `WarehouseConnector` | D-intel — **needs warehouse drivers + live creds → not prod-probeable here** | open — deferred (probe constraint) |
+| DataHub L4b — generic `RestConnector` (+ `SourceType.REST`) | D-intel `claude/data/a1-rest-connector` | **PR #269** — auth/pagination/dotted-extraction; 29 tests; prod-probed openFDA+CT.gov; review APPROVE-WITH-NITS (applied). **Prioritized ahead of WebScrape per the 14-Jun strategy audit (REST = most common kind + strong borrow).** |
+| DataHub L4c — generic `WebScrapeConnector` | D-intel — `bs4` present; needs robots handling | **DEFERRED** per audit (wire-before-build: detection spine before more coverage) |
+| DataHub L4d — generic `WarehouseConnector` | D-intel — needs warehouse drivers + live creds | **DEFERRED** (probe constraint + wire-before-build) |
 | **DataHub D-API-1** — expose L2 service as REST (`/hub/connector-types`, `/hub/onboarding/{id}`) | D-intel | **MERGED #254** — new `/hub` router; F5-swap handoff in §6 |
 | **DataHub D-API-2** — source-level FAIR aggregate (`fair_overall` on `/catalog/datasets` rows + `GET /catalog/datasets/{key}/fair`) | **Platform** (api/) — **frontend F1 dependency** | **MERGED #256** — derived from dataset_catalog cols; honest null-when-absent, **0-row ⇒ RED**; independent review APPROVE; prod-probed 12 datasets. ▶ FE wiring follow-up: `CatalogPage.tsx` still proxies `fair_overall←quality_score_avg` + `SourceDetail.fair=null` (stale "no endpoint" comment) — wire to per-row `fair_overall` + `GET /catalog/datasets/{key}/fair` |
 | DataHub **frontend F1–F7** — the Catalog UX (see `docs/SPEC_DATA_HUB_FRONTEND.md`) | Frontend agent | see §7.6 |
+| **Loop 0 (debt)** — `pipeline.py:351` ON_NEW_ENTITY `NameError` (auto-create path) | D-intel `claude/data/loop0-pipeline-nameerror` | **PR #270** — RED→GREEN regression |
+| **Data+Intel STRATEGY AUDIT** (20-agent) — sensing dead at 2 joints; WIRE-BEFORE-BUILD; maturity scorecard + roadmap | D-intel `docs/data-intel-strategy-audit` | **PR #272** — `docs/DATA_INTEL_STRATEGY_AUDIT.md`. ⚠️ supersedes connector-coverage-first plan |
+| **audit-C1** — FK-orphan floor: pubmed RED→GREEN (20.07→15.83%) + high-precision trial relink + self-healing in auto_curate | D-intel `claude/data/c1-orphan-floor` | **PR #271** — pubmed gate GREEN; trial gate held RED on purpose (metric mis-spec, see owner item) |
+| **OWNER bar-decision** — re-scope `clinical_trials.drug_id` orphan ceiling | **protected-surface owner** | OPEN — among drug-intervention trials orphan = 0.04% (2/5178); 10.57% is 678 legitimately drug-less trials. Proposal: scope denominator to drug-intervention trials / exclude observational `study_type`. NOT silent-edited (Principle #1). PR #271 + audit doc. |
+| **audit-C2 (NEXT)** — durable #242 brand_name de-smear (root-cause ETL re-smear + idempotent POST_RUN + alias backfill + Lane-2 re-smear invariant) | D-intel | open — claimed |
+| **audit S-track** — wire the dead detection spine (promote filter+cadence, trust/tier, ImpactRouter, framing cron, Lane-2 sensing gates) | shared scheduler/Platform seam — claim §6 first | open — highest sensing leverage |
 
 ### 7.4 Migration registry (reserve a number here before authoring)
 - `090` fact_governance · `091` crosswalk_records — MERGED.
