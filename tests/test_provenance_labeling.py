@@ -15,8 +15,54 @@ from services.unified_handler import (
     _annotate_section_sources,
     _snippet_for_evidence,
     _provenance_footer,
+    _inline_cite_sources,
     UnifiedChatHandler,
 )
+
+
+class TestInlineCiteSources:
+    """G1: the judge quotes a sentence attributing a claim to a NAMED SOURCE — a
+    bare [N] does not (measured G1 ~5% with only the legend). _inline_cite_sources
+    carries the named source next to each [N] in the prose."""
+
+    EV = [
+        {"source": "ClinicalTrials.gov", "provenance": {"predicate": "clinical_trial"}},
+        {"source": "x", "provenance": {"predicate": "mechanism_of_action"}},
+        {"source": "openFDA FAERS", "provenance": {"predicate": "adverse_event"}},
+    ]
+
+    def test_appends_named_source_to_citation_run(self):
+        out = _inline_cite_sources("It is a GLP-1 RA [2]. It has trials [1].", self.EV)
+        assert "[2] (MeSH / curated mechanism)" in out
+        assert "[1] (ClinicalTrials.gov)" in out
+
+    def test_collapses_a_run_and_dedupes_sources(self):
+        # mixed run lists both named sources once.
+        out = _inline_cite_sources("Claim [1][3].", self.EV)
+        assert "[1][3] (ClinicalTrials.gov, openFDA FAERS)" in out
+
+    def test_leaves_non_numeric_and_out_of_range_markers(self):
+        # [metrics] is untouched; [9] out of range -> left as-is (no crash).
+        out = _inline_cite_sources("A [metrics] and B [9].", self.EV)
+        assert "[metrics]" in out and "[9]" in out
+        assert "(" not in out  # nothing appended
+
+    def test_empty_safe(self):
+        assert _inline_cite_sources("", self.EV) == ""
+        assert _inline_cite_sources("no cites here", []) == "no cites here"
+
+    def test_does_not_stamp_nontrial_source_on_trial_claim(self):
+        # The model cited a MECHANISM fact ([2]) for a trial/Phase claim. Stamping
+        # "(MeSH)" there would be a false attribution (G4 regression) — leave bare.
+        out = _inline_cite_sources("It has 12 active Phase 3 studies [2].", self.EV)
+        assert out == "It has 12 active Phase 3 studies [2]."  # unchanged
+        # But a trial claim cited to ClinicalTrials.gov ([1]) IS stamped.
+        out2 = _inline_cite_sources("It has 47 registered trials [1].", self.EV)
+        assert "[1] (ClinicalTrials.gov)" in out2
+
+    def test_skips_generic_platform_buckets(self):
+        ev = [{"source": "plan:foo", "provenance": {}}]  # -> "platform data"
+        assert _inline_cite_sources("A vague claim [1].", ev) == "A vague claim [1]."
 
 
 def test_display_source_maps_predicate_to_named_connector():

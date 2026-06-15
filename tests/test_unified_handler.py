@@ -317,6 +317,12 @@ class TestTopicAndLeaders:
         assert ev[0]["entity_type"] == "company"
         assert "Novo Nordisk" in ev[0]["content"] and "68 drugs" in ev[0]["content"]
         assert set(ev[0]) >= {"source", "entity_type", "entity_id", "content", "relevance", "provenance"}
+        # P5 (G3): the count must NOT be ASSERTED as leadership/dominance — that is
+        # the self-inflicted count-fallacy the system then prompts against. (The
+        # neutral disclaimer may mention "leadership" only to negate it.)
+        c = ev[0]["content"].lower()
+        assert "market leader by drug count" not in c
+        assert "count of ingested records" in c and "not market share" in c
 
     def test_company_leaders_question_uses_leaders_prompt(self, handler, mock_llm):
         """'which companies dominate X' must synthesize with the company-centric
