@@ -472,12 +472,16 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </div>
 
           <div className="mt-3">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">Lens</div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
+              Lens
+              {isLoading && <Loader2 size={11} className="animate-spin" aria-label="Building graph" />}
+            </div>
+            <div className="flex flex-wrap gap-1.5" style={{ opacity: isLoading ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
               {GRAPH_LENSES.map((item) => (
                 <button
                   key={item.id}
                   type="button"
+                  disabled={isLoading}
                   onClick={() => {
                     setLens(item.id);
                     // Re-run the traversal for the active anchor under the new lens.
@@ -501,7 +505,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       })();
                     }
                   }}
-                  className={`rounded-md border text-[11px] transition-colors ${
+                  className={`rounded-md border text-[11px] transition-colors disabled:cursor-not-allowed ${
                     lens === item.id
                       ? 'border-ink bg-ink text-white'
                       : 'border-line bg-white text-ink-3 hover:border-line hover:bg-surface-2'
@@ -794,26 +798,13 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
       </aside>
 
       <div className="relative min-h-[52vh] flex-1 border-t border-line lg:min-h-0 lg:border-t-0">
-        {isLoading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-              padding: '20px 32px', borderRadius: '12px',
-              background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-            }}>
-              <Loader2 className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
-              <span style={{ fontSize: '13px', color: 'rgba(226, 232, 240, 0.7)', fontFamily: 'var(--font-body, sans-serif)' }}>
-                Loading graph...
-              </span>
-            </div>
-          </div>
-        ) : filteredGraphData && filteredGraphData.nodes.length > 0 ? (
+        {filteredGraphData && filteredGraphData.nodes.length > 0 ? (
           <>
             <KnowledgeGraph
               nodes={filteredGraphData.nodes}
               edges={filteredGraphData.edges}
               centerEntityId={selectedEntity?.id}
+              isLoading={isLoading}
               onNodeClick={handleNodeClick}
               onNodeContextMenu={onAskInChat ? handleNodeContextMenu : undefined}
             />
@@ -873,6 +864,22 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               </div>
             )}
           </>
+        ) : isLoading ? (
+          // First load (no prior graph to overlay) — show the standalone spinner
+          // over the dark canvas backdrop so selecting an entity feels responsive.
+          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
+              padding: '20px 32px', borderRadius: '12px',
+              background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <Loader2 className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
+              <span style={{ fontSize: '13px', color: 'rgba(226, 232, 240, 0.7)', fontFamily: 'var(--font-body, sans-serif)' }}>
+                Building graph…
+              </span>
+            </div>
+          </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-center" style={{ padding: '0 16px' }}>
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-white/88 shadow-sm">

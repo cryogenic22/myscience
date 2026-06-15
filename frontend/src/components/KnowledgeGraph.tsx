@@ -15,21 +15,24 @@
  * - Path highlight mode
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { GraphEdge, GraphNode } from '../api';
 import { ENTITY_TYPE_LABELS } from '../brand';
 import {
   NODE_COLORS as ENTITY_TYPE_COLORS,
   EDGE_COLORS as LINK_TYPE_COLORS,
+  EDGE_CATEGORY_LIST,
 } from './graph/graph-constants';
 
-// Edge categories for the legend grouping
-const EDGE_CATEGORIES: Record<string, { label: string; color: string; types: string[] }> = {
-  ownership: { label: 'Ownership', color: '#f59e0b', types: ['OWNS', 'MANUFACTURES', 'SPONSORS'] },
-  research: { label: 'Research', color: '#14b8a6', types: ['INVESTIGATES', 'EVIDENCE_FOR', 'HAS_OUTCOME', 'LED_BY', 'AUTHORED_BY'] },
-  science: { label: 'Science', color: '#a78bfa', types: ['TARGETS_MECHANISM', 'IN_THERAPEUTIC_AREA'] },
-  regulatory: { label: 'Regulatory', color: '#64748b', types: ['HAS_PATENT', 'HAS_MILESTONE', 'HAS_LABEL'] },
-  safety: { label: 'Safety', color: '#ef4444', types: ['HAS_ADVERSE_EVENT', 'SHORTAGE_AFFECTS', 'COMPETES_WITH'] },
-};
+// Edge categories for the legend grouping — DERIVED from the single source of
+// truth (`EDGE_CATEGORY_LIST` in graph-constants.ts). The legend swatch color
+// therefore always matches the rendered edge color, and every link type in the
+// vocabulary is categorised (no uncategorised-grey edges, no drift). Do NOT
+// re-hardcode colors/types here; edit graph-constants.ts instead.
+const EDGE_CATEGORIES: Record<string, { label: string; color: string; types: string[] }> =
+  Object.fromEntries(
+    EDGE_CATEGORY_LIST.map((cat) => [cat.key, { label: cat.label, color: cat.color, types: cat.types }]),
+  );
 
 // ── Props ─────────────────────────────────────────────────────
 
@@ -45,6 +48,8 @@ export interface KnowledgeGraphProps {
   onNodeContextMenu?: (node: GraphNode, position: { x: number; y: number }) => void;
   /** Compact mode hides the edge legend and instruction hint */
   compact?: boolean;
+  /** When true, shows a centered "Building graph…" overlay over the canvas. */
+  isLoading?: boolean;
   className?: string;
 }
 
@@ -108,12 +113,17 @@ export default function KnowledgeGraph({
   onNodeClick,
   onNodeContextMenu,
   compact = false,
+  isLoading = false,
   className = '',
 }: KnowledgeGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const drawRef = useRef<() => void>(() => {});
   const viewportRef = useRef<Viewport>({ zoom: 1, offsetX: 0, offsetY: 0 });
+  // Identity of the last node/edge set we auto-fit the viewport to. We fit ONCE
+  // per new traversal (when this key changes) — never on pan/zoom or filter
+  // toggles — so the user's manual viewport is never fought once they interact.
+  const fittedDataKeyRef = useRef<string>('');
   const hitNodesRef = useRef<HitNode[]>([]);
   const hoveredNodeIdRef = useRef<string | null>(null);
   const dragRef = useRef<{
@@ -358,6 +368,14 @@ export default function KnowledgeGraph({
     const cx = w / 2;
     const cy = h / 2;
 
+    // Data identity: the node/edge SET (not filters/highlight). Auto-fit fires
+    // only when this changes (a new traversal) — toggling node-type filters or
+    // a highlight path keeps the same key, so the user's manual pan/zoom stands.
+    const dataKey = `${centerEntityId ?? ''}|${nodes.map((n) => n.entity_id).join(',')}|${edges
+      .map((e) => `${edgeSource(e as unknown as Record<string, unknown>)}>${edgeTarget(e as unknown as Record<string, unknown>)}`)
+      .join(',')}`;
+    const shouldAutoFit = fittedDataKeyRef.current !== dataKey;
+
     // Count edges per node
     const edgeCounts = new Map<string, number>();
     for (const e of edges) {
@@ -394,6 +412,39 @@ export default function KnowledgeGraph({
     const toScreen = (worldX: number, worldY: number) => {
       const v = viewportRef.current;
       return { x: worldX * v.zoom + v.offsetX, y: worldY * v.zoom + v.offsetY };
+    };
+
+    // ── Auto-fit ──────────────────────────────────────────
+    // Fit the viewport to the laid-out node bounding box (zoom + offset) so a
+    // new/larger graph is always centered and correctly zoomed. Reuses clampZoom
+    // and the world↔screen transform (screen = world * zoom + offset).
+    const fitViewportToNodes = () => {
+      if (simNodes.length === 0) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const node of simNodes) {
+        if (node.x < minX) minX = node.x;
+        if (node.x > maxX) maxX = node.x;
+        if (node.y < minY) minY = node.y;
+        if (node.y > maxY) maxY = node.y;
+      }
+      const boxW = Math.max(maxX - minX, 1);
+      const boxH = Math.max(maxY - minY, 1);
+      const margin = 48; // breathing room inside the canvas edges
+      const availW = Math.max(w - margin * 2, 1);
+      const availH = Math.max(h - margin * 2, 1);
+      const zoom = clampZoom(Math.min(availW / boxW, availH / boxH));
+      // Center the box: map its world center to the canvas center.
+      const boxCx = (minX + maxX) / 2;
+      const boxCy = (minY + maxY) / 2;
+      viewportRef.current = {
+        zoom,
+        offsetX: cx - boxCx * zoom,
+        offsetY: cy - boxCy * zoom,
+      };
+      setZoomPct(Math.round(zoom * 100));
     };
 
     // ── Draw function ─────────────────────────────────────
@@ -566,7 +617,15 @@ export default function KnowledgeGraph({
     const tick = () => {
       iter += 1;
       draw(true);
-      if (iter < maxIter) rafRef.current = requestAnimationFrame(tick);
+      if (iter < maxIter) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else if (shouldAutoFit) {
+        // Layout has settled — fit the viewport to the final node bounds once
+        // for this data set, then mark it fitted and repaint with the new view.
+        fittedDataKeyRef.current = dataKey;
+        fitViewportToNodes();
+        draw(false);
+      }
     };
 
     drawRef.current = () => draw(false);
@@ -628,6 +687,29 @@ export default function KnowledgeGraph({
           borderRadius: 'inherit',
         }}
       />
+
+      {/* Loading overlay — centered spinner while a new graph is being built */}
+      {isLoading && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center"
+          style={{ background: 'rgba(2, 6, 23, 0.55)', backdropFilter: 'blur(2px)', borderRadius: 'inherit' }}
+        >
+          <div
+            className="flex items-center gap-2.5 rounded-lg"
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(2, 6, 23, 0.9)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              color: 'rgba(255,255,255,0.88)',
+              fontSize: '12px',
+              fontWeight: 500,
+            }}
+          >
+            <Loader2 size={16} className="animate-spin" style={{ color: '#60a5fa' }} />
+            Building graph…
+          </div>
+        </div>
+      )}
 
       {/* Hover tooltip */}
       {hoverInfo && (
