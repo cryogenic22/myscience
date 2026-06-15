@@ -198,6 +198,21 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
     setPathError(null);
   }, []);
 
+  // Drop a committed From/To when the user edits its box away from the selection,
+  // so executePath can never fire against a stale, hidden entity id whose label no
+  // longer matches what's displayed. (MZ-XR-20260615-001)
+  const clearPathFrom = useCallback(() => {
+    setPathFromEntity(null);
+    setPathResult(null);
+    setPathError(null);
+  }, []);
+
+  const clearPathTo = useCallback(() => {
+    setPathToEntity(null);
+    setPathResult(null);
+    setPathError(null);
+  }, []);
+
   const executePath = useCallback(async () => {
     if (!pathFromEntity || !pathToEntity) return;
     setPathLoading(true);
@@ -591,6 +606,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                     selected={!!pathFromEntity}
                     value={pathFromEntity?.label ?? ''}
                     onPick={selectPathFrom}
+                    onClearSelection={clearPathFrom}
                     placeholder="Search starting entity..."
                   />
                 </div>
@@ -604,6 +620,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                     selected={!!pathToEntity}
                     value={pathToEntity?.label ?? ''}
                     onPick={selectPathTo}
+                    onClearSelection={clearPathTo}
                     placeholder="Search target entity..."
                   />
                 </div>

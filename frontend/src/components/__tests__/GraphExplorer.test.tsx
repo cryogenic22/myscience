@@ -88,6 +88,44 @@ describe('GraphExplorer', () => {
     expect(hopsOptions).toEqual(['1', '2', '3', '4']);
   });
 
+  it('clears a committed path entity when its search box is edited — no stale id submitted (MZ-XR-20260615-001)', async () => {
+    const { api } = await import('../../api');
+    // Suggestion echoes the query so From/To resolve to distinct, predictable entities.
+    vi.mocked(api.searchSuggest).mockImplementation((q: string) =>
+      Promise.resolve({ suggestions: [{ entity_id: `${q}-id`, entity_type: 'drug', label: q.toUpperCase(), similarity: 1 }] }),
+    );
+    const graphPath = vi.mocked(api.graphPath);
+    graphPath.mockClear();
+
+    render(<GraphExplorer />);
+
+    // Open the path finder
+    fireEvent.click(screen.getByRole('button', { name: /find path/i }));
+
+    // Commit a "From" entity via the suggestion dropdown
+    const fromInput = screen.getByPlaceholderText(/search starting entity/i);
+    fireEvent.change(fromInput, { target: { value: 'sema' } });
+    fireEvent.click(await screen.findByText('SEMA'));
+
+    // Commit a "To" entity
+    const toInput = screen.getByPlaceholderText(/search target entity/i);
+    fireEvent.change(toInput, { target: { value: 'tirz' } });
+    fireEvent.click(await screen.findByText('TIRZ'));
+
+    // Both committed → Show Path is enabled
+    const showPath = screen.getByRole('button', { name: /show path/i });
+    await waitFor(() => expect(showPath).toBeEnabled());
+
+    // Edit the From box AWAY from the committed selection: the visible text and
+    // the committed entity now diverge. The committed entity must be cleared so a
+    // path query can NEVER run against the stale, hidden id.
+    fireEvent.change(fromInput, { target: { value: 'semaglutide-typo' } });
+
+    expect(showPath).toBeDisabled();
+    fireEvent.click(showPath);
+    expect(graphPath).not.toHaveBeenCalled();
+  });
+
   it('selecting a lens re-runs traverse with that lens link_types (the control is REAL, not a no-op)', async () => {
     const { api } = await import('../../api');
     const traverse = vi.mocked(api.traverse);
