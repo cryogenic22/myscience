@@ -18,6 +18,23 @@ from integration.embedder import EmbeddedRecord
 
 logger = logging.getLogger(__name__)
 
+# Precision-safe floor for grounding a news event by mining its headline (the
+# same posture as the signal promoter): only full canonical names (0.9) and
+# hand-vetted aliases (0.85) ground an entity; a weak word-like auto-alias (0.72)
+# leaves the event honestly NULL-primary rather than mis-attributing at ingest.
+_HEADLINE_LINK_MIN_CONFIDENCE = 0.85
+
+
+class _NullLinker:
+    """Sentinel used when the gazetteer can't be built — never links, so a
+    failed build degrades to the prior NULL-primary behaviour without retrying
+    on every record."""
+    def link(self, text):  # noqa: D401 - tiny shim
+        return None
+
+
+_NULL_LINKER = _NullLinker()
+
 
 class KnowledgeStore:
     """
@@ -28,6 +45,78 @@ class KnowledgeStore:
 
     def __init__(self, db):
         self.db = db
+        # Lazily-built headline gazetteer (shared across one ETL run; the store
+        # is instantiated once per pipeline run). Built on first news event.
+        self._event_linker = None
+
+    def _get_event_linker(self):
+        """Lazy, cached full-universe entity gazetteer (built once per store).
+        A build failure degrades to a never-linking sentinel — ingest must not
+        break because the gazetteer is unavailable."""
+        if self._event_linker is None:
+            try:
+                from services.entity_linker import EntityLinker
+                self._event_linker = EntityLinker(self.db).load(with_priority_aliases=True)
+            except Exception:
+                logger.exception("event linker unavailable; news events stay primary-null")
+                self._event_linker = _NULL_LINKER
+        return self._event_linker
+
+    def _link_headline(self, description: Optional[str]):
+        """Return a high-confidence entity mentioned in a headline, or None.
+        Used only for events the resolver could not structure-link."""
+        text = (description or "").strip()
+        if not text:
+            return None
+        hit = self._get_event_linker().link(text)
+        if hit is not None and hit.confidence >= _HEADLINE_LINK_MIN_CONFIDENCE:
+            return hit
+        return None
+
+    def relink_null_primary_events(
+        self, *, limit: int = 5000, min_confidence: float = _HEADLINE_LINK_MIN_CONFIDENCE
+    ) -> dict:
+        """Backfill: ground existing NULL-primary events by mining their
+        headline against the full gazetteer. Idempotent (only touches rows that
+        newly resolve at/above the precision-safe floor); reversible (revert =
+        set primary_* back to NULL). The forward `_store_event` path keeps new
+        events grounded, so this is a one-shot recovery, not an ongoing need."""
+        try:
+            rows = self.db.fetch_all(
+                """SELECT id, description FROM market_events
+                    WHERE primary_entity_id IS NULL AND description IS NOT NULL
+                    LIMIT %s""",
+                [limit],
+            )
+        except Exception:
+            logger.exception("event relink: null-primary query failed")
+            rows = []
+
+        # Link directly here (not via _link_headline, which is pinned to the
+        # forward floor) so `min_confidence` is honoured in both directions.
+        linker = self._get_event_linker()
+        scanned = relinked = 0
+        for r in rows:
+            scanned += 1
+            text = (r.get("description") or "").strip()
+            hit = linker.link(text) if text else None
+            if hit is None or hit.confidence < min_confidence:
+                continue
+            try:
+                self.db.execute(
+                    """UPDATE market_events
+                          SET primary_entity_id   = %s,
+                              primary_entity_type = %s,
+                              primary_entity_name = %s
+                        WHERE id = %s""",
+                    [hit.entity_id, hit.entity_type, hit.canonical_name, r["id"]],
+                )
+                relinked += 1
+            except Exception:
+                logger.exception("event relink: update failed for %s", r.get("id"))
+
+        logger.info("event relink: scanned=%d relinked=%d", scanned, relinked)
+        return {"scanned": scanned, "relinked": relinked}
 
     @staticmethod
     def compute_content_hash(data: dict) -> str:
@@ -526,7 +615,15 @@ class KnowledgeStore:
             primary_entity_type = "company"
             primary_entity_name = data.get("company_name")
         else:
+            # No structured resolver link (the common case for free-text news
+            # headlines): mine the headline for a known entity so the event is
+            # fact-eligible instead of landing orphaned. Precision-safe floor.
             primary_entity_id = primary_entity_type = primary_entity_name = None
+            hit = self._link_headline(data.get("description"))
+            if hit is not None:
+                primary_entity_id = hit.entity_id
+                primary_entity_type = hit.entity_type
+                primary_entity_name = hit.canonical_name
 
         # event_date is NOT NULL — use retrieved_at as fallback
         event_date = data.get("event_date") or prov.retrieved_at.strftime("%Y-%m-%d")
