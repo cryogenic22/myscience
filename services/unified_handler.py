@@ -420,20 +420,27 @@ _COVERAGE_LIMITS: list[tuple[re.Pattern, str, str]] = [
      "FDA shortage events land as news with no queryable 'currently in shortage' status field — "
      "current shortage status cannot be asserted, only that an event was reported.",
      "SHORTAGE_STATUS_NOT_QUERYABLE"),
-    (re.compile(r"\b(patent|exclusivit\w*|loss of exclusivity|\bloe\b|generic entry|paragraph iv|patent cliff|orange book listing)\b", re.I),
+    # NOTE: 'patent' is qualified (patent ductus arteriosus etc. are clinical homonyms);
+    # bare 'patent' must NOT fire.
+    (re.compile(r"\b(patent\s+(?:expir\w*|protection|cliff|life|estate|term)|loss of exclusivity|exclusivit\w*|\bloe\b|generic entry|generic competition|paragraph iv|orange book listing)\b", re.I),
      "Patent / exclusivity detail (Orange Book) is only partially reachable and regulatory-milestone "
      "dates are not queryable from chat — loss-of-exclusivity / generic-entry timing cannot be stated.",
      "EXCLUSIVITY_NOT_REACHABLE"),
-    (re.compile(r"\b(10-?k|10-?q|8-?k|sec filing|earnings|guidance|deal terms|acquisition price|milestone payment|royalt\w*|upfront payment)\b", re.I),
+    # NOTE: 'guidance' is qualified to FINANCIAL guidance — FDA/clinical 'guidance' is a
+    # homonym and must NOT trip the SEC limit.
+    (re.compile(r"\b(10-?k|10-?q|8-?k|sec filing|earnings|(?:earnings|financial|revenue|full.?year)\s+guidance|deal terms|acquisition price|milestone payment|royalt\w*|upfront payment)\b", re.I),
      "SEC filing disclosures are RAG-only (unstructured) and only a handful of filings are ingested — "
-     "financial figures, deal terms, milestone payments, and guidance are not reliably extractable.",
+     "financial figures, deal terms, milestone payments, and earnings guidance are not reliably extractable.",
      "SEC_FILINGS_RAG_ONLY"),
     (re.compile(r"\b(cost.?effective\w*|\bqaly\b|\bicer\b|health.?economic\w*|\bhta\b|\bnice\b|budget impact|value.?based)\b", re.I),
      "No HTA / health-economic source (NICE/ICER) is ingested — cost-effectiveness, QALY, ICER, "
      "and budget-impact claims cannot be made.",
      "NO_HTA_SOURCE"),
-    (re.compile(r"\b(internal|proprietary|confidential|our (pipeline|portfolio|forecast|strategy)|working capital|board|governance|headcount)\b", re.I),
-     "Internal / proprietary / governance data is not part of any ingested external source and "
+    # NOTE: bare 'internal'/'board' are clinical/device homonyms (internal bleeding, internal
+    # medicine, on board the device) — 'internal' only fires when followed by a proprietary-data
+    # noun; 'proprietary'/'confidential'/'our <asset>' are unambiguous.
+    (re.compile(r"\b(proprietary|confidential|working capital|headcount|our\s+(?:pipeline|portfolio|forecast|strategy|deck|notes|numbers)|internal\s+(?:kol|panel|note|data|document|file|memo|forecast|pipeline|deck|strateg\w*|team|analysis|recommendation|playbook|estimate))\b", re.I),
+     "Internal / proprietary data is not part of any ingested external source and "
      "cannot be answered from platform data.",
      "NO_INTERNAL_SOURCE"),
 ]

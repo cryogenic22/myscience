@@ -90,6 +90,28 @@ class TestCoverageLimitations:
             assert flag in _flags(q), f"{q!r} should emit {flag}"
             assert _texts(q), f"{q!r} should emit a limit sentence"
 
+    def test_broadened_domains_do_not_falsely_fire_on_homonyms(self):
+        """A false limit becomes a BINDING directive (dishonest hedging on an
+        answerable question). The broadened patterns must NOT trip on clinical/
+        device homonyms (internal bleeding, internal medicine, on board, FDA
+        guidance, patent ductus arteriosus)."""
+        homonyms = [
+            "Is internal bleeding a known side effect of this drug?",
+            "What does internal medicine recommend for GLP-1 initiation?",
+            "Is the drug delivered on board the device?",
+            "What is the FDA guidance on GLP-1 labeling?",
+            "What is the recommended dosing guidance?",
+            "Is patent ductus arteriosus a contraindication?",
+        ]
+        for q in homonyms:
+            assert _coverage_limitations(q) == [], f"{q!r} must NOT be falsely hedged"
+
+    def test_gold_domain_phrasings_still_fire_after_tightening(self):
+        # The legit eval phrasings must keep their flag despite the homonym tightening.
+        assert "NO_INTERNAL_SOURCE" in _flags("Use the internal KOL panel notes for this recommendation.")
+        assert "EXCLUSIVITY_NOT_REACHABLE" in _flags("When does it lose exclusivity / face generic entry?")
+        assert "SEC_FILINGS_RAG_ONLY" in _flags("What did the latest earnings guidance say about deal terms?")
+
     def test_returns_text_and_flag_pairs(self):
         out = _coverage_limitations("payer coverage and pricing for tirzepatide")
         assert isinstance(out, list) and out
