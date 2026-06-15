@@ -253,27 +253,14 @@ class DataPipelineScheduler:
             logger.exception("Post-task data_steward failed")
             results["data_steward"] = f"ERROR: {e}"
 
-        # 8. Signal promotion (market_events → candidate signals)
-        try:
-            t0 = time.time()
-            from services.signal_promoter import promote_events
-
-            promo_db = Database(app_config.db.dsn)
-            promo_db.connect()
-            try:
-                promo = promote_events(promo_db, limit=2000)
-                results["signal_promotion"] = (
-                    f"OK: {promo.promoted} promoted, "
-                    f"{promo.skipped_existing} existing, "
-                    f"{promo.skipped_no_entity} no-entity "
-                    f"({time.time()-t0:.1f}s)"
-                )
-                logger.info("Post-task: signal_promotion — %s", results["signal_promotion"])
-            finally:
-                promo_db.close()
-        except Exception as e:
-            logger.exception("Post-task signal_promotion failed")
-            results["signal_promotion"] = f"ERROR: {e}"
+        # 8. Sensing promotion (events→signals + facts→signals + signal entity
+        # resolve). Factored into _run_sensing_promotion so the LIVE scheduler can
+        # run it on its own cadence (see _register_jobs) — the live app drives
+        # _register_jobs() but never the manual run_now() that holds this block, so
+        # without the scheduled job the signal feed stalls. Reuses the existing
+        # promote_events / mint_signals_from_facts / relink_market_signals
+        # functions in ONE place — no duplication, no third post-task path.
+        self._run_sensing_promotion(results)
 
         # 9. Fact convergence (market_events → facts ledger) — PB-H17. The
         # scheduler already converges events → signals (task 8); this is the
@@ -371,6 +358,80 @@ class DataPipelineScheduler:
             results["event_reground"] = f"ERROR: {e}"
 
         logger.info("--- Post-pipeline data curation complete ---")
+
+    def _run_sensing_promotion(self, results: Optional[dict] = None) -> dict:
+        """Turn landed events + facts into entity-resolved signals — the SENSE
+        conversion. "The signal is a lens, not a store" (sensing-layer spec): a
+        signal is a fact/event the sense layer scored + surfaced. These three
+        idempotent functions are the ONLY events→signals / facts→signals /
+        signal-entity-resolve path, and were reachable only via the on-demand
+        run_now() (promote), document upload (mint), or CLI (relink) — so the live
+        feed stalled (15-Jun gap analysis: signals 11d stale). _register_jobs
+        schedules this so it runs on a cadence in prod (the live app drives
+        _register_jobs, not run_now). Each function gets its own short-lived
+        connection (long sweeps risk a Railway proxy drop), mirroring the other
+        post-tasks. Safe standalone (results defaults to a fresh dict)."""
+        import time
+        out = results if results is not None else {}
+
+        # events → candidate signals. event_types restricts to the signal-worthy
+        # set so the pass targets the ~1.4k high-significance events, NOT the 96%
+        # RECALL_CLASS_I flood (an unfiltered promote burns its limit on recall
+        # noise before reaching trial readouts/approvals — 15-Jun gap analysis).
+        try:
+            t0 = time.time()
+            from services.signal_promoter import promote_events, HIGH_SIGNIFICANCE_EVENT_TYPES
+            db = Database(app_config.db.dsn)
+            db.connect()
+            try:
+                promo = promote_events(db, limit=2000,
+                                       event_types=list(HIGH_SIGNIFICANCE_EVENT_TYPES))
+                out["signal_promotion"] = (
+                    f"OK: {promo.promoted} promoted, {promo.skipped_existing} existing, "
+                    f"{promo.skipped_no_entity} no-entity ({time.time()-t0:.1f}s)"
+                )
+            finally:
+                db.close()
+            logger.info("Sensing: signal_promotion — %s", out["signal_promotion"])
+        except Exception as e:
+            logger.exception("Sensing signal_promotion failed")
+            out["signal_promotion"] = f"ERROR: {e}"
+
+        # facts → signals (signal-worthy, evidence-backed facts; links via signal_facts)
+        try:
+            t0 = time.time()
+            from services.fact_signals import mint_signals_from_facts
+            db = Database(app_config.db.dsn)
+            db.connect()
+            try:
+                mint = mint_signals_from_facts(db)
+                out["fact_signal_mint"] = (
+                    f"OK: {mint.minted} minted / {mint.scanned} scanned ({time.time()-t0:.1f}s)"
+                )
+            finally:
+                db.close()
+            logger.info("Sensing: fact_signal_mint — %s", out["fact_signal_mint"])
+        except Exception as e:
+            logger.exception("Sensing fact_signal_mint failed")
+            out["fact_signal_mint"] = f"ERROR: {e}"
+
+        # resolve 'market'-bucketed signals to canonical entities (unblocks Watchlist/KBQ)
+        try:
+            t0 = time.time()
+            from services.signal_promoter import relink_market_signals
+            db = Database(app_config.db.dsn)
+            db.connect()
+            try:
+                relinked = relink_market_signals(db)
+                out["signal_relink"] = f"OK: {relinked} ({time.time()-t0:.1f}s)"
+            finally:
+                db.close()
+            logger.info("Sensing: signal_relink — %s", out["signal_relink"])
+        except Exception as e:
+            logger.exception("Sensing signal_relink failed")
+            out["signal_relink"] = f"ERROR: {e}"
+
+        return out
 
     def _run_learning_service(self) -> str:
         """Run the EWMA source-accuracy + prompt-flag learning loop (C4).
@@ -526,6 +587,22 @@ class DataPipelineScheduler:
                 schedule["label"],
                 schedule["cron"],
             )
+
+        # Sensing promotion — events+facts → entity-resolved signals, on a cadence.
+        # The live app drives _register_jobs() (api/app.py) but never the manual
+        # run_now() that holds the post-task block, so the signal feed otherwise
+        # only updates on manual endpoint hits / document uploads (15-Jun gap
+        # analysis: signals 11d stale). Idempotent; every 6h. No api/app.py edit
+        # needed — registering here means the live scheduler picks it up.
+        self._scheduler.add_job(
+            self._run_sensing_promotion,
+            trigger=CronTrigger(hour="*/6"),
+            id="sensing_promotion",
+            name="Sensing promotion (events+facts → signals)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered: Sensing promotion → cron every 6h")
 
     def _run_connector(self, source_type: SourceType) -> None:
         """Execute a single connector through the full pipeline."""
