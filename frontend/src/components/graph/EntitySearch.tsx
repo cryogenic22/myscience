@@ -41,6 +41,13 @@ function typeColor(type: string): string {
 interface EntitySearchProps {
   /** Called when the user picks a suggestion. */
   onPick: (entity: PickedEntity) => void;
+  /**
+   * Called when the user edits the text AWAY from an already-committed
+   * selection (`selected` + `value`). The committed entity is now stale — the
+   * parent must drop it so a query can't run against a hidden, stale id while
+   * the box shows different text. (MZ-XR-20260615-001)
+   */
+  onClearSelection?: () => void;
   placeholder?: string;
   /** Controlled query text (e.g. to reflect the active anchor label). */
   value?: string;
@@ -60,6 +67,7 @@ interface EntitySearchProps {
  */
 export default function EntitySearch({
   onPick,
+  onClearSelection,
   placeholder = 'Search a drug, company, trial, mechanism, or therapeutic area...',
   value,
   selected = false,
@@ -72,15 +80,23 @@ export default function EntitySearch({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const timeoutRef = useRef<number>(0);
 
-  // Keep the input in sync when a parent commits an anchor label.
+  // Keep the input in sync when a parent commits a label. Only push NON-empty
+  // committed values: a parent clearing its selection (value → '') must not wipe
+  // the text the user is actively typing to choose a replacement.
   useEffect(() => {
-    if (value !== undefined) setQuery(value);
+    if (value) setQuery(value);
   }, [value]);
 
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
   const handleChange = useCallback((next: string) => {
     setQuery(next);
+    // The user is editing. If a selection was already committed and the text now
+    // diverges from it, that committed entity is stale — drop it so a query can't
+    // run against a hidden id that no longer matches the box. (MZ-XR-20260615-001)
+    if (selected && next !== value) {
+      onClearSelection?.();
+    }
     clearTimeout(timeoutRef.current);
     if (next.trim().length < 2) {
       setSuggestions([]);
@@ -98,7 +114,7 @@ export default function EntitySearch({
         setShowSuggestions(false);
       }
     }, 220);
-  }, [limit]);
+  }, [limit, selected, value, onClearSelection]);
 
   const handlePick = useCallback((s: SearchSuggestion) => {
     onPick({ id: s.entity_id, type: s.entity_type, label: s.label });
