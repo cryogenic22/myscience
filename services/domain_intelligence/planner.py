@@ -47,15 +47,34 @@ logger = logging.getLogger(__name__)
 # by a handful of high-signal facts, not volume.
 _COVERED_THRESHOLD = 2
 
+# Fact classes that are CONTEXT, not hard evidence for a clinical/regulatory/
+# pricing lens (news-sourced, platform-derived signals, or inferred links). A cell
+# backed only by these is 'thin', never 'covered' — they don't ground a hard claim.
+_WEAK_FACT_CLASSES = {"corporate", "signal", "inferred", "news"}
+
+
+def _is_substantive(fact: dict) -> bool:
+    """A fact backs HARD coverage of a lens only if its class is not a news/
+    derived/inferred bucket."""
+    return (fact.get("fact_class") or "").strip().lower() not in _WEAK_FACT_CLASSES
+
 
 def coverage_state(facts: list[dict]) -> str:
-    """gap (0 facts) / thin (1 fact) / covered (≥ threshold). Pure."""
-    n = len(facts)
-    if n == 0:
+    """gap (0 facts) / thin (some, but <threshold SUBSTANTIVE) / covered
+    (≥ threshold substantive). Pure.
+
+    Coverage-QUALITY (not just count): news / signal / inferred facts are
+    CONTEXT, not hard evidence for a lens — a pricing-policy news headline does
+    not ground a pricing claim, and a trial-registration news item does not
+    ground an efficacy claim. A cell backed only by such weak facts is 'thin',
+    never 'covered' (previously a pure count let news inflate 'covered', so the
+    lens table dishonestly read 'covered' for efficacy/pricing on the demo drugs)."""
+    if not facts:
         return "gap"
-    if n < _COVERED_THRESHOLD:
-        return "thin"
-    return "covered"
+    substantive = sum(1 for f in facts if _is_substantive(f))
+    if substantive >= _COVERED_THRESHOLD:
+        return "covered"
+    return "thin"
 
 
 @dataclass
@@ -97,8 +116,10 @@ class QuestionMatrix:
         return self.cells.get((dimension_key, entity_id))
 
     def coverage_summary(self) -> dict[str, str]:
-        """Per-dimension rollup across entities: covered (any entity covered),
-        thin (any entity has some evidence), else gap."""
+        """Per-dimension rollup across entities, HONEST for a compare: covered only
+        when EVERY entity is covered, gap only when EVERY entity is a gap, else thin
+        (partial — e.g. covered for one drug but a gap for the other). Previously
+        'covered if ANY' overstated a compare where one side had no data."""
         summary: dict[str, str] = {}
         for d in self.dimensions:
             states = [
@@ -106,12 +127,14 @@ class QuestionMatrix:
                 for e in self.entities
                 if (d.key, e["entity_id"]) in self.cells
             ]
-            if "covered" in states:
-                summary[d.key] = "covered"
-            elif "thin" in states:
-                summary[d.key] = "thin"
-            else:
+            if not states:
                 summary[d.key] = "gap"
+            elif all(s == "covered" for s in states):
+                summary[d.key] = "covered"
+            elif all(s == "gap" for s in states):
+                summary[d.key] = "gap"
+            else:
+                summary[d.key] = "thin"  # partial — not uniformly covered
         return summary
 
     def gaps(self) -> list[str]:
