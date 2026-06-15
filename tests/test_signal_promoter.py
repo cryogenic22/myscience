@@ -169,15 +169,25 @@ class TestBuildSignalRow:
         assert row["primary_entity_id"] == "market"
 
     def test_linker_resolves_entityless_event(self):
-        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.72, "lilly"))
+        # A full canonical-name match (0.9) clears the precision-safe floor.
+        linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.9, "eli lilly"))
         ev = _event(
             primary_entity_id=None, primary_entity_type=None, drug_id=None,
-            description="Lilly pens $202M deal for biotech",
+            description="Eli Lilly pens $202M deal for biotech",
         )
         row = build_signal_row(ev, linker)
         assert row["primary_entity_type"] == "company"
         assert row["primary_entity_id"] == "co-lilly"
         assert row["primary_entity_name"] == "Eli Lilly"
+
+    def test_forward_path_rejects_auto_alias_below_floor(self):
+        # Over the full gazetteer, an ordinary auto-alias (0.72) on a word-like
+        # token is too weak to attribute on a fresh signal → honest 'market'.
+        linker = _StubLinker("summit", LinkResult("company", "co-summit", "Summit", 0.72, "summit"))
+        ev = _event(primary_entity_id=None, primary_entity_type=None, drug_id=None,
+                    description="reached the summit of regulatory approval")
+        row = build_signal_row(ev, linker)
+        assert row["primary_entity_id"] == "market"
 
     def test_low_confidence_link_falls_back_to_market(self):
         linker = _StubLinker("lilly", LinkResult("company", "co-lilly", "Eli Lilly", 0.4, "lilly"))

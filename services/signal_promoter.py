@@ -135,7 +135,13 @@ def _humanize(event_type: str) -> str:
     return (event_type or "market update").replace("_", " ").strip().capitalize()
 
 
-_LINK_MIN_CONFIDENCE = 0.6
+# Precision-safe acceptance floor for gazetteer matches, applied to BOTH the
+# forward producer (here) and the backfill. Now that the linker spans the full
+# company/drug universe (not the 18-entity priority list), an ordinary
+# auto-alias (0.72) over a word-like token is too weak to attribute an entity;
+# only full canonical names (0.9) and hand-vetted priority aliases (0.85) clear
+# it. An unresolved event stays an honest 'market' row rather than mis-linking.
+_LINK_MIN_CONFIDENCE = 0.85
 
 
 def _resolve_entity(event: dict, linker=None) -> tuple[str, str, str | None]:
@@ -324,14 +330,8 @@ def promote_events(
     return res
 
 
-_RELINK_MIN_CONFIDENCE = 0.85  # backfill floor: full canonical names (0.9) +
-#                                curated priority aliases (0.85); excludes
-#                                ordinary auto-aliases (0.72) so a prod backfill
-#                                of already-unresolved rows stays precision-safe.
-
-
 def relink_market_signals(
-    db, *, limit: int = 5000, min_confidence: float = _RELINK_MIN_CONFIDENCE
+    db, *, limit: int = 5000, min_confidence: float = _LINK_MIN_CONFIDENCE
 ) -> dict:
     """Backfill: re-resolve existing signals stuck in the 'market' bucket by
     mining their headline against the full company/drug gazetteer (+ curated
