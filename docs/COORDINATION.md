@@ -452,7 +452,10 @@ cross-seam verification claims.
 ### 8.1 Cross-lane ASKs
 | # | From | Need | Why | Status |
 |---|---|---|---|---|
-| (none open) | | | | |
+| A1 | Platform/FE → **Data** | Persist the F5 wizard's full source **contract** — extend `source_onboarding` (or a related table) to store `config` / `mappings` / `trust_tier` / `must_capture` / `license`. `StartOnboardingBody` (`hub.py:57`) currently keeps only owner/contact/connector_type/go_live_date/escalation and **silently ignores** the rest (default pydantic). | Gates the real F5 write-path. Until storage exists the wizard stays an honest **preview** (PR #285) — a naive POST would 201 while silently dropping the contract the wizard exists to enforce (conservation violation, fails *silently*). The `source_onboarding` schema is Data's. | **OPEN** (15 Jun) |
+| A2 | Platform/FE → **Data** | On `GET /catalog/datasets/{key}/profile`: expose **per-entity-type record counts** (records per entity_type a source feeds), null-when-unknown. (The `license` half Platform can add itself from `_dataset_fair`'s `license_name` — a Platform follow-up, not a Data ask.) | The F1 dossier renders `coverage: []` today (kept honestly empty). Per-type counts make the dossier's coverage section real instead of a permanently-empty block. | **OPEN** (15 Jun) |
+
+**BLOCKED surfaces — do NOT build over empty data (conservation, no theatre):** F5 write-path (until **A1**); the **F7 governance board** (prod `source_onboarding` = 0 rows — a permanently-empty board); and lenses **F2/F3/F4/F6** (their **D-API-3/4/5/6** backends don't exist — already tracked on the §7.6 F-board / §4). Surfaced by the 15 Jun DataHub frontend audit; the two correctness/honesty fixes that had NO data dependency shipped as **PR #284** (dossier /fair 404 + grid dup-key) and **PR #285** (SPA deep-link + F5 de-theatre + search copy/connectors link).
 
 ### 8.2 Shared CONTRACTS
 | Contract | Owner | Consumers | Status | Definition |
