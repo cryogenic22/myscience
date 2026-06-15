@@ -392,6 +392,48 @@ A3 judge majority-vote · A4 response-contract serialization (P1).
 + `_exact_lookup` excluded-filter) → G4 · C2 eval-runner extension (hard-fail caps +
 prose-scorable specialist dims) → measurement.
 
+#### 7.5a PLATFORM→DATA HANDOFF (15 Jun — measured, post synthesis-grounding loops)
+
+Platform shipped the synthesis-side grounding (PRs #265/#268/#273/#276, live on main).
+**Measured on `eval_pharma_v2` (3-sample MV, prod data):** G1 4.9→**12.2%**, G2 17.1→**36.6%**,
+G3 65.9→**68.3%**, G4 90.2%, graded 3.68→**5.02**, item-pass 1→2/41. The synthesis lane is
+now largely harvested — **the remaining ceiling is DATA.** Per-item decomposition shows
+**21/41 items are `missing_data`/`ingested_unreachable`** — winnable only as honest refusals
+(synthesis now emits those), and `item_pass` also needs all-gates + graded≥8, which an
+empty-ledger lens cannot supply. **These are the data-team levers, in priority order:**
+
+- **D-Q1 · Fact-CLASS quality (NEW — highest leverage for the lens matrix + grounding).**
+  `dossier_kb._coerce_fact_class` collapses clinical/regulatory/trial/outcome → `signal`
+  (lossy), and news-sourced clinical items are classed `corporate`. Net: synthesis **cannot
+  distinguish a real trial readout from a news mention** by fact_class — so the new
+  coverage-quality lens table (#276) treats ONLY curated `reference` facts as "covered" and
+  everything else as "partial" (correct *today* because the non-mechanism facts ARE news, but
+  it caps efficacy/safety/regulatory at "partial" forever). **ASK:** preserve a richer,
+  honest fact_class through ingestion (a registry trial readout ≠ a news headline); class
+  news-derived facts distinctly (`corporate`/`news`) from registry/curated (`clinical`/
+  `regulatory`/`reference`). This is what lets efficacy/safety show "covered" when real data
+  exists. Couples with B4.
+- **D-Q2 · Pricing events→facts bridge (cheap, verify-first — NOT a new connector).**
+  `services/event_emitters/pricing_observation.py` emits CMS ASP/NADAC as EVENTS, but **no
+  fact_emitter writes `wac_usd`/`net_price`**, so the planner sees a pricing gap. Probe prod
+  for NADAC/ASP event rows; if present, a thin events→facts emitter lifts the pricing content
+  ceiling (MAX-01/HON-01/HE-01). ⚠️ Also: the eval's `connector_state_actual` says
+  `cms_nadac=0` (calibrated 2026-06-13) but prod now has ~290 NADAC rows → **stale-bar**;
+  owns the freshness re-probe (see B1).
+- **D-Q3 · Reachability (= B2).** `regulatory_milestones` UNREACHABLE from chat, Orange-Book
+  patents PARTIAL, SEC filings RAG-only → REG-02/CI-01/BD-01 fail. Wire chat retrieval.
+- **D-Q4 · Source-blocked emitters (B3 cont.):** payer-policy (`formulary_status`/`prior_auth`/
+  `step_edit`/`hta_decision`), commercial (`launch_event`/`uptake_signal`/`product_sales`),
+  structured epidemiology/market-size, genetics (`open_targets`=0)/bioactivity (`chembl` not
+  indexed). Each needs a connector ingested FIRST — do NOT expect synthesis to fill; platform
+  already emits honest source-named refusals for these (G2).
+- **D-Q5 · Mechanism granularity (G4):** `mechanism_of_action` is coarse (dual GIP/GLP-1 not
+  distinct) — ontology enrichment. PR **#217** open covers this.
+
+Full diagnosis + sequencing: memory `project_eval_stuck_path` + the 8-agent workflow output.
+Re-run after data loops: `python -m benchmark._run_v2 <name> 3` (loads `.env`); decomp:
+`python -m benchmark._decomp <name>`.
+
 ### 7.6 DataHub Frontend — CLAIMS (Frontend (Claude) agent lane)
 **Build brief = `docs/SPEC_DATA_HUB_FRONTEND.md`** (lens model + reuse inventory +
 the F1–F7 loops + acceptance criteria). **Vision = `docs/SPEC_DATA_HUB.md` +

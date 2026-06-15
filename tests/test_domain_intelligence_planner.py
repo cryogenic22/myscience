@@ -53,7 +53,10 @@ class FakeDB:
         return None
 
 
-def _fact(predicate, desc, fc="corporate", conf=0.9):
+def _fact(predicate, desc, fc="reference", conf=0.9):
+    # NOTE: fc must be a VALID_FACT_CLASS post-coercion. 'reference' is the
+    # substantive (curated) class; 'corporate'/'signal'/'inferred' are weak
+    # (news/derived). Anything else coerces to 'signal' (weak).
     return {
         "id": f"{predicate}-{abs(hash(desc)) % 99999}",
         "predicate": predicate,
@@ -79,9 +82,19 @@ class TestCoverageState:
     def test_thin_when_one_fact(self):
         assert coverage_state([_fact("clinical_trial", "x")]) == "thin"
 
-    def test_covered_when_multiple_facts(self):
-        facts = [_fact("clinical_trial", f"trial {i}") for i in range(3)]
+    def test_covered_when_multiple_substantive_facts(self):
+        facts = [_fact("mechanism_of_action", f"m {i}", fc="reference") for i in range(3)]
         assert coverage_state(facts) == "covered"
+
+    def test_weak_only_facts_are_thin_not_covered(self):
+        # Coverage-QUALITY: news/signal/inferred facts are context, not hard
+        # evidence — a cell backed only by them is 'thin', never 'covered'.
+        for fc in ("corporate", "signal", "inferred"):
+            facts = [_fact("clinical_trial", f"t{i}", fc=fc) for i in range(4)]
+            assert coverage_state(facts) == "thin", f"{fc} facts must not be 'covered'"
+        # one substantive (reference) fact among weak ones is still only 'thin' (<2 substantive)
+        mixed = [_fact("x", "a", fc="reference")] + [_fact("y", f"n{i}", fc="signal") for i in range(3)]
+        assert coverage_state(mixed) == "thin"
 
 
 # ── matrix assembly ────────────────────────────────────────────────
@@ -157,6 +170,18 @@ class TestPlannerMatrix:
         # efficacy covered for both; pricing a gap for both
         assert summ["efficacy"] == "covered"
         assert summ["pricing_access"] == "gap"
+
+    def test_compare_rollup_is_thin_when_only_one_entity_covered(self):
+        # Honest compare rollup: covered for ONE drug but a gap for the other is
+        # NOT 'covered' — it is 'thin' (partial). (Was 'covered if ANY'.)
+        store = {
+            ("sema", "clinical_trial"): [_fact("clinical_trial", f"t{i}", fc="reference") for i in range(3)],
+            # tirze has no efficacy facts -> gap
+        }
+        planner = self._planner(store)
+        matrix = planner.plan("compare", [_entity("sema", "semaglutide"), _entity("tirze", "tirzepatide")])
+        summ = matrix.coverage_summary()
+        assert summ["efficacy"] == "thin", "covered-for-one + gap-for-other must roll up to 'thin'"
 
     def test_facts_deduped_within_cell(self):
         # same description from two predicates routed to one dimension → 1 fact
