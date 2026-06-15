@@ -178,8 +178,15 @@ _TRIAL_QUALIFIER = (
     r"(?:registered|active|ongoing|completed|recruiting|pivotal|late-stage|"
     r"clinical|phase\s*(?:[1-4]|i{1,3}|iv))"
 )
+# The leading (?<!phase\s)(?<!phase-) guard mirrors _EVIDENCE_COUNT_RE: a digit
+# immediately preceded by "Phase " / "Phase-" is a development-STAGE ORDINAL
+# ("Phase 3 trials"), NOT an aggregate count — neutralizing it would mangle real
+# prose into "Phase a number of trials" and break idempotence (the surviving
+# ordinal would re-match on a second pass). A genuine count ("68 active Phase 3
+# trials") is preceded by other text, so its leading number still matches and the
+# "Phase 3" ordinal — living inside group 2 — is preserved.
 _TRIAL_COUNT_RE = re.compile(
-    rf"\b(\d[\d,]*)\s+((?:{_TRIAL_QUALIFIER}\s+){{0,3}}(?:trials?|studies))\b",
+    rf"(?<!phase\s)(?<!phase-)\b(\d[\d,]*)\s+((?:{_TRIAL_QUALIFIER}\s+){{0,3}}(?:trials?|studies))\b",
     re.I,
 )
 # A bare "...has 34" tail naming the count for a second entity in a compare, e.g.

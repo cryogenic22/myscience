@@ -345,6 +345,29 @@ class TestNeutralizeUngroundedCounts:
         out = _neutralize_ungrounded_counts("It has 47 registered trials.", [])
         assert "47" not in out
 
+    def test_preserves_bare_phase_ordinal_with_no_leading_count(self):
+        # "Phase 3 trials" with NO aggregate count is a development-STAGE descriptor,
+        # not a fabricated count — the phase ordinal must NOT be captured as a count
+        # and mangled into "Phase a number of trials" (PR #286 independent-review
+        # BLOCKER: _TRIAL_COUNT_RE lacked the (?<!phase\s) guard _EVIDENCE_COUNT_RE has).
+        for text in (
+            "Both drugs are in Phase 3 trials.",
+            "Tirzepatide advanced to Phase 2 studies.",
+            "The Phase 3 trials are ongoing.",
+            "It is being evaluated in Phase-3 trials.",
+        ):
+            assert _neutralize_ungrounded_counts(text, self.INDIVIDUAL_TRIALS) == text
+
+    def test_neutralize_is_idempotent(self):
+        # Running twice must equal running once — a surviving "Phase 3" ordinal must
+        # not be re-matched and corrupted on a second pass.
+        text = "Semaglutide has 68 active Phase 3 trials, while tirzepatide has 34."
+        once = _neutralize_ungrounded_counts(text, self.INDIVIDUAL_TRIALS)
+        twice = _neutralize_ungrounded_counts(once, self.INDIVIDUAL_TRIALS)
+        assert once == twice
+        assert "Phase 3 trials" in once  # the leading count went; the ordinal stayed
+        assert "Phase a number of" not in once
+
 
 def _has_digit_run(text: str, num: str) -> bool:
     import re
