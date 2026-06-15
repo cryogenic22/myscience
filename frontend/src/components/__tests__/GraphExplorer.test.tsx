@@ -1,15 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import GraphExplorer from '../GraphExplorer';
 
 // Mock the api module
 vi.mock('../../api', () => ({
   api: {
-    listEntities: vi.fn().mockResolvedValue({ results: [] }),
     searchSuggest: vi.fn().mockResolvedValue({ suggestions: [] }),
     traverse: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
-    graphNeighborhood: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
-    entitySummary: vi.fn().mockResolvedValue({ summary: '', links: [] }),
+    // null is a real return (loadGraph does .catch(() => null)); the component
+    // guards every entitySummary read with `entitySummary && …`.
+    entitySummary: vi.fn().mockResolvedValue(null),
     graphPath: vi.fn().mockResolvedValue({ path: [], edges: [] }),
   },
 }));
@@ -86,5 +86,22 @@ describe('GraphExplorer', () => {
     // API allows le=4 — the UI cap was raised from 3 to 4.
     const hopsOptions = screen.getAllByRole('option').map((o) => o.textContent);
     expect(hopsOptions).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('selecting a lens re-runs traverse with that lens link_types (the control is REAL, not a no-op)', async () => {
+    const { api } = await import('../../api');
+    const traverse = vi.mocked(api.traverse);
+    // initialEntity auto-loads (sets the anchor), so a lens click has an anchor to re-traverse.
+    render(<GraphExplorer initialEntity={{ id: 'sema', type: 'drug', label: 'semaglutide' }} />);
+    // Initial Neighborhood load fires traverse with no link filter (linkTypes undefined).
+    await waitFor(() => expect(traverse).toHaveBeenCalled());
+    expect(traverse).toHaveBeenLastCalledWith('drug', 'sema', expect.any(Number), { linkTypes: undefined });
+    traverse.mockClear();
+    // Clicking the Competitive lens must re-traverse with its real link_types — the
+    // guarantee the old decorative objective pills never had.
+    fireEvent.click(screen.getByRole('button', { name: 'Competitive' }));
+    await waitFor(() =>
+      expect(traverse).toHaveBeenCalledWith('drug', 'sema', expect.any(Number), { linkTypes: ['COMPETES_WITH'] }),
+    );
   });
 });
