@@ -938,7 +938,11 @@ class UnifiedChatHandler:
             "data": {
                 "question": plan.original_question,
                 "evidence": evidence_items,
-                "decomposition": decomposition,
+                # Frontend (CanvasPanel/DecompositionMatrix) + the legacy chat path
+                # both read `decomposition_matrix`; the unified handler emitted
+                # `decomposition`, so the live path's answer-matrix UI never rendered.
+                # Emit the canonical key so the (already-built) matrix tab lights up.
+                "decomposition_matrix": decomposition,
                 "graph_context": {"nodes": [], "edges": [], "node_count": 0, "edge_count": 0},
                 "metrics_context": metrics_data or {},
                 "entity_focus": [
