@@ -4,7 +4,8 @@ Lifts ``drug_labels`` rows into the facts ledger. Each label yields up to two
 facts, both routed to ``clinical_profile``:
   • a ``label_indication`` fact (the approved indication text), and
   • a ``safety_signal`` fact when the label carries a boxed warning.
-Both are ``corporate``-class (FDA-approved structured truth). A drug can have
+Both are FDA-approved structured truth: the emitter declares the ``corporate``
+default, but ``emit_one`` resolves it to ``reference`` by SOURCE (D-Q1 §8.2). A drug can have
 several versioned/brand labels (Ozempic + Wegovy share a generic); each label
 row emits its own fact, keyed by ``<label_id>:<field>`` for idempotency, so the
 versions stay distinguishable.

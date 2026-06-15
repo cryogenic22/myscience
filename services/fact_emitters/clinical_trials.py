@@ -5,8 +5,10 @@ into the facts ledger as ``clinical_trial`` facts, which
 ``route_predicate_to_domain`` lands in the dossier's ``clinical_profile``
 domain — the single biggest gap-fill from data we already hold. One fact per
 trial; the subject is the trial's ``drug_id``. The trial *record* (phase /
-status / enrollment from a registry) is ``corporate``-class structured truth,
-not peer-reviewed ``reference`` and not synthesized ``inferred``.
+status / enrollment) comes from the ClinicalTrials.gov registry — authoritative
+ground truth. The emitter declares the ``corporate`` default, but ``emit_one``
+resolves it to ``reference`` by SOURCE (D-Q1 §8.2): registry data is
+reference-grade, not news, and not synthesized ``inferred``.
 """
 
 from __future__ import annotations

@@ -106,9 +106,10 @@ class RegulatoryMilestoneEmitter(FactEmitter):
             source_row_id=str(mid),
             kind="point",
             valid_from=coerce_dt(row.get("submission_status_date")),
-            # Orange Book is an authoritative regulatory record → corporate (a
-            # documented institutional event), high confidence.
             confidence=0.9,
+            # Orange Book is an authoritative regulatory record; declared
+            # ``corporate`` but emit_one resolves it to ``reference`` by SOURCE
+            # (D-Q1 §8.2) — a documented institutional event, high confidence.
             fact_class="corporate",
             evidence_text=claim,
             source_id=row.get("source_api") or "fda_orange_book",
