@@ -72,6 +72,22 @@ def run(dry_run: bool = False, skip_ai: bool = False) -> dict:
         logger.error("fact_class reconcile failed: %s", e)
         results["fact_class_reconcile"] = {"error": str(e)}
 
+    # 2.7. Orphan relinking (pubmed articles + clinical trials -> drug). Runs AFTER
+    # consolidation so the name index reflects merged/canonical drugs. Self-healing
+    # each cycle so newly-ingested NULL-drug_id rows don't drift back over the
+    # FK-orphan ceilings (the durability lesson from the #242 one-shot backfill).
+    logger.info("Step 2.7/9: Orphan drug relinking (literature + trials)")
+    try:
+        from scripts.relink_literature import run as run_relink_lit
+        from scripts.relink_trials import run as run_relink_trials
+        t0 = time.time()
+        results["relink_literature"] = run_relink_lit(dry_run=dry_run)
+        results["relink_trials"] = run_relink_trials(dry_run=dry_run)
+        results["relink_orphans_elapsed_s"] = round(time.time() - t0, 1)
+    except Exception as e:
+        logger.error("Orphan relinking failed: %s", e)
+        results["relink_orphans"] = {"error": str(e)}
+
     # 3. Mechanism backfill (before TA linkage — mechanisms feed TA links)
     logger.info("Step 3/9: Mechanism backfill")
     try:

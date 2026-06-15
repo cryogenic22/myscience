@@ -34,6 +34,15 @@ _STOPNAMES = {
     "beta blockers", "blockers", "agonist", "agonists", "inhibitor", "inhibitors",
     "statin", "statins", "insulin", "placebo", "vaccine", "saline", "control",
     "water", "sodium", "glucose", "oxygen", "vitamin",
+    # Polluted drug rows surfaced by the C1 prod probe (14-Jun-2026): these exist
+    # as rows in `drugs` but are NOT drugs — matching them silently corrupts the
+    # link (e.g. a behavioral trial whose title says "lifestyle intervention" would
+    # resolve to a drug literally named "intervention"). Dropping them from the
+    # match index is a precision improvement for both literature and trial
+    # relinking; soft-deleting the rows themselves is a separate cleanup follow-up.
+    "intervention", "medication", "titration", "treatment", "therapy",
+    "no intervention", "active control", "rate control", "formulation 1",
+    "usual care", "standard care", "standard of care", "best supportive care",
 }
 
 
@@ -152,6 +161,20 @@ def relink(db: Database, limit: int | None = None, dry_run: bool = False) -> dic
                 [dn.drug_id, art["id"]],
             )
     return {"candidates": len(articles), "matched": matched, "dry_run": dry_run}
+
+
+def run(dry_run: bool = False) -> dict:
+    """Scheduler entrypoint (called from scripts/auto_curate.py post-tasks) so
+    literature relinking is self-healing every curate cycle — new NULL-drug_id
+    articles don't accumulate back over the orphan ceiling."""
+    from config import config
+
+    db = Database(config.db.dsn)
+    db.connect()
+    try:
+        return relink(db, dry_run=dry_run)
+    finally:
+        db.close()
 
 
 def main() -> None:
