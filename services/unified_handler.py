@@ -146,6 +146,131 @@ def _inline_cite_sources(narrative: str, evidence_items: list[dict]) -> str:
     return _CITE_RUN_RE.sub(_repl, narrative)
 
 
+# ── Ungrounded trial-count neutralization (the compare regression) ───────────
+#
+# "Compare semaglutide vs tirzepatide" emitted bare, unattributed trial counts —
+# "47 registered trials [metrics]", "68 active Phase 3 trials, while tirzepatide
+# has 34". A LIVE capture proved these numbers are FABRICATED: the compare path's
+# `_fetch_metrics` returns {} (no count metric), and the PLAN matrix carries only
+# INDIVIDUAL trial facts (NCT id + enrollment, capped at 6/dimension), never an
+# aggregate total. The model invents a plausible count and stamps a fake `[metrics]`
+# marker (not a resolvable [N], so `_inline_cite_sources` can't attach a source).
+#
+# `_trial_count_directive` already FORBIDS this in the prompt, but the LLM ignores
+# it (prompts measurably don't bind — the whole reason provenance is rendered in
+# code). So this is the deterministic enforcement: a count claim about
+# trials/Phase-N that is NOT backed by a matching count IN THE EVIDENCE has its
+# specific number neutralized — the closed-world-honest move. We never invent a
+# source for a fabricated figure (that would be a worse, false attribution).
+#
+# A number is treated as GROUNDED (and left alone) only if the SAME integer appears
+# in a COUNT context ("N trials" / "N registered trials" / "N Phase-N trials") in an
+# evidence snippet — an individual trial fact ("enrollment 64", "NCT06546384") is
+# not an aggregate count and does not ground a "47 trials" claim. A count the model
+# already attributed inline (a [source: …] in the same clause) is also left alone.
+
+# A bare trial/Phase count claim: an integer (optional thousands separators) followed,
+# after up to three trial-qualifier words (registered/active/Phase N/clinical/...), by
+# the head noun "trials"/"studies". Group 1 = the number, group 2 = the qualifier+noun
+# span (kept in the rewrite so the breadth statement survives, only the figure goes).
+# A trailing word boundary keeps "enrollment 2310" out of scope (no trial-noun head).
+_TRIAL_QUALIFIER = (
+    r"(?:registered|active|ongoing|completed|recruiting|pivotal|late-stage|"
+    r"clinical|phase\s*(?:[1-4]|i{1,3}|iv))"
+)
+# The leading (?<!phase\s)(?<!phase-) guard mirrors _EVIDENCE_COUNT_RE: a digit
+# immediately preceded by "Phase " / "Phase-" is a development-STAGE ORDINAL
+# ("Phase 3 trials"), NOT an aggregate count — neutralizing it would mangle real
+# prose into "Phase a number of trials" and break idempotence (the surviving
+# ordinal would re-match on a second pass). A genuine count ("68 active Phase 3
+# trials") is preceded by other text, so its leading number still matches and the
+# "Phase 3" ordinal — living inside group 2 — is preserved.
+_TRIAL_COUNT_RE = re.compile(
+    rf"(?<!phase\s)(?<!phase-)\b(\d[\d,]*)\s+((?:{_TRIAL_QUALIFIER}\s+){{0,3}}(?:trials?|studies))\b",
+    re.I,
+)
+# A bare "...has 34" tail naming the count for a second entity in a compare, e.g.
+# "semaglutide has 68 active Phase 3 trials, while tirzepatide has 34." — neutralize
+# the dangling number too (it inherits the same unit). Word-bounded "has <int>".
+_TRIAL_COUNT_TAIL_RE = re.compile(r"\b(has|with|of|to)\s+(\d[\d,]*)\b(?=[.,;\s)]|$)", re.I)
+# A dead marker the model leaves on a fabricated count (e.g. "[metrics]"): a bracket
+# token that is NOT a numeric [N] citation. Stripped together with the number.
+_DEAD_MARKER_RE = re.compile(r"\s*\[(?!\d+\])[a-z][a-z _-]*\]", re.I)
+# "Grounded count" detector over an evidence snippet: an integer that is an AGGREGATE
+# count of trials/studies (the only count a narrative may state). The number must head
+# a count phrase ("178 trials", "178 registered trials", "178-trial footprint") — NOT
+# a phase ordinal ("Phase 4 trial", where 4 is the phase, not a count), so a negative
+# lookbehind rejects a "phase " prefix. Requires the noun be plural OR preceded by a
+# count qualifier so "1 trial NCT…" (an individual fact) does not read as a total.
+_EVIDENCE_COUNT_RE = re.compile(
+    r"(?<![a-z])(?<!phase\s)\b(\d[\d,]*)[\s-]+"
+    rf"(?:{_TRIAL_QUALIFIER}\s+)*"
+    r"(?:trials|studies|trial\s+footprint)\b",
+    re.I,
+)
+
+
+def _grounded_count_numbers(evidence_items: list[dict]) -> set[str]:
+    """Integers (normalized, comma-stripped) that appear in an aggregate COUNT
+    context within an evidence snippet — the only trial counts a narrative may
+    state. Individual trial facts (enrollment N, NCT ids) carry no count context
+    and so contribute nothing here."""
+    grounded: set[str] = set()
+    for it in evidence_items:
+        content = it.get("content") or ""
+        for m in _EVIDENCE_COUNT_RE.finditer(content):
+            grounded.add(m.group(1).replace(",", ""))
+    return grounded
+
+
+# Replacement for a fabricated count — keeps the breadth statement, drops the lie.
+_QUALITATIVE_COUNT = "a number of"
+
+
+def _neutralize_ungrounded_counts(narrative: str, evidence_items: list[dict]) -> str:
+    """Neutralize bare trial/Phase-count claims the evidence does not ground.
+
+    Deterministic G1/G2 enforcement: a "<N> trials" / "<N> Phase-N trials" claim
+    whose <N> is NOT present as an aggregate count in the numbered evidence is a
+    fabrication (the compare path injects no count metric). We replace the specific
+    figure with a qualitative phrase and strip any dead marker (e.g. ``[metrics]``)
+    the model attached — never inventing a source. A count already grounded in the
+    evidence, or already carrying an inline ``[source: …]``, is left untouched.
+    """
+    if not narrative:
+        return narrative
+    grounded = _grounded_count_numbers(evidence_items)
+
+    def _repl(m: "re.Match") -> str:
+        number = m.group(1).replace(",", "")
+        unit = m.group(2)
+        if number in grounded:
+            return m.group(0)  # honest — keep
+        # Already self-attributed inline in the same clause? leave it. Covers both
+        # an evidence-snippet "[source: …]" marker and the "[N] (Named Source)" form
+        # `_inline_cite_sources` stamps when the model cited a real trial item.
+        tail = narrative[m.end():m.end() + 60]
+        if re.match(r"\s*(?:\[source:|(?:\[\d+\])+\s*\([^)]*ClinicalTrials)", tail, re.I):
+            return m.group(0)
+        return f"{_QUALITATIVE_COUNT} {unit}"
+
+    out = _TRIAL_COUNT_RE.sub(_repl, narrative)
+    if out == narrative:
+        return narrative  # no trial-count claim touched — don't chase dangling tails
+    # A neutralized count may leave a dangling comparative number ("…, while X has 34")
+    # whose unit we just removed — neutralize that bare tail figure too (unless grounded).
+    def _tail_repl(m: "re.Match") -> str:
+        number = m.group(2).replace(",", "")
+        if number in grounded:
+            return m.group(0)
+        return f"{m.group(1)} a comparable number"
+
+    out = _TRIAL_COUNT_TAIL_RE.sub(_tail_repl, out)
+    # Drop dead non-numeric markers ("[metrics]") left on what was a fabricated count.
+    out = _DEAD_MARKER_RE.sub("", out)
+    return out
+
+
 def _display_source(raw_source: str | None, predicate: str | None) -> str:
     """Best human-named source for an evidence item, for inline attribution.
 
@@ -907,6 +1032,15 @@ class UnifiedChatHandler:
         # below — measured G1 ~5% with the legend alone. Done after the guard (the
         # source names are not claims to ground). The [N] still resolves in the UI.
         narrative = _inline_cite_sources(narrative, evidence_items)
+
+        # G1/G2: neutralize FABRICATED trial/Phase counts. The compare path injects
+        # no count metric and the matrix carries only individual trial facts, so a
+        # bare "47 registered trials" / "68 active Phase 3 trials" is invented. The
+        # model ignores the prompt directive, so we strip the ungrounded figure in
+        # code (never inventing a source). Runs AFTER inline-cite so a count the model
+        # genuinely cited inline ([N] → named source) is already self-attributing and
+        # treated as grounded.
+        narrative = _neutralize_ungrounded_counts(narrative, evidence_items)
 
         # Deterministically attach the provenance legend ([N] → named connector +
         # cadence) AFTER the guard check — the LLM won't reliably narrate provenance,

@@ -16,6 +16,7 @@ from services.unified_handler import (
     _snippet_for_evidence,
     _provenance_footer,
     _inline_cite_sources,
+    _neutralize_ungrounded_counts,
     UnifiedChatHandler,
 )
 
@@ -262,3 +263,112 @@ def test_evidence_source_falls_back_to_content_type_for_entity_sections():
     label = _evidence_source(item)
     assert label != "platform knowledge base"
     assert "FDA" in label or "MeSH" in label
+
+
+# ── Ungrounded trial-count neutralization (G1 / G2 — the compare regression) ──
+#
+# "Compare semaglutide vs tirzepatide" produced bare, unattributed trial counts
+# ("47 registered trials [metrics]", "68 active Phase 3 trials") that NO grounded
+# count fact backs — the matrix carries only individual trial facts (capped), and
+# _fetch_metrics returns {} for compare. The LLM ignores the prompt directive, so a
+# deterministic post-synthesis pass detects a bare trial/Phase-count claim that is
+# NOT backed by a count in the evidence and neutralizes the specific number (the
+# closed-world-honest move — never invent a source for a fabricated figure).
+class TestNeutralizeUngroundedCounts:
+    # Individual trial facts (NCT + enrollment) — NOT aggregate counts. These must
+    # NOT be read as grounding a "47 trials" claim.
+    INDIVIDUAL_TRIALS = [
+        {"source": "ClinicalTrials.gov",
+         "content": "Clinical trial: Phase 4 trial NCT07485062 in Type 2 Diabetes — enrollment 164",
+         "provenance": {"predicate": "clinical_trial"}},
+        {"source": "MeSH / curated mechanism",
+         "content": "Mechanism of action: GLP-1 Receptor Agonists",
+         "provenance": {"predicate": "mechanism_of_action"}},
+    ]
+
+    def test_neutralizes_bare_registered_trial_count(self):
+        out = _neutralize_ungrounded_counts(
+            "It has a robust program with 47 registered trials.", self.INDIVIDUAL_TRIALS
+        )
+        assert "47 registered trials" not in out
+        # The qualitative breadth statement is kept; the fabricated number is gone.
+        assert "registered trials" in out
+        assert not _has_digit_run(out, "47")
+
+    def test_neutralizes_bare_active_phase_count(self):
+        out = _neutralize_ungrounded_counts(
+            "Semaglutide has 68 active Phase 3 trials, while tirzepatide has 34.",
+            self.INDIVIDUAL_TRIALS,
+        )
+        assert "68" not in out and "34" not in out
+        assert "Phase 3 trials" in out
+
+    def test_strips_bogus_metrics_marker_on_neutralized_count(self):
+        # The LLM tagged the fabricated count with a fake [metrics] marker (not a
+        # resolvable [N]); neutralizing the number should also drop the dead marker.
+        out = _neutralize_ungrounded_counts(
+            "It has 47 registered trials [metrics].", self.INDIVIDUAL_TRIALS
+        )
+        assert "[metrics]" not in out
+        assert "47" not in out
+
+    def test_keeps_count_when_grounded_in_evidence(self):
+        # If an evidence snippet DOES carry the aggregate count (a real grounded
+        # total injected as a citable fact), the number is honest — keep it.
+        grounded = self.INDIVIDUAL_TRIALS + [
+            {"source": "ClinicalTrials.gov",
+             "content": "Registered-trial footprint: 178 trials across all indications",
+             "provenance": {"predicate": "clinical_trial"}},
+        ]
+        out = _neutralize_ungrounded_counts(
+            "Semaglutide has 178 registered trials [1].", grounded
+        )
+        assert "178 registered trials" in out  # untouched — it is grounded
+
+    def test_does_not_touch_count_already_carrying_inline_source(self):
+        # If the model already attributed the count inline (named source in the same
+        # sentence), it is self-attributing — leave it alone.
+        out = _neutralize_ungrounded_counts(
+            "It has 47 registered trials [source: ClinicalTrials.gov].",
+            self.INDIVIDUAL_TRIALS,
+        )
+        assert out == "It has 47 registered trials [source: ClinicalTrials.gov]."
+
+    def test_leaves_non_trial_numbers_alone(self):
+        # Enrollment, dosing, prices — only trial/Phase COUNT claims are in scope.
+        text = "Enrollment was 2,310 patients at a 2.4 mg weekly dose."
+        assert _neutralize_ungrounded_counts(text, self.INDIVIDUAL_TRIALS) == text
+
+    def test_empty_and_no_evidence_safe(self):
+        assert _neutralize_ungrounded_counts("", self.INDIVIDUAL_TRIALS) == ""
+        # No evidence at all → still neutralize (nothing can ground the number).
+        out = _neutralize_ungrounded_counts("It has 47 registered trials.", [])
+        assert "47" not in out
+
+    def test_preserves_bare_phase_ordinal_with_no_leading_count(self):
+        # "Phase 3 trials" with NO aggregate count is a development-STAGE descriptor,
+        # not a fabricated count — the phase ordinal must NOT be captured as a count
+        # and mangled into "Phase a number of trials" (PR #286 independent-review
+        # BLOCKER: _TRIAL_COUNT_RE lacked the (?<!phase\s) guard _EVIDENCE_COUNT_RE has).
+        for text in (
+            "Both drugs are in Phase 3 trials.",
+            "Tirzepatide advanced to Phase 2 studies.",
+            "The Phase 3 trials are ongoing.",
+            "It is being evaluated in Phase-3 trials.",
+        ):
+            assert _neutralize_ungrounded_counts(text, self.INDIVIDUAL_TRIALS) == text
+
+    def test_neutralize_is_idempotent(self):
+        # Running twice must equal running once — a surviving "Phase 3" ordinal must
+        # not be re-matched and corrupted on a second pass.
+        text = "Semaglutide has 68 active Phase 3 trials, while tirzepatide has 34."
+        once = _neutralize_ungrounded_counts(text, self.INDIVIDUAL_TRIALS)
+        twice = _neutralize_ungrounded_counts(once, self.INDIVIDUAL_TRIALS)
+        assert once == twice
+        assert "Phase 3 trials" in once  # the leading count went; the ordinal stayed
+        assert "Phase a number of" not in once
+
+
+def _has_digit_run(text: str, num: str) -> bool:
+    import re
+    return bool(re.search(rf"\b{re.escape(num)}\b", text))
