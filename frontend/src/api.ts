@@ -712,10 +712,22 @@ export const api = {
     get<{ suggestions: SearchSuggestion[] }>(`/search/suggest?q=${encodeURIComponent(q)}&limit=${limit ?? 8}`),
 
   // Graph
-  traverse: (entityType: string, entityId: string, hops?: number) =>
-    get<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
-      `/graph/traverse/${entityType}/${encodeURIComponent(entityId)}?hops=${hops ?? 2}&max_nodes=50`
-    ),
+  traverse: (
+    entityType: string,
+    entityId: string,
+    hops?: number,
+    opts?: { linkTypes?: string[]; minConfidence?: number; maxNodes?: number },
+  ) => {
+    const params: Record<string, unknown> = {
+      hops: hops ?? 2,
+      max_nodes: opts?.maxNodes ?? 50,
+    };
+    if (opts?.linkTypes && opts.linkTypes.length > 0) params.link_types = opts.linkTypes.join(',');
+    if (opts?.minConfidence !== undefined) params.min_confidence = opts.minConfidence;
+    return get<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
+      `/graph/traverse/${entityType}/${encodeURIComponent(entityId)}?${qs(params)}`
+    );
+  },
   entitySummary: (entityType: string, entityId: string) =>
     get<EntitySummary>(`/graph/summary/${entityType}/${encodeURIComponent(entityId)}`),
   graphPath: (

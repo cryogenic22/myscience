@@ -81,6 +81,58 @@ export const NODE_TYPE_LABELS: Record<string, string> = {
   unknown: 'Unknown',
 };
 
+/**
+ * Exploration lenses — the SINGLE source of truth mapping a lens to the real
+ * `link_types` (and optional min_confidence) forwarded to /graph/traverse.
+ *
+ * Every link type below is drawn from the live edge vocabulary in
+ * `KnowledgeGraph.EDGE_CATEGORIES` / `EDGE_LABELS` above — no invented types.
+ * `linkTypes: null` means "no filter" (the full neighborhood).
+ */
+export interface GraphLens {
+  id: string;
+  label: string;
+  description: string;
+  linkTypes: string[] | null;
+}
+
+export const GRAPH_LENSES: GraphLens[] = [
+  {
+    id: 'neighborhood',
+    label: 'Neighborhood',
+    description: 'All direct and second-order relationships around the anchor.',
+    linkTypes: null,
+  },
+  {
+    id: 'competitive',
+    label: 'Competitive',
+    description: 'Rival drugs and companies competing in the same space.',
+    linkTypes: ['COMPETES_WITH'],
+  },
+  {
+    id: 'evidence',
+    // INVESTIGATES / EVIDENCE_FOR / HAS_OUTCOME / LED_BY / AUTHORED_BY are the
+    // real "research" edge category in KnowledgeGraph.EDGE_CATEGORIES.
+    label: 'Evidence',
+    description: 'Trial, outcome, and literature evidence linkages.',
+    linkTypes: ['INVESTIGATES', 'EVIDENCE_FOR', 'HAS_OUTCOME', 'LED_BY', 'AUTHORED_BY'],
+  },
+  {
+    id: 'regulatory',
+    // The real "regulatory" edge category.
+    label: 'Regulatory',
+    description: 'Patent, milestone, and label (regulatory) linkages.',
+    linkTypes: ['HAS_PATENT', 'HAS_MILESTONE', 'HAS_LABEL'],
+  },
+  {
+    id: 'safety',
+    // The real "safety" edge types (COMPETES_WITH lives in its own lens above).
+    label: 'Safety',
+    description: 'Adverse-event and supply-shortage linkages.',
+    linkTypes: ['HAS_ADVERSE_EVENT', 'SHORTAGE_AFFECTS'],
+  },
+];
+
 /** Dark canvas background */
 export const GRAPH_BG = '#0f172a';
 export const GRAPH_TEXT = '#e2e8f0';
