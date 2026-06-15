@@ -6,8 +6,9 @@ lineage / fresh agent (spawn one via the Agent tool, or the `/code-review`
 skill). "Looks okay" is not a review — work the checklist and try to *refute*
 the success claim.
 
-Reads `.claude/rules/conservation-gates.md` first. Reviews the **pinned commit
-range / PR diff**, not the dirty working tree.
+Read `docs/REVIEWER_BRIEF.md` and `.claude/rules/conservation-gates.md` first.
+Review the **pinned commit range / PR diff**, not the dirty working tree. If the
+builder handed off through `docs/REVIEW_LOG.md`, write the verdict back there.
 
 ## Adversarial checklist (report a verdict + evidence per item)
 
@@ -34,6 +35,10 @@ range / PR diff**, not the dirty working tree.
 
 ## Output
 
-A short verdict — **APPROVE / CHANGES-REQUIRED / BLOCK** — with the flagged
-items, each citing a file:line or pasted command output. If CHANGES-REQUIRED,
-the builder fixes and re-submits; never self-approve over the findings.
+Use the verdict language from `docs/REVIEWER_BRIEF.md`:
+`PASS_NO_RESIDUAL`, `PASS_REVIEW_REQUIRED`, `FINDINGS`, or `BLOCKED`.
+
+For a handoff packet, append the verdict to `docs/REVIEW_LOG.md` Section B. For
+an ad hoc PR review, leave a short verdict with flagged items, each citing a
+file:line or pasted command output. If findings are open, the builder fixes and
+re-submits; never self-approve over the findings.

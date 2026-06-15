@@ -75,6 +75,10 @@ NUL
 !docs/AGENT_BACKLOG.md
 !docs/PRODUCT_BACKLOG.md
 !docs/COORDINATION.md
+!docs/REVIEWER_BRIEF.md
+!docs/REVIEW_LOG.md
+!docs/independent-cross-lane-review-*.md
+!docs/independent-datahub-review-*.md
 !docs/archive/**/*.md
 !feedback/**/*.md
 !design-review-output/**/*.md
