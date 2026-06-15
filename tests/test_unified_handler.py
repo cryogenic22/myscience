@@ -332,6 +332,88 @@ class TestTopicAndLeaders:
         assert mock_llm.synthesize.call_args.kwargs.get("intent") == "leaders"
 
 
+class _FakeCountDB:
+    """Minimal db stub: answers the per-drug trial COUNT with a fixture value."""
+    def __init__(self, counts: dict):
+        self.counts = counts
+
+    def fetch_one(self, sql, params=None):
+        key = (params or [None])[0]
+        return {"n": self.counts.get(key, 0)}
+
+
+class TestTrialTotalEvidence:
+    """Chat #16: surface the REAL per-drug trial total as cited ClinicalTrials.gov
+    evidence so a compare states the true figure (and it survives neutralization),
+    instead of the model inventing a count that gets stripped."""
+
+    def test_gate_fires_for_trials_and_compares_only(self):
+        from services.unified_handler import _wants_trial_totals
+        assert _wants_trial_totals("Compare semaglutide vs tirzepatide")
+        assert _wants_trial_totals("how many trials does semaglutide have")
+        assert _wants_trial_totals("semaglutide pipeline depth")
+        # Unrelated questions must NOT get a trial-count line.
+        assert not _wants_trial_totals("what is semaglutide's mechanism of action")
+        assert not _wants_trial_totals("who makes Ozempic")
+
+    def test_builder_grounds_real_counts_and_attributes_clinicaltrials(self):
+        from services.unified_handler import (
+            _trial_total_evidence_items, _grounded_count_numbers, _snippet_for_evidence,
+        )
+        items = _trial_total_evidence_items([
+            ("sema-id", "Semaglutide", 224), ("tirz-id", "Tirzepatide", 120),
+        ])
+        assert len(items) == 2
+        # The exact real counts become GROUNDED (aggregate-count context).
+        assert {"224", "120"} <= _grounded_count_numbers(items)
+        # The LLM-facing snippet attributes the count to ClinicalTrials.gov.
+        snip = _snippet_for_evidence(items[0])
+        assert "224 clinical trials" in snip and "ClinicalTrials.gov" in snip
+        # Frontend/citation shape parity with other evidence builders.
+        assert set(items[0]) >= {"source", "entity_type", "entity_id", "content", "relevance", "provenance"}
+        # Never fabricate: zero / missing-label rows are dropped.
+        assert _trial_total_evidence_items([("x", "", 9), ("y", "Y", 0)]) == []
+
+    def test_real_count_survives_neutralization_only_when_grounded(self):
+        """The whole point: with the injected total in evidence the true count is KEPT;
+        without it, the same bare count is neutralized as a fabrication."""
+        from services.unified_handler import (
+            _trial_total_evidence_items, _neutralize_ungrounded_counts,
+        )
+        narrative = ("Semaglutide is linked to 224 clinical trials; tirzepatide is "
+                     "linked to 120 clinical trials.")
+        evidence = _trial_total_evidence_items([
+            ("sema-id", "Semaglutide", 224), ("tirz-id", "Tirzepatide", 120),
+        ])
+        kept = _neutralize_ungrounded_counts(narrative, evidence)
+        assert "224 clinical trials" in kept and "120 clinical trials" in kept
+        # Same narrative, no grounding evidence → both figures neutralized.
+        stripped = _neutralize_ungrounded_counts(narrative, [])
+        assert "224" not in stripped and "120" not in stripped
+        assert "a number of clinical trials" in stripped
+
+    def test_method_injects_drug_counts_respecting_gate_and_filter(self, handler, monkeypatch):
+        from services.ctx_pipeline import QueryPlan
+        from services.unified_handler import _grounded_count_numbers
+        monkeypatch.setattr(handler, "db", _FakeCountDB({"sema": 224, "tirz": 120, "co": 5}))
+        monkeypatch.setattr(handler, "_resolve_plan_entities", lambda plan: [
+            {"entity_id": "sema", "entity_type": "drug", "label": "Semaglutide"},
+            {"entity_id": "tirz", "entity_type": "drug", "label": "Tirzepatide"},
+            {"entity_id": "co", "entity_type": "company", "label": "Novo Nordisk"},  # skipped
+        ])
+        plan = QueryPlan(original_question="Compare semaglutide vs tirzepatide",
+                         resolved_question="", entities_detected=[])
+        items = handler._trial_total_evidence(plan, "Compare semaglutide vs tirzepatide")
+        assert len(items) == 2  # company filtered out
+        assert {"224", "120"} <= _grounded_count_numbers(items)
+        # Gate: an unrelated question yields nothing even with resolvable drugs.
+        assert handler._trial_total_evidence(plan, "what is semaglutide's mechanism") == []
+        # Never fabricate: a zero count contributes nothing.
+        monkeypatch.setattr(handler, "db", _FakeCountDB({"sema": 0, "tirz": 120}))
+        only = handler._trial_total_evidence(plan, "compare them")
+        assert len(only) == 1 and "120 clinical trials" in only[0]["content"]
+
+
 # ── 7d. PLAN stage (Domain Intelligence decomposition) ──
 
 class TestPlanStage:

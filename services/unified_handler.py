@@ -427,10 +427,11 @@ _TRIAL_TERM_RE = re.compile(
 def _trial_count_directive(question: str, evidence_items: list[dict]) -> str:
     """Discipline for trial / development-breadth claims (reviewer G1+G2).
 
-    The system does NOT currently compute a grounded per-drug total trial count
-    (the compare path injects no count metric; the matrix carries individual
-    trial facts, not totals), so a model that states "220 registered trials" is
-    FABRICATING. This directive fires only when the question or evidence
+    A grounded per-drug total trial count is now injected as citable evidence
+    (`_trial_total_evidence`) for trial/compare questions, so a stated count is
+    legitimate IFF it matches that evidence; an unmatched figure is still a
+    FABRICATION (and `_neutralize_ungrounded_counts` strips it). This directive
+    fires only when the question or evidence
     implicates trials (so it doesn't bloat every prompt) and binds synthesis to:
     cite a count only if it is in the numbered evidence (attributed to
     ClinicalTrials.gov, scoped as a registered-trial footprint across all
@@ -459,6 +460,56 @@ def _trial_count_directive(question: str, evidence_items: list[dict]) -> str:
         "compare, compare on cited clinical EVIDENCE; if only counts are available, say "
         "the comparison is limited to development footprint and reaches no verdict."
     )
+
+
+# Drug-vs-drug compares carry no "trial" term but are exactly where the model
+# invented a count (the sema-vs-tirz regression) — surface the grounded total there too.
+_COMPARE_RE = re.compile(
+    r"\b(vs\.?|versus|compared?|comparison|against|difference\s+between)\b", re.I
+)
+
+
+def _wants_trial_totals(question: str) -> bool:
+    """Whether to surface a grounded per-drug trial total: trial/pipeline questions
+    (``_TRIAL_TERM_RE``) and drug-vs-drug compares. Gated so unrelated answers don't
+    get a trial-count line."""
+    q = question or ""
+    return bool(_TRIAL_TERM_RE.search(q) or _COMPARE_RE.search(q))
+
+
+def _trial_total_evidence_items(entity_counts: list[tuple[str, str, int]]) -> list[dict]:
+    """Citable evidence carrying each drug's REAL aggregate trial count.
+
+    This is the structural fix `_trial_count_directive` anticipated: the count
+    (``clinical_trials.drug_id`` — the same total the dossier shows) becomes numbered
+    evidence, so synthesis can state the TRUE figure with a ClinicalTrials.gov source
+    instead of inventing one. The ``N clinical trials`` phrasing is an aggregate-count
+    context, so ``_grounded_count_numbers`` grounds N — which both lets the model cite
+    it and keeps it through ``_neutralize_ungrounded_counts``. ``entity_counts`` is
+    ``[(drug_id, label, n), …]`` from a read-only COUNT; only ``n > 0`` is surfaced, so
+    a missing/zero count contributes nothing — we never fabricate a number. The line is
+    framed as a registered-trial footprint, explicitly NOT efficacy or superiority (G3).
+    """
+    items: list[dict] = []
+    for drug_id, label, n in entity_counts:
+        if not label or not n or n <= 0:
+            continue
+        items.append({
+            "source": "ClinicalTrials.gov",
+            "entity_type": "drug",
+            "entity_id": str(drug_id),
+            "content": (
+                f"{label} is linked to {n} clinical trials registered on "
+                f"ClinicalTrials.gov in our index — a registered-trial footprint across "
+                f"all indications, not a measure of efficacy or superiority."
+            ),
+            "relevance": 1.0,
+            # predicate 'clinical_trial' → _display_source renders "ClinicalTrials.gov"
+            # for both the snippet tag and the inline [N] attribution.
+            "provenance": {"source": "clinical_trials", "predicate": "clinical_trial",
+                           "metric": "trial_total"},
+        })
+    return items
 
 
 def _faers_safety_directive(evidence_items: list[dict]) -> str:
@@ -934,6 +985,13 @@ class UnifiedChatHandler:
         # Augment with metrics for specific intents
         metrics_data = self._fetch_metrics(plan)
 
+        # Grounded per-drug trial TOTAL as citable evidence (the structural fix the
+        # trial-count directive anticipated): a drug-vs-drug compare otherwise carried
+        # no aggregate count, so the model invented one and it got neutralized. With the
+        # real count in numbered evidence, synthesis can state the TRUE figure, cite
+        # ClinicalTrials.gov, and survive _neutralize_ungrounded_counts.
+        trial_total_evidence = self._trial_total_evidence(plan, question)
+
         # Promote company leaders to FIRST-CLASS numbered evidence. The LLM's
         # primary grounding is evidence_snippets (it is instructed to cite them),
         # so this is what reliably makes "which companies dominate <area>" name
@@ -946,8 +1004,11 @@ class UnifiedChatHandler:
         # PLAN evidence is reserved to a budget so a large matrix (a compare can
         # emit 40+ cell-facts) doesn't evict the CTX section / leader cards. Then
         # the whole list is capped so the citation list stays resolvable.
+        # Trial totals lead (a real aggregate count is strong grounding and must not be
+        # evicted), then PLAN facts, leaders, retrieved sections.
         evidence_items = (
-            plan_evidence[:_PLAN_EVIDENCE_BUDGET] + leader_evidence + evidence_items
+            trial_total_evidence + plan_evidence[:_PLAN_EVIDENCE_BUDGET]
+            + leader_evidence + evidence_items
         )[:_MAX_EVIDENCE + 4]
         # Carry the named source INTO the snippet text. The LLM only sees these
         # strings, so a source on the dict alone is invisible to it — appending
@@ -1300,6 +1361,32 @@ class UnifiedChatHandler:
                     },
                 })
         return items
+
+    def _trial_total_evidence(self, plan: "QueryPlan", question: str) -> list[dict]:
+        """Resolve the question's drug entities and attach each one's REAL aggregate
+        trial count as citable evidence (read-only COUNT on ``clinical_trials.drug_id``,
+        the dossier's definition). Gated to trial/compare questions. Never fabricates:
+        a drug whose count query errors or returns 0 contributes nothing."""
+        if self.db is None or not _wants_trial_totals(question):
+            return []
+        entity_counts: list[tuple[str, str, int]] = []
+        for ent in self._resolve_plan_entities(plan):
+            if ent.get("entity_type") != "drug":
+                continue
+            did = ent.get("entity_id")
+            if not did:
+                continue
+            try:
+                row = self.db.fetch_one(
+                    "SELECT count(*) AS n FROM clinical_trials WHERE drug_id = %s", [did]
+                )
+            except Exception:
+                logger.debug("trial-total count failed for %s", did, exc_info=True)
+                continue
+            n = int((row or {}).get("n") or 0)
+            if n > 0:
+                entity_counts.append((str(did), ent.get("label") or "This drug", n))
+        return _trial_total_evidence_items(entity_counts)
 
     @staticmethod
     def _leaders_as_evidence(leaders: list[dict]) -> list[dict]:
