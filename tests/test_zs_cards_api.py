@@ -153,3 +153,185 @@ def test_import_invalid_card_is_422_and_does_not_replace(client):
 def test_import_malformed_payload_is_422(client):
     r = client.post("/zs/api/cards/import", json={"nope": []}, auth=AUTH)
     assert r.status_code == 422
+
+
+# ===========================================================================
+# Two new card families on the /zs router — commercial constructs + bets.
+# The endpoints are registered by the same factory as /api/cards, so these
+# assert the auth gate, seed contents, CRUD round-trip, enum→422 and import
+# validation for each new family without regressing the cards routes above.
+# ===========================================================================
+
+# --- auth gate on every new endpoint ---------------------------------------
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get", "/zs/api/constructs"),
+        ("get", "/zs/api/constructs/export"),
+        ("post", "/zs/api/constructs"),
+        ("post", "/zs/api/constructs/import"),
+        ("put", "/zs/api/constructs/floor-per-hit"),
+        ("delete", "/zs/api/constructs/floor-per-hit"),
+        ("get", "/zs/api/bets"),
+        ("get", "/zs/api/bets/export"),
+        ("post", "/zs/api/bets"),
+        ("post", "/zs/api/bets/import"),
+        ("put", "/zs/api/bets/quantum"),
+        ("delete", "/zs/api/bets/quantum"),
+    ],
+)
+def test_new_family_endpoints_require_auth(client, method, path):
+    r = getattr(client, method)(path)
+    assert r.status_code == 401
+    assert "basic" in r.headers.get("www-authenticate", "").lower()
+
+
+# --- constructs: list seeds + CRUD -----------------------------------------
+def test_constructs_list_seeds_defaults(client):
+    r = client.get("/zs/api/constructs", auth=AUTH)
+    assert r.status_code == 200
+    cards = r.json()["cards"]
+    assert len(cards) == 6
+    assert {c["id"] for c in cards} == {
+        "floor-per-hit", "decision-latency-sla", "gain-share",
+        "cost-to-serve-takeout", "assurance-per-cert", "outcome-underwriting",
+    }
+    fph = next(c for c in cards if c["id"] == "floor-per-hit")
+    assert fph["quality"] == "outcome"
+    assert fph["name"] == "Floor + per-hit"
+
+
+def test_constructs_create_update_delete_round_trip(client):
+    body = {"name": "Retainer Plus", "quality": "recurring", "meter": "monthly", "buyer": "CFO"}
+    r = client.post("/zs/api/constructs", json=body, auth=AUTH)
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == "retainer-plus"
+
+    body["name"] = "Retainer Pro"
+    body["quality"] = "outcome"
+    r = client.put("/zs/api/constructs/retainer-plus", json=body, auth=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Retainer Pro"
+    assert r.json()["id"] == "retainer-plus"  # path id wins
+
+    r = client.delete("/zs/api/constructs/retainer-plus", auth=AUTH)
+    assert r.status_code == 200
+    assert r.json()["deleted"] == "retainer-plus"
+
+
+def test_constructs_invalid_quality_is_422(client):
+    body = {"name": "bad", "quality": "NOPE"}
+    r = client.post("/zs/api/constructs", json=body, auth=AUTH)
+    assert r.status_code == 422
+
+
+def test_constructs_update_missing_is_404(client):
+    r = client.put("/zs/api/constructs/does-not-exist", json={"name": "x"}, auth=AUTH)
+    assert r.status_code == 404
+
+
+def test_constructs_delete_missing_is_404(client):
+    r = client.delete("/zs/api/constructs/does-not-exist", auth=AUTH)
+    assert r.status_code == 404
+
+
+def test_constructs_export_is_attachment(client):
+    r = client.get("/zs/api/constructs/export", auth=AUTH)
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert "commercial_constructs" in r.headers.get("content-disposition", "")
+    assert len(r.json()["cards"]) == 6
+
+
+def test_constructs_import_replaces_and_bad_enum_422(client):
+    ok = {"cards": [{"name": "Sole", "quality": "project"}]}
+    r = client.post("/zs/api/constructs/import", json=ok, auth=AUTH)
+    assert r.status_code == 200, r.text
+    assert {c["id"] for c in client.get("/zs/api/constructs", auth=AUTH).json()["cards"]} == {"sole"}
+
+    bad = {"cards": [{"name": "x", "quality": "BAD"}]}
+    before = client.get("/zs/api/constructs", auth=AUTH).json()
+    r = client.post("/zs/api/constructs/import", json=bad, auth=AUTH)
+    assert r.status_code == 422
+    assert client.get("/zs/api/constructs", auth=AUTH).json() == before  # unchanged
+
+
+# --- bets: list seeds + CRUD -----------------------------------------------
+def test_bets_list_seeds_defaults(client):
+    r = client.get("/zs/api/bets", auth=AUTH)
+    assert r.status_code == 200
+    cards = r.json()["cards"]
+    assert len(cards) == 6
+    assert {c["id"] for c in cards} == {
+        "simulation-aas", "digital-twin", "pharma-slms",
+        "the-harness", "quantum", "hardware-edge",
+    }
+    quantum = next(c for c in cards if c["id"] == "quantum")
+    assert quantum["native"] is False
+    assert quantum["posture"] == "partner"
+
+
+def test_bets_create_update_delete_round_trip(client):
+    body = {"name": "Edge Inference", "horizon": "near", "posture": "build", "native": False}
+    r = client.post("/zs/api/bets", json=body, auth=AUTH)
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == "edge-inference"
+    assert r.json()["native"] is False
+
+    body["posture"] = "partner"
+    r = client.put("/zs/api/bets/edge-inference", json=body, auth=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.json()["posture"] == "partner"
+
+    r = client.delete("/zs/api/bets/edge-inference", auth=AUTH)
+    assert r.status_code == 200
+    assert r.json()["deleted"] == "edge-inference"
+
+
+def test_bets_invalid_horizon_is_422(client):
+    r = client.post("/zs/api/bets", json={"name": "bad", "horizon": "someday"}, auth=AUTH)
+    assert r.status_code == 422
+
+
+def test_bets_invalid_posture_is_422(client):
+    r = client.post("/zs/api/bets", json={"name": "bad", "posture": "acquire"}, auth=AUTH)
+    assert r.status_code == 422
+
+
+def test_bets_update_missing_is_404(client):
+    r = client.put("/zs/api/bets/does-not-exist", json={"name": "x"}, auth=AUTH)
+    assert r.status_code == 404
+
+
+def test_bets_delete_missing_is_404(client):
+    r = client.delete("/zs/api/bets/does-not-exist", auth=AUTH)
+    assert r.status_code == 404
+
+
+def test_bets_export_is_attachment(client):
+    r = client.get("/zs/api/bets/export", auth=AUTH)
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert "capability_bets" in r.headers.get("content-disposition", "")
+    assert len(r.json()["cards"]) == 6
+
+
+def test_bets_import_replaces_and_bad_enum_422(client):
+    ok = {"cards": [{"name": "Sole Bet", "posture": "consume"}]}
+    r = client.post("/zs/api/bets/import", json=ok, auth=AUTH)
+    assert r.status_code == 200, r.text
+    assert {c["id"] for c in client.get("/zs/api/bets", auth=AUTH).json()["cards"]} == {"sole-bet"}
+
+    bad = {"cards": [{"name": "x", "posture": "BAD"}]}
+    before = client.get("/zs/api/bets", auth=AUTH).json()
+    r = client.post("/zs/api/bets/import", json=bad, auth=AUTH)
+    assert r.status_code == 422
+    assert client.get("/zs/api/bets", auth=AUTH).json() == before  # unchanged
+
+
+def test_families_persist_to_separate_files_via_api(client):
+    # mutating one family's set must not change another's
+    client.post("/zs/api/constructs/import", json={"cards": [{"name": "Only"}]}, auth=AUTH)
+    assert len(client.get("/zs/api/constructs", auth=AUTH).json()["cards"]) == 1
+    assert len(client.get("/zs/api/cards", auth=AUTH).json()["cards"]) == 6
+    assert len(client.get("/zs/api/bets", auth=AUTH).json()["cards"]) == 6

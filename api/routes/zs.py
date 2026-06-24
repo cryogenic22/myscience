@@ -16,18 +16,22 @@ Endpoints (all 401 without valid Basic credentials):
   GET    /zs                          the page (index.html)
   GET    /zs/                         "
   GET    /zs/zs-future-state-v2.jsx   the component source (fetched by the page)
-  GET    /zs/api/cards                list the editable capability cards
+
+  Editable, file-persisted card families — three of them, identical CRUD shape:
+  GET    /zs/api/cards                list the capability cards (offerings)
   GET    /zs/api/cards/export         the full card set as a downloadable JSON
   POST   /zs/api/cards                create a card
   POST   /zs/api/cards/import         replace the whole set from a posted JSON
   PUT    /zs/api/cards/{id}           update a card
   DELETE /zs/api/cards/{id}           delete a card
+  …and the same six under /zs/api/constructs* (commercial constructs) and
+  /zs/api/bets* (capability bets).
 
-The capability cards are persisted to a JSON file (no database) — see
-``services/zs_store.py``. The `/zs` first path-segment is auto-collected as an
-API prefix by the app's SPA-fallback registry, so these 200s/401s are never
-replaced with index.html. Purely additive — touches no existing route and needs
-no migration.
+The cards/constructs/bets are each persisted to their own JSON file (no
+database) — see ``services/zs_store.py`` (one family registry, N files). The
+`/zs` first path-segment is auto-collected as an API prefix by the app's
+SPA-fallback registry, so these 200s/401s are never replaced with index.html.
+Purely additive — touches no existing route and needs no migration.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from services import zs_store
 
@@ -100,78 +104,102 @@ def zs_source(_: str = Depends(require_auth)) -> FileResponse:
 
 
 # ---------------------------------------------------------------------------
-# Editable capability cards — file-backed JSON CRUD (no database).
-# All gated by the same require_auth Basic gate as the page above.
+# Editable card families — file-backed JSON CRUD (no database).
+# One factory registers the six routes (list / export / create / update /
+# delete / import) for a given family; cards / constructs / bets each get the
+# identical shape. All gated by the same require_auth Basic gate as the page.
 # ---------------------------------------------------------------------------
-def _card_or_422(payload: dict[str, Any]) -> zs_store.CapabilityCard:
-    """Build + validate a card from a request body; map invalid → 422."""
+def _card_or_422(payload: dict[str, Any], family: str) -> BaseModel:
+    """Build + validate a card for ``family`` from a request body; invalid → 422."""
+    model = zs_store.model_for(family)
     try:
-        return zs_store.CapabilityCard(**payload)
+        return model(**payload)
     except ValidationError as exc:
         raise HTTPException(
             status_code=422, detail=exc.errors(include_url=False, include_context=False)
         ) from exc
 
 
-@router.get("/api/cards", include_in_schema=False)
-def list_cards(_: str = Depends(require_auth)) -> dict[str, Any]:
-    """Return the full set of editable capability cards (seeds on first read)."""
-    return zs_store.export_dict()
+def _register_family(family: str, segment: str, download_name: str) -> None:
+    """Register the six CRUD routes for one card family under ``/zs/api/<segment>``.
+
+    ``family`` is the ``zs_store`` family key; ``segment`` the URL path segment.
+    Kept as a factory so cards/constructs/bets share one implementation and can't
+    drift apart — each closes over its own ``family`` so persistence stays per-file.
+    """
+    base = f"/api/{segment}"
+
+    @router.get(base, include_in_schema=False, name=f"list_{family}")
+    def _list(_: str = Depends(require_auth), _family: str = family) -> dict[str, Any]:
+        """Return the full set for this family (seeds the file on first read)."""
+        return zs_store.export_dict(_family)
+
+    @router.get(f"{base}/export", include_in_schema=False, name=f"export_{family}")
+    def _export(_: str = Depends(require_auth), _family: str = family) -> JSONResponse:
+        """Return the set as a downloadable JSON attachment."""
+        return JSONResponse(
+            content=zs_store.export_dict(_family),
+            headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+        )
+
+    @router.post(base, include_in_schema=False, status_code=201, name=f"create_{family}")
+    def _create(
+        payload: dict[str, Any] = Body(...),
+        _: str = Depends(require_auth),
+        _family: str = family,
+    ) -> dict[str, Any]:
+        """Create a card. Server assigns a slug id if absent; rejects dup ids → 409."""
+        card = _card_or_422(payload, _family)
+        try:
+            created = zs_store.create(card, _family)
+        except ValueError as exc:  # duplicate id
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return created.model_dump()
+
+    @router.put(f"{base}/{{card_id}}", include_in_schema=False, name=f"update_{family}")
+    def _update(
+        card_id: str,
+        payload: dict[str, Any] = Body(...),
+        _: str = Depends(require_auth),
+        _family: str = family,
+    ) -> dict[str, Any]:
+        """Replace the card at ``card_id``. 404 if it doesn't exist."""
+        card = _card_or_422(payload, _family)
+        updated = zs_store.update(card_id, card, _family)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"{segment} {card_id!r} not found")
+        return updated.model_dump()
+
+    @router.delete(f"{base}/{{card_id}}", include_in_schema=False, name=f"delete_{family}")
+    def _delete(
+        card_id: str, _: str = Depends(require_auth), _family: str = family
+    ) -> dict[str, Any]:
+        """Delete the card at ``card_id``. 404 if it doesn't exist."""
+        if not zs_store.delete(card_id, _family):
+            raise HTTPException(status_code=404, detail=f"{segment} {card_id!r} not found")
+        return {"deleted": card_id}
+
+    @router.post(f"{base}/import", include_in_schema=False, name=f"import_{family}")
+    def _import(
+        payload: dict[str, Any] = Body(...),
+        _: str = Depends(require_auth),
+        _family: str = family,
+    ) -> dict[str, Any]:
+        """Replace the entire set from a posted JSON. Validates every card → 422."""
+        try:
+            cards = zs_store.replace_all(payload, _family)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=exc.errors(include_url=False, include_context=False),
+            ) from exc
+        except ValueError as exc:  # malformed payload / duplicate ids / over-limit
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"cards": [c.model_dump() for c in cards]}
 
 
-@router.get("/api/cards/export", include_in_schema=False)
-def export_cards(_: str = Depends(require_auth)) -> JSONResponse:
-    """Return the card set as a downloadable JSON attachment."""
-    return JSONResponse(
-        content=zs_store.export_dict(),
-        headers={"Content-Disposition": 'attachment; filename="zs_capability_cards.json"'},
-    )
-
-
-@router.post("/api/cards", include_in_schema=False, status_code=201)
-def create_card(
-    payload: dict[str, Any] = Body(...), _: str = Depends(require_auth)
-) -> dict[str, Any]:
-    """Create a capability card. Server assigns a slug id if absent; rejects dup ids."""
-    card = _card_or_422(payload)
-    try:
-        created = zs_store.create(card)
-    except ValueError as exc:  # duplicate id
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return created.model_dump()
-
-
-@router.put("/api/cards/{card_id}", include_in_schema=False)
-def update_card(
-    card_id: str, payload: dict[str, Any] = Body(...), _: str = Depends(require_auth)
-) -> dict[str, Any]:
-    """Replace the card at ``card_id``. 404 if it doesn't exist."""
-    card = _card_or_422(payload)
-    updated = zs_store.update(card_id, card)
-    if updated is None:
-        raise HTTPException(status_code=404, detail=f"card {card_id!r} not found")
-    return updated.model_dump()
-
-
-@router.delete("/api/cards/{card_id}", include_in_schema=False)
-def delete_card(card_id: str, _: str = Depends(require_auth)) -> dict[str, Any]:
-    """Delete the card at ``card_id``. 404 if it doesn't exist."""
-    if not zs_store.delete(card_id):
-        raise HTTPException(status_code=404, detail=f"card {card_id!r} not found")
-    return {"deleted": card_id}
-
-
-@router.post("/api/cards/import", include_in_schema=False)
-def import_cards(
-    payload: dict[str, Any] = Body(...), _: str = Depends(require_auth)
-) -> dict[str, Any]:
-    """Replace the entire card set from a posted JSON. Validates every card → 422."""
-    try:
-        cards = zs_store.replace_all(payload)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=422, detail=exc.errors(include_url=False, include_context=False)
-        ) from exc
-    except ValueError as exc:  # malformed payload / duplicate ids
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"cards": [c.model_dump() for c in cards]}
+# Register the three families. `cards` keeps its original path + download name
+# so existing callers and tests are untouched; the two new families mirror it.
+_register_family("cards", "cards", "zs_capability_cards.json")
+_register_family("constructs", "constructs", "zs_commercial_constructs.json")
+_register_family("bets", "bets", "zs_capability_bets.json")
