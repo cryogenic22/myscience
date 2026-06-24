@@ -79,23 +79,27 @@ class TestNumericGroundingHardening:
         assert "[unverified]" not in result["narrative"]
         assert "23%" in result["narrative"]
 
-    # (2) An invented unbolded percentage absent from context is flagged.
+    # (2) An invented unbolded percentage absent from context is flagged —
+    # detected (server log / mismatches) but WITHOUT leaking a literal marker
+    # into user-facing prose (F6 / TICKET-5).
     def test_invented_percentage_is_flagged(self):
         from services.llm import verify_narrative_numbers
         narrative = "Patients saw 23% weight loss in the trial."
         result = verify_narrative_numbers(narrative, source_numbers={5, 10})
         assert result["flagged"] >= 1
-        assert "[unverified]" in result["narrative"]
-        # The figure is de-emphasised (marked), not silently kept as fact.
-        assert "23% [unverified]" in result["narrative"]
+        assert 23 in result["mismatches"]
+        assert "[unverified]" not in result["narrative"]
+        assert "23%" in result["narrative"]
 
-    # (2b) An invented multiplier ("2.5x pipeline score") is flagged.
+    # (2b) An invented multiplier ("2.5x pipeline score") is flagged — recorded,
+    # no marker leak.
     def test_invented_multiplier_is_flagged(self):
         from services.llm import verify_narrative_numbers
         narrative = "It has a 2.5x pipeline score advantage."
         result = verify_narrative_numbers(narrative, source_numbers={1.2, 8})
         assert result["flagged"] >= 1
-        assert "2.5x [unverified]" in result["narrative"]
+        assert "[unverified]" not in result["narrative"]
+        assert "2.5x" in result["narrative"]
 
     def test_grounded_multiplier_survives(self):
         from services.llm import verify_narrative_numbers
@@ -114,18 +118,23 @@ class TestNumericGroundingHardening:
         assert result["flagged"] == 0
         assert "[unverified]" not in result["narrative"]
 
-    # Bold invented numbers are unbolded AND marked (stronger than before).
-    def test_invented_bold_number_marked(self):
+    # Bold invented numbers are de-emphasised (bold removed) — no marker leak.
+    def test_invented_bold_number_demoted(self):
         from services.llm import verify_narrative_numbers
         narrative = "Pipeline score of **999** is notable."
         result = verify_narrative_numbers(narrative, source_numbers={42.5})
         assert result["flagged"] >= 1
-        assert "**999**" not in result["narrative"]   # bold removed
-        assert "999 [unverified]" in result["narrative"]
+        assert "**999**" not in result["narrative"]   # bold trust-signal removed
+        assert "999" in result["narrative"]           # number text kept
+        assert "[unverified]" not in result["narrative"]
 
-    # A flagged figure is marked exactly once (no double-marking across passes).
-    def test_no_double_marking(self):
+    # A flagged bold figure is counted exactly once (no double-count across
+    # passes) and leaves no marker / internal sentinel in the text.
+    def test_no_double_flagging(self):
         from services.llm import verify_narrative_numbers
         narrative = "Efficacy was **88%** in the cohort."
         result = verify_narrative_numbers(narrative, source_numbers={5})
-        assert result["narrative"].count("[unverified]") == 1
+        assert result["flagged"] == 1
+        assert "[unverified]" not in result["narrative"]
+        assert "\x00" not in result["narrative"]      # internal sentinel stripped
+        assert "88%" in result["narrative"]
