@@ -188,10 +188,10 @@ class KnowledgeStore:
         # Conservation: therapeutic_areas.name / mechanisms_of_action.name are
         # NOT NULL. A name-less ontology term must FAIL CLOSED as a recorded skip,
         # not crash into the dead-letter queue on a NOT NULL violation. This was
-        # the #1 DLQ cause: the open_targets connector emits target-disease
-        # association records that carry no single term name, so every one of them
-        # (3,121 and growing) silently crash-lost here. Modelling those
-        # associations as named per-disease terms is a separate follow-up.
+        # the #1 dead-letter-queue cause: the open_targets connector emits
+        # target-disease association records that carry no single term name, so
+        # every one of them silently crash-lost here. Modelling those associations
+        # as named per-disease terms is a separate follow-up.
         name = (data.get("name") or "").strip()
         if not name:
             src = getattr(prov.source_type, "value", prov.source_type)
