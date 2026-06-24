@@ -22,6 +22,7 @@ from services.ctx_pipeline import (
     ReasoningResult,
     is_company_leaders_question,
 )
+from services.llm import strip_invalid_entity_links
 
 logger = logging.getLogger(__name__)
 
@@ -843,6 +844,19 @@ def _sanitize_entity_links(narrative: str) -> str:
 
     return _MD_LINK_RE.sub(_fix, narrative)
 
+
+def _valid_entity_ids(evidence_items: list[dict]) -> set[str]:
+    """Entity ids actually present in this turn's evidence — the only ids a
+    click-through ``/entity/{type}/{id}`` link may legitimately reference. Pulls
+    the item's ``entity_id`` and any ``provenance.entity_id`` (the matrix/leader
+    items carry the resolved id there)."""
+    ids: set[str] = set()
+    for it in evidence_items:
+        for key in (it.get("entity_id"), (it.get("provenance") or {}).get("entity_id")):
+            if key:
+                ids.add(str(key))
+    return ids
+
 # Cap on candidate terms resolved per PLAN call — bounds the resolve_asset
 # fan-out (each call is up to ~5 sequential DB round-trips).
 _MAX_PLAN_CANDIDATES = 8
@@ -1083,6 +1097,16 @@ class UnifiedChatHandler:
         # Strip hallucinated/absolute entity links (the model invents example.com
         # URLs despite the relative-link protocol).
         narrative = _sanitize_entity_links(narrative)
+
+        # Strip click-through entity links whose id is a prompt-example placeholder
+        # (abc-123) or absent from this turn's evidence — a fabricated,
+        # clickable-looking citation otherwise reaches the user (reviewer F3). The
+        # entity name is kept as plain text, so no information is lost; the model
+        # rarely has a real id to copy on this path, so validating against the
+        # actual evidence ids is what makes the fake link fail closed.
+        narrative = strip_invalid_entity_links(
+            narrative, valid_entity_ids=_valid_entity_ids(evidence_items)
+        )["narrative"]
 
         # ── Guard check ── (on the model's narrative, before the deterministic footer)
         guard_result = self.pipeline.check_response(narrative, context_text)
