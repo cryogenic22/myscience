@@ -24,6 +24,7 @@ key of :data:`POOLS` and ``model`` a key of :data:`MODELS`; unknown values raise
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 # --- valid enum surfaces (mirror the .jsx POOLS / MODELS dicts) ------------
 # Keep these in sync with static/zs/zs-future-state-v2.jsx. They are the only
@@ -130,6 +133,10 @@ DEFAULT_CARDS: list[dict[str, Any]] = [
 
 _DATA_FILENAME = "capability_cards.json"
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+# Upper bound on an import payload. The deck is a curated portfolio, not a bulk
+# store; this caps an (auth-gated) internet-facing write so a runaway/abusive
+# import can't write an unbounded file. ~80x the six-card seed.
+_MAX_IMPORT_CARDS = 500
 # Serialises reads-that-seed and all writes. FastAPI may run handlers
 # concurrently (threadpool for sync defs); the file write must be atomic AND
 # the read-modify-write under list/create/update/delete must not interleave.
@@ -227,18 +234,50 @@ def _atomic_write(payload: dict[str, Any]) -> None:
     os.replace(tmp, target)  # atomic on POSIX and Windows
 
 
+def _quarantine_corrupt(f: Path) -> Path:
+    """Move a corrupt data file aside (non-clobbering) and return the backup path.
+
+    Preserves the bad bytes for recovery rather than discarding them — so a
+    re-seed is never a silent data loss.
+    """
+    backup = f.with_suffix(f.suffix + ".corrupt")
+    n = 1
+    while backup.exists():
+        backup = f.with_suffix(f.suffix + f".corrupt.{n}")
+        n += 1
+    os.replace(f, backup)  # atomic rename, keeps the original bytes
+    return backup
+
+
 def _read_raw() -> dict[str, Any]:
-    """Read the file, seeding it from defaults if absent. Returns the payload."""
+    """Read the file, seeding it from defaults if absent. Returns the payload.
+
+    If the file is present but unparseable or malformed (external edit, a partial
+    write from another tool, disk trouble), it is quarantined — moved aside to a
+    ``.corrupt`` sibling and logged — and the store re-seeds from defaults. This
+    keeps the page alive (a corrupt file would otherwise 500 every request,
+    including read) while never silently discarding the bad data.
+    """
     with _LOCK:
         f = data_file()
         if not f.is_file():
             payload = _default_payload()
             _atomic_write(payload)
             return payload
-        with open(f, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-        if not isinstance(data, dict) or not isinstance(data.get("cards"), list):
-            raise ValueError("capability_cards.json is malformed: expected {'cards': [...]}")
+        try:
+            with open(f, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if not isinstance(data, dict) or not isinstance(data.get("cards"), list):
+                raise ValueError("expected {'cards': [...]}")
+        except (json.JSONDecodeError, ValueError) as exc:
+            backup = _quarantine_corrupt(f)
+            logger.warning(
+                "zs_store: %s is corrupt (%s) — quarantined to %s, re-seeding from defaults",
+                f, exc, backup,
+            )
+            payload = _default_payload()
+            _atomic_write(payload)
+            return payload
         return data
 
 
@@ -312,6 +351,11 @@ def replace_all(payload: dict[str, Any]) -> list[CapabilityCard]:
     """
     if not isinstance(payload, dict) or not isinstance(payload.get("cards"), list):
         raise ValueError("import payload must be an object with a 'cards' list")
+    if len(payload["cards"]) > _MAX_IMPORT_CARDS:
+        raise ValueError(
+            f"import exceeds the {_MAX_IMPORT_CARDS}-card limit "
+            f"({len(payload['cards'])} cards)"
+        )
     validated: list[CapabilityCard] = []
     seen: set[str] = set()
     for raw in payload["cards"]:

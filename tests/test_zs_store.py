@@ -191,3 +191,44 @@ def test_replace_all_rejects_duplicate_ids(isolated_data_dir):
     }
     with pytest.raises(ValueError, match="duplicate"):
         zs_store.replace_all(payload)
+
+
+# --- review NIT fixes ------------------------------------------------------
+def test_corrupt_file_self_heals_and_preserves_bytes(isolated_data_dir):
+    """A corrupt data file must not 500 every read: it is quarantined (bytes
+    preserved) and the store re-seeds, so reads recover."""
+    zs_store.load()  # seed a valid file first
+    f = zs_store.data_file()
+    f.write_text("{ this is not valid json", encoding="utf-8")  # corrupt it
+
+    cards = zs_store.load()  # must NOT raise — self-heals
+    assert len(cards) == 6  # re-seeded to the canonical defaults
+
+    # the corrupt bytes are preserved (not silently discarded), recoverable
+    backups = list(isolated_data_dir.glob("capability_cards.json.corrupt*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "{ this is not valid json"
+
+
+def test_corrupt_file_with_wrong_shape_also_self_heals(isolated_data_dir):
+    """Parseable JSON but wrong shape ({} instead of {'cards': [...]}) self-heals too."""
+    zs_store.load()
+    zs_store.data_file().write_text('{"nope": 1}', encoding="utf-8")
+    cards = zs_store.load()
+    assert len(cards) == 6
+    assert list(isolated_data_dir.glob("capability_cards.json.corrupt*"))
+
+
+def test_import_over_card_limit_rejected_without_writing(isolated_data_dir):
+    """An oversized import is rejected before any write (auth-gated DoS guard)."""
+    zs_store.load()
+    before = zs_store.export_dict()
+    too_many = {
+        "cards": [
+            {"name": f"c{i}", "pool": "ai", "model": "hybrid", "size": 0.1, "start": 1, "attain": 10}
+            for i in range(zs_store._MAX_IMPORT_CARDS + 1)
+        ]
+    }
+    with pytest.raises(ValueError, match="limit"):
+        zs_store.replace_all(too_many)
+    assert zs_store.export_dict() == before  # nothing written
