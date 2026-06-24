@@ -258,6 +258,14 @@ except Exception as _e:
     logger.error("Failed to import hub router (DataHub D-API-1): %s", _e)
     _HUB_ROUTER_OK = False
 
+# Password-gated standalone ZS Future State page (own /zs prefix, HTTP Basic auth)
+try:
+    from api.routes import zs as zs_route
+    _ZS_ROUTER_OK = True
+except Exception as _e:
+    logger.error("Failed to import zs router: %s", _e)
+    _ZS_ROUTER_OK = False
+
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
@@ -410,6 +418,8 @@ def create_app() -> FastAPI:
         all_routers.append(eval_route.router)        # Track I — /eval (own prefix)
     if _HUB_ROUTER_OK:
         all_routers.append(hub_route.router)         # DataHub D-API-1 — /hub (own prefix)
+    if _ZS_ROUTER_OK:
+        all_routers.append(zs_route.router)          # password-gated /zs static page
     for r in all_routers:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
