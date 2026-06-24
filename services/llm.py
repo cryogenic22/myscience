@@ -346,7 +346,9 @@ def qualify_count_as_quality(narrative: str) -> dict:
     changed = 0
     out = narrative
     # %-bearing market-share first, so the bare pass doesn't double-handle them.
-    out, n = _PCT_MARKET_SHARE_RE.subn(rf"\1 {_COUNT_BASIS}", out)
+    # Keep the "share" noun (reviewer nit: "<pct> {basis}" alone left a dangling
+    # article — "a 34.3% by ingested count"); "<pct> share {basis}" reads cleanly.
+    out, n = _PCT_MARKET_SHARE_RE.subn(rf"\1 share {_COUNT_BASIS}", out)
     changed += n
     out, n = _MARKET_SHARE_OF_PCT_RE.subn(rf"\1 share {_COUNT_BASIS}", out)
     changed += n
@@ -356,6 +358,18 @@ def qualify_count_as_quality(narrative: str) -> dict:
     changed += n
     if changed:
         out = re.sub(r"[ \t]{2,}", " ", out)
+        # Re-capitalize an inserted phrase that landed at a sentence start (reviewer
+        # nit: bare "Market share …"/"Robust pipeline …" rewrote to a lowercase
+        # sentence opener). Scoped to the inserted phrases only — avoids the
+        # e.g./i.e. false-capitalization a broad sentence-start pass would cause.
+        out = re.sub(
+            r"(^|[.!?]\s|\n)(share by ingested count)",
+            lambda m: m.group(1) + "Share by ingested count", out,
+        )
+        out = re.sub(
+            r"(^|[.!?]\s|\n)broad (pipeline|portfolio)",
+            lambda m: m.group(1) + "Broad " + m.group(2), out,
+        )
     return {"narrative": out, "changed": changed}
 
 

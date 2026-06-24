@@ -98,6 +98,35 @@ class TestQualifyCountAsQuality:
         assert out["narrative"] == text
         assert out["changed"] == 0
 
+    def test_pct_market_share_keeps_share_noun_no_dangling_article(self):
+        """Reviewer nit: '<pct> market share' must keep the 'share' noun so 'a
+        34.3% market share' doesn't rewrite to a dangling 'a 34.3% by ingested…'."""
+        from services.llm import qualify_count_as_quality
+
+        out = qualify_count_as_quality(
+            "Novo Nordisk holds a 34.3% market share in the obesity space."
+        )["narrative"]
+        assert "a 34.3% share by ingested count (not sales-based)" in out
+        assert "market share" not in out
+
+    def test_sentence_initial_bare_market_share_recapitalized(self):
+        """Reviewer nit: 'Market share …' at a sentence start must not rewrite to a
+        lowercase opener."""
+        from services.llm import qualify_count_as_quality
+
+        out = qualify_count_as_quality("Market share is led by Novo Nordisk.")["narrative"]
+        assert out.startswith("Share by ingested count")
+        out2 = qualify_count_as_quality(
+            "Novo leads. Market share matters less than data."
+        )["narrative"]
+        assert ". Share by ingested count" in out2
+
+    def test_sentence_initial_robust_pipeline_recapitalized(self):
+        from services.llm import qualify_count_as_quality
+
+        out = qualify_count_as_quality("Robust pipeline drives the story here.")["narrative"]
+        assert out.startswith("Broad pipeline")
+
     def test_idempotent(self):
         from services.llm import qualify_count_as_quality
 
