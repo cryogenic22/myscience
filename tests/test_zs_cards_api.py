@@ -335,3 +335,37 @@ def test_families_persist_to_separate_files_via_api(client):
     assert len(client.get("/zs/api/constructs", auth=AUTH).json()["cards"]) == 1
     assert len(client.get("/zs/api/cards", auth=AUTH).json()["cards"]) == 6
     assert len(client.get("/zs/api/bets", auth=AUTH).json()["cards"]) == 6
+
+
+# --- regression: `family` is NOT a client-controllable query param ---------
+def test_family_is_not_a_client_query_param(client):
+    """Regression for the review finding: the handlers used to take
+    ``_family: str = family``, which FastAPI promoted to a ``?_family=`` query
+    param — a caller could cross-read/write another family's file (and a bogus
+    value 500'd). The family is now bound from the route closure only."""
+    cards_ids = {c["id"] for c in client.get("/zs/api/cards", auth=AUTH).json()["cards"]}
+    bets_ids = {c["id"] for c in client.get("/zs/api/bets", auth=AUTH).json()["cards"]}
+    assert cards_ids != bets_ids  # sanity: the two families seed differently
+
+    # a query param must NOT switch which family /api/cards reads (try both names)
+    for qp in ("_family", "family"):
+        r = client.get("/zs/api/cards", params={qp: "bets"}, auth=AUTH)
+        assert r.status_code == 200
+        assert {c["id"] for c in r.json()["cards"]} == cards_ids  # still cards
+
+    # a bogus family value must not 500 — it's simply ignored
+    r = client.get("/zs/api/cards", params={"_family": "nonsense"}, auth=AUTH)
+    assert r.status_code == 200
+    assert {c["id"] for c in r.json()["cards"]} == cards_ids
+
+    # a write to /api/cards must land in cards, never cross into bets
+    r = client.post(
+        "/zs/api/cards", params={"_family": "bets"},
+        json={"name": "Sneaky", "pool": "ai", "model": "hybrid", "size": 0.1, "start": 1, "attain": 10},
+        auth=AUTH,
+    )
+    assert r.status_code == 201
+    assert "sneaky" in {c["id"] for c in client.get("/zs/api/cards", auth=AUTH).json()["cards"]}
+    bets_after = client.get("/zs/api/bets", auth=AUTH).json()["cards"]
+    assert "sneaky" not in {c["id"] for c in bets_after}
+    assert len(bets_after) == 6  # bets untouched

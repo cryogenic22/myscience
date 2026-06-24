@@ -126,19 +126,25 @@ def _register_family(family: str, segment: str, download_name: str) -> None:
     ``family`` is the ``zs_store`` family key; ``segment`` the URL path segment.
     Kept as a factory so cards/constructs/bets share one implementation and can't
     drift apart — each closes over its own ``family`` so persistence stays per-file.
+
+    INVARIANT: handlers reference the ``family`` closure variable DIRECTLY and must
+    NOT take it as a parameter. A bare ``family: str`` (even with a default) in a
+    handler signature would be promoted by FastAPI to a client-settable query
+    param (``?family=bets``), letting a caller cross-read/write another family's
+    file. The closure binds it at registration; the client cannot influence it.
     """
     base = f"/api/{segment}"
 
     @router.get(base, include_in_schema=False, name=f"list_{family}")
-    def _list(_: str = Depends(require_auth), _family: str = family) -> dict[str, Any]:
+    def _list(_: str = Depends(require_auth)) -> dict[str, Any]:
         """Return the full set for this family (seeds the file on first read)."""
-        return zs_store.export_dict(_family)
+        return zs_store.export_dict(family)
 
     @router.get(f"{base}/export", include_in_schema=False, name=f"export_{family}")
-    def _export(_: str = Depends(require_auth), _family: str = family) -> JSONResponse:
+    def _export(_: str = Depends(require_auth)) -> JSONResponse:
         """Return the set as a downloadable JSON attachment."""
         return JSONResponse(
-            content=zs_store.export_dict(_family),
+            content=zs_store.export_dict(family),
             headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
         )
 
@@ -146,12 +152,11 @@ def _register_family(family: str, segment: str, download_name: str) -> None:
     def _create(
         payload: dict[str, Any] = Body(...),
         _: str = Depends(require_auth),
-        _family: str = family,
     ) -> dict[str, Any]:
         """Create a card. Server assigns a slug id if absent; rejects dup ids → 409."""
-        card = _card_or_422(payload, _family)
+        card = _card_or_422(payload, family)
         try:
-            created = zs_store.create(card, _family)
+            created = zs_store.create(card, family)
         except ValueError as exc:  # duplicate id
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return created.model_dump()
@@ -161,21 +166,20 @@ def _register_family(family: str, segment: str, download_name: str) -> None:
         card_id: str,
         payload: dict[str, Any] = Body(...),
         _: str = Depends(require_auth),
-        _family: str = family,
     ) -> dict[str, Any]:
         """Replace the card at ``card_id``. 404 if it doesn't exist."""
-        card = _card_or_422(payload, _family)
-        updated = zs_store.update(card_id, card, _family)
+        card = _card_or_422(payload, family)
+        updated = zs_store.update(card_id, card, family)
         if updated is None:
             raise HTTPException(status_code=404, detail=f"{segment} {card_id!r} not found")
         return updated.model_dump()
 
     @router.delete(f"{base}/{{card_id}}", include_in_schema=False, name=f"delete_{family}")
     def _delete(
-        card_id: str, _: str = Depends(require_auth), _family: str = family
+        card_id: str, _: str = Depends(require_auth)
     ) -> dict[str, Any]:
         """Delete the card at ``card_id``. 404 if it doesn't exist."""
-        if not zs_store.delete(card_id, _family):
+        if not zs_store.delete(card_id, family):
             raise HTTPException(status_code=404, detail=f"{segment} {card_id!r} not found")
         return {"deleted": card_id}
 
@@ -183,11 +187,10 @@ def _register_family(family: str, segment: str, download_name: str) -> None:
     def _import(
         payload: dict[str, Any] = Body(...),
         _: str = Depends(require_auth),
-        _family: str = family,
     ) -> dict[str, Any]:
         """Replace the entire set from a posted JSON. Validates every card → 422."""
         try:
-            cards = zs_store.replace_all(payload, _family)
+            cards = zs_store.replace_all(payload, family)
         except ValidationError as exc:
             raise HTTPException(
                 status_code=422,
