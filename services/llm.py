@@ -102,18 +102,27 @@ _CONGRESS_ACRONYMS = (
     "EASD", "ADA", "ACR", "EULAR", "AAN", "ATS", "ERS", "DDW", "UEG", "EASL",
     "AASLD", "ASN", "ENDO", "ECTRIMS", "AAIC", "CTAD", "ISTH", "ASBMR",
 )
-# Acronym (word-bounded) + an optional adjacent 4-digit year. Case-sensitive (no
-# re.I) — the acronyms are uppercase, so a lowercase homonym is never matched.
+# Plausible conference year (1900-2099), bounded so a dose / id ("ASCO 90210",
+# "ESC 1234 study") is never misread as a year.
+_CONF_YEAR = r"(?:19|20)\d{2}"
+# A meeting/event noun that, DIRECTLY ADJACENT to the acronym, disambiguates it from
+# a clinical homonym (ADA = anti-drug antibody, ESC = embryonic stem cell, ACC =
+# acetyl-CoA-carboxylase). Adjacency is the safeguard: a meeting word elsewhere in
+# the sentence must NOT promote a bare homonym (the prior whole-question scan made
+# "Were ADA results presented?" fire — the exact over-firing class a past
+# _TRIAL_COUNT_RE bug already cost a PR).
+_MEETING_NOUN = (
+    r"(?:annual\s+)?(?:congress|conference|meeting|symposi\w+|sessions?|summit|"
+    r"abstracts?|plenar\w+|presentations?|readouts?)"
+)
+# Acronym + a REQUIRED-ADJACENT disambiguator. Groups: g1=acronym, g2=year (opt),
+# g3=trailing meeting noun (opt); a fire needs g2 OR g3 (enforced in the detector).
+# The acronym stays case-sensitive (no global re.I) so a lowercase homonym is never
+# matched; the year/meeting parts are inherently/scoped case-insensitive.
 _CONGRESS_RE = re.compile(
     r"\b(" + "|".join(re.escape(a) for a in _CONGRESS_ACRONYMS) + r")\b"
-    r"(?:[\s,'’-]+(\d{4}))?"
-)
-# A bare acronym is ambiguous (a ticker, a gene); only treat it as a NAMED EVENT
-# anchor when a year is attached OR the question is event-shaped (a meeting word).
-_MEETING_CTX_RE = re.compile(
-    r"\b(congress|conference|meeting|annual|symposi\w+|sessions?|abstracts?|"
-    r"plenar\w+|presentation|present(?:ed|ing|s)?|late.?break\w*|readouts?|summit)\b",
-    re.I,
+    r"(?:[\s,'’-]+(" + _CONF_YEAR + r")\b)?"
+    r"(?:\s+(?i:(" + _MEETING_NOUN + r")))?"
 )
 # Attribution verbs the model uses to source claims to an event subject.
 _EVENT_ATTRIB_VERB = (
@@ -121,29 +130,35 @@ _EVENT_ATTRIB_VERB = (
     r"feature\w*|demonstrat\w*|unveil\w*|spotlight\w*|focus\w*|underscor\w*|"
     r"emphasi[sz]\w*|cover\w*|includ\w*"
 )
+# Intervening event-noun a subject attribution may carry ("ASCO 2025's DATA showed",
+# "the ASCO 2025 ABSTRACTS demonstrated") between the event and the verb.
+_EVENT_SUBJECT_NOUN = r"data|abstracts?|results?|readouts?|sessions?|presentations?|trials?|studies|findings?"
 
 
 def detect_out_of_corpus_events(question: str, evidence_text: str = "") -> list[dict]:
     """Named congress/event anchors in ``question`` that the retrieved evidence
     never mentions — i.e. out of corpus. Returns ``[{"acronym","year","display"}]``.
 
-    Conservative on two axes (over-firing strips real prose): a match counts as a
-    NAMED EVENT only with an attached year OR an event-context word in the question,
-    and it is OUT OF CORPUS only when the acronym token is absent from the evidence.
-    Year-specificity is intentionally NOT enforced — requiring an exact-year match
-    would over-fire when the corpus holds the same congress for a different year.
+    Conservative on three axes (over-firing strips real prose):
+      * a match counts as a NAMED EVENT only when a year OR a meeting noun is
+        DIRECTLY ADJACENT to the acronym — a bare clinical homonym (ADA antibody,
+        ESC stem cell) with a meeting word elsewhere in the sentence does NOT fire;
+      * acronyms are matched case-sensitively (uppercase), so a lowercase homonym
+        ("chest", "endo", "ada") is never matched;
+      * an anchor is OUT OF CORPUS only when its acronym token is absent from the
+        evidence. Year-specificity is intentionally NOT enforced — an exact-year
+        match would over-fire when the corpus holds the congress for another year.
     """
     q = question or ""
     if not q:
         return []
-    has_meeting_ctx = bool(_MEETING_CTX_RE.search(q))
     blob = evidence_text or ""
     events: list[dict] = []
     seen: set[str] = set()
     for m in _CONGRESS_RE.finditer(q):
-        acronym, year = m.group(1), m.group(2)
-        if not year and not has_meeting_ctx:
-            continue
+        acronym, year, meeting = m.group(1), m.group(2), m.group(3)
+        if not year and not meeting:
+            continue  # bare homonym, no adjacent year/meeting noun — not an event
         if re.search(rf"\b{re.escape(acronym)}\b", blob):
             continue  # supported — the congress appears in the retrieved evidence
         display = f"{acronym} {year}" if year else acronym
@@ -158,34 +173,50 @@ def strip_unsupported_event_attributions(narrative: str, events: list[dict]) -> 
     """Neutralize attributions to out-of-corpus named events in ``narrative``.
 
     Two deterministic rewrites, keeping the surrounding (real) prose:
-      * prepositional — "... at/from/during/per [the] <event> [meeting] ..." → drop
-        the attribution clause (the finding was not sourced to that event).
-      * subject — "<event> highlighted/showed/reported ..." → "the available
-        evidence <verb> ..." (the claim survives; the false source does not).
+      * prepositional — "... at/from/during/per/according to [the] <event>
+        [meeting] ..." → drop the attribution clause (it was not sourced there).
+      * subject — "[The] <event>['s] [data/abstracts] highlighted/showed/reported
+        ..." → "the available evidence <verb> ..." (the claim survives, the false
+        source does not). Consumes a leading article so no "The the" is left.
     Idempotent. Returns ``{"narrative": str, "stripped": int}``.
     """
     if not narrative or not events:
         return {"narrative": narrative or "", "stripped": 0}
     acr_alt = "|".join(re.escape(e["acronym"]) for e in events)
-    # acronym + optional year + optional trailing meeting noun (case-insensitive
-    # only on the year-joiner/meeting-noun parts; the acronym stays case-sensitive).
+    # acronym + optional bounded year + optional trailing meeting noun. Acronym
+    # case-sensitive; year/meeting parts scoped case-insensitive.
     anchor = (
-        rf"(?:{acr_alt})\b(?:\s*['’-]?\s*\d{{4}})?"
-        rf"(?:\s+(?i:(?:annual\s+)?(?:meeting|congress|conference|symposium|sessions?|summit)))?"
+        rf"(?:{acr_alt})\b(?:[\s,'’-]+{_CONF_YEAR}\b)?"
+        rf"(?:\s+(?i:{_MEETING_NOUN}))?"
     )
-    # 1) prepositional attribution → removed
-    prep = re.compile(rf"\s*(?i:\b(?:at|during|from|per)\b)\s+(?:(?i:the)\s+)?{anchor}")
+    # 1) prepositional attribution → removed (incl. "according to" / "as reported at")
+    prep = re.compile(
+        rf"\s*(?i:\b(?:at|during|from|per|according\s+to|"
+        rf"as\s+(?:reported|presented|shown)(?:\s+(?:at|by|in|during))?)\b)"
+        rf"\s+(?:(?i:the)\s+)?{anchor}"
+    )
     out, n1 = prep.subn("", narrative)
-    # 2) "<event> <verb>" subject → "the available evidence <verb>"
-    subj = re.compile(rf"\b{anchor}\s+((?i:{_EVENT_ATTRIB_VERB})\b)")
+    # 2) "[The] <event>['s] [noun] <verb>" subject → "the available evidence <verb>"
+    subj = re.compile(
+        rf"(?i:\bthe\s+)?\b{anchor}(?:['’]s)?"
+        rf"(?:\s+(?i:{_EVENT_SUBJECT_NOUN}))?\s+((?i:{_EVENT_ATTRIB_VERB})\b)"
+    )
     out, n2 = subj.subn(r"the available evidence \1", out)
     stripped = n1 + n2
     if stripped:
-        out = re.sub(r"[ \t]{2,}", " ", out)
-        out = re.sub(r"\s+([.,;:])", r"\1", out)
-        # capitalize a sentence-initial reframed subject
+        out = re.sub(r"[ \t]{2,}", " ", out)             # collapse double spaces
+        out = re.sub(r"\s+([.,;:])", r"\1", out)         # space before punctuation
+        out = re.sub(r"(^|[.!?]\s+)\s*,\s*", r"\1", out) # orphan comma at sentence start
+        out = re.sub(r"^\s+", "", out)                   # leading whitespace
+        # capitalize the sentence-initial reframed subject
         out = re.sub(
             r"(^|(?<=[.!?]\s))the available evidence", "The available evidence", out
+        )
+        # recapitalize a sentence start lowercased by a removed prep clause; guarded
+        # by a following lowercase letter so acronyms/terms (mRNA, siRNA) survive.
+        out = re.sub(
+            r"(^|[.!?]\s+)([a-z])(?=[a-z])",
+            lambda mm: mm.group(1) + mm.group(2).upper(), out,
         )
     return {"narrative": out, "stripped": stripped}
 

@@ -90,6 +90,39 @@ class TestDetectOutOfCorpusEvents:
 
         assert detect_out_of_corpus_events("", evidence_text="x") == []
 
+    @pytest.mark.parametrize("q", [
+        "Were ADA results presented for the immunogenicity cohort?",  # ADA = anti-drug antibody
+        "Summarize ESC-derived cardiomyocyte abstracts.",             # ESC = embryonic stem cell
+        "Were ACC inhibitor data presented?",                         # ACC = acetyl-CoA-carboxylase
+        "What AHA-classified events were reported in the readout?",
+        "Which ATS criteria abstracts exist?",
+        "Were ASN dosing data presented?",
+    ])
+    def test_homonym_acronym_with_distant_meeting_word_does_not_fire(self, q):
+        """A clinical-homonym acronym must NOT fire just because a meeting/
+        presentation word appears elsewhere in the question — the disambiguator
+        must be DIRECTLY ADJACENT. (Reviewer finding #1: the over-firing class a
+        past _TRIAL_COUNT_RE bug already cost a PR.)"""
+        from services.llm import detect_out_of_corpus_events
+
+        assert detect_out_of_corpus_events(q, evidence_text="") == []
+
+    def test_meeting_noun_adjacent_fires_without_year(self):
+        from services.llm import detect_out_of_corpus_events
+
+        assert [e["acronym"] for e in detect_out_of_corpus_events(
+            "Summarize key abstracts presented at the ESMO congress.", ""
+        )] == ["ESMO"]
+
+    def test_bogus_year_not_captured(self):
+        """A 5-digit dose/id must not be read as a 4-digit year (reviewer #5)."""
+        from services.llm import detect_out_of_corpus_events
+
+        events = detect_out_of_corpus_events("ASCO 90210 abstracts presented", "")
+        # fires via the adjacent meeting noun "abstracts", but no bogus year leaks
+        assert all(e["year"] is None for e in events)
+        assert all("9021" not in e["display"] for e in events)
+
 
 class TestStripUnsupportedEventAttributions:
     """Pure function: services.llm.strip_unsupported_event_attributions."""
@@ -137,6 +170,50 @@ class TestStripUnsupportedEventAttributions:
         out = strip_unsupported_event_attributions(text, [])
         assert out["narrative"] == text
         assert out["stripped"] == 0
+
+    def test_subject_reframe_consumes_leading_article(self):
+        """No "The the available evidence" dangling article (reviewer #2)."""
+        from services.llm import strip_unsupported_event_attributions
+
+        out = strip_unsupported_event_attributions(
+            "The ASCO 2025 meeting revealed new oncology data [1].", self._events()
+        )
+        assert "the the" not in out["narrative"].lower()
+        assert out["narrative"].startswith("The available evidence revealed")
+
+    def test_prepositional_strip_leaves_clean_grammar(self):
+        """No leading space / orphan comma / lowercase sentence start (reviewer #3)."""
+        from services.llm import strip_unsupported_event_attributions
+
+        assert strip_unsupported_event_attributions(
+            "At ASCO 2025 the trial showed benefit.", self._events()
+        )["narrative"] == "The trial showed benefit."
+        assert strip_unsupported_event_attributions(
+            "During ASCO 2025 sessions, ORR rose.", self._events()
+        )["narrative"] == "ORR rose."
+
+    def test_according_to_and_possessive_phrasings(self):
+        """"According to <event>" + "<event>'s data" attributions (reviewer #4)."""
+        from services.llm import strip_unsupported_event_attributions
+
+        assert "ASCO 2025" not in strip_unsupported_event_attributions(
+            "According to ASCO 2025, oncology readouts were strong.", self._events()
+        )["narrative"]
+        out = strip_unsupported_event_attributions(
+            "ASCO 2025's data showed cardiovascular benefit.", self._events()
+        )
+        assert "ASCO 2025" not in out["narrative"]
+        assert "the available evidence" in out["narrative"].lower()
+
+    def test_reframe_preserves_internal_caps_terms(self):
+        """The sentence-start recapitalization must not mangle mRNA/siRNA."""
+        from services.llm import strip_unsupported_event_attributions
+
+        out = strip_unsupported_event_attributions(
+            "At ASCO 2025 mRNA platforms were discussed.", self._events()
+        )
+        assert "mRNA" in out["narrative"]
+        assert "MRNA" not in out["narrative"]
 
 
 class TestPostValidateFloor:
