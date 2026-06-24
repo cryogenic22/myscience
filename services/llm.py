@@ -145,9 +145,10 @@ def detect_out_of_corpus_events(question: str, evidence_text: str = "") -> list[
         ESC stem cell) with a meeting word elsewhere in the sentence does NOT fire;
       * acronyms are matched case-sensitively (uppercase), so a lowercase homonym
         ("chest", "endo", "ada") is never matched;
-      * an anchor is OUT OF CORPUS only when its acronym token is absent from the
-        evidence. Year-specificity is intentionally NOT enforced — an exact-year
-        match would over-fire when the corpus holds the congress for another year.
+      * an anchor is OUT OF CORPUS when its congress is absent from the evidence —
+        YEAR-SPECIFIC when the question names a year (ASCO 2024 evidence does not
+        support an ASCO 2025 question; pharma congress data is year-bound), and
+        acronym-level when no year is requested.
     """
     q = question or ""
     if not q:
@@ -159,8 +160,24 @@ def detect_out_of_corpus_events(question: str, evidence_text: str = "") -> list[
         acronym, year, meeting = m.group(1), m.group(2), m.group(3)
         if not year and not meeting:
             continue  # bare homonym, no adjacent year/meeting noun — not an event
-        if re.search(rf"\b{re.escape(acronym)}\b", blob):
-            continue  # supported — the congress appears in the retrieved evidence
+        # Support is YEAR-SPECIFIC when the question names a year: pharma congress
+        # data is year-bound, so ASCO 2024 evidence must NOT support an ASCO 2025
+        # question (reviewer finding). The acronym and the requested year must be
+        # CO-LOCATED in the evidence — a short window, either order, within a line
+        # — so an incidental "2025" elsewhere (an approval/enrollment date, a trial
+        # id) cannot stand in for actual ASCO-2025 coverage (independent whole-blob
+        # searches were defeated by any stray year token; reviewer NIT). With no
+        # requested year, acronym-level support is sufficient.
+        if year:
+            acr = re.escape(acronym)
+            supported = bool(
+                re.search(rf"\b{acr}\b.{{0,8}}?\b{year}\b", blob)
+                or re.search(rf"\b{year}\b.{{0,8}}?\b{acr}\b", blob)
+            )
+        else:
+            supported = bool(re.search(rf"\b{re.escape(acronym)}\b", blob))
+        if supported:
+            continue  # the requested congress (+ year, if named) is in the evidence
         display = f"{acronym} {year}" if year else acronym
         if display in seen:
             continue

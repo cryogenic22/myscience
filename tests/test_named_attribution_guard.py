@@ -47,14 +47,66 @@ class TestDetectOutOfCorpusEvents:
         assert events[0]["year"] == "2025"
         assert events[0]["display"] == "ASCO 2025"
 
-    def test_anchor_present_in_evidence_is_supported(self):
+    def test_anchor_with_matching_year_in_evidence_is_supported(self):
         from services.llm import detect_out_of_corpus_events
 
         events = detect_out_of_corpus_events(
             "What were the oncology readouts at ASCO 2025?",
-            evidence_text="The ASCO abstract reported a 30% ORR in the cohort.",
+            evidence_text="The ASCO 2025 abstract reported a 30% ORR in the cohort.",
         )
-        assert events == []  # the congress IS in the evidence — not fabricated
+        assert events == []  # the requested congress + year IS in the evidence
+
+    def test_wrong_year_in_evidence_is_still_out_of_corpus(self):
+        """A requested year is material in pharma: ASCO 2024 evidence must NOT
+        support an ASCO 2025 question (reviewer finding — year-specific support)."""
+        from services.llm import detect_out_of_corpus_events
+
+        events = detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text="ASCO 2024 abstract reported results.",
+        )
+        assert [e["display"] for e in events] == ["ASCO 2025"]
+
+    def test_incidental_year_elsewhere_does_not_count_as_support(self):
+        """The acronym and requested year must be CO-LOCATED. An incidental "2025"
+        elsewhere in the blob (an approval/enrollment date, a trial id) must NOT
+        stand in for ASCO-2025 coverage (reviewer NIT — independent whole-blob
+        searches were defeated by any stray year token)."""
+        from services.llm import detect_out_of_corpus_events
+
+        events = detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text=(
+                "ASCO 2024 abstract reported results. "
+                "Separately, the FDA approved tirzepatide in March 2025."
+            ),
+        )
+        assert [e["display"] for e in events] == ["ASCO 2025"]
+
+    def test_co_located_year_either_order_is_supported(self):
+        """Co-location holds in either order ('2025 ASCO' as well as 'ASCO 2025')
+        and across short separators — don't over-fire on real coverage."""
+        from services.llm import detect_out_of_corpus_events
+
+        assert detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text="Highlights from the 2025 ASCO annual meeting were strong.",
+        ) == []
+        assert detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text="Data presented at ASCO (2025) showed a durable response.",
+        ) == []
+
+    def test_no_year_requested_acronym_support_is_sufficient(self):
+        """With no year in the question, acronym-level support is fine (a different
+        year in the evidence still counts) — don't over-fire."""
+        from services.llm import detect_out_of_corpus_events
+
+        events = detect_out_of_corpus_events(
+            "Summarize the abstracts at the ESMO congress.",
+            evidence_text="ESMO 2023 featured key oncology data.",
+        )
+        assert events == []
 
     def test_bare_acronym_without_year_or_meeting_context_does_not_fire(self):
         """A bare congress acronym with no year and no event-context word is too
