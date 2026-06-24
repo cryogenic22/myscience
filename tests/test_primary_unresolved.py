@@ -106,6 +106,23 @@ class TestReasonPrimaryUnresolved:
         r = pipeline.reason(plan, _retrieval("Some GLP-1 segments"))
         assert r.primary_unresolved is False
 
+    def test_general_intent_whats_form_subject_absent_fires(self, pipeline):
+        """Reviewer nit #1: 'what's X' classifies as 'general' but is subject-shaped;
+        the dossier-subject branch must reach it (regex was broader than the gate)."""
+        plan = _plan(entities_detected=[], intent="general",
+                     original_question="what's Foobarib",
+                     resolved_question="what's Foobarib")
+        r = pipeline.reason(plan, _retrieval("DRUG-SEMAGLUTIDE\nMECHANISM: GLP-1 agonist"))
+        assert r.primary_unresolved is True
+
+    def test_general_intent_non_subject_form_does_not_fire(self, pipeline):
+        """A 'general' question that is NOT subject-shaped yields no subject tokens
+        and must not fire."""
+        plan = _plan(entities_detected=[], intent="general",
+                     original_question="How does the pipeline look overall?")
+        r = pipeline.reason(plan, _retrieval("Some pipeline data"))
+        assert r.primary_unresolved is False
+
 
 class TestUnresolvedLead:
     def test_names_subject(self):

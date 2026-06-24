@@ -629,8 +629,13 @@ class CTXQueryPipeline:
         primary_unresolved = False
         if plan.entities_detected:
             primary_unresolved = len(found_entities) == 0
-        elif plan.intent == "dossier":
-            # "tell me about X" with no entity resolved — check the subject directly.
+        elif plan.intent in ("dossier", "general"):
+            # A subject-shaped question ("tell me about / what is / what's / info on
+            # … X") with no entity resolved — check the subject against context.
+            # `_dossier_subject` returns '' for non-subject forms, so a bare
+            # category/general question yields no tokens and never fires. Covering
+            # "general" too (not just "dossier") aligns firing with the subject regex
+            # — the classifier routes "what's X" / "info on X" to "general".
             toks = _subject_tokens(_dossier_subject(plan.resolved_question or plan.original_question))
             if toks:
                 primary_unresolved = not any(t in context_text for t in toks)
