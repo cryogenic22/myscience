@@ -34,7 +34,7 @@ from connectors.base import (
 from integration.normalizer import Normalizer, NormalizedRecord
 from integration.entity_resolver import EntityResolver, ResolvedRecord
 from integration.embedder import Embedder, EmbeddedRecord
-from integration.knowledge_store import KnowledgeStore
+from integration.knowledge_store import KnowledgeStore, RecordSkipped
 from integration.cross_linker import CrossLinker
 from integration.data_quality import DataQualityEngine
 from integration.pipeline_hooks import (
@@ -391,7 +391,14 @@ class IntegrationPipeline:
                 return
 
         # Step 4: Store
-        stored_id, was_insert = self.store.store(embedded, etl_run_id)
+        try:
+            stored_id, was_insert = self.store.store(embedded, etl_run_id)
+        except RecordSkipped as skip:
+            # Conservation: a deliberate, recorded skip (e.g. a name-less ontology
+            # term) — count it, don't crash into the dead-letter queue.
+            result.records_skipped += 1
+            logger.info("Skipped record %s: %s", record.external_id, skip)
+            return
 
         if was_insert:
             result.records_inserted += 1
