@@ -18,6 +18,14 @@ from integration.embedder import EmbeddedRecord
 
 logger = logging.getLogger(__name__)
 
+
+class RecordSkipped(Exception):
+    """A record that cannot be stored but is NOT a failure — a deliberate,
+    recorded skip (conservation: fail closed, count the drop, don't crash into
+    the dead-letter queue). The pipeline catches this and increments
+    ``records_skipped`` instead of routing to ``_dlq_insert``."""
+
+
 # Precision-safe floor for grounding a news event by mining its headline (the
 # same posture as the signal promoter): only full canonical names (0.9) and
 # hand-vetted aliases (0.85) ground an entity; a weak word-like auto-alias (0.72)
@@ -177,6 +185,21 @@ class KnowledgeStore:
         prov = record.resolved.normalized.raw.provenance
         term_type = data.get("term_type", "therapeutic_area")
 
+        # Conservation: therapeutic_areas.name / mechanisms_of_action.name are
+        # NOT NULL. A name-less ontology term must FAIL CLOSED as a recorded skip,
+        # not crash into the dead-letter queue on a NOT NULL violation. This was
+        # the #1 DLQ cause: the open_targets connector emits target-disease
+        # association records that carry no single term name, so every one of them
+        # (3,121 and growing) silently crash-lost here. Modelling those
+        # associations as named per-disease terms is a separate follow-up.
+        name = (data.get("name") or "").strip()
+        if not name:
+            src = getattr(prov.source_type, "value", prov.source_type)
+            raise RecordSkipped(
+                f"ontology term has no name "
+                f"(source={src}, external_id={record.resolved.normalized.raw.external_id})"
+            )
+
         table = (
             "therapeutic_areas"
             if term_type == "therapeutic_area"
@@ -199,7 +222,7 @@ class KnowledgeStore:
                 WHERE id = %s
                 """,
                 [
-                    data.get("name"),
+                    name,
                     data.get("tree_numbers"),
                     data.get("parent_mesh_id"),
                     data.get("scope_note"),
@@ -221,7 +244,7 @@ class KnowledgeStore:
                 RETURNING id
                 """,
                 [
-                    data.get("name"),
+                    name,
                     data.get("mesh_id"),
                     data.get("tree_numbers"),
                     data.get("parent_mesh_id"),
