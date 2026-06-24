@@ -103,6 +103,17 @@ def main() -> None:
         db.close()
         return
 
+    # Atomicity of this replay (all upserts + the status flip commit together or
+    # not at all) holds ONLY in single-connection mode: Database.transaction()
+    # yields `self` and toggles self._conn.autocommit when pool_size=0. In pooled
+    # mode it yields a _TxnView that store._store_ontology_term / db.execute would
+    # bypass — silently splitting the work across connections. Fail closed if that
+    # assumption is ever broken rather than commit a half-applied recovery.
+    assert db._pool is None, (
+        "recover_open_targets_dlq requires single-connection mode (pool_size=0) "
+        "for an atomic replay; refusing to run against a pooled Database."
+    )
+
     inserted = updated = 0
     with db.transaction():
         for did, dn in distinct.items():
