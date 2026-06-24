@@ -21,6 +21,7 @@ from services.ctx_pipeline import (
     RetrievalResult,
     ReasoningResult,
     is_company_leaders_question,
+    _dossier_subject,
 )
 from services.llm import (
     correct_false_absence_claims,
@@ -952,6 +953,28 @@ def _lead_with_indication(segments: list[dict], indication: Optional[str]) -> li
     return lead + rest
 
 
+def _unresolved_lead(plan: "QueryPlan") -> str:
+    """An honest 'no confident match' preface for F4 — when the asked-about subject
+    is absent from the retrieved context, we say so instead of presenting an
+    off-topic nearest-neighbour as if it answered. Names the subject when known."""
+    subject = ""
+    if plan.entities_detected:
+        subject = plan.entities_detected[0]
+    else:
+        subject = _dossier_subject(plan.resolved_question or plan.original_question or "")
+    subject = (subject or "").strip()
+    if subject:
+        return (
+            f"I don't have a confident match for **{subject}** in the knowledge base. "
+            f"The information below may be related but does not directly answer your "
+            f"question about {subject}."
+        )
+    return (
+        "I don't have a confident match for what you asked about in the knowledge "
+        "base. The information below may be related but does not directly answer it."
+    )
+
+
 class UnifiedChatHandler:
     """Unified chat handler using staged CTX pipeline.
 
@@ -1160,6 +1183,18 @@ class UnifiedChatHandler:
             extra_directive=synthesis_directive or None, prompt_intent=prompt_intent,
         )
 
+        # F4: the asked-about subject is absent from the retrieved context — lead
+        # with an honest "no confident match" instead of presenting an off-topic
+        # nearest-neighbour as if it answered (reviewer Q3: Nimacimab for an
+        # unrelated query). Deterministic preface; the substitute evidence is kept
+        # but explicitly framed as related-not-matching (conservation: no silent drop).
+        if reasoning.primary_unresolved:
+            _lead = _unresolved_lead(plan)
+            if _lead and _lead not in (narrative or ""):
+                narrative = _lead + "\n\n" + (narrative or "")
+            logger.info("primary_unresolved: led with no-confident-match for %r",
+                        plan.entities_detected or plan.resolved_question)
+
         # Strip hallucinated/absolute entity links (the model invents example.com
         # URLs despite the relative-link protocol).
         narrative = _sanitize_entity_links(narrative)
@@ -1275,7 +1310,12 @@ class UnifiedChatHandler:
                 # not-ingested/thin sources this query implicates, surfaced
                 # structurally so the frontend + judge see them deterministically.
                 "limitations": [t for t, _f in coverage_limits],
-                "review_flags": sorted({f for _t, f in coverage_limits}),
+                "review_flags": sorted(
+                    {f for _t, f in coverage_limits}
+                    | ({"PRIMARY_UNRESOLVED"} if reasoning.primary_unresolved else set())
+                ),
+                # F4: the asked-about subject wasn't confidently matched in retrieval.
+                "primary_unresolved": reasoning.primary_unresolved,
             },
             "table_data": table_data,
             "confidence": reasoning.confidence,

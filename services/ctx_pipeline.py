@@ -78,6 +78,11 @@ class ReasoningResult:
     refined_queries: list[str] = field(default_factory=list)
     computed_insights: list[str] = field(default_factory=list)
     retrieval: Optional[RetrievalResult] = None
+    # F4: a specific subject was asked about but is ABSENT from the retrieved
+    # context — the answer would be off-topic nearest-neighbour substitution
+    # (reviewer Q3 surfaced "Nimacimab" for an unrelated query). The handler leads
+    # with an honest "no confident match" instead of presenting the substitute.
+    primary_unresolved: bool = False
 
 
 # ── Helpers ──
@@ -138,6 +143,35 @@ def _is_junk_org(name: str) -> bool:
     than a pharma market player. Used to keep disease-word queries from
     resolving to e.g. 'Dasman Diabetes Institute'."""
     return bool(name and _JUNK_ORG_RE.search(name))
+
+
+# F4: extract the SUBJECT of a dossier question ("tell me about X" / "what is X")
+# so we can check whether the retrieved context actually covers it.
+_DOSSIER_SUBJECT_RE = re.compile(
+    r"\b(?:tell me about|what is|what's|who is|who's|describe|info(?:rmation)? on|"
+    r"details? (?:on|about)|overview of)\s+(.+?)\s*\??$",
+    re.I,
+)
+# Tokens that don't identify a subject (so an all-stopword subject can't fire).
+_SUBJECT_STOP = {
+    "the", "a", "an", "drug", "drugs", "this", "that", "these", "those", "their",
+    "its", "about", "for", "with", "and", "data", "info", "information", "company",
+}
+
+
+def _dossier_subject(question: str) -> str:
+    """The subject phrase of a dossier question, '' when not a dossier form."""
+    m = _DOSSIER_SUBJECT_RE.search(question or "")
+    return m.group(1).strip() if m else ""
+
+
+def _subject_tokens(phrase: str) -> list[str]:
+    """Significant subject tokens (>3 chars, non-stopword) used to test whether the
+    retrieved context covers the asked-about subject."""
+    return [
+        w for w in re.split(r"[^a-z0-9]+", (phrase or "").lower())
+        if len(w) > 3 and w not in _SUBJECT_STOP
+    ]
 
 
 # Bound on distinct detected entities fed to retrieve(). A real compare names 2;
@@ -588,6 +622,19 @@ class CTXQueryPipeline:
                 f"Comparing {len(plan.entities_detected)} entities: {', '.join(plan.entities_detected)}"
             )
 
+        # F4: a specific subject was asked about but is ABSENT from the retrieved
+        # context → the answer would be off-topic nearest-neighbour substitution.
+        # Self-correcting: never fires when the subject DOES appear in context (so a
+        # resolved entity, or a dossier whose subject the corpus covers, is safe).
+        primary_unresolved = False
+        if plan.entities_detected:
+            primary_unresolved = len(found_entities) == 0
+        elif plan.intent == "dossier":
+            # "tell me about X" with no entity resolved — check the subject directly.
+            toks = _subject_tokens(_dossier_subject(plan.resolved_question or plan.original_question))
+            if toks:
+                primary_unresolved = not any(t in context_text for t in toks)
+
         return ReasoningResult(
             sufficient=sufficient,
             gaps=gaps,
@@ -595,6 +642,7 @@ class CTXQueryPipeline:
             confidence=confidence,
             computed_insights=computed_insights,
             retrieval=retrieval,
+            primary_unresolved=primary_unresolved,
         )
 
     # ── Guard & Grounding ──
