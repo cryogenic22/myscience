@@ -22,7 +22,11 @@ from services.ctx_pipeline import (
     ReasoningResult,
     is_company_leaders_question,
 )
-from services.llm import strip_invalid_entity_links
+from services.llm import (
+    detect_out_of_corpus_events,
+    strip_invalid_entity_links,
+    strip_unsupported_event_attributions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1083,6 +1087,21 @@ class UnifiedChatHandler:
             if t not in _seen_limit:
                 coverage_limits.append((t, f))
                 _seen_limit.add(t)
+        # F9: a named congress/event in the question that the retrieved evidence
+        # never mentions is OUT OF CORPUS (reviewer Q7: a fabricated "ASCO 2025
+        # highlighted…"). State an explicit no-data limit — so the synthesis
+        # directive, the deterministic footer, AND the response contract all carry
+        # it — and neutralize any attribution the model narrates anyway, below.
+        _evidence_blob = "\n".join((it.get("content") or "") for it in evidence_items)
+        out_of_corpus_events = detect_out_of_corpus_events(question, _evidence_blob)
+        for _ev in out_of_corpus_events:
+            _ev_text = (
+                f"No data on {_ev['display']} is in the knowledge base — it is out "
+                f"of corpus; do not attribute any finding to {_ev['display']}."
+            )
+            if _ev_text not in _seen_limit:
+                coverage_limits.append((_ev_text, "OUT_OF_CORPUS_EVENT"))
+                _seen_limit.add(_ev_text)
         coverage_directive = _coverage_directive(coverage_limits)
         synthesis_directive = "\n\n".join(
             d for d in (leaders_hint, faers_directive, trial_directive, coverage_directive) if d
@@ -1112,6 +1131,21 @@ class UnifiedChatHandler:
             # Conservation: record the count of fabricated links removed on the
             # (dominant) live path, not just on the legacy synthesize pass.
             logger.info("Stripped %d unresolved entity link(s) from response", _link_strip["stripped"])
+
+        # F9: deterministically neutralize attributions to out-of-corpus named
+        # events the model narrated despite the coverage directive (prompts are
+        # advisory). Mirrors the both-path floor in llm._post_validate; here it runs
+        # on the live path with the full evidence on hand even when synthesis is
+        # mocked/streamed and so bypasses _post_validate.
+        if out_of_corpus_events:
+            _ev_strip = strip_unsupported_event_attributions(narrative, out_of_corpus_events)
+            narrative = _ev_strip["narrative"]
+            if _ev_strip["stripped"]:
+                logger.info(
+                    "Neutralized %d out-of-corpus event attribution(s) on live path: %s",
+                    _ev_strip["stripped"],
+                    ", ".join(e["display"] for e in out_of_corpus_events),
+                )
 
         # ── Guard check ── (on the model's narrative, before the deterministic footer)
         guard_result = self.pipeline.check_response(narrative, context_text)

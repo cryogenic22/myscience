@@ -85,6 +85,111 @@ def strip_invalid_entity_links(
     return {"narrative": cleaned, "stripped": stripped}
 
 
+# ── F9: out-of-corpus named-event attribution guard ──────────────────────────
+# Reviewer Q7: asked about "ASCO 2025" (a congress the corpus has no data on), the
+# model fabricated "...ASCO 2025 highlighted advancements... particularly
+# cardiovascular risks..." — attributing generic literature to a named real-world
+# event, with full confidence and no citations. The closed-world prompt forbids
+# this but is advisory; the model ignores it under a named-event question. This is
+# the deterministic enforcement: a named congress/event in the QUESTION whose token
+# never appears in the retrieved EVIDENCE is out of corpus, so any attribution to it
+# in the narrative is stripped/reframed (the surrounding real prose survives).
+
+# Medical & scientific congress acronyms (UPPERCASE, matched case-sensitively so a
+# lowercase common word — "chest", "endo", "ada" — can never trip the guard).
+_CONGRESS_ACRONYMS = (
+    "ASCO", "ESMO", "AACR", "ASH", "SABCS", "WCLC", "AHA", "ACC", "ESC", "HFSA",
+    "EASD", "ADA", "ACR", "EULAR", "AAN", "ATS", "ERS", "DDW", "UEG", "EASL",
+    "AASLD", "ASN", "ENDO", "ECTRIMS", "AAIC", "CTAD", "ISTH", "ASBMR",
+)
+# Acronym (word-bounded) + an optional adjacent 4-digit year. Case-sensitive (no
+# re.I) — the acronyms are uppercase, so a lowercase homonym is never matched.
+_CONGRESS_RE = re.compile(
+    r"\b(" + "|".join(re.escape(a) for a in _CONGRESS_ACRONYMS) + r")\b"
+    r"(?:[\s,'’-]+(\d{4}))?"
+)
+# A bare acronym is ambiguous (a ticker, a gene); only treat it as a NAMED EVENT
+# anchor when a year is attached OR the question is event-shaped (a meeting word).
+_MEETING_CTX_RE = re.compile(
+    r"\b(congress|conference|meeting|annual|symposi\w+|sessions?|abstracts?|"
+    r"plenar\w+|presentation|present(?:ed|ing|s)?|late.?break\w*|readouts?|summit)\b",
+    re.I,
+)
+# Attribution verbs the model uses to source claims to an event subject.
+_EVENT_ATTRIB_VERB = (
+    r"highlight\w*|show(?:ed|cas\w*|s|n)?|report\w*|reveal\w*|present\w*|"
+    r"feature\w*|demonstrat\w*|unveil\w*|spotlight\w*|focus\w*|underscor\w*|"
+    r"emphasi[sz]\w*|cover\w*|includ\w*"
+)
+
+
+def detect_out_of_corpus_events(question: str, evidence_text: str = "") -> list[dict]:
+    """Named congress/event anchors in ``question`` that the retrieved evidence
+    never mentions — i.e. out of corpus. Returns ``[{"acronym","year","display"}]``.
+
+    Conservative on two axes (over-firing strips real prose): a match counts as a
+    NAMED EVENT only with an attached year OR an event-context word in the question,
+    and it is OUT OF CORPUS only when the acronym token is absent from the evidence.
+    Year-specificity is intentionally NOT enforced — requiring an exact-year match
+    would over-fire when the corpus holds the same congress for a different year.
+    """
+    q = question or ""
+    if not q:
+        return []
+    has_meeting_ctx = bool(_MEETING_CTX_RE.search(q))
+    blob = evidence_text or ""
+    events: list[dict] = []
+    seen: set[str] = set()
+    for m in _CONGRESS_RE.finditer(q):
+        acronym, year = m.group(1), m.group(2)
+        if not year and not has_meeting_ctx:
+            continue
+        if re.search(rf"\b{re.escape(acronym)}\b", blob):
+            continue  # supported — the congress appears in the retrieved evidence
+        display = f"{acronym} {year}" if year else acronym
+        if display in seen:
+            continue
+        seen.add(display)
+        events.append({"acronym": acronym, "year": year, "display": display})
+    return events
+
+
+def strip_unsupported_event_attributions(narrative: str, events: list[dict]) -> dict:
+    """Neutralize attributions to out-of-corpus named events in ``narrative``.
+
+    Two deterministic rewrites, keeping the surrounding (real) prose:
+      * prepositional — "... at/from/during/per [the] <event> [meeting] ..." → drop
+        the attribution clause (the finding was not sourced to that event).
+      * subject — "<event> highlighted/showed/reported ..." → "the available
+        evidence <verb> ..." (the claim survives; the false source does not).
+    Idempotent. Returns ``{"narrative": str, "stripped": int}``.
+    """
+    if not narrative or not events:
+        return {"narrative": narrative or "", "stripped": 0}
+    acr_alt = "|".join(re.escape(e["acronym"]) for e in events)
+    # acronym + optional year + optional trailing meeting noun (case-insensitive
+    # only on the year-joiner/meeting-noun parts; the acronym stays case-sensitive).
+    anchor = (
+        rf"(?:{acr_alt})\b(?:\s*['’-]?\s*\d{{4}})?"
+        rf"(?:\s+(?i:(?:annual\s+)?(?:meeting|congress|conference|symposium|sessions?|summit)))?"
+    )
+    # 1) prepositional attribution → removed
+    prep = re.compile(rf"\s*(?i:\b(?:at|during|from|per)\b)\s+(?:(?i:the)\s+)?{anchor}")
+    out, n1 = prep.subn("", narrative)
+    # 2) "<event> <verb>" subject → "the available evidence <verb>"
+    subj = re.compile(rf"\b{anchor}\s+((?i:{_EVENT_ATTRIB_VERB})\b)")
+    out, n2 = subj.subn(r"the available evidence \1", out)
+    stripped = n1 + n2
+    if stripped:
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        out = re.sub(r"\s+([.,;:])", r"\1", out)
+        # capitalize a sentence-initial reframed subject
+        out = re.sub(
+            r"(^|(?<=[.!?]\s))the available evidence", "The available evidence", out
+        )
+    return {"narrative": out, "stripped": stripped}
+
+
 def validate_citations(narrative: str, evidence_count: int) -> dict:
     """Validate citation markers in narrative.
 
@@ -835,6 +940,8 @@ class LLMSynthesizer:
         narrative: str,
         evidence_count: int = 0,
         source_numbers: set | None = None,
+        question: str = "",
+        evidence_text: str = "",
     ) -> str:
         """Post-synthesis validation: citation check + numeric verification.
 
@@ -865,6 +972,21 @@ class LLMSynthesizer:
                     "Stripped bold from %d unverified number(s): %s",
                     num_result["stripped"], num_result["mismatches"],
                 )
+
+        # F9: neutralize attributions to a named congress/event absent from the
+        # evidence (the ASCO-2025 fabrication). A both-path floor — the unified
+        # handler additionally surfaces the explicit no-data coverage limit where
+        # it owns the response contract.
+        if question:
+            events = detect_out_of_corpus_events(question, evidence_text)
+            if events:
+                ev_result = strip_unsupported_event_attributions(narrative, events)
+                narrative = ev_result["narrative"]
+                if ev_result["stripped"] > 0:
+                    logger.info(
+                        "Neutralized %d out-of-corpus event attribution(s): %s",
+                        ev_result["stripped"], ", ".join(e["display"] for e in events),
+                    )
 
         return narrative
 
@@ -1017,6 +1139,8 @@ class LLMSynthesizer:
                         narrative,
                         evidence_count=len(evidence_snippets or []),
                         source_numbers=source_nums,
+                        question=question,
+                        evidence_text="\n".join(str(s) for s in (evidence_snippets or [])),
                     )
                     return narrative
             except Exception as e:
