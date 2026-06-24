@@ -162,10 +162,20 @@ def detect_out_of_corpus_events(question: str, evidence_text: str = "") -> list[
             continue  # bare homonym, no adjacent year/meeting noun — not an event
         # Support is YEAR-SPECIFIC when the question names a year: pharma congress
         # data is year-bound, so ASCO 2024 evidence must NOT support an ASCO 2025
-        # question (reviewer finding). With no requested year, acronym-level support
-        # is sufficient.
-        acr_present = bool(re.search(rf"\b{re.escape(acronym)}\b", blob))
-        supported = (acr_present and bool(re.search(rf"\b{year}\b", blob))) if year else acr_present
+        # question (reviewer finding). The acronym and the requested year must be
+        # CO-LOCATED in the evidence — a short window, either order, within a line
+        # — so an incidental "2025" elsewhere (an approval/enrollment date, a trial
+        # id) cannot stand in for actual ASCO-2025 coverage (independent whole-blob
+        # searches were defeated by any stray year token; reviewer NIT). With no
+        # requested year, acronym-level support is sufficient.
+        if year:
+            acr = re.escape(acronym)
+            supported = bool(
+                re.search(rf"\b{acr}\b.{{0,8}}?\b{year}\b", blob)
+                or re.search(rf"\b{year}\b.{{0,8}}?\b{acr}\b", blob)
+            )
+        else:
+            supported = bool(re.search(rf"\b{re.escape(acronym)}\b", blob))
         if supported:
             continue  # the requested congress (+ year, if named) is in the evidence
         display = f"{acronym} {year}" if year else acronym

@@ -67,6 +67,36 @@ class TestDetectOutOfCorpusEvents:
         )
         assert [e["display"] for e in events] == ["ASCO 2025"]
 
+    def test_incidental_year_elsewhere_does_not_count_as_support(self):
+        """The acronym and requested year must be CO-LOCATED. An incidental "2025"
+        elsewhere in the blob (an approval/enrollment date, a trial id) must NOT
+        stand in for ASCO-2025 coverage (reviewer NIT — independent whole-blob
+        searches were defeated by any stray year token)."""
+        from services.llm import detect_out_of_corpus_events
+
+        events = detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text=(
+                "ASCO 2024 abstract reported results. "
+                "Separately, the FDA approved tirzepatide in March 2025."
+            ),
+        )
+        assert [e["display"] for e in events] == ["ASCO 2025"]
+
+    def test_co_located_year_either_order_is_supported(self):
+        """Co-location holds in either order ('2025 ASCO' as well as 'ASCO 2025')
+        and across short separators — don't over-fire on real coverage."""
+        from services.llm import detect_out_of_corpus_events
+
+        assert detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text="Highlights from the 2025 ASCO annual meeting were strong.",
+        ) == []
+        assert detect_out_of_corpus_events(
+            "What were the oncology readouts at ASCO 2025?",
+            evidence_text="Data presented at ASCO (2025) showed a durable response.",
+        ) == []
+
     def test_no_year_requested_acronym_support_is_sufficient(self):
         """With no year in the question, acronym-level support is fine (a different
         year in the evidence still counts) — don't over-fire."""
