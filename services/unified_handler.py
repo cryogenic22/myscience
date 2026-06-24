@@ -1032,6 +1032,8 @@ class UnifiedChatHandler:
             if any(requested_indication in (s.get("therapeutic_area") or "").lower() for s in segs):
                 metrics_data["competitive"] = _lead_with_indication(segs, requested_indication)
                 present_indications.append(requested_indication)
+                # Conservation: record the reorder (parity with the correction log).
+                logger.info("Reordered landscape to lead with requested indication: %s", requested_indication)
 
         # Grounded per-drug trial TOTAL as citable evidence (the structural fix the
         # trial-count directive anticipated): a drug-vs-drug compare otherwise carried
@@ -1592,7 +1594,11 @@ class UnifiedChatHandler:
         ql = (plan.original_question or "").lower()
         tokens = set(re.split(r"[^a-z0-9]+", ql))
         hits = tokens & self._area_vocab()
-        return max(hits, key=len) if hits else None
+        if not hits:
+            return None
+        # Anchor on the FIRST-mentioned area (user emphasis), not the longest token —
+        # "compare obesity and diabetes" should anchor on obesity, not diabetes.
+        return min(hits, key=lambda t: ql.find(t))
 
     def _synthesize(
         self,

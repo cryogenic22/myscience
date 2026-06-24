@@ -108,6 +108,60 @@ class TestCorrectFalseAbsence:
         assert out["narrative"] == text
         assert out["changed"] == 0
 
+    def test_does_not_strip_negation_from_unrelated_noun(self):
+        """Reviewer BLOCK #1: a negation on a DIFFERENT noun must NOT be stripped by
+        the 'for <term>' anchor bridging across a clause — that would fabricate
+        presence (worse than the original false-absence)."""
+        from services.llm import correct_false_absence_claims
+
+        text = ("No head-to-head data exists between agents, and for obesity the "
+                "trial base is meaningful.")
+        out = correct_false_absence_claims(text, ["obesity"])
+        assert out["narrative"] == text          # untouched — 'No' stays on head-to-head
+        assert out["changed"] == 0
+
+    def test_fixes_real_absence_without_corrupting_unrelated(self):
+        """Reviewer BLOCK #2: drop the absence on the TERM's data, leave an unrelated
+        negation intact."""
+        from services.llm import correct_false_absence_claims
+
+        out = correct_false_absence_claims(
+            "There is no funding and limited data for obesity.", ["obesity"]
+        )
+        assert "no funding" in out["narrative"]               # unrelated negation kept
+        assert "limited data for obesity" not in out["narrative"]  # real target fixed
+        assert "data for obesity" in out["narrative"]
+
+    def test_sentence_initial_absence_removal_recapitalizes(self):
+        """Reviewer BLOCK #3: dropping a sentence-initial absence word must not leave
+        a lowercase orphan."""
+        from services.llm import correct_false_absence_claims
+
+        out = correct_false_absence_claims("No data for obesity has emerged.", ["obesity"])
+        assert out["narrative"].startswith("Data for obesity")
+
+    def test_adjective_form_corrected(self):
+        from services.llm import correct_false_absence_claims
+
+        for text, frag in [
+            ("There is scant obesity research to date.", "obesity research"),
+            ("Few obesity trials exist.", "obesity trials"),
+            ("limited obesity data overall", "obesity data"),
+        ]:
+            out = correct_false_absence_claims(text, ["obesity"])
+            assert frag in out["narrative"].lower()   # may be sentence-start capitalized
+            assert out["changed"] >= 1
+
+    def test_idempotent(self):
+        from services.llm import correct_false_absence_claims
+
+        once = correct_false_absence_claims(
+            "There is limited data for obesity. Obesity has few studies.", ["obesity"]
+        )
+        twice = correct_false_absence_claims(once["narrative"], ["obesity"])
+        assert twice["narrative"] == once["narrative"]
+        assert twice["changed"] == 0
+
     def test_empty(self):
         from services.llm import correct_false_absence_claims
 
