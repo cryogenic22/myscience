@@ -80,7 +80,9 @@ def test_insert_persists_molecule_chembl_id():
     assert len(ins) == 1
     sql, params = ins[0]
     assert "molecule_chembl_id" in sql.lower()
-    assert "CHEMBL1487" in params          # the molecule id is persisted, not dropped
+    # position-precise: molecule_chembl_id is INSERT param index 3
+    # (id, drug_id, target_id, molecule_chembl_id, chembl_activity_id, ...)
+    assert params[3] == "CHEMBL1487"       # the molecule id is persisted, not dropped
 
 
 def test_update_persists_molecule_chembl_id():
@@ -90,7 +92,9 @@ def test_update_persists_molecule_chembl_id():
     assert len(ups) == 1
     sql, params = ups[0]
     assert "molecule_chembl_id" in sql.lower()
-    assert "CHEMBL1487" in params
+    # position-precise: molecule_chembl_id is UPDATE param index 2
+    # (drug_id, target_id, molecule_chembl_id, activity_type, ...)
+    assert params[2] == "CHEMBL1487"
 
 
 def test_missing_chembl_id_is_null_not_crash():
@@ -98,4 +102,4 @@ def test_missing_chembl_id_is_null_not_crash():
     KnowledgeStore(db)._store_bioactivity(_bioactivity(chembl_id=None), "run-1")
     ins = _inserts(db)
     assert len(ins) == 1
-    assert None in ins[0][1]                # molecule_chembl_id param is NULL; INSERT still happens
+    assert ins[0][1][3] is None             # molecule_chembl_id param (idx 3) is NULL; INSERT still happens
