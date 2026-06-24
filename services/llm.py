@@ -290,6 +290,19 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
 _NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
 
+# A metrics row carries a figure as a display string ("1530.4", "47", "23%",
+# "2.5x", "1,530"); such a value is numeric-dominant. We mine numbers from a
+# string ONLY when it is value-like — NOT from a free-text label, where a digit
+# inside a date or id ("Report dated 2023-04-23, id 999") would launder an
+# invented narrative number into a "grounded" one. Letters (month-name dates,
+# ids, labels) and dashed/ISO dates are excluded (the dash is not in the class);
+# a single trailing %/x/× unit is allowed.
+_VALUE_LIKE_RE = re.compile(r"[\d.,\s]*\d[\d.,\s]*[%xX×]?")
+# Boundary-free number scan for already-gated value-like strings — captures a
+# figure carrying a trailing unit ("2.5x" -> 2.5, "82.5%" -> 82.5), which the
+# word-boundary ``_NUMBER_RE`` misses ("2.5x" has no \b before the word-char x).
+_VALUE_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
 # Unbolded statistical figures the model is prone to invent: a percentage
 # ("23% weight loss") or a multiplier ("2.5x pipeline score", "3× more").
 # Deliberately narrow — it must NOT match identifiers like "GLP-1",
@@ -300,10 +313,14 @@ _UNBOLDED_STAT_RE = re.compile(
     r"(?<![\w\-.])(\d+(?:\.\d+)?)\s?([%xX×])(?![\w])"
 )
 
-# Marker appended after an unverified statistical figure so the UI / reader
-# can see it is not grounded in the provided context (de-emphasis, not just
-# unbolding). Kept ASCII-safe.
-_UNVERIFIED_MARKER = " [unverified]"
+# Internal, NON-LEAKING sentinel used only to dedup the two verification
+# passes — a figure de-emphasised in pass 1 (bold) must not be re-counted in
+# pass 2 (unbolded). It is stripped before the narrative is returned and must
+# NEVER reach a user. (F6 / TICKET-5: the prior visible " [unverified]" string
+# leaked into answers and — worse — made grounded, authoritative figures look
+# untrustworthy. De-emphasis is now bold-removal only; the audit signal lives in
+# the returned counts + the server-side log, not in user-facing prose.)
+_DEDUP_SENTINEL = "\x00\x00"
 
 
 def _extract_source_numbers(metrics: dict | None, evidence_snippets: list[str] | None) -> set[float]:
@@ -322,21 +339,36 @@ def _extract_source_numbers(metrics: dict | None, evidence_snippets: list[str] |
 
 
 def _collect_numbers_from_dict(d: dict | list, out: set[float], depth: int = 0) -> None:
-    """Recursively collect numeric values from nested dict/list."""
+    """Recursively collect numeric values from nested dict/list.
+
+    Numbers embedded in *value-like string* values are collected too — metrics
+    rows routinely carry provenance-stamped figures as display strings (e.g.
+    ``{"metric": "Pipeline Score", "value": "1530.4"}``, the shape
+    ``services/chat_handlers/handlers.py`` builds). Without this a computed,
+    authoritative metric would be flagged as unverified in the narrative (F6 /
+    TICKET-5). Only numeric-dominant strings (``_VALUE_LIKE_RE``) are mined, so a
+    free-text label's incidental date/id digits do not leak into the grounded
+    set — every figure in a metrics *value* is grounded by definition.
+    """
     if depth > 5:
         return
-    if isinstance(d, dict):
-        for v in d.values():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                out.add(float(v))
-            elif isinstance(v, (dict, list)):
-                _collect_numbers_from_dict(v, out, depth + 1)
-    elif isinstance(d, list):
-        for item in d:
-            if isinstance(item, (int, float)) and not isinstance(item, bool):
-                out.add(float(item))
-            elif isinstance(item, (dict, list)):
-                _collect_numbers_from_dict(item, out, depth + 1)
+    values = d.values() if isinstance(d, dict) else d if isinstance(d, list) else ()
+    for v in values:
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float)):
+            out.add(float(v))
+        elif isinstance(v, str):
+            s = v.strip()
+            if not _VALUE_LIKE_RE.fullmatch(s):
+                continue  # free-text label — don't mine its date/id digits
+            for tok in _VALUE_NUM_RE.findall(s):
+                try:
+                    out.add(float(tok))
+                except ValueError:
+                    pass
+        elif isinstance(v, (dict, list)):
+            _collect_numbers_from_dict(v, out, depth + 1)
 
 
 def _is_grounded_number(num: float, source_numbers: set[float | int], tolerance: float) -> bool:
@@ -374,13 +406,19 @@ def verify_narrative_numbers(
          ``GLP-1`` / ``Type 2`` / ``Phase 3`` are deliberately NOT matched.
 
     Numbers within `tolerance` of any source number are verified and left
-    untouched. Unverified figures are SUPPRESSED: bold formatting is
-    stripped (trust-signal removal) AND an inline ``[unverified]`` marker is
-    appended so the figure can't pass as grounded. Conservative by design —
-    a legitimately cited number that appears in the context survives intact.
+    untouched. Unverified figures are DE-EMPHASISED: a bold figure has its
+    bold (the trust signal) stripped; an already-unbolded figure is left in
+    place. **No inline marker is written into the prose** — the prior visible
+    ``[unverified]`` string leaked to readers and made grounded, authoritative
+    numbers look untrustworthy (F6 / TICKET-5). The audit signal is preserved
+    structurally instead: ``flagged`` / ``mismatches`` in the return value (and
+    the caller's server-side log). Conservative by design — a legitimately
+    cited number that appears in the context survives intact.
 
     Returns: {"narrative": str, "verified": int, "flagged": int,
               "stripped": int, "mismatches": [...]}
+      - ``flagged``  — figures not grounded in the source (bold or unbolded).
+      - ``stripped`` — bold trust-signals removed (a subset of ``flagged``).
     """
     if not narrative:
         return {"narrative": "", "verified": 0, "flagged": 0, "stripped": 0, "mismatches": []}
@@ -403,39 +441,44 @@ def verify_narrative_numbers(
             flagged += 1
             stripped += 1
             mismatches.append(num)
-            # Remove the trust signal (bold) AND flag it inline.
+            # De-emphasise: remove the bold trust signal. No user-visible
+            # marker — an internal sentinel dedups pass 2 and is stripped
+            # before return (the literal " [unverified]" must not leak).
             narrative = narrative.replace(
-                f"**{raw}**", f"{raw}{_UNVERIFIED_MARKER}", 1
+                f"**{raw}**", f"{raw}{_DEDUP_SENTINEL}", 1
             )
 
     # ── 2. Unbolded statistical figures (%, x-multiplier) ────────────
     # Re-scan the (possibly already-modified) narrative. Skip figures we
-    # just flagged (they now carry the marker) and any already inside a
-    # bold span we left intact (verified bold numbers).
+    # handled in pass 1 (they carry the internal sentinel) and any already
+    # inside a bold span we left intact (verified bold numbers).
     def _replace_unbolded(m: re.Match) -> str:
-        nonlocal verified, flagged, stripped
+        nonlocal verified, flagged
         whole = m.group(0)
-        # Don't touch a figure already flagged in pass 1.
-        tail = narrative[m.end():m.end() + len(_UNVERIFIED_MARKER)]
-        if tail == _UNVERIFIED_MARKER:
+        # Don't re-count a figure already handled in pass 1.
+        tail = narrative[m.end():m.end() + len(_DEDUP_SENTINEL)]
+        if tail == _DEDUP_SENTINEL:
             return whole
         try:
             num = float(m.group(1))
         except ValueError:
             return whole
-        unit = m.group(2)
         # For multipliers, verify the bare value (2.5x ↔ source 2.5).
         # For percentages, _is_grounded_number already handles 82 ↔ 0.82.
         if _is_grounded_number(num, source_numbers, tolerance):
             verified += 1
             return whole
+        # Record it (server log / mismatches) but leave the text intact —
+        # an unbolded figure has no bold to strip, and we must not leak a
+        # marker. The honesty backstop here is structural, not in the prose.
         flagged += 1
-        stripped += 1
         mismatches.append(num)
-        return f"{whole}{_UNVERIFIED_MARKER}"
+        return whole
 
-    # Avoid double-marking: only run on text not already ending in marker.
     narrative = _UNBOLDED_STAT_RE.sub(_replace_unbolded, narrative)
+
+    # Strip the internal dedup sentinel — it must never reach the user.
+    narrative = narrative.replace(_DEDUP_SENTINEL, "")
 
     return {
         "narrative": narrative,
@@ -1011,14 +1054,16 @@ class LLMSynthesizer:
         if link_result["stripped"] > 0:
             logger.info("Stripped %d placeholder entity link(s) from narrative", link_result["stripped"])
 
-        # Numeric verification — strip bold from unverified numbers
+        # Numeric verification — de-emphasise unverified numbers (bold stripped;
+        # no inline marker leaks to the reader). The server-side log is the audit
+        # signal for ALL flagged figures, bold or not (F6 / TICKET-5).
         if source_numbers:
             num_result = verify_narrative_numbers(narrative, source_numbers)
             narrative = num_result["narrative"]
-            if num_result["stripped"] > 0:
+            if num_result["flagged"] > 0:
                 logger.warning(
-                    "Stripped bold from %d unverified number(s): %s",
-                    num_result["stripped"], num_result["mismatches"],
+                    "Flagged %d unverified number(s) (%d bold de-emphasised, no marker leaked): %s",
+                    num_result["flagged"], num_result["stripped"], num_result["mismatches"],
                 )
 
         # F9: neutralize attributions to a named congress/event absent from the
