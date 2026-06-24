@@ -1104,9 +1104,14 @@ class UnifiedChatHandler:
         # entity name is kept as plain text, so no information is lost; the model
         # rarely has a real id to copy on this path, so validating against the
         # actual evidence ids is what makes the fake link fail closed.
-        narrative = strip_invalid_entity_links(
+        _link_strip = strip_invalid_entity_links(
             narrative, valid_entity_ids=_valid_entity_ids(evidence_items)
-        )["narrative"]
+        )
+        narrative = _link_strip["narrative"]
+        if _link_strip["stripped"]:
+            # Conservation: record the count of fabricated links removed on the
+            # (dominant) live path, not just on the legacy synthesize pass.
+            logger.info("Stripped %d unresolved entity link(s) from response", _link_strip["stripped"])
 
         # ── Guard check ── (on the model's narrative, before the deterministic footer)
         guard_result = self.pipeline.check_response(narrative, context_text)

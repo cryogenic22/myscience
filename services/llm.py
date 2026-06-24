@@ -27,8 +27,13 @@ logger = logging.getLogger(__name__)
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
+# Type alternation is open-ended (``[a-z_]+``) on purpose: the domain pack has 9
+# entity types (drug/company/trial/mechanism/therapeutic_area/investigator +
+# literature/event/patent) and the sentinel/id checks below are type-agnostic, so
+# a placeholder must be stripped for ANY type — an enumerated subset let the leak
+# survive on literature/event/patent links.
 _ENTITY_LINK_RE = re.compile(
-    r"\[([^\]]+?)\]\(/entity/(drug|company|trial|mechanism|therapeutic_area|investigator)/([^)]+?)\)"
+    r"\[([^\]]+?)\]\(/entity/([a-z_]+)/([^)]+?)\)"
 )
 
 # Example ids that appear in the synthesis prompt as worked examples. A poorly

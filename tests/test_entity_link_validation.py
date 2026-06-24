@@ -52,6 +52,20 @@ class TestStripInvalidEntityLinks:
         assert "Novo Nordisk" in result["narrative"]
         assert result["stripped"] == 1
 
+    def test_strips_sentinel_in_all_entity_types(self):
+        """The leak must die for EVERY /entity/ type, not just the 5 the prompt
+        names — the domain pack has 9 (reviewer NIT-1: literature/event/patent
+        were unmatched, so a sentinel survived there)."""
+        from services.llm import strip_invalid_entity_links
+
+        for etype in ("drug", "company", "trial", "mechanism", "therapeutic_area",
+                      "investigator", "literature", "event", "patent"):
+            text = f"See [Thing](/entity/{etype}/abc-123) here."
+            result = strip_invalid_entity_links(text)
+            assert "abc-123" not in result["narrative"], etype
+            assert "Thing" in result["narrative"], etype
+            assert result["stripped"] == 1, etype
+
     def test_strips_renamed_sentinel(self):
         """The new, deliberately-uncopyable example id must also never survive."""
         from services.llm import strip_invalid_entity_links
