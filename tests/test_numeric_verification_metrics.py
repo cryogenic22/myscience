@@ -84,3 +84,37 @@ class TestNoMarkerLeak:
         )
         assert "[unverified]" not in result["narrative"]
         assert result["flagged"] >= 2
+
+
+class TestStringMiningIsValueScoped:
+    """Only numeric value-like strings are mined for source numbers. A free-text
+    label's incidental date/id digits must NOT enter the grounded set, or they
+    would launder an invented narrative number into "grounded" (review NIT-1)."""
+
+    def test_freetext_label_digits_do_not_leak(self):
+        from services.llm import _extract_source_numbers
+
+        metrics = {"rows": [{"label": "Report dated 2023-04-23, id 999", "value": "1530.4"}]}
+        nums = _extract_source_numbers(metrics, None)
+        assert 1530.4 in nums      # the real metric value IS grounded
+        assert 999 not in nums     # an id digit is NOT
+        assert 2023 not in nums    # a date digit is NOT
+        assert 23 not in nums
+
+    def test_invented_number_not_grounded_by_label_date(self):
+        from services.llm import _extract_source_numbers, verify_narrative_numbers
+
+        metrics = {"rows": [{"label": "Report dated 2023-04-23, id 999"}]}
+        src = _extract_source_numbers(metrics, None)
+        out = verify_narrative_numbers("Efficacy reached **23%** in the cohort.", src)
+        assert out["flagged"] >= 1               # the invented 23% is still caught
+        assert "**23%**" not in out["narrative"]  # bold de-emphasised
+
+    def test_value_like_units_are_still_mined(self):
+        from services.llm import _extract_source_numbers
+
+        metrics = {"rows": [{"value": "2.5x"}, {"value": "82.5%"}, {"value": "47"}]}
+        nums = _extract_source_numbers(metrics, None)
+        assert 2.5 in nums
+        assert 82.5 in nums
+        assert 47.0 in nums

@@ -290,6 +290,19 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
 _NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
 
+# A metrics row carries a figure as a display string ("1530.4", "47", "23%",
+# "2.5x", "1,530"); such a value is numeric-dominant. We mine numbers from a
+# string ONLY when it is value-like — NOT from a free-text label, where a digit
+# inside a date or id ("Report dated 2023-04-23, id 999") would launder an
+# invented narrative number into a "grounded" one. Letters (month-name dates,
+# ids, labels) and dashed/ISO dates are excluded (the dash is not in the class);
+# a single trailing %/x/× unit is allowed.
+_VALUE_LIKE_RE = re.compile(r"[\d.,\s]*\d[\d.,\s]*[%xX×]?")
+# Boundary-free number scan for already-gated value-like strings — captures a
+# figure carrying a trailing unit ("2.5x" -> 2.5, "82.5%" -> 82.5), which the
+# word-boundary ``_NUMBER_RE`` misses ("2.5x" has no \b before the word-char x).
+_VALUE_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
 # Unbolded statistical figures the model is prone to invent: a percentage
 # ("23% weight loss") or a multiplier ("2.5x pipeline score", "3× more").
 # Deliberately narrow — it must NOT match identifiers like "GLP-1",
@@ -328,14 +341,14 @@ def _extract_source_numbers(metrics: dict | None, evidence_snippets: list[str] |
 def _collect_numbers_from_dict(d: dict | list, out: set[float], depth: int = 0) -> None:
     """Recursively collect numeric values from nested dict/list.
 
-    Numbers embedded in *string* values are collected too — metrics rows
-    routinely carry provenance-stamped figures as display strings (e.g.
+    Numbers embedded in *value-like string* values are collected too — metrics
+    rows routinely carry provenance-stamped figures as display strings (e.g.
     ``{"metric": "Pipeline Score", "value": "1530.4"}``, the shape
     ``services/chat_handlers/handlers.py`` builds). Without this a computed,
     authoritative metric would be flagged as unverified in the narrative (F6 /
-    TICKET-5). This mirrors how ``_extract_source_numbers`` already scans
-    evidence-snippet strings — every figure in a metrics row is grounded by
-    definition.
+    TICKET-5). Only numeric-dominant strings (``_VALUE_LIKE_RE``) are mined, so a
+    free-text label's incidental date/id digits do not leak into the grounded
+    set — every figure in a metrics *value* is grounded by definition.
     """
     if depth > 5:
         return
@@ -346,9 +359,12 @@ def _collect_numbers_from_dict(d: dict | list, out: set[float], depth: int = 0) 
         if isinstance(v, (int, float)):
             out.add(float(v))
         elif isinstance(v, str):
-            for m in _NUMBER_RE.finditer(v):
+            s = v.strip()
+            if not _VALUE_LIKE_RE.fullmatch(s):
+                continue  # free-text label — don't mine its date/id digits
+            for tok in _VALUE_NUM_RE.findall(s):
                 try:
-                    out.add(float(m.group(1)))
+                    out.add(float(tok))
                 except ValueError:
                     pass
         elif isinstance(v, (dict, list)):
