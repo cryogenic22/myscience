@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>ZS Future State</title>
+  <style>
+    html, body, #root { height: 100%; margin: 0; }
+    body { background: #F7F6F3; font-family: "Helvetica Neue", Arial, system-ui, sans-serif; }
+    #boot {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; color: #5A5F66; font-size: 13px;
+    }
+    #boot .spin {
+      width: 22px; height: 22px; border: 2px solid #E5E2DB; border-top-color: #E8541E;
+      border-radius: 50%; animation: sp .8s linear infinite;
+    }
+    @keyframes sp { to { transform: rotate(360deg); } }
+    #boot pre { max-width: 720px; white-space: pre-wrap; color: #B23A48; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; text-align: left; }
+  </style>
+
+  <!-- Resolve bare module specifiers to esm.sh. recharts shares the single React
+       instance via ?external so hooks work across the boundary. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.3.1",
+      "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@18.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+      "recharts": "https://esm.sh/recharts@2.13.3?external=react,react-dom"
+    }
+  }
+  </script>
+
+  <!-- In-browser JSX → JS. Keeps the .jsx as the single source of truth. -->
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js" crossorigin></script>
+</head>
+<body>
+  <div id="boot"><div class="spin"></div><div>Loading ZS Future State…</div></div>
+  <div id="root"></div>
+
+  <script type="module">
+    const boot = document.getElementById("boot");
+    const fail = (label, err) => {
+      console.error(label, err);
+      boot.innerHTML = "<div style='color:#B23A48;font-weight:700'>Failed to load</div>" +
+        "<pre>" + label + "\n" + (err && (err.stack || err.message) || String(err)) + "</pre>";
+    };
+    try {
+      // 1. Fetch the component source. Absolute path (not "./") so it resolves
+      //    to /zs/… regardless of whether the page URL has a trailing slash;
+      //    credentials so the HTTP Basic auth header re-attaches.
+      const res = await fetch("/zs/zs-future-state-v2.jsx", { credentials: "include", cache: "no-cache" });
+      if (!res.ok) throw new Error("fetch /zs/zs-future-state-v2.jsx -> HTTP " + res.status);
+      const source = await res.text();
+
+      // 2. Transpile JSX with the automatic runtime (no `React` global needed —
+      //    Babel injects the react/jsx-runtime import, resolved by the importmap).
+      if (!window.Babel) throw new Error("Babel standalone did not load (offline / CDN blocked?)");
+      const { code } = Babel.transform(source, {
+        presets: [["react", { runtime: "automatic" }]],
+        filename: "zs-future-state-v2.jsx",
+      });
+
+      // 3. Turn the transpiled module into a Blob URL and import it. Its bare
+      //    `import ... from "react"/"recharts"` resolve via the document importmap.
+      const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+      const mod = await import(url);
+      const Component = mod.default;
+      if (typeof Component !== "function") throw new Error("module has no default-export component");
+
+      // 4. Mount.
+      const React = (await import("react")).default;
+      const { createRoot } = await import("react-dom/client");
+      boot.remove();
+      createRoot(document.getElementById("root")).render(React.createElement(Component));
+    } catch (err) {
+      fail("boot error", err);
+    }
+  </script>
+</body>
+</html>
