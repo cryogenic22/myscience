@@ -238,6 +238,53 @@ def strip_unsupported_event_attributions(narrative: str, events: list[dict]) -> 
     return {"narrative": out, "stripped": stripped}
 
 
+# ── F1: closed-world false-absence guard ─────────────────────────────────────
+# Reviewer Q1: the landscape answer claimed "limited data… for obesity" while an
+# Obesity segment was on screen. The closed-world rule forbids asserting absence
+# for data that WAS retrieved, but it is advisory. Given the set of terms actually
+# present in this turn's retrieved data, this neutralizes a contradicting "no /
+# limited <data> for <term>" claim. Scoped to the present terms only, so a genuine
+# absence (a term NOT retrieved) is never rewritten.
+_ABSENCE_QUAL = (
+    r"no|little|limited|scarce|sparse|minimal|insufficient|few|lacking|lack\s+of|"
+    r"absent|nonexistent|not\s+much|not\s+enough|"
+    r"not\s+well[\s-]?(?:represented|covered|studied|characteri[sz]ed|established)"
+)
+_DATA_NOUN = r"data|evidence|trials?|studies|study|research|information|coverage|literature"
+
+
+def correct_false_absence_claims(narrative: str, present_terms: list[str]) -> dict:
+    """Neutralize a "no/limited <data> for <term>" claim when <term> WAS retrieved
+    this turn. ``present_terms`` are the indications/areas actually present in the
+    retrieved data. Returns ``{"narrative": str, "changed": int}``. Conservative:
+    only the listed present terms are touched; a true absence (unretrieved term) is
+    left intact."""
+    if not narrative or not present_terms:
+        return {"narrative": narrative or "", "changed": 0}
+    terms = [str(t).strip() for t in present_terms if str(t).strip()]
+    if not terms:
+        return {"narrative": narrative, "changed": 0}
+    term_alt = "|".join(re.escape(t) for t in terms)
+    changed = 0
+    out = narrative
+    # 1) "<absence> <…> <data> <for/on/in/about> [the] <term>" → drop the absence word
+    p1 = re.compile(
+        rf"\b(?:{_ABSENCE_QUAL})\s+((?:[\w-]+\s+){{0,3}}(?:{_DATA_NOUN})\b[^.\n]{{0,40}}?"
+        rf"\b(?:for|on|in|regarding|about|of)\s+(?:the\s+)?(?:{term_alt})\b)",
+        re.I)
+    out, n = p1.subn(r"\1", out); changed += n
+    # 2) "<term> <…> (has|with|shows) <absence> <…> <data>" → drop the absence word
+    p2 = re.compile(
+        rf"\b((?:{term_alt})\b[^.\n]{{0,30}}?\b(?:has|have|with|shows?|offers?|sees?)\s+)"
+        rf"(?:{_ABSENCE_QUAL})\s+((?:[\w-]+\s+){{0,2}}(?:{_DATA_NOUN}))",
+        re.I)
+    out, n = p2.subn(r"\1\2", out); changed += n
+    if changed:
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        out = re.sub(r"\s+([.,;:])", r"\1", out)
+    return {"narrative": out, "changed": changed}
+
+
 def validate_citations(narrative: str, evidence_count: int) -> dict:
     """Validate citation markers in narrative.
 
