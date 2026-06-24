@@ -97,6 +97,11 @@ NUL
 tmp_*.json
 test_write.txt
 
+# ZS Future State — runtime/user-edited capability cards (seed lives in code,
+# durable via a Railway Volume in prod). Keep the dir tracked via .gitkeep.
+static/zs/data/*
+!static/zs/data/.gitkeep
+
 # transient eval run artifacts (keep golden_*.json + committed baselines)
 benchmark/reports/ci-eval-*.json
 benchmark/reports/eval-*.json

@@ -153,7 +153,9 @@ function deriveMoats(pool, model){
   if(model==="hybrid") v.switching=Math.min(3,v.switching+1);
   return v;
 }
-function getMoats(line){ return OFFERING_MOATS[line.id] || deriveMoats(line.pool, line.model); }
+// Prefer a card's own edited moat scores; fall back to the canonical
+// OFFERING_MOATS table, then to derivation from pool+model.
+function getMoats(line){ return line.moats || OFFERING_MOATS[line.id] || deriveMoats(line.pool, line.model); }
 const AGENT_LAYERS = [
   { layer:"Frontier intelligence", stance:"Rent", note:"Commodity input — rent from the labs. Risk: the labs move down into delivery and can see your usage." },
   { layer:"Orchestration · governance · ground-truth", stance:"Own", note:"The moat layer. Own it — but guard it, because it’s exactly what the labs will try to build." },
@@ -170,6 +172,31 @@ function lineMargin(q,age){
   const m={ outcome:{s:-0.12,g:0.085,cap:0.34}, recurring:{s:0.03,g:0.075,cap:0.36}, project:{s:0.18,g:0.012,cap:0.23}, core:{s:0.27,g:0,cap:0.29} }[q]||{s:0.15,g:0,cap:0.25};
   return Math.min(m.cap, m.s + m.g*Math.max(0,age));
 }
+
+/* ---------- persistence (file-backed JSON via /zs/api, no DB) ----------
+   The deck is buildless; these are plain fetch() calls. credentials:'include'
+   re-attaches the HTTP Basic header the page is already gated by. If the API is
+   unreachable (e.g. the .jsx opened as a static file), callers fall back to the
+   baked-in LIBRARY so the deck still works offline. */
+const CARDS_API = "/zs/api/cards";
+// Normalise a server/library card into the shape the simulator consumes.
+function normCard(c){ return { ...c, attain: c.attain ?? 60, enabled: c.enabled !== false }; }
+// The baked-in fallback set (server seeds from the identical LIBRARY).
+function libraryCards(){ return LIBRARY.map(l=>normCard({ ...l, moats: OFFERING_MOATS[l.id] })); }
+async function apiListCards(){
+  const r = await fetch(CARDS_API, { credentials:"include", cache:"no-cache" });
+  if(!r.ok) throw new Error("GET cards -> HTTP "+r.status);
+  const j = await r.json();
+  return (j.cards||[]).map(normCard);
+}
+async function apiWrite(method, path, body){
+  const r = await fetch(path, { method, credentials:"include", headers:{"Content-Type":"application/json"},
+    body: body===undefined?undefined:JSON.stringify(body) });
+  if(!r.ok){ let d=""; try{ d=JSON.stringify((await r.json()).detail); }catch(e){} throw new Error(method+" "+path+" -> HTTP "+r.status+(d?` · ${d}`:"")); }
+  return r.status===204?null:r.json();
+}
+// strip the client-only `enabled` flag before persisting
+function cardForApi(c){ const { enabled, ...rest } = c; return rest; }
 
 /* ---------- small components ---------- */
 function Stat({ label, value, unit, tone, sub }){
@@ -198,7 +225,10 @@ export default function ZSFutureState(){
   const [shape,setShape]=useState(2);
   const [target,setTarget]=useState(3.6);
   const [H,setH]=useState(5);
-  const [lines,setLines]=useState(LIBRARY.map(l=>({...l,enabled:true})));
+  // Capability cards are the source of truth — seeded from the baked-in LIBRARY
+  // and replaced by the persisted set from /zs/api/cards on mount (see effect).
+  const [lines,setLines]=useState(libraryCards());
+  const [cardsStatus,setCardsStatus]=useState("loading"); // loading | live | offline
   // red-team risk parameters
   const [compression,setCompression]=useState(8);   // annual competitive price compression on NEW lines, % at year H
   const [haircut,setHaircut]=useState(10);           // outcome revenue dispute/clawback %
@@ -207,11 +237,18 @@ export default function ZSFutureState(){
   const [saved,setSaved]=useState(false);
   const loaded=useRef(false);
 
+  // Load the persisted capability cards (file-backed via /zs/api/cards). On
+  // failure, keep the baked-in LIBRARY so the deck still works opened locally.
+  const refreshCards=async()=>{ try{ const c=await apiListCards(); setLines(c); setCardsStatus("live"); return c; }
+    catch(e){ console.warn("ZS cards API unreachable — using baked-in LIBRARY:",e.message); setCardsStatus("offline"); return null; } };
+  useEffect(()=>{ refreshCards(); },[]);
+  // Legacy scenario restore (the slider inputs only — cards are now server-side,
+  // so this no longer overwrites the card set).
   useEffect(()=>{(async()=>{ try{ if(window.storage){ const r=await window.storage.get("zs-fs-v2:scenario");
-    if(r&&r.value){ const s=JSON.parse(r.value); setBase(s.base);setErosion(s.erosion);setShape(s.shape);setTarget(s.target);setH(s.H);setLines(s.lines);
+    if(r&&r.value){ const s=JSON.parse(r.value); setBase(s.base);setErosion(s.erosion);setShape(s.shape);setTarget(s.target);setH(s.H);
       setCompression(s.compression??8);setHaircut(s.haircut??10);setCashLag(s.cashLag??1);setExecDiscount(s.execDiscount??0);} } }catch(e){} loaded.current=true; })();},[]);
-  async function saveScenario(){ try{ if(window.storage){ await window.storage.set("zs-fs-v2:scenario",JSON.stringify({base,erosion,shape,target,H,lines,compression,haircut,cashLag,execDiscount})); setSaved(true); setTimeout(()=>setSaved(false),1800);} }catch(e){} }
-  function resetScenario(){ setBase(2.4);setErosion(50);setShape(2);setTarget(3.6);setH(5);setLines(LIBRARY.map(l=>({...l,enabled:true})));setCompression(8);setHaircut(10);setCashLag(1);setExecDiscount(0); }
+  async function saveScenario(){ try{ if(window.storage){ await window.storage.set("zs-fs-v2:scenario",JSON.stringify({base,erosion,shape,target,H,compression,haircut,cashLag,execDiscount})); setSaved(true); setTimeout(()=>setSaved(false),1800);} }catch(e){} }
+  function resetScenario(){ setBase(2.4);setErosion(50);setShape(2);setTarget(3.6);setH(5);setCompression(8);setHaircut(10);setCashLag(1);setExecDiscount(0); }
   function applyPreset(p){ setErosion(p.erosion);setCompression(p.compression);setHaircut(p.haircut);setCashLag(p.cashLag);setExecDiscount(p.exec); }
 
   const model = useMemo(()=>{
@@ -297,7 +334,7 @@ export default function ZSFutureState(){
             </div>
           </div>
           <div style={{display:"flex",gap:5,marginTop:14,flexWrap:"wrap"}}>
-            {[["frame","Framework"],["sim","Risk-adjusted bridge"],["gen","Offering generator"],["moats","Moats & agent economics"],["red","Red team"],["model","Commercial models"]].map(([k,l])=>(
+            {[["frame","Framework"],["build","Capabilities"],["sim","Risk-adjusted bridge"],["gen","Offering generator"],["moats","Moats & agent economics"],["red","Red team"],["model","Commercial models"]].map(([k,l])=>(
               <button key={k} className="fs-tab" data-on={tab===k?"1":"0"} onClick={()=>setTab(k)}>{l}</button>
             ))}
           </div>
@@ -306,8 +343,14 @@ export default function ZSFutureState(){
 
       <div className="fs-wrap" style={{paddingTop:24,paddingBottom:60}}>
         {tab==="frame" && <FrameView/>}
+        {tab==="build" && <BuildView {...{lines,setLines,cardsStatus,refreshCards}}/>}
         {tab==="sim" && <SimView {...{base,setBase,erosion,setErosion,shape,setShape,target,setTarget,H,setH,lines,setLines,model,fmtB,saveScenario,resetScenario,saved,risk}}/>}
-        {tab==="gen" && <GenView onAdd={(l)=>{ setLines(p=>[...p,l]); setTab("sim"); }}/>}
+        {tab==="gen" && <GenView onAdd={async(l)=>{
+            // Persist the generated offering, then refetch; fall back to a
+            // local add if the API is unreachable so the demo still flows.
+            try{ await apiWrite("POST",CARDS_API,cardForApi(l)); await refreshCards(); }
+            catch(e){ console.warn("ZS add via API failed — local-only:",e.message); setLines(p=>[...p,normCard(l)]); }
+            setTab("sim"); }}/>}
         {tab==="moats" && <MoatView model={model}/>}
         {tab==="red" && <RedTeamView model={model} applyPreset={applyPreset} fmtB={fmtB} risk={risk}/>}
         {tab==="model" && <ModelView/>}
@@ -373,6 +416,157 @@ function Quad({ w,on,go,target }){
   return (<div className="fs-quad" data-target={target?"1":"0"} onClick={go} style={{outline:on?"2px solid var(--ink)":"none"}}>
     <div className="fs-h3" style={{color:target?"var(--accent-deep)":"var(--ink)"}}>{w.t}</div>
     <div style={{fontSize:11.5,color:"var(--ink-soft)",marginTop:5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{w.d}</div>
+  </div>);
+}
+
+/* ---------- Capabilities — editable, persisted card grid ----------
+   The one tab that owns the persisted card set. Every field is editable;
+   create / update / delete / export / import all hit /zs/api/cards and refetch.
+   Edits flow into `lines`, so the simulator, moats and charts read them too. */
+const MOAT_KEYS=["ground","compliance","switching","trust","convenience"];
+const SWATCHES=["var(--s1)","var(--s2)","var(--s3)","var(--s4)","var(--s5)","var(--s6)"];
+function blankCard(){ return { name:"New capability area", pool:"commercial", model:"hybrid", size:0.3, start:2, attain:55,
+  color:SWATCHES[0], buyer:"", moat:"", rationale:"", moats:{ground:1,compliance:1,switching:1,trust:1,convenience:1}, enabled:true }; }
+
+function BuildView({ lines,setLines,cardsStatus,refreshCards }){
+  const [editing,setEditing]=useState(null);   // card id being edited, or "__new__"
+  const [draft,setDraft]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const fileRef=useRef(null);
+
+  const startEdit=(c)=>{ setErr(""); setEditing(c.id); setDraft({...c,moats:{...(c.moats||{})}}); };
+  const startNew=()=>{ setErr(""); setEditing("__new__"); setDraft(blankCard()); };
+  const cancel=()=>{ setEditing(null); setDraft(null); setErr(""); };
+  const setField=(k,v)=>setDraft(d=>({...d,[k]:v}));
+  const setMoat=(k,v)=>setDraft(d=>({...d,moats:{...d.moats,[k]:v}}));
+
+  async function save(){
+    setBusy(true); setErr("");
+    try{
+      if(editing==="__new__") await apiWrite("POST",CARDS_API,cardForApi(draft));
+      else await apiWrite("PUT",`${CARDS_API}/${encodeURIComponent(editing)}`,cardForApi(draft));
+      const c=await refreshCards();
+      if(c===null){ // API offline — apply locally so the deck still reflects the edit
+        setLines(p=> editing==="__new__" ? [...p,normCard(draft)] : p.map(l=>l.id===editing?normCard({...draft,id:editing}):l));
+      }
+      cancel();
+    }catch(e){ setErr(e.message); }
+    finally{ setBusy(false); }
+  }
+  async function remove(c){
+    if(!window.confirm(`Delete “${c.name}”? This can't be undone.`)) return;
+    setBusy(true); setErr("");
+    try{ await apiWrite("DELETE",`${CARDS_API}/${encodeURIComponent(c.id)}`);
+      const r=await refreshCards();
+      if(r===null) setLines(p=>p.filter(l=>l.id!==c.id));
+    }catch(e){ setErr(e.message); }
+    finally{ setBusy(false); }
+  }
+  function exportCards(){
+    const blob=new Blob([JSON.stringify({cards:lines.map(cardForApi)},null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download="zs_capability_cards.json"; a.click(); URL.revokeObjectURL(url);
+  }
+  async function onImportFile(e){
+    const f=e.target.files&&e.target.files[0]; if(!f) return;
+    setBusy(true); setErr("");
+    try{ const text=await f.text(); const payload=JSON.parse(text);
+      await apiWrite("POST",`${CARDS_API}/import`,payload); await refreshCards(); }
+    catch(ex){ setErr("Import failed: "+ex.message); }
+    finally{ setBusy(false); if(fileRef.current) fileRef.current.value=""; }
+  }
+
+  return (<div className="fs-fade">
+    <div className="fs-card" style={{padding:20,marginBottom:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+        <div style={{maxWidth:680}}>
+          <div className="fs-eyebrow">Capability areas · editable & persisted</div>
+          <div className="fs-h2" style={{marginTop:7}}>The portfolio you can edit.</div>
+          <p style={{fontSize:13,color:"var(--ink-soft)",marginTop:8}}>Add, edit and delete capability areas. Changes are saved to a JSON file on the server and flow straight into the bridge, moats and charts. {cardsStatus==="offline" && <span style={{color:"var(--risk)"}}>API unreachable — showing the built-in set; edits are local only.</span>}{cardsStatus==="loading" && <span style={{color:"var(--ink-faint)"}}>Loading…</span>}</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button className="fs-btn" data-variant="accent" onClick={startNew} disabled={busy||editing!==null}>+ Add capability</button>
+          <button className="fs-btn" data-variant="ghost" onClick={exportCards} disabled={busy}>Export JSON</button>
+          <button className="fs-btn" data-variant="ghost" onClick={()=>fileRef.current&&fileRef.current.click()} disabled={busy}>Import JSON</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{display:"none"}}/>
+        </div>
+      </div>
+      {err && <div style={{marginTop:12,fontSize:12,color:"var(--risk)",fontFamily:"var(--mono)"}}>{err}</div>}
+    </div>
+
+    {editing==="__new__" && <CardEditor draft={draft} setField={setField} setMoat={setMoat} onSave={save} onCancel={cancel} busy={busy} isNew/>}
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(330px,1fr))",gap:12}}>
+      {lines.map(c=>(
+        editing===c.id
+          ? <CardEditor key={c.id} draft={draft} setField={setField} setMoat={setMoat} onSave={save} onCancel={cancel} busy={busy}/>
+          : <CardTile key={c.id} c={c} onEdit={()=>startEdit(c)} onDelete={()=>remove(c)} disabled={busy||editing!==null}/>
+      ))}
+    </div>
+  </div>);
+}
+
+function CardTile({ c,onEdit,onDelete,disabled }){
+  const mv=c.moats||getMoats(c);
+  return (<div className="fs-card" style={{padding:16,opacity:c.enabled===false?0.55:1}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+      <span style={{width:12,height:12,borderRadius:3,background:c.color,flexShrink:0}}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div className="fs-h3">{c.name}</div>
+        <div style={{fontSize:11,color:"var(--ink-faint)"}}>{POOLS[c.pool]?.label} · {MODELS[c.model]?.label}</div>
+      </div>
+      <span className="fs-chip" style={{borderColor:QUALITY_COLORS[MODELS[c.model]?.quality],color:QUALITY_COLORS[MODELS[c.model]?.quality]}}>{QUALITY_LABELS[MODELS[c.model]?.quality]}</span>
+    </div>
+    <div style={{display:"flex",gap:14,marginBottom:10}}>
+      <span className="fs-num" style={{fontSize:12,color:"var(--ink-soft)"}}>size <b style={{color:"var(--ink)"}}>${(c.size??0).toFixed(2)}B</b></span>
+      <span className="fs-num" style={{fontSize:12,color:"var(--ink-soft)"}}>ramp <b style={{color:"var(--ink)"}}>Y{c.start}</b></span>
+      <span className="fs-num" style={{fontSize:12,color:"var(--ink-soft)"}}>win <b style={{color:(c.attain??60)<55?"var(--risk)":"var(--ink)"}}>{c.attain??60}%</b></span>
+    </div>
+    {c.buyer && <div style={{fontSize:11.5,color:"var(--ink-soft)",marginBottom:4}}><span className="fs-eyebrow">Buyer</span> {c.buyer}</div>}
+    {c.moat && <div style={{fontSize:11.5,color:"var(--ink-soft)",marginBottom:4}}><span className="fs-eyebrow">Moat</span> {c.moat}</div>}
+    {c.rationale && <p style={{fontSize:12,color:"var(--ink-soft)",margin:"8px 0 0"}}>{c.rationale}</p>}
+    <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}}>
+      {MOAT_KEYS.map(k=>(<span key={k} className="fs-chip" title={MOAT_DIMS[k].label}>{MOAT_DIMS[k].short} {mv[k]??0}</span>))}
+    </div>
+    <div style={{display:"flex",gap:8,marginTop:14,borderTop:"1px solid var(--line)",paddingTop:12}}>
+      <button className="fs-btn" data-variant="ghost" style={{padding:"7px 12px",fontSize:12}} onClick={onEdit} disabled={disabled}>Edit</button>
+      <button className="fs-btn" data-variant="risk" style={{padding:"7px 12px",fontSize:12}} onClick={onDelete} disabled={disabled}>Delete</button>
+    </div>
+  </div>);
+}
+
+function CardEditor({ draft,setField,setMoat,onSave,onCancel,busy,isNew }){
+  return (<div className="fs-card fs-fade" style={{padding:18,marginBottom:isNew?18:0,gridColumn:isNew?undefined:"1 / -1",borderColor:"var(--accent)"}}>
+    <div className="fs-eyebrow" style={{marginBottom:12}}>{isNew?"New capability area":"Editing — "+draft.name}</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14}}>
+      <Field label="Name"><input type="text" value={draft.name} onChange={e=>setField("name",e.target.value)}/></Field>
+      <Field label="Demand pool"><select value={draft.pool} onChange={e=>setField("pool",e.target.value)}>{Object.entries(POOLS).map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></Field>
+      <Field label="Commercial model"><select value={draft.model} onChange={e=>setField("model",e.target.value)}>{Object.entries(MODELS).map(([k,m])=><option key={k} value={k}>{m.label}</option>)}</select></Field>
+      <Field label="Target buyer"><input type="text" value={draft.buyer||""} onChange={e=>setField("buyer",e.target.value)}/></Field>
+      <Field label="Colour"><select value={draft.color} onChange={e=>setField("color",e.target.value)}>{SWATCHES.map((s,i)=><option key={s} value={s}>Series {i+1}</option>)}</select></Field>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,marginTop:8}}>
+      <Slider label="Year-H revenue size" value={draft.size} min={0} max={1} step={0.05} onChange={v=>setField("size",v)} fmt={v=>`$${v.toFixed(2)}B`}/>
+      <Slider label="Ramp begins" value={draft.start} min={1} max={8} step={1} onChange={v=>setField("start",Math.round(v))} fmt={v=>`Year ${v}`}/>
+      <Slider label="Win-probability" value={draft.attain} min={10} max={95} step={5} onChange={v=>setField("attain",Math.round(v))} fmt={v=>`${v}%`} tone={draft.attain<55?"risk":undefined}/>
+    </div>
+    <div style={{marginTop:8}}>
+      <div className="fs-eyebrow" style={{marginBottom:8}}>Moat scores (0–3)</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14}}>
+        {MOAT_KEYS.map(k=>(<Slider key={k} label={MOAT_DIMS[k].short} value={draft.moats?.[k]??0} min={0} max={3} step={1} onChange={v=>setMoat(k,Math.round(v))} fmt={v=>`${v}/3`}/>))}
+      </div>
+    </div>
+    <Field label="Source of moat (one line)"><input type="text" value={draft.moat||""} onChange={e=>setField("moat",e.target.value)}/></Field>
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:11.5,color:"var(--ink-soft)",fontWeight:600,marginBottom:5}}>Rationale</div>
+      <textarea value={draft.rationale||""} onChange={e=>setField("rationale",e.target.value)} rows={3}
+        style={{fontFamily:"var(--sans)",fontSize:13,padding:"8px 10px",border:"1px solid var(--line-strong)",borderRadius:8,background:"var(--surface)",color:"var(--ink)",width:"100%",resize:"vertical"}}/>
+    </div>
+    <div style={{display:"flex",gap:8}}>
+      <button className="fs-btn" data-variant="accent" onClick={onSave} disabled={busy||!draft.name.trim()}>{busy?"Saving…":"Save"}</button>
+      <button className="fs-btn" data-variant="ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+    </div>
   </div>);
 }
 
@@ -614,7 +808,7 @@ Keep it under 170 words total.`;
       <Field label="ZS right-to-win"><select value={rtw} onChange={e=>setRtw(e.target.value)}>{Object.entries(RTW).map(([k,r])=><option key={k} value={k}>{r.label}</option>)}</select></Field>
       <hr className="fs-rule" style={{margin:"14px 0"}}/>
       <button className="fs-btn" data-variant="accent" style={{width:"100%",marginBottom:8}} onClick={enhance} disabled={ai.loading}>{ai.loading?"Drafting…":"Enhance with AI"}</button>
-      <button className="fs-btn" data-variant="ghost" style={{width:"100%"}} onClick={()=>onAdd({ id:`gen-${Date.now()}`, name:spec.name, pool, model:modelKey, size:spec.sizeMid, start:spec.startYear, attain:RTW[rtw].attain, color:spec.color, enabled:true, buyer:spec.buyer, moat:spec.moat, rationale:spec.rationale })}>Add to simulator →</button>
+      <button className="fs-btn" data-variant="ghost" style={{width:"100%"}} onClick={()=>onAdd({ id:`gen-${Date.now()}`, name:spec.name, pool, model:modelKey, size:spec.sizeMid, start:spec.startYear, attain:RTW[rtw].attain, color:spec.color, enabled:true, buyer:spec.buyer, moat:spec.moat, rationale:spec.rationale, moats:deriveMoats(pool,modelKey) })}>Add to simulator →</button>
     </div>
     <div>
       <div className="fs-card" style={{padding:20,marginBottom:14}}>
