@@ -95,7 +95,7 @@ class OpenTargetsConnector(BaseConnector):
                         continue
                     target_data = self._fetch_target_associations(target_id)
                     if target_data:
-                        records.append(self._make_record(drug_name, drug_id, target_data))
+                        records.extend(self._make_disease_records(drug_name, drug_id, target_data))
 
             except Exception as e:
                 logger.warning("Open Targets fetch failed for %s: %s", drug_name, e)
@@ -221,59 +221,57 @@ class OpenTargetsConnector(BaseConnector):
             logger.debug("Open Targets target fetch failed for %s: %s", target_id, e)
         return None
 
-    def _make_record(self, drug_name: str, drug_id: str, target: dict) -> RawRecord:
-        """Convert Open Targets data to RawRecord."""
-        target_id = target.get("id", "")
-        symbol = target.get("approvedSymbol", "")
+    def _make_disease_records(
+        self, drug_name: str, drug_id: str, target: dict
+    ) -> list[RawRecord]:
+        """Emit one NAMED therapeutic-area ontology term per associated disease.
 
-        # Extract top disease associations
-        associations = []
-        for row in (target.get("associatedDiseases", {}).get("rows", []))[:5]:
-            disease = row.get("disease", {})
-            associations.append({
-                "disease_id": disease.get("id", ""),
-                "disease_name": disease.get("name", ""),
-                "overall_score": row.get("score", 0),
-                "datatype_scores": {
-                    s.get("id", ""): s.get("score", 0)
-                    for s in row.get("datatypeScores", [])
-                },
-            })
+        Open Targets returns target-disease associations: each carries a disease
+        with an EFO/MONDO id + a human name. The old code packed the whole
+        association *array* into a single ONTOLOGY_TERM with no top-level `name`,
+        so `_store_ontology_term` could only fail-closed (skip) or crash on the
+        NOT NULL `name` constraint — the #1 active DLQ cause (3,121 records).
 
-        # Extract tractability
-        tractability = [
-            {"label": t.get("label", ""), "modality": t.get("modality", ""), "value": t.get("value", False)}
-            for t in (target.get("tractability") or [])
-        ]
+        Modelling each disease as its own named term lets the data actually land
+        and dedupe idempotently on the stable ontology id (the disease, not the
+        drug/target, is the identity — so the same disease reached via several
+        drugs collapses to one therapeutic_areas row). A disease missing either
+        its name or its id is skipped at the source (conservation: do not emit a
+        record that can only fail downstream).
 
-        return RawRecord(
-            record_type=RecordType.ONTOLOGY_TERM,
-            external_id=f"ot_{drug_id}_{target_id}",
-            source_name="Open Targets Platform",
-            provenance=Provenance(
-                source_type=self.source_type(),
-                api_endpoint=OT_API_URL,
-                query_params={"drug": drug_name, "target": target_id},
-                retrieved_at=datetime.now(timezone.utc),
-                raw_response_hash=self._hash(target),
-            ),
-            data={
-                "drug_name": drug_name,
-                "drug_ot_id": drug_id,
-                "target_ensembl_id": target_id,
-                "target_symbol": symbol,
-                "target_name": target.get("approvedName", ""),
-                "target_biotype": target.get("biotype", ""),
-                "tractability": tractability,
-                "disease_associations": associations,
-                "association_count": target.get("associatedDiseases", {}).get("count", 0),
-            },
-            identifiers={
-                "ensembl_id": target_id,
-                "gene_symbol": symbol,
-                "generic_name": drug_name,
-            },
-        )
+        NOTE: the association score, datatype scores, tractability and the
+        target itself are intentionally NOT persisted here — `therapeutic_areas`
+        has no column for them and there is no association-edge table yet. They
+        remain in the source payload; capturing them is a separate, scoped loop.
+        """
+        records: list[RawRecord] = []
+        for row in (target.get("associatedDiseases") or {}).get("rows") or []:
+            disease = row.get("disease") or {}
+            disease_id = (disease.get("id") or "").strip()
+            disease_name = (disease.get("name") or "").strip()
+            if not disease_id or not disease_name:
+                continue
+            records.append(
+                RawRecord(
+                    record_type=RecordType.ONTOLOGY_TERM,
+                    external_id=f"ot_disease_{disease_id}",
+                    source_name="Open Targets Platform",
+                    provenance=Provenance(
+                        source_type=self.source_type(),
+                        api_endpoint=OT_API_URL,
+                        query_params={"drug": drug_name, "disease": disease_id},
+                        retrieved_at=datetime.now(timezone.utc),
+                        raw_response_hash=self._hash(disease),
+                    ),
+                    data={
+                        "name": disease_name,
+                        "ontology_id": disease_id,
+                        "term_type": "therapeutic_area",
+                    },
+                    identifiers={"ontology_id": disease_id},
+                )
+            )
+        return records
 
     def _get_target_drugs(self) -> list[str]:
         try:

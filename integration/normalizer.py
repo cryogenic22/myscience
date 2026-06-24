@@ -271,12 +271,13 @@ FIELD_MAPS: dict[SourceType, dict[str, str]] = {
         "synonyms": "synonyms",
     },
     SourceType.OPEN_TARGETS: {
-        "drug_name": "drug_name",
-        "target_symbol": "target_symbol",
-        "target_name": "target_name",
-        "target_biotype": "target_biotype",
-        "disease_associations": "disease_associations",
-        "tractability": "tractability",
+        # open_targets now emits one NAMED therapeutic-area ontology term per
+        # associated disease (see OpenTargetsConnector._make_disease_records).
+        # These three fields are what _store_ontology_term consumes; the
+        # normalizer drops anything unmapped, so they MUST be listed here.
+        "name": "name",
+        "ontology_id": "ontology_id",
+        "term_type": "term_type",
     },
 }
 
