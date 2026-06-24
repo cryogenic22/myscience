@@ -26,6 +26,7 @@ from services.ctx_pipeline import (
 from services.llm import (
     correct_false_absence_claims,
     detect_out_of_corpus_events,
+    qualify_count_as_quality,
     strip_invalid_entity_links,
     strip_unsupported_event_attributions,
 )
@@ -1260,6 +1261,17 @@ class UnifiedChatHandler:
         # genuinely cited inline ([N] → named source) is already self-attributing and
         # treated as grounded.
         narrative = _neutralize_ungrounded_counts(narrative, evidence_items)
+
+        # F2: qualify count-as-quality / count-as-market-share language to an honest
+        # count basis. No sales/market-share source is ingested, so "34.3% market
+        # share" is a count proportion mislabeled commercially (reviewer Q1), and a
+        # count called "robust pipeline" imports a quality verdict (Q4). Deterministic
+        # — mirrors the both-path floor in llm._post_validate; here it also covers the
+        # live path when synthesis is mocked/streamed (bypassing _post_validate).
+        _cq = qualify_count_as_quality(narrative)
+        narrative = _cq["narrative"]
+        if _cq["changed"]:
+            logger.info("Qualified %d count-as-quality claim(s) on live path", _cq["changed"])
 
         # Deterministically attach the provenance legend ([N] → named connector +
         # cadence) AFTER the guard check — the LLM won't reliably narrate provenance,
