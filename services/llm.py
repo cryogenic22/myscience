@@ -27,9 +27,62 @@ logger = logging.getLogger(__name__)
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
+# Type alternation is open-ended (``[a-z_]+``) on purpose: the domain pack has 9
+# entity types (drug/company/trial/mechanism/therapeutic_area/investigator +
+# literature/event/patent) and the sentinel/id checks below are type-agnostic, so
+# a placeholder must be stripped for ANY type — an enumerated subset let the leak
+# survive on literature/event/patent links.
 _ENTITY_LINK_RE = re.compile(
-    r"\[([^\]]+?)\]\(/entity/(drug|company|trial|mechanism|therapeutic_area|investigator)/([^)]+?)\)"
+    r"\[([^\]]+?)\]\(/entity/([a-z_]+)/([^)]+?)\)"
 )
+
+# Example ids that appear in the synthesis prompt as worked examples. A poorly
+# resolved entity gives the model no real id to copy, so it reproduces one of
+# these verbatim and it renders as a fake, clickable citation (reviewer F3:
+# `[Donanemab](/entity/drug/abc-123)`). These ids must NEVER survive to the
+# screen, on any path, regardless of whether the caller supplies a valid-id set.
+# Compared lowercased. `abc-123`/`c-456` are the legacy examples (kept here so an
+# already-deployed prompt can't leak them); `example_id_do_not_copy` is the new,
+# deliberately-uncopyable example the prompt now uses.
+_SENTINEL_ENTITY_IDS = {"abc-123", "c-456", "example_id_do_not_copy"}
+
+
+def strip_invalid_entity_links(
+    narrative: str, valid_entity_ids: set[str] | None = None
+) -> dict:
+    """Strip ``[label](/entity/{type}/{id})`` links whose id is not trustworthy,
+    keeping the plain label text (no information loss).
+
+    A link is stripped when its id is a known prompt-example sentinel
+    (``_SENTINEL_ENTITY_IDS``) OR — when ``valid_entity_ids`` is supplied — the id
+    is not in that set (the entity ids actually present in this turn's evidence).
+    Ids are compared case-insensitively. With no ``valid_entity_ids`` only the
+    sentinels are stripped, so this is a safe both-path default that always kills
+    the ``abc-123`` leak without risking a real link.
+
+    Returns ``{"narrative": str, "stripped": int}``.
+    """
+    if not narrative:
+        return {"narrative": narrative or "", "stripped": 0}
+
+    valid_lower = {str(i).lower() for i in valid_entity_ids} if valid_entity_ids is not None else None
+    stripped = 0
+
+    def _replace(m: "re.Match") -> str:
+        nonlocal stripped
+        label, _etype, ident = m.group(1), m.group(2), m.group(3)
+        low = ident.strip().lower()
+        bad = low in _SENTINEL_ENTITY_IDS or (valid_lower is not None and low not in valid_lower)
+        if bad:
+            stripped += 1
+            logger.debug("Stripped entity link with unresolved id %r (label=%r)", ident, label)
+            return label  # keep the entity name, drop the fake link
+        return m.group(0)
+
+    cleaned = _ENTITY_LINK_RE.sub(_replace, narrative)
+    if stripped:
+        cleaned = re.sub(r"  +", " ", cleaned)
+    return {"narrative": cleaned, "stripped": stripped}
 
 
 def validate_citations(narrative: str, evidence_count: int) -> dict:
@@ -359,10 +412,10 @@ CITATION PROTOCOL (SPEC_016):
 - When you mention an entity (drug, company, trial, mechanism, investigator)
   write it as a clickable markdown link:
       [Entity Name](/entity/{type}/{id})
-  Example: [Semaglutide](/entity/drug/abc-123) or
-           [Novo Nordisk](/entity/company/c-456).
-  The id MUST come verbatim from the context. If no id is available,
-  name the entity without a link rather than inventing an id.
+  The {id} is a PLACEHOLDER — substitute the real id from the context. If the
+  context gives no id for an entity, write the name as plain text with NO link.
+  NEVER emit a literal placeholder id (e.g. EXAMPLE_ID_DO_NOT_COPY); an invented
+  id renders as a broken citation and will be stripped.
 - Never invent numbers. Every percentage / count / score must come from
   the data above.
 """
@@ -682,9 +735,9 @@ def _build_context_block(
         "must appear in the data above. Use ONLY the names shown — do "
         "not invent brand/generic/trade names that aren't in the context.\n"
         "3. When you mention an entity, write it as a markdown link: "
-        "[Entity Name](/entity/{type}/{id}) — e.g. "
-        "[Semaglutide](/entity/drug/abc-123). Copy the id exactly from "
-        "the data. If no id is available, omit the link.\n"
+        "[Entity Name](/entity/{type}/{id}), substituting the REAL {id} from "
+        "the data. If no id is available, omit the link and use plain text — "
+        "never emit a placeholder id (it will be stripped as a broken link).\n"
         "4. Do not invent numeric values, percentages, or industry benchmarks. "
         "Every number must trace to the data above or be omitted."
     )
@@ -793,6 +846,15 @@ class LLMSynthesizer:
         narrative = cit_result["narrative"]
         if cit_result["stripped"] > 0:
             logger.info("Stripped %d invalid citation(s) from narrative", cit_result["stripped"])
+
+        # Strip fabricated entity links (the abc-123 placeholder the model copies
+        # from the prompt example). No valid-id set here, so only the known
+        # sentinels are stripped — a safe both-path floor; the unified handler does
+        # the full evidence-id validation where it has the evidence on hand.
+        link_result = strip_invalid_entity_links(narrative)
+        narrative = link_result["narrative"]
+        if link_result["stripped"] > 0:
+            logger.info("Stripped %d placeholder entity link(s) from narrative", link_result["stripped"])
 
         # Numeric verification — strip bold from unverified numbers
         if source_numbers:
