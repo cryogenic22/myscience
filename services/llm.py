@@ -310,6 +310,69 @@ def correct_false_absence_claims(narrative: str, present_terms: list[str]) -> di
     return {"narrative": out, "changed": changed}
 
 
+# ── F2: "counts are not quality" guard ───────────────────────────────────────
+# Reviewer Q1 narrated a drug-count proportion as "34.3% of the market share";
+# Q4 framed a count as a "robust... commitment". No sales / market-share source is
+# ingested (the platform surfaces a NO_SALES_VOLUME_SOURCE coverage limit), so a
+# "market share" figure is ALWAYS a count proportion mislabeled as a commercial
+# metric, and a count called "robust" imports a quality verdict the data can't
+# support. The closed-world prompt forbids both but is advisory, so we qualify them
+# to an honest count basis deterministically. CONSERVATIVE: only the always-
+# unsupportable "market share" / "share of the market" phrasing and "robust
+# pipeline/portfolio" are touched — bare "market" (market landscape, the obesity
+# market) and grounded leader/ranking language are left alone (the latter is a real,
+# grounded feature; blanket-stripping "leader"/"dominant" would gut it).
+_COUNT_BASIS = "by ingested count (not sales-based)"
+# "<pct> market share" / "<pct> of the market share"
+_PCT_MARKET_SHARE_RE = re.compile(
+    r"\b(\d{1,3}(?:\.\d+)?\s*%)\s+(?:of\s+(?:the\s+)?)?market\s+share\b", re.I)
+# "market share of <pct>"
+_MARKET_SHARE_OF_PCT_RE = re.compile(
+    r"\bmarket\s+share\s+of\s+(\d{1,3}(?:\.\d+)?\s*%)", re.I)
+# bare "market share" / "share of the market" (no adjacent percentage)
+_BARE_MARKET_SHARE_RE = re.compile(
+    r"\b(?:share\s+of\s+the\s+market|market\s+share)\b", re.I)
+# "robust pipeline" / "robust portfolio" — a quality verdict on a count noun
+_ROBUST_PIPELINE_RE = re.compile(r"\brobust\s+(pipeline|portfolio)\b", re.I)
+
+
+def qualify_count_as_quality(narrative: str) -> dict:
+    """Qualify count-as-quality / count-as-market-share language to an honest count
+    basis. Returns ``{"narrative": str, "changed": int}``. Idempotent — the
+    rewrites contain no phrase that re-matches (hyphenated "market-share" ≠ the
+    space-form the patterns target)."""
+    if not narrative:
+        return {"narrative": narrative or "", "changed": 0}
+    changed = 0
+    out = narrative
+    # %-bearing market-share first, so the bare pass doesn't double-handle them.
+    # Keep the "share" noun (reviewer nit: "<pct> {basis}" alone left a dangling
+    # article — "a 34.3% by ingested count"); "<pct> share {basis}" reads cleanly.
+    out, n = _PCT_MARKET_SHARE_RE.subn(rf"\1 share {_COUNT_BASIS}", out)
+    changed += n
+    out, n = _MARKET_SHARE_OF_PCT_RE.subn(rf"\1 share {_COUNT_BASIS}", out)
+    changed += n
+    out, n = _BARE_MARKET_SHARE_RE.subn(f"share {_COUNT_BASIS}", out)
+    changed += n
+    out, n = _ROBUST_PIPELINE_RE.subn(r"broad \1", out)
+    changed += n
+    if changed:
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        # Re-capitalize an inserted phrase that landed at a sentence start (reviewer
+        # nit: bare "Market share …"/"Robust pipeline …" rewrote to a lowercase
+        # sentence opener). Scoped to the inserted phrases only — avoids the
+        # e.g./i.e. false-capitalization a broad sentence-start pass would cause.
+        out = re.sub(
+            r"(^|[.!?]\s|\n)(share by ingested count)",
+            lambda m: m.group(1) + "Share by ingested count", out,
+        )
+        out = re.sub(
+            r"(^|[.!?]\s|\n)broad (pipeline|portfolio)",
+            lambda m: m.group(1) + "Broad " + m.group(2), out,
+        )
+    return {"narrative": out, "changed": changed}
+
+
 def validate_citations(narrative: str, evidence_count: int) -> dict:
     """Validate citation markers in narrative.
 
@@ -1152,6 +1215,13 @@ class LLMSynthesizer:
                         "Neutralized %d out-of-corpus event attribution(s): %s",
                         ev_result["stripped"], ", ".join(e["display"] for e in events),
                     )
+
+        # F2: qualify count-as-quality / count-as-market-share language to an honest
+        # count basis (no sales / market-share source is ingested). Both-path floor.
+        cq_result = qualify_count_as_quality(narrative)
+        narrative = cq_result["narrative"]
+        if cq_result["changed"] > 0:
+            logger.info("Qualified %d count-as-quality claim(s) to a count basis", cq_result["changed"])
 
         return narrative
 
