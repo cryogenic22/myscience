@@ -238,6 +238,78 @@ def strip_unsupported_event_attributions(narrative: str, events: list[dict]) -> 
     return {"narrative": out, "stripped": stripped}
 
 
+# ── F1: closed-world false-absence guard ─────────────────────────────────────
+# Reviewer Q1: the landscape answer claimed "limited data… for obesity" while an
+# Obesity segment was on screen. The closed-world rule forbids asserting absence
+# for data that WAS retrieved, but it is advisory. Given the set of terms actually
+# present in this turn's retrieved data, this neutralizes a contradicting "no /
+# limited <data> for <term>" claim. Scoped to the present terms only, so a genuine
+# absence (a term NOT retrieved) is never rewritten.
+_ABSENCE_QUAL = (
+    r"no|little|limited|scarce|sparse|minimal|insufficient|few|lacking|lack\s+of|"
+    r"absent|nonexistent|scant|not\s+much|not\s+enough"
+)
+_DATA_NOUN = r"data|evidence|trials?|studies|study|research|information|coverage|literature"
+
+
+def _cap_if_sentence_start(match: "re.Match", group: int = 1) -> str:
+    """Replacement that returns ``match.group(group)`` capitalized iff the FULL
+    match began a sentence (string start or after ``[.!?] ``) — used when a leading
+    absence word is dropped, so the surviving phrase doesn't open a sentence
+    lowercase. Scoped to the actual edit site (not a broad recapitalization pass),
+    so a mid-sentence abbreviation like "U.S." is never falsely capitalized."""
+    g = match.group(group)
+    s = match.string
+    at_start = match.start() == 0 or bool(re.search(r"[.!?]\s+$", s[: match.start()]))
+    return (g[0].upper() + g[1:]) if (at_start and g[:1].islower()) else g
+
+
+def correct_false_absence_claims(narrative: str, present_terms: list[str]) -> dict:
+    """Neutralize a "no/limited <data> for <term>" claim when <term> WAS retrieved
+    this turn. ``present_terms`` are the indications/areas actually present in the
+    retrieved data. Returns ``{"narrative": str, "changed": int}``.
+
+    Tightly CLAUSE-BOUND (reviewer BLOCK): the absence qualifier, the data noun, and
+    the ``for <term>`` anchor must be CONTIGUOUS (≤1 intervening adjective, no comma/
+    conjunction bridge), so a negation on a DIFFERENT noun in the same sentence is
+    never stripped (which would fabricate presence — worse than the original bug).
+    Only the listed present terms are touched; a true absence is left intact."""
+    if not narrative or not present_terms:
+        return {"narrative": narrative or "", "changed": 0}
+    terms = [str(t).strip() for t in present_terms if str(t).strip()]
+    if not terms:
+        return {"narrative": narrative, "changed": 0}
+    term_alt = "|".join(re.escape(t) for t in terms)
+    changed = 0
+    out = narrative
+    # 1) "<absence> [adj]{0,1} <data> (for|on|…) [the] <term>" — the for-anchor must
+    #    immediately follow the data noun (no bridge), so "No head-to-head data
+    #    exists …, and for <term> …" can NOT match (the 'No' stays on its own noun).
+    p1 = re.compile(
+        rf"\b(?:{_ABSENCE_QUAL})\s+((?:[\w-]+\s+){{0,1}}(?:{_DATA_NOUN})\s+"
+        rf"(?:for|on|in|regarding|about|of)\s+(?:the\s+)?(?:{term_alt})\b)",
+        re.I)
+    out, n = p1.subn(_cap_if_sentence_start, out); changed += n
+    # 2) adjective form "<absence> [adj]{0,1} <term> [adj]{0,1} <data>"
+    #    ("limited obesity data", "scant obesity research", "few obesity trials").
+    p2 = re.compile(
+        rf"\b(?:{_ABSENCE_QUAL})\s+((?:[\w-]+\s+){{0,1}}(?:{term_alt})\b"
+        rf"(?:\s+[\w-]+){{0,1}}\s+(?:{_DATA_NOUN}))\b",
+        re.I)
+    out, n = p2.subn(_cap_if_sentence_start, out); changed += n
+    # 3) reverse "<term> … (has|with|shows) <absence> [adj]{0,2} <data>" — CLAUSE-
+    #    bound (the bridge cannot cross a comma/semicolon).
+    p3 = re.compile(
+        rf"\b((?:{term_alt})\b[^.,;\n]{{0,20}}?\b(?:has|have|with|shows?|offers?|sees?)\s+)"
+        rf"(?:{_ABSENCE_QUAL})\s+((?:[\w-]+\s+){{0,2}}(?:{_DATA_NOUN}))",
+        re.I)
+    out, n = p3.subn(r"\1\2", out); changed += n
+    if changed:
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        out = re.sub(r"\s+([.,;:])", r"\1", out)
+    return {"narrative": out, "changed": changed}
+
+
 def validate_citations(narrative: str, evidence_count: int) -> dict:
     """Validate citation markers in narrative.
 

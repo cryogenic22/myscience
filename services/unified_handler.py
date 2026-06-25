@@ -23,6 +23,7 @@ from services.ctx_pipeline import (
     is_company_leaders_question,
 )
 from services.llm import (
+    correct_false_absence_claims,
     detect_out_of_corpus_events,
     strip_invalid_entity_links,
     strip_unsupported_event_attributions,
@@ -936,6 +937,21 @@ def _count_by_source(evidence_items: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _lead_with_indication(segments: list[dict], indication: Optional[str]) -> list[dict]:
+    """Reorder competitive segments so the rows whose therapeutic_area matches the
+    requested ``indication`` lead (F1: anchor on the user's filter, not the
+    highest-count row). Stable partition; returns the input unchanged when nothing
+    matches (no spurious reorder)."""
+    if not segments or not indication:
+        return segments
+    ind = indication.lower()
+    lead = [s for s in segments if ind in (s.get("therapeutic_area") or "").lower()]
+    if not lead:
+        return segments
+    rest = [s for s in segments if ind not in (s.get("therapeutic_area") or "").lower()]
+    return lead + rest
+
+
 class UnifiedChatHandler:
     """Unified chat handler using staged CTX pipeline.
 
@@ -1002,6 +1018,22 @@ class UnifiedChatHandler:
 
         # Augment with metrics for specific intents
         metrics_data = self._fetch_metrics(plan)
+
+        # F1: anchor the landscape on the indication the user actually asked about,
+        # not the highest-count row. `_resolve_topic` lets a mechanism (GLP-1) win,
+        # and segments arrive ORDER BY trial_count DESC, so "GLP-1 in obesity" led
+        # with Diabetes (615 trials) and falsely hedged on obesity. Reorder so the
+        # requested-indication segment leads, and record it as a present term so the
+        # closed-world post-check can forbid a contradicting "no data on <it>" claim.
+        requested_indication = self._requested_indication(plan)
+        present_indications: list[str] = []
+        if requested_indication and metrics_data.get("competitive"):
+            segs = metrics_data["competitive"]
+            if any(requested_indication in (s.get("therapeutic_area") or "").lower() for s in segs):
+                metrics_data["competitive"] = _lead_with_indication(segs, requested_indication)
+                present_indications.append(requested_indication)
+                # Conservation: record the reorder (parity with the correction log).
+                logger.info("Reordered landscape to lead with requested indication: %s", requested_indication)
 
         # Grounded per-drug trial TOTAL as citable evidence (the structural fix the
         # trial-count directive anticipated): a drug-vs-drug compare otherwise carried
@@ -1103,8 +1135,23 @@ class UnifiedChatHandler:
                 coverage_limits.append((_ev_text, "OUT_OF_CORPUS_EVENT"))
                 _seen_limit.add(_ev_text)
         coverage_directive = _coverage_directive(coverage_limits)
+        # F1: tell synthesis to lead with the requested indication and forbid a
+        # false-absence claim for it (a matching segment was retrieved).
+        indication_directive = ""
+        if present_indications:
+            ind = present_indications[0]
+            n_seg = sum(
+                1 for s in metrics_data.get("competitive", [])
+                if ind in (s.get("therapeutic_area") or "").lower()
+            )
+            indication_directive = (
+                f"REQUESTED INDICATION (binding): the user asked specifically about "
+                f"{ind}. Lead with the {ind} segment(s) — {n_seg} retrieved this turn. "
+                f"Do NOT state that data on {ind} is limited, absent, or unavailable."
+            )
         synthesis_directive = "\n\n".join(
-            d for d in (leaders_hint, faers_directive, trial_directive, coverage_directive) if d
+            d for d in (leaders_hint, faers_directive, trial_directive,
+                        indication_directive, coverage_directive) if d
         )
 
         # Call LLM with grounded, numbered evidence so citations validate.
@@ -1145,6 +1192,19 @@ class UnifiedChatHandler:
                     "Neutralized %d out-of-corpus event attribution(s) on live path: %s",
                     _ev_strip["stripped"],
                     ", ".join(e["display"] for e in out_of_corpus_events),
+                )
+
+        # F1: closed-world false-absence correction — the model must not claim "no /
+        # limited data on <indication>" when a matching segment WAS retrieved this
+        # turn (reviewer Q1's diabetes-led "limited data for obesity"). Scoped to the
+        # present indications, so a true absence is never rewritten.
+        if present_indications:
+            _fa = correct_false_absence_claims(narrative, present_indications)
+            narrative = _fa["narrative"]
+            if _fa["changed"]:
+                logger.info(
+                    "Corrected %d false-absence claim(s) for retrieved indication(s): %s",
+                    _fa["changed"], ", ".join(present_indications),
                 )
 
         # ── Guard check ── (on the model's narrative, before the deterministic footer)
@@ -1525,6 +1585,20 @@ class UnifiedChatHandler:
         if area_hits:
             return max(area_hits, key=len)  # longest disease token wins
         return plan.entities_detected[0] if plan.entities_detected else None
+
+    def _requested_indication(self, plan: QueryPlan) -> Optional[str]:
+        """The therapeutic-area / indication the user explicitly named, INDEPENDENT
+        of the mechanism (unlike ``_resolve_topic``, which lets a mechanism alias
+        like GLP-1 win). For "GLP-1 in obesity" this returns 'obesity' — the row the
+        landscape answer must anchor on (F1). None when no known area is named."""
+        ql = (plan.original_question or "").lower()
+        tokens = set(re.split(r"[^a-z0-9]+", ql))
+        hits = tokens & self._area_vocab()
+        if not hits:
+            return None
+        # Anchor on the FIRST-mentioned area (user emphasis), not the longest token —
+        # "compare obesity and diabetes" should anchor on obesity, not diabetes.
+        return min(hits, key=lambda t: ql.find(t))
 
     def _synthesize(
         self,
