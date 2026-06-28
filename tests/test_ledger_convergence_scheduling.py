@@ -10,8 +10,10 @@ This is the identical defect class the 15-Jun fix closed for sensing promotion.
 These deterministic, DB-free tests (Lane 1) pin two things so the freeze cannot
 silently recur:
   1. the converters run as one scheduled job registered in ``_register_jobs``;
-  2. a Lane-2 ledger-freshness SLA exists and reads a 12-day-old ledger as
-     unhealthy (the gate that would have caught the freeze)."""
+  2. the ledger-freshness SLA exists and the verdict logic reads a 12-day-old
+     ledger as unhealthy (the deterministic half of the gate that would have
+     caught the freeze). Wiring this SLA into the LIVE Lane-2 script
+     (connector_health) is a follow-up — see LEDGER_FRESHNESS_SLA_DAYS's note."""
 
 from __future__ import annotations
 

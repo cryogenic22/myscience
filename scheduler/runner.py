@@ -669,7 +669,9 @@ class DataPipelineScheduler:
         # while ingest stayed fresh). Idempotent + bounded; every 6h, minute 20 to
         # stagger off sensing (minute 0) and the connector window. Eventual-
         # consistent with the fact→signal mint — the next sensing cycle picks up
-        # facts asserted here. Lane-2 LEDGER_FRESHNESS_SLA_DAYS gates this.
+        # facts asserted here. The Lane-2 freshness watch over this (wiring
+        # LEDGER_FRESHNESS_SLA_DAYS into connector_health) is a follow-up — see
+        # that constant's note.
         self._scheduler.add_job(
             self._run_ledger_convergence,
             trigger=CronTrigger(hour="*/6", minute=20),
