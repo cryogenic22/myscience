@@ -69,6 +69,20 @@ def test_set_contract_writes_only_provided_fields():
     assert '{"url": "u"}' in params and 2 in params and ["x"] in params
 
 
+def test_set_contract_strips_secrets():
+    # security: auth_token / api_key / auth_password must never be persisted into
+    # the config JSONB (or the git-tracked spec) — they are supplied out-of-band.
+    db = _CaptureDB()
+    set_onboarding_contract(
+        db, "s1", config={"url": "u", "api_key": "SECRET-123", "auth_token": "TOK"}
+    )
+    _sql, params = db.execs[0]
+    persisted = next(p for p in params if isinstance(p, str) and p.startswith("{"))
+    assert "api_key" not in persisted and "SECRET-123" not in persisted
+    assert "auth_token" not in persisted and "TOK" not in persisted
+    assert "url" in persisted  # non-secret config survives
+
+
 def test_set_contract_noop_when_empty():
     db = _CaptureDB()
     set_onboarding_contract(db, "s1")

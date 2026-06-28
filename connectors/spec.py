@@ -134,6 +134,13 @@ class ConnectorSpec:
             issues.append("trust_tier must be 1, 2 or 3")
         if not isinstance(self.must_capture, list):
             issues.append("must_capture must be a list of field names")
+        # Catch typo'd / unsupported config keys (e.g. `recordz_path`) — to_config
+        # silently filters unknown keys to the connector dataclass, so without this
+        # an operator's mis-keyed mapping would be dropped with no signal.
+        if self.connector_type in _RUNTIME:
+            valid_cfg = {f.name for f in dataclasses.fields(_RUNTIME[self.connector_type][0])}
+            for k in sorted(set(self.config or {}) - valid_cfg):
+                issues.append(f"unknown config key '{k}' for {self.connector_type}")
         # For runtime types, the config must actually build a valid connector
         # config (this catches a missing url / external_id_field via the
         # dataclass __post_init__).

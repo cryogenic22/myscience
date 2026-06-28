@@ -82,6 +82,16 @@ def test_lint_flags_unknown_connector_type():
     assert any("connector_type" in i.lower() for i in spec.lint())
 
 
+def test_lint_flags_unknown_config_key():
+    # a typo in the config block (recordz_path for records_path) must surface — to_config
+    # silently drops unknown keys, so without the lint signal the mapping is lost.
+    from connectors.spec import ConnectorSpec
+
+    spec = ConnectorSpec.from_yaml(REST_SPEC_YAML)
+    spec.config["recordz_path"] = "data"
+    assert any("recordz_path" in i for i in spec.lint())
+
+
 def test_unknown_top_level_key_rejected():
     from connectors.spec import ConnectorSpec, SpecError
 

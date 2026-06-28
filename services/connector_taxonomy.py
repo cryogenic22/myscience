@@ -349,6 +349,22 @@ def list_onboarding(db, *, status: Optional[str] = None) -> list[OnboardingRecor
 # Contract persistence (099) + runnable-source query (the scheduler reads this)
 # ────────────────────────────────────────────────────────────────────
 
+# Connector-config keys that carry a credential. These are NEVER persisted into
+# the config JSONB (or the git-tracked spec file) — they are supplied out-of-band
+# at runtime. The DB/spec is a non-secret artifact; storing a token here would
+# leak it to anyone who can read the row or the repo.
+_SECRET_CONFIG_KEYS = ("auth_token", "auth_password", "api_key")
+
+
+def _strip_secret_config(config: dict) -> tuple[dict, list[str]]:
+    """Return (config without secret keys, list of dropped keys)."""
+    dropped = [k for k in _SECRET_CONFIG_KEYS if k in (config or {})]
+    if not dropped:
+        return dict(config or {}), []
+    clean = {k: v for k, v in config.items() if k not in _SECRET_CONFIG_KEYS}
+    return clean, dropped
+
+
 def set_onboarding_contract(
     db,
     source_id: str,
@@ -369,7 +385,13 @@ def set_onboarding_contract(
     if record_type is not None:
         sets.append("record_type = %s"); params.append(record_type)
     if config is not None:
-        sets.append("config = %s::jsonb"); params.append(json.dumps(config))
+        clean, dropped = _strip_secret_config(config)
+        if dropped:
+            logger.warning(
+                "set_onboarding_contract(%s): dropped secret config key(s) %s — secrets "
+                "must be supplied out-of-band, never stored in the spec/DB", source_id, dropped,
+            )
+        sets.append("config = %s::jsonb"); params.append(json.dumps(clean))
     if field_mappings is not None:
         sets.append("field_mappings = %s::jsonb"); params.append(json.dumps(field_mappings))
     if trust_tier is not None:
@@ -418,7 +440,7 @@ def register_contract(
         db,
         source_id=source_id,
         display_name=source_name,
-        tier=trust_tier or 3,
+        tier=trust_tier if trust_tier in (1, 2, 3) else 3,
         base_url=base_url,
     )
     start_onboarding(db, source_id, owner=owner, contact=contact,
