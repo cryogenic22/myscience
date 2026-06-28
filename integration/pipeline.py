@@ -555,6 +555,8 @@ class IntegrationPipeline:
                 records_inserted = %s,
                 records_updated = %s,
                 records_unchanged = %s,
+                records_skipped = %s,
+                records_failed = %s,
                 quality_score_avg = %s,
                 hitl_items_created = %s,
                 completed_at = NOW()
@@ -567,6 +569,11 @@ class IntegrationPipeline:
                 result.records_inserted,
                 result.records_updated,
                 result.records_unchanged,
+                # records_skipped / records_failed (migration 098): the pipeline
+                # counts both but pre-098 finalize dropped them, leaving a
+                # fail-closed skip (#300) or a DLQ insert invisible to Lane-2.
+                result.records_skipped,
+                result.records_failed,
                 result.avg_quality_score,
                 result.hitl_items_created,
                 run_id,

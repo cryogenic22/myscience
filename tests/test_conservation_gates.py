@@ -65,6 +65,63 @@ def test_schema_completeness_pure_invariants_present():
         assert hasattr(mod, name), f"Lane-1 invariant {name} is missing"
 
 
+def test_etl_run_finalize_persists_skipped_and_failed():
+    """`_finalize_etl_run` must persist records_skipped AND records_failed to
+    etl_runs. The pipeline already COUNTS both (the #300 fail-closed skip for
+    name-less ontology terms; a DLQ insert) on PipelineResult — but pre-098 the
+    finalize UPDATE dropped them on the floor: etl_runs had no column for them.
+    So a run that fail-closed-skipped 3,121 open_targets records still logged a
+    clean SUCCESS with the skip count invisible to Lane-2 — which is *why* that
+    backlog bled 18 days unseen. Static guard on the UPDATE select-list, no DB."""
+    import inspect
+
+    from integration import pipeline
+
+    src = inspect.getsource(pipeline.IntegrationPipeline._finalize_etl_run).lower()
+    assert "records_skipped" in src, (
+        "_finalize_etl_run no longer persists records_skipped — fail-closed skips "
+        "go invisible to Lane-2 again (the open_targets silent-bleed regression)"
+    )
+    assert "records_failed" in src, (
+        "_finalize_etl_run no longer persists records_failed — DLQ inserts go "
+        "invisible to Lane-2 again"
+    )
+
+
+def test_dlq_health_verdict_escalates_on_growth():
+    """The DLQ backlog (fail-closed skips + failed_records) must be a first-class
+    Lane-2 signal, not silent. A GROWING backlog (a real bleed) is RED; a
+    quiescent non-zero backlog is AMBER (known debt awaiting replay, never
+    silently GREEN); empty/draining is GREEN. Pure verdict, no DB."""
+    from scripts.connector_health import score_dlq
+
+    # a live bleed: many new pending records this window → RED
+    assert score_dlq(pending_total=3000, pending_recent=500, skipped_recent=0) == "RED"
+    # a fail-closed skip burst this window → RED (the open_targets signature,
+    # which never even reaches the DLQ — it is a counted skip)
+    assert score_dlq(pending_total=0, pending_recent=0, skipped_recent=500) == "RED"
+    # quiescent known-debt backlog (old, not growing) → AMBER, not RED, so the
+    # replay loops are not a permanent red — but it is never silently GREEN.
+    assert score_dlq(pending_total=2612, pending_recent=0, skipped_recent=0) == "AMBER"
+    # empty / fully drained → GREEN
+    assert score_dlq(pending_total=0, pending_recent=0, skipped_recent=0) == "GREEN"
+
+
+def test_connector_health_consults_dlq_verdict():
+    """No vacuous green: the DLQ verdict must actually be wired into the health
+    gate's output + exit path, not defined-and-ignored. A backlog verdict that
+    gates nothing re-creates the silence it exists to kill."""
+    import inspect
+
+    from scripts import connector_health
+
+    main_src = inspect.getsource(connector_health.main).lower()
+    assert "dlq" in main_src, (
+        "the DLQ verdict is never consulted by the health gate's main() — a "
+        "backlog signal that gates nothing is a vacuous green"
+    )
+
+
 def test_lane1_suite_is_not_vacuous():
     """No vacuous green at the suite level: this conservation module must define
     real assertions, not be an empty shell that passes by checking nothing."""

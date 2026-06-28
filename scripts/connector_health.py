@@ -117,6 +117,31 @@ class SourceScore:
     notes: list[str] = field(default_factory=list)
 
 
+# DLQ backlog: the fail-closed skip (#300) and the DLQ (failed_records) were
+# SILENT to Lane-2 — open_targets bled 3,121 records over 18 days while every run
+# logged SUCCESS, because a skip / DLQ insert surfaced nowhere. A backlog that
+# GROWS is a live bleed (RED); a stable non-zero backlog is known debt awaiting
+# the replay loops (AMBER — never silently GREEN); empty/draining is GREEN. The
+# window is trailing so the existing static backlog does not pin RED forever.
+DLQ_WINDOW_DAYS = 7
+DLQ_GROWTH_RED = 100   # new pending OR fail-closed skips within the window → RED
+
+
+@dataclass
+class DLQHealth:
+    """Live dead-letter-queue backlog snapshot for the Lane-2 health gate.
+
+    Surfaces what was silent: pending failed_records, how fast the backlog is
+    growing (records created in the trailing window), and the trailing-window
+    fail-closed skip volume (the #300 path, which never reaches the DLQ)."""
+    pending_total: int = 0
+    pending_recent: int = 0          # failed_records created in the window
+    skipped_recent: int = 0          # sum(etl_runs.records_skipped) in the window
+    window_days: int = DLQ_WINDOW_DAYS
+    verdict: str = "GREEN"
+    top_causes: list[str] = field(default_factory=list)
+
+
 def _age_days(newest: Optional[datetime], now: datetime) -> Optional[float]:
     if newest is None:
         return None
@@ -187,6 +212,23 @@ def score_strength(rows: int, linked_pct: Optional[float]) -> str:
     if linked_pct >= 50.0:
         return "AMBER"
     return "RED"
+
+
+def score_dlq(pending_total: int, pending_recent: int, skipped_recent: int) -> str:
+    """Pure DLQ-backlog health verdict (no DB). See DLQ_GROWTH_RED / DLQ_WINDOW_DAYS.
+
+    ``pending_recent`` / ``skipped_recent`` measure only the trailing window, so a
+    real *bleed* (the open_targets signature) reds within ~a day while the known
+    static backlog awaiting replay stays AMBER instead of pinning RED. Benign,
+    self-healing causes (pubchem dup-key, ctgov disk-full) are not yet excluded —
+    that classification is a follow-up loop; the 100/window threshold keeps
+    today's ~10 benign/week comfortably under RED.
+    """
+    if pending_recent >= DLQ_GROWTH_RED or skipped_recent >= DLQ_GROWTH_RED:
+        return "RED"
+    if (pending_total or 0) > 0 or (skipped_recent or 0) > 0:
+        return "AMBER"
+    return "GREEN"
 
 
 def score_sync(
@@ -423,6 +465,51 @@ def gather_scorecard(conn) -> list[SourceScore]:
     return out
 
 
+def gather_dlq_health(conn) -> DLQHealth:
+    """Live DLQ backlog snapshot (read-only). Degrades gracefully if the
+    table/columns are absent (fresh DB / pre-098) — a health query hiccup must
+    never crash the scorecard; it rolls back and reports what it could read."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    pending_total = pending_recent = skipped_recent = 0
+    top_causes: list[str] = []
+    try:
+        cur.execute("SELECT count(*) AS n FROM failed_records WHERE status = 'pending'")
+        pending_total = cur.fetchone()["n"] or 0
+        cur.execute(
+            "SELECT count(*) AS n FROM failed_records "
+            "WHERE status = 'pending' AND created_at > now() - make_interval(days => %s)",
+            [DLQ_WINDOW_DAYS],
+        )
+        pending_recent = cur.fetchone()["n"] or 0
+        cur.execute(
+            """
+            SELECT source_type, count(*) AS n
+            FROM failed_records WHERE status = 'pending'
+            GROUP BY source_type ORDER BY n DESC LIMIT 4
+            """
+        )
+        top_causes = [f"{r['source_type']}:{r['n']}" for r in cur.fetchall()]
+    except Exception:
+        conn.rollback()  # no failed_records table / column — report zeros
+    try:
+        cur.execute(
+            "SELECT COALESCE(sum(records_skipped), 0) AS n FROM etl_runs "
+            "WHERE started_at > now() - make_interval(days => %s)",
+            [DLQ_WINDOW_DAYS],
+        )
+        skipped_recent = cur.fetchone()["n"] or 0
+    except Exception:
+        conn.rollback()  # pre-098: no records_skipped column — skip the skip-sum
+    return DLQHealth(
+        pending_total=pending_total,
+        pending_recent=pending_recent,
+        skipped_recent=skipped_recent,
+        window_days=DLQ_WINDOW_DAYS,
+        verdict=score_dlq(pending_total, pending_recent, skipped_recent),
+        top_causes=top_causes,
+    )
+
+
 def _cell(v: str) -> str:
     return {"GREEN": "GRN", "AMBER": "AMB", "RED": "RED", "DEFERRED": "DEF"}.get(v, v)
 
@@ -431,6 +518,7 @@ def main() -> None:
     as_json = "--json" in sys.argv
     conn = psycopg2.connect(_get_db_url())
     scores = gather_scorecard(conn)
+    dlq = gather_dlq_health(conn)
     conn.close()
 
     if as_json:
@@ -465,7 +553,21 @@ def main() -> None:
         if deferred:
             print(f"DEFERRED: {', '.join(deferred)}")
 
-    if any(s.verdict == "RED" for s in scores):
+        # DLQ backlog (fail-closed skips + failed_records) — was silent to Lane-2.
+        print("-" * 100)
+        print(
+            f"DLQ: {dlq.pending_total} pending  "
+            f"(+{dlq.pending_recent} new / {dlq.window_days}d, "
+            f"{dlq.skipped_recent} skipped / {dlq.window_days}d)  {dlq.verdict}"
+        )
+        if dlq.top_causes:
+            print(f"     causes: {', '.join(dlq.top_causes)}")
+        if dlq.verdict == "RED":
+            print("     DLQ RED — backlog is GROWING (a live bleed). Triage the newest cause.")
+        elif dlq.verdict == "AMBER":
+            print("     DLQ AMBER — non-zero backlog (known debt awaiting replay; not growing).")
+
+    if any(s.verdict == "RED" for s in scores) or dlq.verdict == "RED":
         sys.exit(1)
 
 
