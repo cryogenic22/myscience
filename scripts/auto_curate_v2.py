@@ -100,10 +100,19 @@ def enrich_companies_from_sec(db) -> dict:
             continue
         match = ticker_map.get(clean)
         if match and match["cik"]:
+            # Guard the UNIQUE(cik) constraint: companies has duplicate rows that
+            # clean to the same name → the same SEC CIK, so a bare UPDATE assigns
+            # a CIK already held by another row and raises UniqueViolation, which
+            # (autocommit) aborts this pass and — before run_all_curation isolated
+            # passes — the whole v2 run (prod probe, 2026-06-28: crashed here with
+            # only 6 companies ever enriched). The NOT EXISTS skips a taken CIK
+            # (the duplicate row is dedup_companies' / pass-2's job, not ours) and
+            # also blocks two same-run rows from racing onto one CIK.
             db.execute(
                 "UPDATE companies SET ticker=%s, cik=%s "
-                "WHERE id=%s AND (ticker IS NULL OR ticker='')",
-                [match["ticker"], match["cik"], c["id"]],
+                "WHERE id=%s AND (ticker IS NULL OR ticker='') "
+                "AND NOT EXISTS (SELECT 1 FROM companies x WHERE x.cik=%s AND x.id <> %s)",
+                [match["ticker"], match["cik"], c["id"], match["cik"], c["id"]],
             )
             matched += 1
 
@@ -170,16 +179,24 @@ def resolution_sweep(db, batch_size: int = 500) -> dict:
         normalize_drug_mention,
     )
 
+    # The kind column is record_type, NOT entity_type (which does not exist —
+    # pass 3 raised UndefinedColumn on prod and drained 0 of the pending backlog
+    # until 2026-06-28). Only 'drug'/'company' rows are resolvable here (this
+    # sweep matches against the drugs + companies tables); the bulk of pending is
+    # 'investigator' names, which can't match either table, so we leave them
+    # 'pending' (a future investigator-resolution pass owns them) rather than burn
+    # the batch on guaranteed-misses and starve the resolvable rows.
     pending = db.fetch_all(
-        """SELECT id, entity_type, raw_value FROM unresolved_entities
-           WHERE status = 'pending' ORDER BY created_at LIMIT %s""",
+        """SELECT id, record_type, raw_value FROM unresolved_entities
+           WHERE status = 'pending' AND record_type IN ('drug', 'company')
+           ORDER BY created_at LIMIT %s""",
         [batch_size],
     )
 
     resolved = 0
     for entry in pending:
         raw = entry["raw_value"]
-        etype = entry.get("entity_type") or "drug"
+        etype = entry.get("record_type") or "drug"
 
         if etype == "company":
             cleaned = normalize_company_mention(raw)
@@ -283,50 +300,40 @@ def compute_fair(db) -> dict:
 def run_all_curation(db) -> list[dict]:
     """Execute all 5 curation passes in sequence.
 
-    Each pass is independent and safe to run individually.
-    The full pipeline is idempotent — running twice produces no duplicates.
+    Each pass is independent and safe to run individually; the full pipeline is
+    idempotent — running twice produces no duplicates. Passes are ISOLATED: a
+    pass that raises is recorded as an ``error`` result and the remaining passes
+    still run, so the daily scheduled job (DataPipelineScheduler) completes what
+    it can instead of dying on the first failure (conservation: no single pass
+    aborts the batch). Connections are autocommit, so a failed statement does not
+    poison the ones that follow.
 
     Returns:
-        List of 5 result dicts, one per pass.
+        List of 5 result dicts, one per pass (an ``error`` key marks a failure).
     """
+    passes = [
+        ("company_sec", lambda: enrich_companies_from_sec(db)),
+        ("orphan_companies", lambda: link_orphan_companies(db)),
+        ("resolution_sweep", lambda: resolution_sweep(db, batch_size=1000)),
+        ("hitl_auto", lambda: hitl_auto_resolve(db, batch_size=1000)),
+        ("fair_score", lambda: compute_fair(db)),
+    ]
+
     results: list[dict] = []
     total_start = time.time()
-
     logger.info("Starting auto-curation v2 (5 passes)")
 
-    # Pass 1: SEC EDGAR enrichment
-    t0 = time.time()
-    r = enrich_companies_from_sec(db)
-    r["elapsed_s"] = round(time.time() - t0, 1)
-    results.append(r)
+    for name, run_pass in passes:
+        t0 = time.time()
+        try:
+            r = run_pass()
+        except Exception as e:
+            logger.exception("Auto-curation pass %s failed", name)
+            r = {"pass": name, "error": str(e)}
+        r["elapsed_s"] = round(time.time() - t0, 1)
+        results.append(r)
 
-    # Pass 2: Orphan company linking
-    t0 = time.time()
-    r = link_orphan_companies(db)
-    r["elapsed_s"] = round(time.time() - t0, 1)
-    results.append(r)
-
-    # Pass 3: Resolution sweep
-    t0 = time.time()
-    r = resolution_sweep(db, batch_size=1000)
-    r["elapsed_s"] = round(time.time() - t0, 1)
-    results.append(r)
-
-    # Pass 4: HITL auto-resolve
-    t0 = time.time()
-    r = hitl_auto_resolve(db, batch_size=1000)
-    r["elapsed_s"] = round(time.time() - t0, 1)
-    results.append(r)
-
-    # Pass 5: FAIR score
-    t0 = time.time()
-    r = compute_fair(db)
-    r["elapsed_s"] = round(time.time() - t0, 1)
-    results.append(r)
-
-    total_elapsed = round(time.time() - total_start, 1)
-    logger.info("Auto-curation v2 complete in %.1fs", total_elapsed)
-
+    logger.info("Auto-curation v2 complete in %.1fs", round(time.time() - total_start, 1))
     return results
 
 

@@ -157,6 +157,37 @@ class TestEnrichCompaniesFromSEC:
         assert "error" in result
         assert result["pass"] == "company_sec"
 
+    def test_enrich_guards_against_duplicate_cik(self, mock_db):
+        """The cik-assigning UPDATE must guard the UNIQUE(cik) constraint.
+
+        Regression: prod ``companies`` holds duplicate rows that clean to the
+        same name → the same SEC CIK; a bare UPDATE assigns a CIK already held by
+        another row → UniqueViolation, which (autocommit) crashed pass 1 and the
+        whole v2 run (probe 2026-06-28: only 6 companies ever enriched). Pin that
+        every cik UPDATE carries the NOT EXISTS guard so a taken CIK is skipped,
+        not fatal."""
+        from scripts.auto_curate_v2 import enrich_companies_from_sec
+
+        mock_db.set_results("companies", [
+            {"id": "c001", "name": "Pfizer Inc."},
+            {"id": "c002", "name": "Pfizer"},  # dup row → same cleaned name → same CIK
+        ])
+        sec_data = {"0": {"cik_str": 78003, "ticker": "PFE", "title": "PFIZER INC"}}
+
+        with patch("scripts.auto_curate_v2.requests") as mock_requests:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = sec_data
+            mock_resp.raise_for_status = MagicMock()
+            mock_requests.get.return_value = mock_resp
+
+            enrich_companies_from_sec(mock_db)
+
+        cik_updates = [c for c in mock_db.execute_calls if "UPDATE companies" in c[0]]
+        assert cik_updates, "expected at least one cik UPDATE"
+        for sql, _params in cik_updates:
+            assert "NOT EXISTS" in sql.upper(), \
+                "UPDATE must guard UNIQUE(cik) or one dup row aborts the whole run"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Pass 2: Orphan company linking
@@ -231,7 +262,7 @@ class TestResolutionSweep:
         from scripts.auto_curate_v2 import resolution_sweep
 
         mock_db.set_results("unresolved_entities", [
-            {"id": "u001", "entity_type": "drug", "raw_value": "SEMAGLUTIDE 0.5 MG INJECTION"},
+            {"id": "u001", "record_type": "drug", "raw_value": "SEMAGLUTIDE 0.5 MG INJECTION"},
         ])
         mock_db.set_fetch_one("drugs", {"id": "d001"})
 
@@ -253,7 +284,7 @@ class TestResolutionSweep:
         from scripts.auto_curate_v2 import resolution_sweep
 
         mock_db.set_results("unresolved_entities", [
-            {"id": "u002", "entity_type": "company", "raw_value": "Eli Lilly and Company"},
+            {"id": "u002", "record_type": "company", "raw_value": "Eli Lilly and Company"},
         ])
         mock_db.set_fetch_one("companies", {"id": "c002"})
 
@@ -265,7 +296,7 @@ class TestResolutionSweep:
         from scripts.auto_curate_v2 import resolution_sweep
 
         mock_db.set_results("unresolved_entities", [
-            {"id": "u003", "entity_type": "drug", "raw_value": "AB"},
+            {"id": "u003", "record_type": "drug", "raw_value": "AB"},
         ])
 
         result = resolution_sweep(mock_db, batch_size=100)
@@ -276,7 +307,7 @@ class TestResolutionSweep:
         from scripts.auto_curate_v2 import resolution_sweep
 
         mock_db.set_results("unresolved_entities", [
-            {"id": "u004", "entity_type": "drug", "raw_value": "Nonexistent Drug XYZ"},
+            {"id": "u004", "record_type": "drug", "raw_value": "Nonexistent Drug XYZ"},
         ])
         # No match in drugs table
         mock_db.set_fetch_one("drugs", None)
@@ -284,6 +315,36 @@ class TestResolutionSweep:
         result = resolution_sweep(mock_db, batch_size=100)
         assert result["processed"] == 1
         assert result["resolved"] == 0
+
+    def test_resolution_sweep_uses_record_type_column(self):
+        """Regression for the 2026-06-28 prod crash: pass 3 selected ``entity_type``,
+        which does not exist on unresolved_entities (real kind column:
+        ``record_type``), so the sweep raised UndefinedColumn and drained 0 of the
+        7,384 pending rows. Pin that the pending query selects record_type and
+        targets only the resolvable drug/company kinds."""
+        from scripts.auto_curate_v2 import resolution_sweep
+
+        seen: list[str] = []
+
+        class RecordingDB:
+            def fetch_all(self, sql, params=None):
+                seen.append(sql)
+                return []
+
+            def fetch_one(self, sql, params=None):
+                return None
+
+            def execute(self, sql, params=None):
+                return None
+
+        resolution_sweep(RecordingDB(), batch_size=10)
+
+        assert seen, "expected a pending fetch_all"
+        sql = seen[0].lower()
+        assert "record_type" in sql and "entity_type" not in sql, \
+            "pass 3 must select record_type — entity_type does not exist on prod"
+        assert "record_type in ('drug', 'company')" in sql, \
+            "the batch must target only resolvable record types"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -516,6 +577,35 @@ class TestRunAllCuration:
         for sql, params in mock_db.execute_calls:
             if "INSERT" in sql.upper():
                 assert "ON CONFLICT DO NOTHING" in sql.upper()
+
+    def test_run_all_curation_isolates_a_failing_pass(self):
+        """One pass raising must NOT abort the remaining passes.
+
+        The daily scheduled v2 job has to complete what it can rather than die on
+        the first error (conservation: no single failure aborts the batch). Pin
+        that a raising pass becomes an ``error`` result while the other four still
+        run and report."""
+        from scripts.auto_curate_v2 import run_all_curation
+
+        with patch("scripts.auto_curate_v2.enrich_companies_from_sec",
+                   side_effect=RuntimeError("boom")), \
+             patch("scripts.auto_curate_v2.link_orphan_companies",
+                   return_value={"pass": "orphan_companies", "linked": 2}), \
+             patch("scripts.auto_curate_v2.resolution_sweep",
+                   return_value={"pass": "resolution_sweep", "resolved": 3}), \
+             patch("scripts.auto_curate_v2.hitl_auto_resolve",
+                   return_value={"pass": "hitl_auto", "resolved": 1}), \
+             patch("scripts.auto_curate_v2.compute_fair",
+                   return_value={"pass": "fair_score", "fair_score": 0.9}):
+            results = run_all_curation(MockDB())
+
+        assert len(results) == 5, "all 5 passes must be represented even when one fails"
+        failed = [r for r in results if "error" in r]
+        assert len(failed) == 1 and failed[0]["pass"] == "company_sec"
+        # the four healthy passes still ran
+        assert any(r.get("linked") == 2 for r in results)
+        assert any(r.get("resolved") == 3 for r in results)
+        assert any(r.get("fair_score") == 0.9 for r in results)
 
     def test_idempotency_resolution_only_updates_pending(self, mock_db):
         """resolution_sweep only processes status='pending' entries."""

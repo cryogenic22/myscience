@@ -214,14 +214,18 @@ class DataPipelineScheduler:
             logger.exception("Post-task auto_curate failed")
             results["auto_curate"] = f"ERROR: {e}"
 
-        # 6b. Auto-curate v2 (SEC enrichment, orphan linking, resolution sweep, HITL, FAIR)
+        # 6b. Auto-curate v2 (SEC enrichment, orphan linking, resolution sweep,
+        # HITL, FAIR). Factored into _run_auto_curate_v2 so the LIVE scheduler can
+        # run it on a cadence (see _register_jobs) and so it gets its OWN
+        # connection — the prior inline call passed self.db, which this class never
+        # sets, so step 6b raised AttributeError every cycle and v2 ran on NO
+        # scheduler path (only on a manual /enrichment POST).
         try:
             t0 = time.time()
-            mod = importlib.import_module("scripts.auto_curate_v2")
-            v2_results = mod.run_all_curation(self.db)
-            total = sum(r.get('enriched', r.get('resolved', r.get('linked', 0))) for r in v2_results)
-            results["auto_curate_v2"] = f"OK — {total} items ({time.time()-t0:.1f}s)"
-            logger.info("Post-task: auto_curate_v2 completed — %d items", total)
+            results["auto_curate_v2"] = (
+                self._run_auto_curate_v2() + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Post-task: auto_curate_v2 — %s", results["auto_curate_v2"])
         except Exception as e:
             logger.exception("Post-task auto_curate_v2 failed")
             results["auto_curate_v2"] = f"ERROR: {e}"
@@ -521,6 +525,29 @@ class DataPipelineScheduler:
         finally:
             db.close()
 
+    def _run_auto_curate_v2(self) -> str:
+        """Run auto-curation v2's five deterministic passes — SEC EDGAR
+        enrichment, orphan-company linking, resolution sweep, HITL auto-resolve,
+        FAIR score (scripts.auto_curate_v2.run_all_curation). Own short-lived
+        connection: the prior inline call passed self.db, which
+        DataPipelineScheduler never sets, so the step raised AttributeError every
+        cycle and v2 ran on NO scheduler path (only on a manual /enrichment POST).
+        Idempotent (the passes dedup), so the scheduled cadence and run_now share
+        this one path. Returns an OK summary; the caller times + records it."""
+        from scripts.auto_curate_v2 import run_all_curation
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            v2_results = run_all_curation(db)
+            total = sum(
+                r.get("enriched", r.get("resolved", r.get("linked", 0)))
+                for r in v2_results
+            )
+            return f"OK — {total} items across {len(v2_results)} passes"
+        finally:
+            db.close()
+
     def _run_scenario_calibration(self) -> str:
         """Re-weight live scenarios from new signals (PB-H14). Own connection."""
         from services.scenario_calibration import calibrate_all_engagements
@@ -681,6 +708,25 @@ class DataPipelineScheduler:
             misfire_grace_time=3600,
         )
         logger.info("Registered: Ledger convergence → cron every 6h")
+
+        # Auto-curate v2 — SEC enrichment + orphan linking + resolution sweep +
+        # HITL + FAIR, on a cadence. Same defect class as sensing/ledger: the five
+        # passes lived only in run_now()'s post-task block (and there crashed on
+        # self.db — see _run_auto_curate_v2), so v2 ran on NO automatic path, only
+        # on a manual /enrichment POST. Heaviest of the periodic jobs (external SEC
+        # fetch + a 1000-row resolution sweep), so DAILY rather than 6-hourly, and
+        # off-peak (04:40 UTC) to stagger off sensing (minute 0) + ledger (minute
+        # 20) + the connector windows. Idempotent; the next sensing/ledger cycle
+        # eventual-consistently picks up entities it resolves/enriches.
+        self._scheduler.add_job(
+            self._run_auto_curate_v2,
+            trigger=CronTrigger(hour=4, minute=40),
+            id="auto_curate_v2",
+            name="Auto-curate v2 (SEC enrich + orphan link + resolution sweep + FAIR)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered: Auto-curate v2 → cron daily 04:40 UTC")
 
     def _run_connector(self, source_type: SourceType) -> None:
         """Execute a single connector through the full pipeline."""
