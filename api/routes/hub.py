@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.deps import get_db, require_role
 from db import Database
+from connectors.spec import ConnectorSpec
 from services.connector_taxonomy import (
     INITIAL_STATUS,
     ONBOARDING_STATUSES,
@@ -42,6 +43,7 @@ from services.connector_taxonomy import (
     get_onboarding,
     list_connector_types,
     list_onboarding,
+    set_onboarding_contract,
     start_onboarding,
 )
 
@@ -60,6 +62,16 @@ class StartOnboardingBody(BaseModel):
     connector_type: Optional[str] = Field(default=None, max_length=50)
     go_live_date: Optional[date] = None
     escalation: Optional[str] = Field(default=None, max_length=500)
+    # Connector contract (099) — all optional + back-compatible. When any contract
+    # field is present the body is validated as a ConnectorSpec (lint) before it is
+    # persisted, so a malformed connector fails closed with clear errors.
+    record_type: Optional[str] = Field(default=None, max_length=50)
+    config: Optional[dict] = None
+    field_mappings: Optional[list] = None
+    trust_tier: Optional[int] = Field(default=None, ge=1, le=3)
+    must_capture: Optional[list[str]] = None
+    license: Optional[str] = Field(default=None, max_length=200)
+    cadence: Optional[dict] = None
 
 
 class AdvanceOnboardingBody(BaseModel):
@@ -142,8 +154,32 @@ def start_onboarding_route(
     user: dict = Depends(require_role("uploader")),
     db: Database = Depends(get_db),
 ):
-    if not _source_exists(db, source_id):
+    src = db.fetch_one(
+        "SELECT display_name FROM sources WHERE source_id = %s", (source_id,)
+    )
+    if not src:
         raise HTTPException(404, f"source not found: {source_id} (register it first)")
+
+    # A full contract (config/mappings/record_type/…) is validated as a
+    # ConnectorSpec before anything is written — fail closed on a bad connector.
+    has_contract = any(
+        v is not None for v in (body.record_type, body.config, body.trust_tier, body.license)
+    ) or bool(body.field_mappings) or bool(body.must_capture)
+    if has_contract:
+        issues = ConnectorSpec(
+            source_id=source_id,
+            source_name=src["display_name"],
+            connector_type=body.connector_type or "",
+            record_type=body.record_type or "",
+            config=body.config or {},
+            trust_tier=body.trust_tier,
+            must_capture=body.must_capture or [],
+            license=body.license,
+            cadence=body.cadence,
+        ).lint()
+        if issues:
+            raise HTTPException(422, {"errors": issues})
+
     try:
         rec = start_onboarding(
             db, source_id,
@@ -155,6 +191,18 @@ def start_onboarding_route(
         )
     except UnknownConnectorType as e:
         raise HTTPException(400, str(e))
+
+    if has_contract:
+        rec = set_onboarding_contract(
+            db, source_id,
+            record_type=body.record_type,
+            config=body.config,
+            field_mappings=body.field_mappings,
+            trust_tier=body.trust_tier,
+            must_capture=body.must_capture,
+            license=body.license,
+            cadence=body.cadence,
+        )
     return rec.to_dict()
 
 
