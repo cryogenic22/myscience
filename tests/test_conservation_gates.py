@@ -78,14 +78,18 @@ def test_etl_run_finalize_persists_skipped_and_failed():
     from integration import pipeline
 
     src = inspect.getsource(pipeline.IntegrationPipeline._finalize_etl_run).lower()
-    assert "records_skipped" in src, (
-        "_finalize_etl_run no longer persists records_skipped — fail-closed skips "
-        "go invisible to Lane-2 again (the open_targets silent-bleed regression)"
-    )
-    assert "records_failed" in src, (
-        "_finalize_etl_run no longer persists records_failed — DLQ inserts go "
-        "invisible to Lane-2 again"
-    )
+    # Check BOTH the SQL column AND its bound value param — not just the column
+    # name — so the misaligned-write mode (column kept in the UPDATE but the
+    # `result.<x>` value param dropped) is caught, not only full removal.
+    for col in ("records_skipped", "records_failed"):
+        assert col in src, (
+            f"_finalize_etl_run no longer persists {col} — that count goes "
+            f"invisible to Lane-2 again (the open_targets silent-bleed regression)"
+        )
+        assert f"result.{col}" in src, (
+            f"_finalize_etl_run names the {col} column but no longer binds "
+            f"result.{col} as its value — a misaligned / dropped write"
+        )
 
 
 def test_dlq_health_verdict_escalates_on_growth():
@@ -119,6 +123,14 @@ def test_connector_health_consults_dlq_verdict():
     assert "dlq" in main_src, (
         "the DLQ verdict is never consulted by the health gate's main() — a "
         "backlog signal that gates nothing is a vacuous green"
+    )
+    # Specifically the verdict must participate in the EXIT path, not merely be
+    # printed. Asserting the exit-condition guards against deleting the gate
+    # wiring while leaving the (already "dlq"-containing) text output intact.
+    assert 'dlq.verdict == "red"' in main_src, (
+        "score_dlq's RED verdict is no longer wired into main()'s sys.exit path — "
+        "the DLQ can grow without failing the scheduled Lane-2 gate (defined-and-"
+        "ignored at the gate, the exact silence this exists to kill)"
     )
 
 

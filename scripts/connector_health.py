@@ -522,6 +522,13 @@ def main() -> None:
     conn.close()
 
     if as_json:
+        # NOTE (follow-up): the DLQ snapshot is intentionally NOT in the --json
+        # payload yet. A DLQ-only RED still fails the gate via the exit code below,
+        # but health_alert.py renders the tracking issue from this JSON — so a
+        # DLQ-only RED won't (yet) open/annotate that issue. Adding `dlq` here +
+        # teaching health_alert.py to factor it in is deferred to converge with the
+        # concurrent ledger-health JSON reshape (avoids two conflicting changes to
+        # this payload). Exit-code gating — the conservation floor — is wired.
         print(json.dumps([asdict(s) for s in scores], indent=2, default=str))
     else:
         print(
