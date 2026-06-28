@@ -254,6 +254,12 @@ export function ConnectWizard({ onRegister, onDone, onCancel }: ConnectWizardPro
         color: 'var(--color-ink-2)',
         fontFamily: 'var(--font-body)',
         minHeight: '100%',
+        // body is `overflow:hidden` + #root is height:100%, so this <main> must
+        // be its OWN scroll container — without these, a step taller than the
+        // viewport grows past the clipped body and the lower inputs / submit
+        // button are unreachable (no page scroll exists to get to them).
+        maxHeight: '100vh',
+        overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
         gap: 22,
