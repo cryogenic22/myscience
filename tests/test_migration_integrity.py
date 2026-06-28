@@ -81,7 +81,13 @@ def find_unexplained_gaps(
     """Pure core: numbers in [1, max(numbers)] that are absent AND neither
     skipped nor pending-restore. An empty list means the sequence is fully
     explained. Kept side-effect-free so it can be exercised on synthetic input
-    (see test_gap_detector_catches_a_synthetic_loss)."""
+    (see test_gap_detector_catches_a_synthetic_loss).
+
+    Scope: the range is bounded by the highest number ON DISK, so this catches
+    *interior* loss (e.g. 090, lost between 089 and 091 — the realised failure
+    mode) but NOT a migration lost ABOVE the current max; there is no DB-free
+    source of the true ceiling. That top-edge hole self-closes the moment any
+    higher migration lands. Documented in the runbook."""
     if not numbers:
         return []
     present = set(numbers)
@@ -109,9 +115,12 @@ def test_no_duplicate_migration_numbers():
 
 # ── The core invariant: no unexplained gap ─────────────────────────────────
 def test_no_unexplained_migration_gaps():
-    gaps = find_unexplained_gaps(
-        _numbers_on_disk(), SKIPPED_NUMBERS, PENDING_RESTORE
-    )
+    nums = _numbers_on_disk()
+    # Non-vacuous guard: find_unexplained_gaps returns [] on empty input, so an
+    # empty schema/migrations/ would otherwise pass clean. The suite must fail
+    # closed if the migrations vanish (mirrors test_auto_migrate's `total > 0`).
+    assert nums, "no migration files found in schema/migrations/ — gate is vacuous"
+    gaps = find_unexplained_gaps(nums, SKIPPED_NUMBERS, PENDING_RESTORE)
     assert not gaps, (
         f"Unexplained gap(s) in the migration sequence: {gaps}.\n"
         "A migration number is missing from schema/migrations/ that is neither a "

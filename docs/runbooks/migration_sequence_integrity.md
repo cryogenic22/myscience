@@ -55,6 +55,16 @@ The pending restoration landed. Remove `N` from `PENDING_RESTORE` (one line). Do
 this **in the same PR that restores the file** — restoring a lost migration
 should also retire the allowance that documented its absence.
 
+## Known limitation — top-edge loss
+
+The gap check is bounded by the highest migration number **on disk**, so it
+catches *interior* loss (e.g. 090, lost between 089 and 091 — the realised
+failure mode) but **not** a migration lost at a number *above* the current
+maximum. There is no DB-free source of the "true ceiling" to check against. This
+hole self-closes the moment any higher migration lands (the lost number becomes
+interior). The cheap prod cross-check below (`migrate.py --check`) is the way to
+catch a top-edge divergence in the meantime.
+
 ## Confirming against prod (optional, needs `DATABASE_URL`)
 
 The gate is DB-free — it reasons about the disk sequence, which is what a fresh
