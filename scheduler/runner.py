@@ -544,7 +544,14 @@ class DataPipelineScheduler:
                 r.get("enriched", r.get("resolved", r.get("linked", 0)))
                 for r in v2_results
             )
-            return f"OK — {total} items across {len(v2_results)} passes"
+            # Honest roll-up: run_all_curation isolates a failing pass into an
+            # {"error": ...} result, so surface how many failed and mark the run
+            # PARTIAL. Otherwise "the job ran" reads as "healthy" in the scheduler
+            # summary + INFO log even when a pass silently degraded (gate #3).
+            errs = sum(1 for r in v2_results if "error" in r)
+            verb = "PARTIAL" if errs else "OK"
+            tail = f", {errs}/{len(v2_results)} passes failed" if errs else ""
+            return f"{verb} — {total} items across {len(v2_results)} passes{tail}"
         finally:
             db.close()
 

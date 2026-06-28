@@ -165,7 +165,8 @@ class TestEnrichCompaniesFromSEC:
         another row → UniqueViolation, which (autocommit) crashed pass 1 and the
         whole v2 run (probe 2026-06-28: only 6 companies ever enriched). Pin that
         every cik UPDATE carries the NOT EXISTS guard so a taken CIK is skipped,
-        not fatal."""
+        not fatal. (Lane-1 is DB-free, so this is a structural SQL-text proxy —
+        the actual UNIQUE(cik) survival is proven by the prod probe.)"""
         from scripts.auto_curate_v2 import enrich_companies_from_sec
 
         mock_db.set_results("companies", [

@@ -60,6 +60,21 @@ class TestRunAutoCurateV2:
             out = sched._run_auto_curate_v2()
         assert "11 items" in out  # 5 + 2 + 4 + 0(no key) + 0(fair has no count)
 
+    def test_summary_flags_partial_when_a_pass_errored(self):
+        # run_all_curation isolates a failing pass into an {"error": ...} result
+        # rather than raising; the scheduler summary must then read PARTIAL with a
+        # failed-count, not a clean "OK" (conservation #3: job-ran ≠ healthy).
+        sched = _scheduler()
+        with patch("scheduler.runner.Database", return_value=MagicMock()), \
+             patch("scripts.auto_curate_v2.run_all_curation",
+                   return_value=[{"enriched": 4},
+                                 {"pass": "resolution_sweep", "error": "boom"},
+                                 {"resolved": 2}]):
+            out = sched._run_auto_curate_v2()
+        assert out.startswith("PARTIAL"), out
+        assert "1/3 passes failed" in out
+        assert "6 items" in out  # 4 + 0(errored) + 2
+
     def test_connection_released_even_when_a_pass_raises(self):
         # conservation: a failing pass must still release the DB connection
         # (no leaked handle that would exhaust the Railway pool over time).
