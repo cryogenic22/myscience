@@ -36,6 +36,7 @@ jobs:
             tests/test_conservation_gates.py \
             tests/test_schema_completeness.py \
             tests/test_dossier_kb.py \
+            tests/test_migration_integrity.py \
             -q --no-header
 
   frontend-no-vacuous-typecheck:

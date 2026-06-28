@@ -18,6 +18,7 @@
 tests/test_conservation_gates.py
 tests/test_schema_completeness.py
 tests/test_schema_drift_fix.py
+tests/test_migration_integrity.py
 
 # ── Backend unit-smoke gate definition (the curated set + its anti-vacuous guard) ──
 tests/backend_smoke_suite.txt
