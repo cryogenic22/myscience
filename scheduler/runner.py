@@ -262,38 +262,15 @@ class DataPipelineScheduler:
         # functions in ONE place — no duplication, no third post-task path.
         self._run_sensing_promotion(results)
 
-        # 9. Fact convergence (market_events → facts ledger) — PB-H17. The
-        # scheduler already converges events → signals (task 8); this is the
-        # missing events → facts step that keeps the spine's ledger current so
-        # dossiers + scenarios stay grounded in fresh facts. Reuses the proven,
-        # idempotent backfill (services/fact_ingest); bounded to recent events.
-        try:
-            t0 = time.time()
-            results["fact_convergence"] = (
-                self._run_fact_convergence(since_days=7) + f" ({time.time()-t0:.1f}s)"
-            )
-            logger.info("Post-task: fact_convergence — %s", results["fact_convergence"])
-        except Exception as e:
-            logger.exception("Post-task fact_convergence failed")
-            results["fact_convergence"] = f"ERROR: {e}"
-
-        # 10. Fact emitters (entity tables → facts ledger) — DR-8 / Epic E19.
-        # Lifts clinical_trials / adverse_events / drug_labels into the ledger
-        # so dossiers carry granular clinical evidence, not just the
-        # market_event monoculture. Bounded + idempotent (skips on
-        # source_row_id), so each cycle only asserts genuinely new rows. Reuses
-        # services.fact_emitters; own connection (long sweeps risk a Railway
-        # proxy drop). For a full cross-drug catch-up run
-        # scripts/backfill_fact_emitters instead.
-        try:
-            t0 = time.time()
-            results["fact_emitters"] = (
-                self._run_fact_emitters(limit=200) + f" ({time.time()-t0:.1f}s)"
-            )
-            logger.info("Post-task: fact_emitters — %s", results["fact_emitters"])
-        except Exception as e:
-            logger.exception("Post-task fact_emitters failed")
-            results["fact_emitters"] = f"ERROR: {e}"
+        # 9+10. Ledger convergence — events → facts (PB-H17) + entity-tables →
+        # facts (DR-8 / Epic E19). Factored into _run_ledger_convergence so the
+        # LIVE scheduler can run it on its own cadence (see _register_jobs) — the
+        # live app drives _register_jobs() but never this run_now() block, so
+        # without the scheduled job the facts + evidence ledgers froze (27-Jun
+        # probe: 0 new in 12 days while ingest stayed fresh). Same defect + fix
+        # shape as the sensing promotion above. Writes results["fact_convergence"]
+        # + results["fact_emitters"] exactly as before — no behaviour change here.
+        self._run_ledger_convergence(results)
 
         # 11. Scenario calibration (signals → scenario current_prob) — PB-H14.
         # The Learn-loop vertebra: re-weights each live scenario's structural
@@ -433,6 +410,65 @@ class DataPipelineScheduler:
 
         return out
 
+    def _run_ledger_convergence(self, results: Optional[dict] = None) -> dict:
+        """Converge fresh ingest into the FACTS LEDGER on a cadence — the spine's
+        refresh. Two idempotent, bounded steps: market_events → facts
+        (_run_fact_convergence) and entity-tables → facts (_run_fact_emitters).
+        Reachable before this only via the on-demand run_now() post-task block,
+        which the live app never calls (it drives _register_jobs, not run_now) —
+        so on prod the facts + evidence ledgers froze (27-Jun probe: 0 new in 12
+        days while ingest stayed fresh). _register_jobs schedules this so the
+        ledger every "lens over the store" reads stays current. Identical defect
+        + fix shape as _run_sensing_promotion (15-Jun). Each step is independently
+        try/except'd (one failure must not abort the other); the underlying
+        methods open their own short-lived connection. Safe standalone (results
+        defaults to a fresh dict), and run_now threads its own dict through so its
+        output is unchanged."""
+        import time
+        out = results if results is not None else {}
+
+        # market_events → facts ledger (PB-H17)
+        try:
+            t0 = time.time()
+            out["fact_convergence"] = (
+                self._run_fact_convergence(since_days=7) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Ledger: fact_convergence — %s", out["fact_convergence"])
+        except Exception as e:
+            logger.exception("Ledger fact_convergence failed")
+            out["fact_convergence"] = f"ERROR: {e}"
+
+        # entity tables → facts ledger (DR-8 / Epic E19)
+        try:
+            t0 = time.time()
+            out["fact_emitters"] = (
+                self._run_fact_emitters(limit=200) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Ledger: fact_emitters — %s", out["fact_emitters"])
+        except Exception as e:
+            logger.exception("Ledger fact_emitters failed")
+            out["fact_emitters"] = f"ERROR: {e}"
+
+        # facts → evidence link (D5). CONSERVATION-CRITICAL: fact_convergence
+        # asserts event-derived facts with source_doc_id NULL (provenance lives in
+        # object_value.source_url/description until an evidence_record is written).
+        # Evidence-linking was historically a manual one-off — so emitting facts on
+        # a cadence WITHOUT this step degrades the ≥0.98 evidence floor every cycle
+        # (proven on prod: a bare convergence run dropped it 99.99%→97.04%). This
+        # additive+idempotent step writes the evidence_record + sets source_doc_id,
+        # keeping the floor green and un-freezing the evidence ledger in lockstep.
+        try:
+            t0 = time.time()
+            out["evidence_backfill"] = (
+                self._run_evidence_backfill(limit=2000) + f" ({time.time()-t0:.1f}s)"
+            )
+            logger.info("Ledger: evidence_backfill — %s", out["evidence_backfill"])
+        except Exception as e:
+            logger.exception("Ledger evidence_backfill failed")
+            out["evidence_backfill"] = f"ERROR: {e}"
+
+        return out
+
     def _run_learning_service(self) -> str:
         """Run the EWMA source-accuracy + prompt-flag learning loop (C4).
         Writes a learning_service_runs row. Own connection."""
@@ -509,6 +545,28 @@ class DataPipelineScheduler:
             return "OK: " + ", ".join(
                 f"{name}={s.asserted}a/{s.skipped_existing}e"
                 for name, s in stats.items()
+            )
+        finally:
+            db.close()
+
+    def _run_evidence_backfill(self, limit: int = 2000) -> str:
+        """Link NULL-source_doc_id facts to evidence (D5). The conservation
+        completion of fact emission: fact_convergence asserts event-facts whose
+        provenance sits in object_value (source_url/description) but with
+        source_doc_id NULL; this writes the dedup'd evidence_record and sets
+        source_doc_id, so the ledger holds the ≥0.98 evidence floor. Additive +
+        idempotent (skips already-linked / genuinely-sourceless facts); bounded by
+        the NULL backlog (steady-state tiny). Own connection."""
+        from scripts.backfill_evidence import run as backfill_evidence
+
+        db = Database(app_config.db.dsn)
+        db.connect()
+        try:
+            stats = backfill_evidence(db, limit=limit)
+            return (
+                f"OK: {stats['linked']} linked, "
+                f"{stats['skipped_no_text']} sourceless, "
+                f"{stats['evidence_failed']} failed"
             )
         finally:
             db.close()
@@ -603,6 +661,26 @@ class DataPipelineScheduler:
             misfire_grace_time=3600,
         )
         logger.info("Registered: Sensing promotion → cron every 6h")
+
+        # Ledger convergence — events+entities → FACTS ledger, on a cadence. Same
+        # defect as sensing: the converters (fact_convergence + fact_emitters)
+        # lived only in the run_now() post-task block, which the live app never
+        # calls, so facts + evidence froze on prod (27-Jun probe: 0 new in 12d
+        # while ingest stayed fresh). Idempotent + bounded; every 6h, minute 20 to
+        # stagger off sensing (minute 0) and the connector window. Eventual-
+        # consistent with the fact→signal mint — the next sensing cycle picks up
+        # facts asserted here. The Lane-2 freshness watch over this (wiring
+        # LEDGER_FRESHNESS_SLA_DAYS into connector_health) is a follow-up — see
+        # that constant's note.
+        self._scheduler.add_job(
+            self._run_ledger_convergence,
+            trigger=CronTrigger(hour="*/6", minute=20),
+            id="ledger_convergence",
+            name="Ledger convergence (events+entities → facts)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered: Ledger convergence → cron every 6h")
 
     def _run_connector(self, source_type: SourceType) -> None:
         """Execute a single connector through the full pipeline."""

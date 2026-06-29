@@ -154,6 +154,29 @@ FRESHNESS_SLA_DAYS: dict[SourceType, tuple[str, str, int]] = {
     SourceType.MESH_ONTOLOGY:       ("therapeutic_areas", "updated_at", 45),
 }
 
+# ── Knowledge-ledger freshness SLA (the spine, not a source) ──
+# FRESHNESS_SLA_DAYS above ages the INGEST target tables. The facts + evidence
+# LEDGER is *downstream* of ingest — events/entities converge into it via the
+# scheduled ledger-convergence job (runner._run_ledger_convergence) — and had
+# NO freshness gate of its own. So when the converters were left off the live
+# scheduler (only run_now() called them, which the live app never does), the
+# ledger silently froze 12 days while every connector reported SUCCESS
+# (27-Jun prod probe: 0 new facts/evidence). This defines the SLA so the spine
+# every lens (dossier / KBQ / scenario / synthesis) reads must not go stale
+# behind green ingest. {label: (table, recency_column, sla_days)}.
+# 3-day SLA: convergence runs every 6h, so a healthy ledger is never >1d stale;
+# 3d absorbs a missed cycle without false-RED, while 12d is unambiguously broken.
+# NOTE: this constant + tests/test_ledger_convergence_scheduling.py pin the
+# Lane-1 deterministic verdict (a 12-day ledger reads unhealthy via
+# evaluate_source_health). Wiring it into the LIVE Lane-2 script
+# (scripts/connector_health.py gather()) is a deliberate follow-up — that file
+# is being edited concurrently by an in-flight DLQ-visibility loop, so the
+# operational consumer lands after that to avoid a merge collision.
+LEDGER_FRESHNESS_SLA_DAYS: dict[str, tuple[str, str, int]] = {
+    "facts_ledger":    ("facts", "asserted_at", 3),
+    "evidence_ledger": ("evidence_records", "created_at", 3),
+}
+
 # Sources whose APIs are confirmed dead / have no live source feed. They stay
 # scheduled (cheap, self-healing if the source returns) but their connector
 # returns 0 rows by design, so the scorecard reports them as DEFERRED rather
