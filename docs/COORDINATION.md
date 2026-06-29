@@ -351,7 +351,12 @@ history (#231 merged, `092_scenario_probability_history` ↔ #228 open,
 - `096` = **`connector_taxonomy_onboarding`** (DataHub L2 — `connector_types` +
   `source_onboarding` lifecycle + `sources.connector_type`) — RESERVED, branch
   `claude/data/datahub-l2-taxonomy`.
-- `097` = **NEXT FREE** — reserve here before use.
+- `097` = `open_targets` recovery — in-flight, branch `claude/data/open-targets-disease-recovery` (#303).
+- `098` = `etl_runs` skip-visibility — in-flight, branch `claude/data/dlq-etl-runs-skip-visibility` (#307).
+- `099` = **`source_onboarding_contract`** (Connector Press Phase 1a — persist the
+  wizard/agent connector contract: config/field_mappings/record_type/trust_tier/
+  must_capture/license/cadence) — RESERVED, branch `claude/data/connector-press-phase1`.
+- `100` = **NEXT FREE** — reserve here before use.
 
 ### 7.5 Eval-pass loops (data-team share — how we pass the evals)
 Full plan + grounded diagnosis: **`docs/eval_pass_plan.md`** (PR #238).

@@ -1,0 +1,24 @@
+# Example connector spec (template). Copy this file to <your_source_id>.yaml and
+# edit. This example is illustrative only — it is NOT auto-run; a source runs on a
+# schedule only after it is registered and promoted to `prod` in the DB.
+# See SCHEMA.md for every field.
+source_id: example_rest
+source_name: Example REST Source
+connector_type: API_REST
+record_type: drug            # the existing core entity these rows map to
+trust_tier: 2
+must_capture: [generic_name] # rows missing this are rejected (the contract)
+license: example-public
+cadence: {hour: "*/12"}      # run every 12h; omit for a tier/type default
+config:
+  url: https://example.com/api/v1/drugs
+  external_id_field: id            # source field → RawRecord.external_id
+  records_path: data.results       # dotted path to the row list in the envelope
+  field_map:                       # source field → data key our pipeline reads
+    generic_name: drug_name
+    company: manufacturer
+  identifiers_map:                 # source field → entity-resolver key (auto-links)
+    generic_name: generic_name
+  text_field: description          # source field → text_content (for embedding)
+  pagination: page                 # none | page | offset | cursor
+  auth_type: none                  # secrets are supplied out-of-band, never here
