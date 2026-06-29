@@ -1660,6 +1660,7 @@ class KnowledgeStore:
                 -- only when this run produced no link.
                 SET drug_id = COALESCE(%s, drug_id),
                     target_id = COALESCE(%s, target_id),
+                    molecule_chembl_id = COALESCE(%s, molecule_chembl_id),
                     activity_type = COALESCE(%s, activity_type),
                     activity_value = COALESCE(%s, activity_value),
                     activity_units = COALESCE(%s, activity_units),
@@ -1672,6 +1673,7 @@ class KnowledgeStore:
                 [
                     drug_id,
                     target_id,
+                    data.get("chembl_id"),
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),
                     data.get("activity_units") or data.get("standard_units"),
@@ -1691,15 +1693,16 @@ class KnowledgeStore:
             self.db.execute(
                 """
                 INSERT INTO bioactivities
-                    (id, drug_id, target_id, chembl_activity_id, activity_type,
-                     activity_value, activity_units, assay_type, pchembl_value,
-                     assay_description, source_api, retrieved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, drug_id, target_id, molecule_chembl_id, chembl_activity_id,
+                     activity_type, activity_value, activity_units, assay_type,
+                     pchembl_value, assay_description, source_api, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     new_id,
                     drug_id,
                     target_id,
+                    data.get("chembl_id"),
                     chembl_activity_id,
                     data.get("activity_type") or data.get("standard_type"),
                     data.get("activity_value") or data.get("standard_value"),
