@@ -189,10 +189,10 @@ def test_replay_batch_persists_molecule_and_drug_and_marks_recovered():
     normalizer = Normalizer(domain_pack=get_pharma_pack())
     store = KnowledgeStore(db)
 
-    inserted, updated = _replay_batch(
+    inserted, updated, skipped = _replay_batch(
         db, normalizer, store, [_failed_record()], {"empagliflozin": "drug-empa"}
     )
-    assert (inserted, updated) == (1, 0)
+    assert (inserted, updated, skipped) == (1, 0, 0)
 
     ins = _find(db, "insert into bioactivities")
     assert len(ins) == 1
@@ -220,6 +220,22 @@ def test_replay_batch_unresolved_drug_leaves_drug_id_null_but_keeps_molecule():
     assert params[3] == "CHEMBL2107830"      # molecule_chembl_id still set
 
 
+def test_replay_batch_skips_payload_with_no_chembl_id_leaving_it_pending():
+    """Conservation guard: a payload with no molecule id has nothing to recover —
+    it must be LEFT 'pending' (counted), NOT stored + silently marked 'recovered'."""
+    db = _FakeDB()
+    normalizer = Normalizer(domain_pack=get_pharma_pack())
+    store = KnowledgeStore(db)
+    payload = dict(_PAYLOAD)
+    payload.pop("chembl_id")
+    inserted, updated, skipped = _replay_batch(
+        db, normalizer, store, [_failed_record(raw_payload=payload)], {}
+    )
+    assert (inserted, updated, skipped) == (0, 0, 1)
+    assert _find(db, "insert into bioactivities") == []     # nothing stored
+    assert _find(db, "update failed_records") == []         # NOT flipped to recovered
+
+
 def test_replay_batch_updates_when_activity_already_landed():
     """If the activity already exists (a later run stored it without the molecule
     id), the replay UPDATEs to backfill molecule_chembl_id, not duplicate."""
@@ -233,10 +249,62 @@ def test_replay_batch_updates_when_activity_already_landed():
     normalizer = Normalizer(domain_pack=get_pharma_pack())
     store = KnowledgeStore(db)
 
-    inserted, updated = _replay_batch(
+    inserted, updated, skipped = _replay_batch(
         db, normalizer, store, [_failed_record()], {"empagliflozin": "drug-empa"}
     )
-    assert (inserted, updated) == (0, 1)
+    assert (inserted, updated, skipped) == (0, 1, 0)
     upd = _find(db, "update bioactivities")
     assert len(upd) == 1
     assert "molecule_chembl_id" in upd[0][0].lower()
+
+
+def test_apply_reconnects_and_retries_once_on_connection_drop():
+    """The first batch transaction drops the connection; _apply must null _conn,
+    reconnect, and retry the (idempotent) batch — not crash."""
+    import psycopg2
+    from scripts.recover_bioactivity_dlq import _apply
+
+    class _FlakyDB(_FakeDB):
+        def __init__(self):
+            super().__init__()
+            self._fail_next = True
+            self.connects = 0
+
+        @contextmanager
+        def transaction(self):
+            if self._fail_next:
+                self._fail_next = False
+                raise psycopg2.OperationalError("server closed the connection unexpectedly")
+            yield self
+
+        def connect(self):
+            self.connects += 1
+            self._conn = object()   # a fresh "connection"
+
+    db = _FlakyDB()
+    normalizer = Normalizer(domain_pack=get_pharma_pack())
+    store = KnowledgeStore(db)
+    resolver = _CountingResolver({"empagliflozin": "drug-empa"})
+
+    inserted, updated, skipped, recovered = _apply(
+        db, normalizer, resolver, store, [_failed_record()], batch_size=50
+    )
+    assert db.connects == 1                      # reconnected exactly once
+    assert (inserted, recovered) == (1, 1)       # batch retried + stored after reconnect
+
+
+def test_apply_refuses_pooled_database():
+    """Atomicity guard: _apply must fail closed against a pooled Database."""
+    import pytest
+    from scripts.recover_bioactivity_dlq import _apply
+
+    class _PooledDB(_FakeDB):
+        def __init__(self):
+            super().__init__()
+            self._pool = object()     # pretend we're pooled
+
+    db = _PooledDB()
+    normalizer = Normalizer(domain_pack=get_pharma_pack())
+    store = KnowledgeStore(db)
+    with pytest.raises(AssertionError):
+        _apply(db, normalizer, _CountingResolver(), store, [_failed_record()])

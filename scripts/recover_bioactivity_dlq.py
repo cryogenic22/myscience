@@ -152,14 +152,21 @@ def _resolve_drug_ids(normalizer, resolver, rows) -> dict:
     return cache
 
 
-def _replay_batch(db, normalizer, store, rows, drug_ids) -> tuple[int, int]:
+def _replay_batch(db, normalizer, store, rows, drug_ids) -> tuple[int, int, int]:
     """Store one batch of activities + flip their failed_records to 'recovered', in
     a SINGLE transaction (atomic per batch). Uses the cached drug_id — no per-row
-    resolver call. Returns (inserted, updated)."""
-    inserted = updated = 0
+    resolver call. Returns (inserted, updated, skipped).
+
+    Conservation guard: a payload with no ``chembl_id`` has nothing to recover for
+    the field this script exists to restore — it is LEFT 'pending' (counted, not
+    flipped) rather than silently marked 'recovered' with a NULL molecule link."""
+    inserted = updated = skipped = 0
     with db.transaction():
         for fr in rows:
             raw = _reconstruct(fr)
+            if not raw.data.get("chembl_id"):
+                skipped += 1
+                continue
             normalized = normalizer.normalize(raw)
             drug_id = drug_ids.get(raw.data.get("drug_name"))
             links = {"generic_name": _DrugLink(drug_id)} if drug_id else {}
@@ -178,7 +185,7 @@ def _replay_batch(db, normalizer, store, rows, drug_ids) -> tuple[int, int]:
                 "UPDATE failed_records SET status = 'recovered' WHERE id = %s",
                 [fr["id"]],
             )
-    return inserted, updated
+    return inserted, updated, skipped
 
 
 def _chunks(seq, size):
@@ -186,7 +193,7 @@ def _chunks(seq, size):
         yield seq[i:i + size]
 
 
-def _apply(db, normalizer, resolver, store, rows, batch_size=_BATCH_SIZE) -> tuple[int, int, int]:
+def _apply(db, normalizer, resolver, store, rows, batch_size=_BATCH_SIZE) -> tuple[int, int, int, int]:
     """Resolve drug ids once (cached), then replay rows in idempotent batches with a
     single reconnect-retry per batch (the managed DB drops long-lived connections)."""
     # Atomic-per-batch holds only in single-connection mode (see module docstring).
@@ -199,14 +206,15 @@ def _apply(db, normalizer, resolver, store, rows, batch_size=_BATCH_SIZE) -> tup
     print(f"resolved {resolved_n}/{len(drug_ids)} distinct drugs to a canonical drug_id "
           f"(unresolved -> drug_id NULL, molecule_chembl_id still set)", flush=True)
 
-    inserted = updated = recovered = 0
+    inserted = updated = skipped = recovered = 0
     for n, batch in enumerate(_chunks(rows, batch_size), 1):
         for attempt in (1, 2):
             try:
-                i, u = _replay_batch(db, normalizer, store, batch, drug_ids)
+                i, u, s = _replay_batch(db, normalizer, store, batch, drug_ids)
                 inserted += i
                 updated += u
-                recovered += len(batch)
+                skipped += s
+                recovered += len(batch) - s
                 break
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 if attempt == 2:
@@ -215,8 +223,8 @@ def _apply(db, normalizer, resolver, store, rows, batch_size=_BATCH_SIZE) -> tup
                       f"reconnecting + retrying (idempotent)", flush=True)
                 db._conn = None        # force a fresh connection (connect() else no-ops)
                 db.connect()
-        print(f"  ... {recovered}/{len(rows)} replayed (batch {n})", flush=True)
-    return inserted, updated, recovered
+        print(f"  ... {recovered + skipped}/{len(rows)} processed (batch {n})", flush=True)
+    return inserted, updated, skipped, recovered
 
 
 def _build_components(db: Database):
@@ -275,9 +283,10 @@ def main() -> None:
         db.close()
         return
 
-    inserted, updated, recovered = _apply(db, normalizer, resolver, store, rows)
+    inserted, updated, skipped, recovered = _apply(db, normalizer, resolver, store, rows)
     print(f"\nAPPLIED: {inserted} inserted, {updated} updated bioactivity rows; "
-          f"{recovered} failed_records marked 'recovered'.")
+          f"{recovered} failed_records marked 'recovered'"
+          + (f"; {skipped} left 'pending' (no chembl_id to recover)." if skipped else "."))
     db.close()
 
 
