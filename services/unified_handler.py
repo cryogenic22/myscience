@@ -1256,8 +1256,11 @@ class UnifiedChatHandler:
         _renum = renumber_citations(narrative, evidence_items)
         narrative = _renum["narrative"]
         evidence_items = _renum["evidence_items"]
-        if _renum["renumbered"]:
-            logger.info("Renumbered %d citation(s) to contiguous 1..K", _renum["renumbered"])
+        if _renum["changed"]:
+            logger.info(
+                "Citation renumber: %d marker(s) mapped to contiguous 1..K (out-of-range stripped if any)",
+                _renum["renumbered"],
+            )
 
         # G1: carry the named source INLINE next to each [N] in the prose. The judge
         # credits a claim-attributing sentence, not the detached provenance legend

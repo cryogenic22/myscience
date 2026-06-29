@@ -87,11 +87,32 @@ class TestRenumberCitations:
         assert "[1]" in out["narrative"] and "[2]" in out["narrative"]
         assert out["renumbered"] == 2
 
+    def test_out_of_range_strip_leaves_clean_punctuation(self):
+        from services.llm import renumber_citations
+
+        # Stripping [9] (only 3 items) must not orphan a space before the period.
+        out = renumber_citations("Donanemab slowed decline [9].", _ev(3))
+        assert out["narrative"] == "Donanemab slowed decline."
+        assert out["changed"] is True
+
+    def test_changed_flag_tracks_actual_mutation(self):
+        from services.llm import renumber_citations
+
+        # All-out-of-range: narrative IS mutated (markers stripped) but no valid
+        # marker was renumbered — `changed` must be True so the log fires honestly.
+        out = renumber_citations("A [9] B [10].", _ev(3))
+        assert out["renumbered"] == 0
+        assert out["changed"] is True
+        # Already-contiguous: genuine no-op, `changed` False.
+        out2 = renumber_citations("A [1] b [2].", _ev(2))
+        assert out2["changed"] is False
+
     def test_empty(self):
         from services.llm import renumber_citations
 
         out = renumber_citations("", _ev(3))
         assert out["renumbered"] == 0
+        assert out["changed"] is False
 
 
 class TestLivePathRenumbers:
@@ -116,10 +137,19 @@ class TestLivePathRenumbers:
         result = handler.handle("Tell me about semaglutide")
         narrative = result["narrative"]
         import re
-        # every [N] in the prose must be within the returned evidence array length.
+        # Scope to the PROSE only. The deterministic provenance footer appends
+        # [1]..[n] for ALL evidence, so a whole-narrative citation scan is vacuous —
+        # min()==1 / in-range would pass even if the prose were never renumbered.
+        prose = narrative.split("\n\n**Provenance**")[0]
         n_ev = len(result["data"]["evidence"])
-        nums = [int(x) for x in re.findall(r"\[(\d+)\]", narrative)]
-        assert nums, "expected citations in the narrative"
-        assert all(1 <= n <= n_ev for n in nums)
-        # and contiguous from 1 (first cited -> [1])
-        assert min(nums) == 1
+        prose_nums = [int(x) for x in re.findall(r"\[(\d+)\]", prose)]
+        assert prose_nums, "expected citations in the prose"
+        assert all(1 <= n <= n_ev for n in prose_nums)
+        # The fix: the sparse markers the model emitted ([2],[4]) are renumbered to a
+        # contiguous 1..K in first-appearance order, so the distinct prose citations
+        # are exactly 1..K. Without the renumber this is {2,4} and FAILS (RED).
+        distinct = sorted(set(prose_nums))
+        assert distinct == list(range(1, len(distinct) + 1)), prose
+        # And the original high index is gone from the prose — proves renumber fired
+        # on the prose itself, not just the footer (which legitimately lists [4]).
+        assert "[4]" not in prose, prose
