@@ -27,6 +27,7 @@ from services.llm import (
     correct_false_absence_claims,
     detect_out_of_corpus_events,
     qualify_count_as_quality,
+    renumber_citations,
     strip_invalid_entity_links,
     strip_unsupported_event_attributions,
 )
@@ -1246,6 +1247,20 @@ class UnifiedChatHandler:
         # ── Guard check ── (on the model's narrative, before the deterministic footer)
         guard_result = self.pipeline.check_response(narrative, context_text)
         guard_status = guard_result.recommendation
+
+        # F8: renumber surviving [N] to a contiguous 1..K and reorder evidence_items
+        # so the k-th cited source sits at index k-1 — every [N] then resolves to a
+        # visible card (reviewer cited [5][6][8] with no mapping). Done BEFORE
+        # inline-cite / footer so their per-index source lookups use the new order.
+        # Uncited evidence is kept (appended), so nothing is dropped.
+        _renum = renumber_citations(narrative, evidence_items)
+        narrative = _renum["narrative"]
+        evidence_items = _renum["evidence_items"]
+        if _renum["changed"]:
+            logger.info(
+                "Citation renumber: %d marker(s) mapped to contiguous 1..K (out-of-range stripped if any)",
+                _renum["renumbered"],
+            )
 
         # G1: carry the named source INLINE next to each [N] in the prose. The judge
         # credits a claim-attributing sentence, not the detached provenance legend

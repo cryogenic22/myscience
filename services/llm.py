@@ -422,6 +422,61 @@ def validate_citations(narrative: str, evidence_count: int) -> dict:
     }
 
 
+def renumber_citations(narrative: str, evidence_items: list[dict]) -> dict:
+    """Renumber surviving ``[N]`` markers to a contiguous ``1..K`` in first-
+    appearance order and reorder ``evidence_items`` so the k-th cited source sits at
+    index ``k-1`` — so every ``[N]`` in the prose resolves to a visible card
+    (reviewer F8: "[5][6][8]" with no mapping to surfaced sources). ``validate_citations``
+    only strips out-of-range markers; it never renumbers, so sparse indices survive.
+
+    Also strips an out-of-range ``[N]`` (> evidence count) — it can't resolve to a
+    card. This runs unconditionally in the live ``handle()`` path, independent of
+    ``validate_citations`` (only ``_post_validate`` invokes that), so an out-of-range
+    marker is stripped even when synthesis was produced in a way that bypassed
+    ``_post_validate``. Conservation: UNCITED evidence is kept (appended after the
+    cited items), so no source is dropped — only reordered. Returns
+    ``{"narrative", "evidence_items", "renumbered", "changed"}`` where ``renumbered``
+    is the count of distinct valid markers mapped and ``changed`` is whether the
+    narrative/evidence order was actually mutated (True also when the only change was
+    stripping out-of-range markers, where ``renumbered`` may be 0). No-op (``changed``
+    False) when citations are already contiguous from 1 and none are out of range.
+    """
+    if not narrative or not evidence_items:
+        return {"narrative": narrative or "", "evidence_items": evidence_items or [],
+                "renumbered": 0, "changed": False}
+    n_ev = len(evidence_items)
+    order: list[int] = []
+    any_out_of_range = False
+    for m in _CITATION_RE.finditer(narrative):
+        v = int(m.group(1))
+        if 1 <= v <= n_ev:
+            if v not in order:
+                order.append(v)
+        else:
+            any_out_of_range = True
+    contiguous = order == list(range(1, len(order) + 1))
+    if contiguous and not any_out_of_range:
+        return {"narrative": narrative, "evidence_items": evidence_items,
+                "renumbered": 0, "changed": False}
+    mapping = {old: new for new, old in enumerate(order, 1)}
+
+    def _sub(m: "re.Match") -> str:
+        v = int(m.group(1))
+        return f"[{mapping[v]}]" if v in mapping else ""  # out-of-range → strip
+
+    new_narrative = re.sub(r"  +", " ", _CITATION_RE.sub(_sub, narrative))
+    # A stripped out-of-range marker can orphan a space before sentence punctuation
+    # ("decline [9]." -> "decline ."); drop it so the prose stays clean.
+    new_narrative = re.sub(r" +([.,;:!?])", r"\1", new_narrative)
+    cited = {old - 1 for old in order}
+    new_evidence = (
+        [evidence_items[old - 1] for old in order]
+        + [e for i, e in enumerate(evidence_items) if i not in cited]
+    )
+    return {"narrative": new_narrative, "evidence_items": new_evidence,
+            "renumbered": len(order), "changed": True}
+
+
 _BOLD_NUMBER_RE = re.compile(r"\*\*(\d+(?:\.\d+)?%?)\*\*")
 _NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
 
