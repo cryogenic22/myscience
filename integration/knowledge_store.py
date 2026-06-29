@@ -206,16 +206,35 @@ class KnowledgeStore:
             else "mechanisms_of_action"
         )
 
-        row = self.db.fetch_one(
-            f"SELECT id FROM {table} WHERE mesh_id = %s",
-            [data.get("mesh_id")],
-        )
+        # Dedup on the most stable key available, in priority order:
+        #   mesh_id (MeSH terms) → ontology_id (EFO/MONDO, e.g. open_targets) →
+        #   name (UNIQUE). The name fallback is essential: open_targets diseases
+        #   carry no mesh_id, so without it a re-run would re-INSERT the same
+        #   disease and crash the UNIQUE name constraint straight back into the
+        #   dead-letter queue — the exact regression this loop is closing.
+        mesh_id = data.get("mesh_id")
+        ontology_id = data.get("ontology_id")
+        row = None
+        if mesh_id:
+            row = self.db.fetch_one(
+                f"SELECT id FROM {table} WHERE mesh_id = %s", [mesh_id]
+            )
+        if row is None and ontology_id:
+            row = self.db.fetch_one(
+                f"SELECT id FROM {table} WHERE ontology_id = %s", [ontology_id]
+            )
+        if row is None:
+            row = self.db.fetch_one(
+                f"SELECT id FROM {table} WHERE name = %s", [name]
+            )
 
         if row:
             self.db.execute(
                 f"""
                 UPDATE {table}
-                SET name = %s, tree_numbers = %s, parent_mesh_id = %s,
+                SET name = %s, mesh_id = COALESCE(%s, mesh_id),
+                    ontology_id = COALESCE(%s, ontology_id),
+                    tree_numbers = %s, parent_mesh_id = %s,
                     scope_note = %s, scope_note_embedding = %s,
                     source_api = %s, source_url = %s, retrieved_at = %s,
                     updated_at = NOW()
@@ -223,6 +242,8 @@ class KnowledgeStore:
                 """,
                 [
                     name,
+                    mesh_id,
+                    ontology_id,
                     data.get("tree_numbers"),
                     data.get("parent_mesh_id"),
                     data.get("scope_note"),
@@ -238,14 +259,16 @@ class KnowledgeStore:
             new_row = self.db.fetch_one(
                 f"""
                 INSERT INTO {table}
-                    (name, mesh_id, tree_numbers, parent_mesh_id, scope_note,
-                     scope_note_embedding, source_api, source_url, retrieved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (name, mesh_id, ontology_id, tree_numbers, parent_mesh_id,
+                     scope_note, scope_note_embedding, source_api, source_url,
+                     retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 [
                     name,
-                    data.get("mesh_id"),
+                    mesh_id,
+                    ontology_id,
                     data.get("tree_numbers"),
                     data.get("parent_mesh_id"),
                     data.get("scope_note"),
