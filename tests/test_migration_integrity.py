@@ -53,7 +53,9 @@ SKIPPED_NUMBERS: dict[int, str] = {
 # test_pending_restore_self_expires. Do NOT add a number here without a PR;
 # that is enforced by test_pending_restore_entries_name_an_owner.
 PENDING_RESTORE: dict[int, str] = {
-    89: "PR #304 — restores 089_bioactivity_molecule_chembl_id.sql",
+    # 089: restored by PR #304 (merged 2026-06-29) — file now on disk, so the
+    # allowance self-expired (test_pending_restore_self_expires) and was removed.
+    # The dict shrinks toward empty as restorations land, exactly as designed.
     90: "PR #185 — restores 090_fact_governance.sql",
 }
 
