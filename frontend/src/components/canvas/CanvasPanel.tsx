@@ -787,8 +787,9 @@ function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
               </span>
               {/* Evidence is assembled from mixed db/web sources; a missing
                   entity_type/relevance must not crash the whole canvas (the only
-                  ErrorBoundary is at the app root). Guard + omit a fake 0%. */}
-              {Number.isFinite(Number(ev.relevance)) && (
+                  ErrorBoundary is at the app root). Guard + omit a fake 0% — the
+                  `!= null` check keeps null/undefined from coercing to 0. */}
+              {ev.relevance != null && Number.isFinite(Number(ev.relevance)) && (
                 <span
                   className="ml-auto"
                   style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}

@@ -154,7 +154,8 @@ describe('CanvasPanel', () => {
     const data = makeQueryResponse({
       entity_focus: [],
       evidence: [
-        { source: 'web', entity_id: 'x', content: 'partial web evidence', provenance: {} },
+        // no entity_type; null relevance (must NOT render a fabricated "0%")
+        { source: 'web', entity_id: 'x', content: 'partial web evidence', relevance: null, provenance: {} },
       ] as unknown as QueryResponse['evidence'],
     });
     render(
@@ -170,6 +171,8 @@ describe('CanvasPanel', () => {
     // mounts EvidenceSection, which renders ev.entity_type / ev.relevance.
     fireEvent.click(screen.getByText('Entities'));
     expect(screen.getByText('partial web evidence')).toBeInTheDocument();
+    // null relevance must be omitted, not coerced to a fabricated 0%
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
   });
 
   it('renders confidence badge', () => {
