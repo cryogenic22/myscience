@@ -37,8 +37,8 @@ Read these before writing ANY code:
 | CTXQueryPipeline | `services/ctx_pipeline.py` | Staged understand→retrieve→reason (opt-in via MZ_UNIFIED_HANDLER) |
 | UnifiedChatHandler | `services/unified_handler.py` | Single handler replacing 8-handler fork (opt-in) |
 | PharmaCorpusBuilder | `services/ctx_corpus.py` | Exports DB entities → CTX L2/L3 corpus |
-| ConversationMemory | `services/conversation_memory.py` | Token-budgeted session memory (built, not yet wired) |
-| AutonomousResearchAgent | `services/research_agent.py` | Background knowledge gap filler (built, not yet wired) |
+| ConversationMemory | `services/conversation_memory.py` | Token-budgeted session memory + coreference (wired into live chat route) |
+| AutonomousResearchAgent | `services/research_agent.py` | Background knowledge gap filler (reachable via enrichment route; not scheduled) |
 | Telemetry | `services/telemetry.py` | CTX metrics persistence |
 
 ### Frontend (React 19 + TypeScript + Tailwind v4)

@@ -46,14 +46,31 @@ def test_claude_md_does_not_misreport_conversation_memory_as_unwired():
             "CLAUDE.md lists ConversationMemory as NOT YET WIRED, but it is wired in "
             "api/routes/chat.py (get/save_conversation_memory, resolve_reference_with_map)."
         )
+        # Heading-independent guard: NO line naming ConversationMemory may also say
+        # "not yet wired" — catches the Services-Layer table phrasing, which is not
+        # under the exact-case heading the block parser keys on (review N2).
+        for line in md.splitlines():
+            if "ConversationMemory" in line:
+                assert "not yet wired" not in line.lower(), (
+                    f"CLAUDE.md still calls ConversationMemory not-yet-wired: {line!r}"
+                )
 
 
 def test_autonomous_research_agent_claim_matches_reality():
     """AutonomousResearchAgent is reachable via the enrichment route (manual
-    run_loop), NOT a scheduled background loop. Pin the route wiring so the doc's
-    wording (API-reachable, not autonomous) stays grounded; if it ever becomes a
-    no-op route or gets scheduled, this and the scheduler check below must be
-    revisited together with the doc."""
+    run_loop), NOT a scheduled background loop. Guard BOTH halves of the doc claim:
+    the route wiring exists AND no scheduler/ module registers it — so the doc's
+    'not scheduled' wording fails closed if someone later wires it into the
+    scheduler (review N1)."""
     enrich = _read("api/routes/enrichment.py")
     assert "AutonomousResearchAgent(" in enrich
     assert ".run_loop(" in enrich
+    # Negative guard for the "not scheduled" half: the scheduler must not reference
+    # the agent. If this fires, the agent became autonomous → update CLAUDE.md.
+    sched_dir = ROOT / "scheduler"
+    if sched_dir.is_dir():
+        for py in sched_dir.rglob("*.py"):
+            assert "AutonomousResearchAgent" not in py.read_text(encoding="utf-8"), (
+                f"AutonomousResearchAgent now registered in {py.name} — it is "
+                "scheduled; CLAUDE.md must no longer say 'not scheduled'."
+            )
