@@ -96,15 +96,15 @@ Read these before writing ANY code:
 - `ctx_evidence.pack_evidence()` — compresses evidence snippets
 - CTX is the default context format — logs compression metrics via telemetry
 - `/chat/ctx-benchmark` endpoint for dev testing
+- `ConversationMemory` (services/conversation_memory.py) — token-budgeted session memory + coreference resolution, wired into the LIVE chat route (`api/routes/chat.py`: `get_conversation_memory` / `resolve_reference_with_map` / `save_conversation_memory`). Drift-guarded by `tests/test_docs_wiring_claims.py`.
 
 ### OPT-IN (set MZ_UNIFIED_HANDLER=true):
 - `UnifiedChatHandler` — routes through CTXQueryPipeline (hydration + entity graph + guard)
 - `PharmaCorpusBuilder` — builds CTX corpus from database
 - Falls back to legacy 8-handler fork on error
 
-### NOT YET WIRED:
-- `ConversationMemory` — token-budgeted memory with eviction (28 tests passing)
-- `AutonomousResearchAgent` — background gap filler (27 tests passing)
+### PARTIALLY WIRED (reachable, not autonomous):
+- `AutonomousResearchAgent` (services/research_agent.py) — background knowledge-gap filler; reachable via the enrichment API route (`api/routes/enrichment.py`, manual `run_loop` trigger). NOT yet scheduled as an autonomous background loop (no `scheduler/` registration). Status drift-guarded by `tests/test_docs_wiring_claims.py`.
 
 ## Testing
 - **Framework**: pytest 8.3.4
