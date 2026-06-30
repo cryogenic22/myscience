@@ -12,6 +12,10 @@ interface CurateViewProps {
   pipelineStatus: PipelineConnector[] | null;
   graphSummary: GraphSummary | null;
   onRefreshSource: (source: string) => void;
+  /** True when the curate fetch failed — render an explicit error state instead
+   *  of a panel indistinguishable from "still loading". */
+  error?: boolean;
+  onRetry?: () => void;
 }
 
 /* ── Helpers ──────────────────────────────────────────── */
@@ -225,6 +229,8 @@ export default function CurateView({
   pipelineStatus,
   graphSummary,
   onRefreshSource,
+  error = false,
+  onRetry,
 }: CurateViewProps) {
   // Compute average completeness as a rough FAIR proxy
   const avgCompleteness = graphSummary?.drug_completeness
@@ -286,6 +292,44 @@ export default function CurateView({
           Monitor connectors, review graph health, and trigger enrichment.
         </p>
       </div>
+
+      {/* ── Load error ──────────────────────────────────────── */}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-4)',
+            padding: 'var(--space-4)',
+            borderRadius: '8px',
+            background: 'rgba(239,68,68,0.10)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            color: 'var(--text-inverse)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          <span>Couldn&rsquo;t load supply-chain data.</span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '6px',
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'transparent',
+                color: 'var(--text-inverse)',
+                fontSize: 'var(--text-sm)',
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Supply Chain Flow ───────────────────────────────── */}
       {pipelineStatus && graphSummary && (

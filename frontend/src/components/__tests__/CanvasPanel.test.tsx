@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CanvasPanel from '../canvas/CanvasPanel';
 import type { QueryResponse, TableData, VisualizationSpec, PersonaAnalysis } from '../../api';
@@ -145,6 +145,31 @@ describe('CanvasPanel', () => {
     );
     expect(screen.getByText('Semaglutide')).toBeInTheDocument();
     expect(screen.getByText('Tirzepatide')).toBeInTheDocument();
+  });
+
+  it('renders evidence without crashing when entity_type / relevance are missing', () => {
+    // Evidence is assembled from mixed db/web sources; a malformed item (no
+    // entity_type, no relevance) must not throw — the only ErrorBoundary is at
+    // the app root, so a throw here would unmount the whole page.
+    const data = makeQueryResponse({
+      entity_focus: [],
+      evidence: [
+        { source: 'web', entity_id: 'x', content: 'partial web evidence', provenance: {} },
+      ] as unknown as QueryResponse['evidence'],
+    });
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={data}
+        tableData={null}
+        visualizations={null}
+        loading={false}
+      />
+    );
+    // Navigate to the Entities tab (visible because there is evidence) — this
+    // mounts EvidenceSection, which renders ev.entity_type / ev.relevance.
+    fireEvent.click(screen.getByText('Entities'));
+    expect(screen.getByText('partial web evidence')).toBeInTheDocument();
   });
 
   it('renders confidence badge', () => {

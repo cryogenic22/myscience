@@ -108,17 +108,28 @@ export default function NewWorkspace() {
   // Curate lens data
   const [pipelineStatus, setPipelineStatus] = useState<PipelineConnector[] | null>(null);
   const [graphSummary, setGraphSummary] = useState<GraphSummary | null>(null);
+  const [curateError, setCurateError] = useState(false);
+
+  // Load curate data (reused by the lens effect + the retry affordance). A failed
+  // fetch sets an explicit error flag so the curate view shows a "couldn't load"
+  // + Retry state instead of a panel that's indistinguishable from still-loading.
+  const loadCurate = useCallback(() => {
+    setCurateError(false);
+    let failed = false;
+    const p1 = api.catalogPipelineStatus()
+      .then((r) => setPipelineStatus(r.connectors))
+      .catch(() => { failed = true; });
+    const p2 = api.catalogGraphSummary()
+      .then((r) => setGraphSummary(r))
+      .catch(() => { failed = true; });
+    void Promise.all([p1, p2]).then(() => { if (failed) setCurateError(true); });
+  }, []);
 
   // Fetch curate data when lens switches to 'curate'
   useEffect(() => {
     if (lens !== 'curate') return;
-    api.catalogPipelineStatus()
-      .then((r) => setPipelineStatus(r.connectors))
-      .catch(() => {});
-    api.catalogGraphSummary()
-      .then((r) => setGraphSummary(r))
-      .catch(() => {});
-  }, [lens]);
+    loadCurate();
+  }, [lens, loadCurate]);
 
   // Fetch suggestions when debounced search changes
   useEffect(() => {
@@ -563,6 +574,8 @@ export default function NewWorkspace() {
             <CurateView
               pipelineStatus={pipelineStatus}
               graphSummary={graphSummary}
+              error={curateError}
+              onRetry={loadCurate}
               onRefreshSource={(src) => {
                 fetch('/steward/refresh', {
                   method: 'POST',

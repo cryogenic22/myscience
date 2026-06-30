@@ -783,14 +783,19 @@ function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
                 {ev.source}
               </span>
               <span style={{ color: 'var(--color-ink-4)', fontSize: '10px', textTransform: 'capitalize' }}>
-                {ev.entity_type.replace('_', ' ')}
+                {String(ev.entity_type ?? '').replace('_', ' ')}
               </span>
-              <span
-                className="ml-auto"
-                style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}
-              >
-                {(ev.relevance * 100).toFixed(0)}%
-              </span>
+              {/* Evidence is assembled from mixed db/web sources; a missing
+                  entity_type/relevance must not crash the whole canvas (the only
+                  ErrorBoundary is at the app root). Guard + omit a fake 0%. */}
+              {Number.isFinite(Number(ev.relevance)) && (
+                <span
+                  className="ml-auto"
+                  style={{ fontSize: '10px', color: 'var(--color-ink-4)' }}
+                >
+                  {(Number(ev.relevance) * 100).toFixed(0)}%
+                </span>
+              )}
             </div>
             <p
               className="line-clamp-2"
