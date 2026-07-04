@@ -30,22 +30,54 @@ def _active(scores: list[dict]) -> list[dict]:
     return [s for s in scores if not s.get("deferred")]
 
 
-def build_alert(scores: list[dict], *, alert_on_amber: bool = False, as_of: str = "") -> dict:
+def _unwrap(data) -> tuple[list, list, dict | None]:
+    """connector_health --json used to emit a bare list of source scores; it now
+    emits an envelope {"sources", "dlq", "ledger"}. Accept both so an old report
+    (or a hand-run against an old checkout) still parses. Returns (sources, ledger,
+    dlq)."""
+    if isinstance(data, dict):
+        return data.get("sources", []), data.get("ledger", []), data.get("dlq")
+    return data, [], None
+
+
+def build_alert(
+    scores: list[dict],
+    *,
+    alert_on_amber: bool = False,
+    as_of: str = "",
+    ledger: list[dict] | None = None,
+    dlq: dict | None = None,
+) -> dict:
     """Decide whether to alert and render the issue body.
 
-    Returns {should_alert, red, amber, title, body}. `red`/`amber` are source
-    name lists; `body` is GitHub-flavoured markdown.
+    Returns {should_alert, red, amber, ledger, dlq_red, title, body}. `red`/`amber`
+    /`ledger` are name lists; `body` is GitHub-flavoured markdown. A frozen ledger
+    or a growing DLQ backlog alerts on their own — the whole point of surfacing them
+    is that a spine freeze / dead-letter bleed must never be silent behind green
+    sources (the 27-Jun freeze reddened nothing a human saw).
     """
     active = _active(scores)
     red = [s for s in active if (s.get("verdict") or "").upper() == "RED"]
     amber = [s for s in active if (s.get("verdict") or "").upper() == "AMBER"]
-    should_alert = bool(red) or (alert_on_amber and bool(amber))
+    ledger_stale = [l for l in (ledger or []) if not l.get("healthy", True)]
+    dlq_red = bool(dlq) and (dlq.get("verdict") or "").upper() == "RED"
+    should_alert = (
+        bool(red)
+        or (alert_on_amber and bool(amber))
+        or bool(ledger_stale)
+        or dlq_red
+    )
 
-    body = _render_body(red, amber, total=len(active), as_of=as_of, alert_on_amber=alert_on_amber)
+    body = _render_body(
+        red, amber, total=len(active), as_of=as_of, alert_on_amber=alert_on_amber,
+        ledger_stale=ledger_stale, dlq=dlq if dlq_red else None,
+    )
     return {
         "should_alert": should_alert,
         "red": [s.get("source") for s in red],
         "amber": [s.get("source") for s in amber],
+        "ledger": [l.get("source") for l in ledger_stale],
+        "dlq_red": dlq_red,
         "title": ALERT_TITLE,
         "body": body,
     }
@@ -65,13 +97,27 @@ def _row(s: dict) -> str:
 
 
 def _render_body(red: list[dict], amber: list[dict], *, total: int, as_of: str,
-                 alert_on_amber: bool) -> str:
+                 alert_on_amber: bool, ledger_stale: list[dict] | None = None,
+                 dlq: dict | None = None) -> str:
+    ledger_stale = ledger_stale or []
     lines: list[str] = []
     if red:
         lines.append(f"**{len(red)} RED** source(s) — over SLA, no terminal status, or 0-row anomaly.")
     if amber and alert_on_amber:
         lines.append(f"**{len(amber)} AMBER** source(s) — stale but under 2x SLA.")
-    if not red and not amber:
+    if ledger_stale:
+        names = ", ".join(f"`{l.get('source')}`" for l in ledger_stale)
+        lines.append(
+            f"**Ledger FROZEN** — {names} over freshness SLA. The knowledge spine "
+            "(facts/evidence that every lens reads) has stopped converging; check the "
+            "scheduled ledger-convergence job."
+        )
+    if dlq:
+        lines.append(
+            f"**DLQ bleed** — dead-letter backlog is growing ({dlq.get('pending_total', '?')} "
+            "pending). A connector is silently failing rows; triage the newest cause."
+        )
+    if not red and not amber and not ledger_stale and not dlq:
         lines.append("All active sources GREEN.")
     lines.append("")
     shown = red + (amber if alert_on_amber else [])
@@ -107,8 +153,11 @@ def main() -> int:
     args = ap.parse_args()
 
     raw = open(args.input, encoding="utf-8").read() if args.input else sys.stdin.read()
-    scores = json.loads(raw)
-    result = build_alert(scores, alert_on_amber=args.alert_on_amber, as_of=args.as_of)
+    scores, ledger, dlq = _unwrap(json.loads(raw))
+    result = build_alert(
+        scores, alert_on_amber=args.alert_on_amber, as_of=args.as_of,
+        ledger=ledger, dlq=dlq,
+    )
 
     if args.body_out:
         with open(args.body_out, "w", encoding="utf-8") as f:
@@ -116,7 +165,11 @@ def main() -> int:
 
     _emit_output("should_alert", "true" if result["should_alert"] else "false")
     _emit_output("title", result["title"])
-    print(f"alert={result['should_alert']} red={result['red']} amber={result['amber']}", file=sys.stderr)
+    print(
+        f"alert={result['should_alert']} red={result['red']} amber={result['amber']} "
+        f"ledger={result['ledger']} dlq_red={result['dlq_red']}",
+        file=sys.stderr,
+    )
     return 0
 
 

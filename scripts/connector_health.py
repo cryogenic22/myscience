@@ -46,6 +46,7 @@ from scheduler.config import (  # noqa: E402
     CONNECTOR_SCHEDULES,
     FRESHNESS_SLA_DAYS,
     KNOWN_DEFERRED_SOURCES,
+    LEDGER_FRESHNESS_SLA_DAYS,
 )
 
 # How long an etl_runs row may stay RUNNING before we treat it as an orphan
@@ -510,6 +511,40 @@ def gather_dlq_health(conn) -> DLQHealth:
     )
 
 
+def gather_ledger_health(conn) -> list[SourceHealth]:
+    """Freshness of the knowledge LEDGER (facts + evidence) — the spine every lens
+    (dossier / KBQ / scenario / synthesis) reads. The ledger sits DOWNSTREAM of
+    ingest and converges via the scheduled ledger-convergence job
+    (runner._run_ledger_convergence); it had no freshness gate of its own, so it
+    silently froze 12 days (27-Jun prod probe: 0 new facts/evidence) while every
+    ingest connector logged SUCCESS. This is that gate, wired into the live Lane-2
+    script (the follow-up LEDGER_FRESHNESS_SLA_DAYS's note deferred until the DLQ
+    JSON reshape landed). Read-only; ages the newest-row timestamp against the SLA
+    and reuses the pure evaluate_source_health verdict so a stale ledger reads
+    unhealthy exactly the way a stale source does. Degrades gracefully if a
+    table/column is absent (fresh DB) — a query hiccup must never crash the
+    scorecard; it rolls back and reports the ledger as empty (which is itself
+    unhealthy)."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    now = datetime.now(timezone.utc)
+    out: list[SourceHealth] = []
+    for label, (table, recency_col, sla_days) in LEDGER_FRESHNESS_SLA_DAYS.items():
+        rows, newest = 0, None
+        try:
+            cur.execute(f"SELECT count(*) AS n, max({recency_col}) AS newest FROM {table}")
+            r = cur.fetchone()
+            rows, newest = r["n"], r["newest"]
+        except Exception:
+            conn.rollback()  # missing table/column (fresh DB) — reported as empty
+        out.append(
+            evaluate_source_health(
+                label, table, sla_days, rows, newest,
+                last_run_status=None, last_run_at=None, last_error=None, now=now,
+            )
+        )
+    return out
+
+
 def _cell(v: str) -> str:
     return {"GREEN": "GRN", "AMBER": "AMB", "RED": "RED", "DEFERRED": "DEF"}.get(v, v)
 
@@ -519,17 +554,24 @@ def main() -> None:
     conn = psycopg2.connect(_get_db_url())
     scores = gather_scorecard(conn)
     dlq = gather_dlq_health(conn)
+    ledger = gather_ledger_health(conn)
     conn.close()
 
     if as_json:
-        # NOTE (follow-up): the DLQ snapshot is intentionally NOT in the --json
-        # payload yet. A DLQ-only RED still fails the gate via the exit code below,
-        # but health_alert.py renders the tracking issue from this JSON — so a
-        # DLQ-only RED won't (yet) open/annotate that issue. Adding `dlq` here +
-        # teaching health_alert.py to factor it in is deferred to converge with the
-        # concurrent ledger-health JSON reshape (avoids two conflicting changes to
-        # this payload). Exit-code gating — the conservation floor — is wired.
-        print(json.dumps([asdict(s) for s in scores], indent=2, default=str))
+        # Envelope: source scorecard + DLQ backlog + ledger freshness. This was a
+        # bare list of source scores; it now carries dlq + ledger so a DLQ bleed or a
+        # ledger freeze (both of which fail the gate via the exit code below) also
+        # reach health_alert.py — the sole consumer — and open/annotate the tracking
+        # issue instead of only reddening the CI tab. health_alert unwraps this and
+        # still accepts the legacy bare list.
+        print(json.dumps(
+            {
+                "sources": [asdict(s) for s in scores],
+                "dlq": asdict(dlq),
+                "ledger": [asdict(l) for l in ledger],
+            },
+            indent=2, default=str,
+        ))
     else:
         print(
             f"{'SOURCE':22} {'TABLE':22} {'ROWS':>7} {'AGE':>7} "
@@ -574,7 +616,28 @@ def main() -> None:
         elif dlq.verdict == "AMBER":
             print("     DLQ AMBER — non-zero backlog (known debt awaiting replay; not growing).")
 
-    if any(s.verdict == "RED" for s in scores) or dlq.verdict == "RED":
+        # Knowledge ledger (facts + evidence) — the spine downstream of ingest. It
+        # froze 12 days silently once (27-Jun); this line makes a re-freeze loud.
+        print("-" * 100)
+        for l in ledger:
+            age = f"{l.age_days}d" if l.age_days is not None else "—"
+            print(
+                f"LEDGER {l.source:16} {l.table:18} rows={l.rows:>8} "
+                f"age={age:>7} / {l.sla_days}d  {'RED' if not l.healthy else 'GREEN'}"
+            )
+        ledger_stale = [l.source for l in ledger if not l.healthy]
+        if ledger_stale:
+            print(
+                f"     LEDGER RED — {', '.join(ledger_stale)} over freshness SLA. The spine "
+                "every lens reads has stopped converging; check the ledger-convergence "
+                "job (runner._run_ledger_convergence)."
+            )
+
+    if (
+        any(s.verdict == "RED" for s in scores)
+        or dlq.verdict == "RED"
+        or any(not l.healthy for l in ledger)
+    ):
         sys.exit(1)
 
 
