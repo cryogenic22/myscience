@@ -238,6 +238,11 @@ export function ConnectWizard({ onRegister, onDone, onCancel }: ConnectWizardPro
       // Only signal completion when the source was actually PERSISTED. A preview
       // (contract validated, nothing written) must not read as "done".
       if (res.ok && res.record && !res.preview) onDone?.(res.record.source_id);
+    } catch (e) {
+      // Once register() does a real network write, a rejection (network / 500)
+      // must surface via the existing error banner — not be swallowed, leaving
+      // the button silently re-enabled as if nothing happened.
+      setResult({ ok: false, errors: [e instanceof Error ? e.message : String(e)] });
     } finally {
       setSubmitting(false);
     }

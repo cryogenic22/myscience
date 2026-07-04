@@ -13,9 +13,13 @@ export default function ConnectorsPage() {
   const [detail, setDetail] = useState<ConnectorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  // List-level vs. detail-level errors are kept SEPARATE: a single connector's
+  // detail fetch failing must not blank the working connector list (blast-radius).
   const [error, setError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const reloadList = useCallback(async () => {
+    setError(null);
     try {
       const r = await connectorsApi.list();
       setConnectors(r.connectors);
@@ -31,11 +35,14 @@ export default function ConnectorsPage() {
 
   const reloadDetail = useCallback(async (key: string) => {
     setDetailLoading(true);
+    setDetailError(null);
     try {
       const d = await connectorsApi.detail(key);
       setDetail(d);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // Scope to the detail pane; show stale detail as nothing rather than lie.
+      setDetail(null);
+      setDetailError(e instanceof Error ? e.message : String(e));
     } finally {
       setDetailLoading(false);
     }
@@ -89,8 +96,21 @@ export default function ConnectorsPage() {
             Loading connectors…
           </div>
         ) : error ? (
-          <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: '#B91C1C' }}>
-            {error}
+          <div
+            role="alert"
+            data-testid="list-error"
+            className="flex-1 flex flex-col items-center justify-center gap-3 mz-text-sm-2"
+            style={{ color: 'var(--color-red)' }}
+          >
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => { setLoading(true); reloadList(); }}
+              className="btn btn-xs btn-secondary"
+              style={{ borderRadius: '6px' }}
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <>
@@ -99,9 +119,30 @@ export default function ConnectorsPage() {
               selectedKey={selectedKey}
               onSelect={setSelectedKey}
             />
-            {detailLoading || !detail ? (
+            {detailLoading ? (
               <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: 'var(--color-ink-4)' }}>
-                {detailLoading ? 'Loading…' : 'Select a connector'}
+                Loading…
+              </div>
+            ) : detailError ? (
+              <div
+                role="alert"
+                data-testid="detail-error"
+                className="flex-1 flex flex-col items-center justify-center gap-3 mz-text-sm-2"
+                style={{ color: 'var(--color-red)' }}
+              >
+                <span>{detailError}</span>
+                <button
+                  type="button"
+                  onClick={() => { if (selectedKey) reloadDetail(selectedKey); }}
+                  className="btn btn-xs btn-secondary"
+                  style={{ borderRadius: '6px' }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : !detail ? (
+              <div className="flex-1 flex items-center justify-center mz-text-sm-2" style={{ color: 'var(--color-ink-4)' }}>
+                Select a connector
               </div>
             ) : (
               <ConnectorDetailView
