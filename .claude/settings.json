@@ -26,7 +26,46 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Review THIS TURN's changes against the conservation/anti-regression rules (.claude/rules/conservation-gates.md). Flag each issue with its tag; if clean, reply exactly 'Turn review: clean.'\n\n1. SILENT DATA LOSS: did any resolve/consolidate/compress/coerce path drop rows, fields, or provenance without recording it (soft-delete, dropped-manifest, or a logged count)? The dominant failure here. Flag [SILENT-LOSS].\n2. CODE/TEST DELETION: was existing code, a test, or an assertion deleted, weakened, skipped, or xfail'd that the user did not request? Flag [TEST-WEAKENED] / [REGRESSION-RISK].\n3. MOVED THE BAR: was a gate threshold, freshness SLA, orphan ceiling, eval gold set, or schema floor edited to make work pass (vs. genuinely improved)? Flag [BAR-MOVED] — these are protected-surface; route through the owner.\n4. VACUOUS GREEN: was any gate made to pass by checking nothing (empty suite, all-skipped, typecheck of 0 files, tolerated-error allowance with no expiry)? Flag [VACUOUS-GREEN].\n5. UNGROUNDED CLAIM: is any number / 'done' / 'verified' stated without pasted evidence (a query result, test output, or probe)? Flag [UNGROUNDED] — no fabricated figures.\n6. SILENT CATCH: any new bare 'except:' / 'except Exception: pass' that hides a failure? Flag [SILENT-CATCH]."
+            "prompt": "Review THIS TURN's changes against the conservation/anti-regression rules (.claude/rules/conservation-gates.md). Flag each issue with its tag; if clean, reply exactly 'Turn review: clean.'\n\n1. SILENT DATA LOSS: did any resolve/consolidate/compress/coerce path drop rows, fields, or provenance without recording it (soft-delete, dropped-manifest, or a logged count)? The dominant failure here. Flag [SILENT-LOSS].\n2. CODE/TEST DELETION: was existing code, a test, or an assertion deleted, weakened, skipped, or xfail'd that the user did not request? Flag [TEST-WEAKENED] / [REGRESSION-RISK].\n3. MOVED THE BAR: was a gate threshold, freshness SLA, orphan ceiling, eval gold set, or schema floor edited to make work pass (vs. genuinely improved)? Flag [BAR-MOVED] \u2014 these are protected-surface; route through the owner.\n4. VACUOUS GREEN: was any gate made to pass by checking nothing (empty suite, all-skipped, typecheck of 0 files, tolerated-error allowance with no expiry)? Flag [VACUOUS-GREEN].\n5. UNGROUNDED CLAIM: is any number / 'done' / 'verified' stated without pasted evidence (a query result, test output, or probe)? Flag [UNGROUNDED] \u2014 no fabricated figures.\n6. SILENT CATCH: any new bare 'except:' / 'except Exception: pass' that hides a failure? Flag [SILENT-CATCH]."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -P -m ctxpack.cli.main hook stop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -P -m ctxpack.cli.main hook pre-compact"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -P -m ctxpack.cli.main hook session-start"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -P -m ctxpack.cli.main hook session-end"
           }
         ]
       }
