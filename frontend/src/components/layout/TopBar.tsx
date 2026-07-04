@@ -70,6 +70,8 @@ export default function TopBar({ onBack, onSearch, onCI, onDataHub, activeTab, o
               onClick={() => onTabChange(key)}
               className="nav-tab"
               data-active={activeTab === key}
+              aria-label={label}
+              aria-current={activeTab === key ? 'page' : undefined}
               style={{
                 background: activeTab === key ? 'var(--color-surface)' : 'transparent',
                 color: activeTab === key ? 'var(--color-ink)' : 'var(--color-ink-3)',

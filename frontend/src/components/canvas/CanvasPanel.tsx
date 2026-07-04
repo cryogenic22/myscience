@@ -189,6 +189,8 @@ export default function CanvasPanel({
       {/* Tab bar */}
       {visibleTabs.length > 1 && (
         <div
+          role="tablist"
+          aria-label="Canvas views"
           className="shrink-0 flex items-center gap-1"
           style={{ padding: '12px 24px', borderBottom: '1px solid var(--color-line)', background: 'var(--color-surface)' }}
         >
@@ -196,6 +198,8 @@ export default function CanvasPanel({
             <button
               key={t.key}
               type="button"
+              role="tab"
+              aria-selected={currentTab === t.key}
               onClick={() => setActiveTab(t.key)}
               className="nav-tab"
               style={{
@@ -748,6 +752,7 @@ function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         className="flex items-center gap-2 mb-3"
         style={{
           background: 'none',
@@ -811,6 +816,7 @@ function EvidenceSection({ evidence }: { evidence: EvidenceItem[] }) {
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
           className="mt-2"
           style={{ fontSize: '12px', color: 'var(--color-accent)', background: 'none', border: 'none', cursor: 'pointer' }}
         >
@@ -835,6 +841,7 @@ function PersonaRow({ analysis }: { analysis: PersonaAnalysis }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         className="flex w-full items-center gap-3"
         style={{
           padding: '12px 16px',

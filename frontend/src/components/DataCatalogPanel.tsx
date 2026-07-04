@@ -224,7 +224,11 @@ function EntityCard({ entity, entityType, onOpen, featured }: {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${name}`}
       onClick={onOpen}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{
         padding: featured ? '24px' : '20px',
         background: 'var(--color-surface)',
@@ -365,7 +369,11 @@ function SourceCard({ connector, onOpen }: {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${connector.label}`}
       onClick={onOpen}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{
         padding: '20px',
         background: 'var(--color-surface)',
@@ -1114,6 +1122,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                 }}
               />
               <input
+                aria-label="Search entities"
                 value={searchInput}
                 onChange={e => handleSearchInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleSearchSubmit(); }}
@@ -1274,6 +1283,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
                         type="button"
+                        aria-label="Previous page"
                         disabled={browsePage === 0}
                         onClick={() => setBrowsePage(browsePage - 1)}
                         className="btn-icon"
@@ -1286,6 +1296,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                       </span>
                       <button
                         type="button"
+                        aria-label="Next page"
                         disabled={browsePage + 1 >= totalPages}
                         onClick={() => setBrowsePage(browsePage + 1)}
                         className="btn-icon"

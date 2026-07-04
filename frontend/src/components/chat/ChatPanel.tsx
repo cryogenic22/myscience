@@ -162,6 +162,7 @@ export default function ChatPanel({
         >
           <textarea
             ref={inputRef}
+            aria-label="Ask a question"
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}

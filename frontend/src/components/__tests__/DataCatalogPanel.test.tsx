@@ -172,6 +172,19 @@ describe('DataCatalogPanel', () => {
     expect(screen.queryByText('No changes recorded.')).not.toBeInTheDocument();
   });
 
+  it('entity cards are keyboard-reachable buttons with an accessible name', async () => {
+    render(<DataCatalogPanel />);
+    // Previously a bare <div onClick> — invisible to keyboard + screen readers.
+    const cards = await screen.findAllByRole('button', { name: /open Erlotinib/i });
+    expect(cards.length).toBeGreaterThanOrEqual(1);
+    expect(cards[0]).toHaveAttribute('tabindex', '0');
+  });
+
+  it('the catalog search input has an accessible name', async () => {
+    render(<DataCatalogPanel />);
+    expect(await screen.findByRole('textbox', { name: /search entities/i })).toBeInTheDocument();
+  });
+
   it('shows loading state while fetching', () => {
     // Make the health call hang to keep loading state
     mockHealth.mockReturnValue(new Promise(() => {}));
