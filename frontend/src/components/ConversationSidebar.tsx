@@ -23,7 +23,7 @@ export default function ConversationSidebar({ isOpen, onClose, conversations, on
       <div className="fixed inset-0 z-30" onClick={onClose} />
 
       {/* Sidebar */}
-      <div className="absolute inset-y-0 left-0 z-40 flex w-[280px] animate-slide-in flex-col border-r border-line bg-white/96 shadow-lg backdrop-blur-md"
+      <div className="absolute inset-y-0 left-0 z-40 flex w-[280px] animate-slide-in flex-col border-r border-line bg-surface/96 shadow-lg backdrop-blur-md"
         style={{ animationName: 'slide-in-left' }}
       >
         <div className="flex items-center justify-between border-b border-line" style={{ padding: '12px 16px' }}>

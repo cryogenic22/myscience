@@ -17,7 +17,7 @@ export function Pill({ label, tone = 'neutral', icon, className = '', onClick }:
     warn: 'bg-amber-50 text-amber-800 border-amber-200',
     bad: 'bg-rose-50 text-rose-700 border-rose-200',
     info: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    brand: 'bg-ink text-white border-ink',
+    brand: 'bg-ink text-surface border-ink',
   };
 
   const baseClasses = 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors';

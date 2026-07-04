@@ -92,7 +92,7 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
       </sup>
       {show && (
         <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-line bg-white text-left shadow-lg"
+          className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-md border border-line bg-surface text-left shadow-lg"
           style={{ padding: '14px' }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
@@ -105,7 +105,7 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
           </div>
           <p className="text-[11px] text-ink-3 leading-relaxed">{contentPreview}</p>
           {(sourceApi || sourceUrl) && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-line bg-white" style={{ padding: '6px 8px' }}>
+            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-line bg-surface" style={{ padding: '6px 8px' }}>
               <ExternalLink size={10} className="text-ink-4" />
               {sourceUrl ? (
                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-dark hover:underline truncate">
@@ -117,7 +117,7 @@ function CitationRef({ index, evidence }: { index: number; evidence?: EvidenceIt
             </div>
           )}
           {/* Arrow */}
-          <div className="absolute top-full left-1/2 -mt-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-white" />
+          <div className="absolute top-full left-1/2 -mt-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-surface" />
         </div>
       )}
     </span>
@@ -184,7 +184,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
     >
       <div className="w-full max-w-[90%]">
         {isUser ? (
-          <div className="ml-auto max-w-[82%] rounded-md bg-ink text-[13px] text-white shadow-sm" style={{ padding: '12px 16px' }}>
+          <div className="ml-auto max-w-[82%] rounded-md bg-ink text-[13px] text-surface shadow-sm" style={{ padding: '12px 16px' }}>
             {message.content}
           </div>
         ) : (
@@ -244,7 +244,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
                         key={q}
                         type="button"
                         onClick={() => onFollowUp(q)}
-                        className="rounded-md border border-line bg-white text-[11px] text-ink-3 transition-colors hover:border-line hover:bg-surface-2 hover:text-ink"
+                        className="rounded-md border border-line bg-surface text-[11px] text-ink-3 transition-colors hover:border-line hover:bg-surface-2 hover:text-ink"
                         style={{ padding: '6px 12px' }}
                       >
                         {q}
@@ -263,7 +263,7 @@ export default function ChatMessage({ message, onEntityClick, onFollowUp }: Prop
 
 function LoadingIndicator() {
   return (
-    <div className="rounded-md border border-line bg-white/78" style={{ padding: '16px' }}>
+    <div className="rounded-md border border-line bg-surface/78" style={{ padding: '16px' }}>
       <div className="flex items-center gap-3">
         <div className="flex gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -502,7 +502,7 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('md')}
-                  className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
+                  className="inline-flex items-center gap-1 rounded-md border border-line bg-surface text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Markdown
@@ -510,7 +510,7 @@ function ResponseCards({
                 <button
                   type="button"
                   onClick={() => void downloadReport('txt')}
-                  className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
+                  className="inline-flex items-center gap-1 rounded-md border border-line bg-surface text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2" style={{ padding: '4px 10px' }}
                 >
                   <Download size={10} />
                   Text
@@ -636,7 +636,7 @@ function DataTable({ tableData }: { tableData: TableData }) {
         <button
           type="button"
           onClick={() => exportCsv(tableData.columns, sortedRows, tableData.title || 'export')}
-          className="inline-flex items-center gap-1 rounded-md border border-line bg-white text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink-2"
+          className="inline-flex items-center gap-1 rounded-md border border-line bg-surface text-[10px] font-medium text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink-2"
           style={{ padding: '4px 8px' }}
           title="Download CSV"
         >
@@ -646,7 +646,7 @@ function DataTable({ tableData }: { tableData: TableData }) {
       </div>
       <div className="max-h-80 overflow-auto rounded-md border border-line">
         <table className="min-w-full text-[12px]" style={{ tableLayout: 'auto' }}>
-          <thead className="sticky top-0 bg-white z-10">
+          <thead className="sticky top-0 bg-surface z-10">
             <tr className="border-b border-line">
               {tableData.columns.map((col) => (
                 <th

@@ -27,7 +27,7 @@ export default function EntityCard({ entityType, label, properties, connections,
   return (
     <div
       onClick={onClick}
-      className={`rounded-md border border-line bg-white/88 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-line hover:shadow-md' : ''}`}
+      className={`rounded-md border border-line bg-surface/88 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-line hover:shadow-md' : ''}`}
       style={{ padding: '16px' }}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -41,7 +41,7 @@ export default function EntityCard({ entityType, label, properties, connections,
           </div>
         </div>
         {connections !== undefined && (
-          <span className="rounded-md border border-line bg-white text-[11px] font-medium text-ink-3" style={{ padding: '4px 10px' }}>
+          <span className="rounded-md border border-line bg-surface text-[11px] font-medium text-ink-3" style={{ padding: '4px 10px' }}>
             {connections} links
           </span>
         )}

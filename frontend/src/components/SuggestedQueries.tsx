@@ -18,7 +18,7 @@ const SUGGESTIONS = [
 export default function SuggestedQueries({ onSelect }: Props) {
   return (
     <div className="flex flex-col items-center gap-6" style={{ padding: '64px 0' }}>
-      <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-blue-100 bg-white/80">
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-blue-100 bg-surface/80">
         <Sparkles size={24} className="text-brand" />
       </div>
       <div className="text-center">
