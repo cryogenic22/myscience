@@ -50,29 +50,25 @@ const SUGGESTION_CARDS = [
   },
 ] as const;
 
-const FALLBACK_METRICS: KGMetric[] = [
-  { label: 'Drugs', count: 1700, color: 'var(--color-drug)' },
-  { label: 'Trials', count: 5300, color: 'var(--color-trial)' },
-  { label: 'Companies', count: 1500, color: 'var(--color-company)' },
-  { label: 'Mechanisms', count: 25, color: 'var(--color-mechanism)' },
-];
-
 export default function WorkspaceOnboarding({ onSendQuery }: WorkspaceOnboardingProps) {
-  const [metrics, setMetrics] = useState<KGMetric[]>(FALLBACK_METRICS);
+  // Counts are fetched live. We do NOT seed authoritative-looking fabricated
+  // numbers — `null` renders a loading skeleton, and a fetch failure renders an
+  // honest "unavailable" rather than invented counts on the user's first screen.
+  const [metrics, setMetrics] = useState<KGMetric[] | null>(null);
+  const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     api.catalogStats().then((stats: CatalogStats) => {
       if (cancelled) return;
       const ec = stats.entity_counts ?? {};
-      const live: KGMetric[] = [
-        { label: 'Drugs', count: ec.drug ?? ec.drugs ?? FALLBACK_METRICS[0].count, color: 'var(--color-drug)' },
-        { label: 'Trials', count: ec.trial ?? ec.clinical_trials ?? ec.trials ?? FALLBACK_METRICS[1].count, color: 'var(--color-trial)' },
-        { label: 'Companies', count: ec.company ?? ec.companies ?? FALLBACK_METRICS[2].count, color: 'var(--color-company)' },
-        { label: 'Mechanisms', count: ec.mechanism ?? ec.mechanisms ?? FALLBACK_METRICS[3].count, color: 'var(--color-mechanism)' },
-      ];
-      setMetrics(live);
-    }).catch(() => { /* keep fallback */ });
+      setMetrics([
+        { label: 'Drugs', count: ec.drug ?? ec.drugs ?? 0, color: 'var(--color-drug)' },
+        { label: 'Trials', count: ec.trial ?? ec.clinical_trials ?? ec.trials ?? 0, color: 'var(--color-trial)' },
+        { label: 'Companies', count: ec.company ?? ec.companies ?? 0, color: 'var(--color-company)' },
+        { label: 'Mechanisms', count: ec.mechanism ?? ec.mechanisms ?? 0, color: 'var(--color-mechanism)' },
+      ]);
+    }).catch(() => { if (!cancelled) setStatsError(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -126,45 +122,77 @@ export default function WorkspaceOnboarding({ onSendQuery }: WorkspaceOnboarding
           maxWidth: '480px',
         }}
       >
-        {metrics.map((m) => (
+        {statsError ? (
           <div
-            key={m.label}
+            role="status"
             style={{
-              background: 'var(--color-surface)',
-              borderRadius: '12px',
-              padding: '16px 12px',
+              gridColumn: '1 / -1',
               textAlign: 'center',
-              boxShadow: 'var(--shadow-xs)',
+              fontSize: '12px',
+              color: 'var(--color-ink-4)',
+              padding: '16px',
             }}
           >
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '24px',
-                fontWeight: 400,
-                color: 'var(--color-ink)',
-                lineHeight: 1.2,
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {m.count >= 1000
-                ? `${(m.count / 1000).toFixed(m.count % 1000 === 0 ? 0 : 1)}K`
-                : m.count.toLocaleString()}
-            </div>
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase' as const,
-                color: m.color,
-                marginTop: '4px',
-              }}
-            >
-              {m.label}
-            </div>
+            Knowledge-graph counts unavailable
           </div>
-        ))}
+        ) : metrics === null ? (
+          [0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              aria-hidden
+              data-testid="kg-metric-skeleton"
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: '12px',
+                padding: '16px 12px',
+                boxShadow: 'var(--shadow-xs)',
+              }}
+            >
+              <div style={{ height: '24px', borderRadius: '6px', background: 'var(--color-line)', opacity: 0.5 }} />
+              <div style={{ height: '11px', width: '60%', margin: '8px auto 0', borderRadius: '4px', background: 'var(--color-line)', opacity: 0.4 }} />
+            </div>
+          ))
+        ) : (
+          metrics.map((m) => (
+            <div
+              key={m.label}
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: '12px',
+                padding: '16px 12px',
+                textAlign: 'center',
+                boxShadow: 'var(--shadow-xs)',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '24px',
+                  fontWeight: 400,
+                  color: 'var(--color-ink)',
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {m.count >= 1000
+                  ? `${(m.count / 1000).toFixed(m.count % 1000 === 0 ? 0 : 1)}K`
+                  : m.count.toLocaleString()}
+              </div>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase' as const,
+                  color: m.color,
+                  marginTop: '4px',
+                }}
+              >
+                {m.label}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Suggestion cards */}

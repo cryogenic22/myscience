@@ -136,10 +136,13 @@ export default function WorkspacePage({
               }));
             },
             onDone: payload => { response = payload; streamComplete = true; },
-            onError: () => {},
+            onError: msg => { console.warn('[chat] stream error, falling back to non-streaming:', msg); },
           });
-        } catch { /* fall through */ }
+        } catch (e) { console.warn('[chat] stream failed, falling back to non-streaming:', e); }
 
+        // Fall back to the non-streaming endpoint when the stream did not deliver
+        // a final `done` payload (e.g. it was cut off mid-stream) — this recovers
+        // the complete answer; it is NOT a duplicate of a completed stream.
         if (!streamComplete) {
           response = await api.chat(trimmed, chatModes, conversationHistory);
         }

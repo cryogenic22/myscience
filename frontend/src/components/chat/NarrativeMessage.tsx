@@ -96,7 +96,7 @@ export default function NarrativeMessage({
                     <span>Coverage limits</span>
                   </div>
                   <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {message.data.limitations.map((lim, i) => (
+                    {message.data?.limitations?.map((lim, i) => (
                       <li key={i} data-coverage-limit={i}>{lim}</li>
                     ))}
                   </ul>

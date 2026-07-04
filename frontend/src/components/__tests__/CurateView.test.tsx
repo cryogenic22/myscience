@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CurateView from '../v2/CurateView';
 import type { PipelineConnector, GraphSummary } from '../../types/newui';
@@ -70,6 +70,24 @@ describe('CurateView', () => {
       />
     );
     expect(screen.getByText('Data Supply Chain')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error banner + Retry when the curate fetch failed', () => {
+    // A failed fetch (null data + error) must be distinguishable from a panel
+    // that is still loading — render an alert with a working Retry, not silence.
+    const onRetry = vi.fn();
+    render(
+      <CurateView
+        pipelineStatus={null}
+        graphSummary={null}
+        error
+        onRetry={onRetry}
+        onRefreshSource={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/load supply-chain data/i);
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('renders connector cards with labels', () => {
