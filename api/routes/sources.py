@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from api.deps import get_db, require_role
 from db import Database
 from services.source_registry import (
+    QUALITY_WEIGHTS,
     SourceNotFound,
     SourceRegistryService,
     VALID_KINDS,
@@ -198,42 +199,51 @@ def source_fair(
         raise HTTPException(404, f"source not found: {source_id}")
     d = src.to_dict()
 
-    # Map registry fields to the 5 dimensions PB-804 renders. Each entry
-    # has value (0..1 or null), weight (default contribution to composite),
-    # explanation (one-line plain language).
-    coverage = d.get("coverage_score")
-    latency = d.get("latency_score")
-    predictive = d.get("predictive_accuracy")
-    stability = d.get("stability_score")
-    license_health = d.get("license_health_score")
+    # The 5 dimensions live NESTED under `latest_quality` (the serialized
+    # QualityDimensions), NOT as flat top-level keys — reading them flat made
+    # every dimension AND the composite render null for every source regardless
+    # of what quality had been computed (a vacuous-green bug: the panel lied).
+    q = d.get("latest_quality") or {}
+    coverage = q.get("coverage")
+    latency = q.get("latency_score")
+    predictive = q.get("predictive_accuracy")
+    stability = q.get("stability_score")
+    license_health = q.get("license_health_score")
 
+    # Weights mirror the registry's actual QUALITY_WEIGHTS so the per-dimension
+    # breakdown a user sees reconciles with the composite it sums to (the route
+    # previously showed made-up 0.20/0.20 weights that did not add to the score).
     fair = {
         "coverage": {
-            "value": coverage, "weight": 0.25,
+            "value": coverage, "weight": QUALITY_WEIGHTS["coverage"],
             "explanation": "fraction of expected entities present",
         },
         "latency": {
-            "value": latency, "weight": 0.20,
+            "value": latency, "weight": QUALITY_WEIGHTS["latency"],
             "explanation": "how quickly new records reach us after publication",
         },
         "predictive_accuracy": {
-            "value": predictive, "weight": 0.20,
+            "value": predictive, "weight": QUALITY_WEIGHTS["predictive_accuracy"],
             "explanation": "historical hit rate from source contributions to correct predictions",
         },
         "stability": {
-            "value": stability, "weight": 0.15,
+            "value": stability, "weight": QUALITY_WEIGHTS["stability"],
             "explanation": "schema/payload-shape volatility over time",
         },
         "license_health": {
-            "value": license_health, "weight": 0.20,
+            "value": license_health, "weight": QUALITY_WEIGHTS["license_health"],
             "explanation": "renewal recency + cost-tier health",
         },
     }
-    composite = d.get("fair_score") or d.get("quality_score")
+    # The composite is the registry's own weighted overall_score — None (honest
+    # null, not a fabricated 0) when the source has never been profiled.
+    composite = q.get("overall_score")
     return {
         "source_id": source_id,
         "composite": composite,
         "by_dimension": fair,
+        "note": "dimensions + composite come from the source registry's latest "
+                "quality snapshot; null when the source has not yet been profiled",
     }
 
 

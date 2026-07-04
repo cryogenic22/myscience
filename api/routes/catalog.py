@@ -16,7 +16,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.deps import get_db, get_metrics
+from config import config
 from db import Database
+from integration.dataset_catalog import DatasetCatalog
 from services.metrics import PharmaMetrics
 
 logger = logging.getLogger(__name__)
@@ -615,6 +617,46 @@ def dataset_fair(source_key: str, db: Database = Depends(get_db)):
         "note": "derived ingest-health composite from dataset_catalog metrics — "
                 "not a formal FAIR audit; dimensions are null when not yet profiled",
     }
+
+
+@router.get("/datasets/{source_key}/croissant")
+def dataset_croissant(source_key: str, db: Database = Depends(get_db)):
+    """Serve the persisted Croissant (JSON-LD) descriptor for one dataset.
+
+    The descriptor — schema, provenance, license, and cr:rai bias/preprocessing
+    metadata — is generated + persisted by ``refresh_all()`` into
+    ``dataset_catalog.croissant_metadata`` but was served by NO route, so the
+    machine-readable FAIR product a consumer/agent binds to was unreachable.
+    Accepts the composite ``dataset_name`` or a bare ``source_type`` (resolved to
+    that source's primary — largest row_count — dataset), mirroring dataset_fair.
+    404 when unknown or not yet generated (honest, never an empty descriptor).
+    """
+    catalog = DatasetCatalog(db, config)
+    meta = catalog.get_croissant(source_key)
+    if meta is None:
+        # Belt-and-suspenders: a bare source_type → its primary dataset.
+        try:
+            row = db.fetch_one(
+                "SELECT dataset_name FROM dataset_catalog WHERE source_type = %s "
+                "ORDER BY row_count DESC NULLS LAST LIMIT 1",
+                [source_key],
+            )
+        except Exception:
+            row = None
+        if row and row.get("dataset_name"):
+            meta = catalog.get_croissant(row["dataset_name"])
+    if meta is None:
+        raise HTTPException(404, f"No Croissant descriptor for dataset: {source_key}")
+    return meta
+
+
+@router.get("/croissant")
+def croissant_index(db: Database = Depends(get_db)):
+    """Discovery index — the top-level Croissant descriptor (sc:Dataset with
+    hasPart) referencing every sub-dataset. The machine-readable entry point an
+    agent or partner crawls to find each per-dataset descriptor.
+    """
+    return DatasetCatalog(db, config).export_croissant_bundle()
 
 
 @router.get("/datasets/{source_key}/profile")
