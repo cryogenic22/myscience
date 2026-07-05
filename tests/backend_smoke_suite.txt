@@ -39,6 +39,7 @@ tests/test_signals_api.py
 # ctx pipeline core
 tests/test_ctx_corpus.py
 tests/test_ctx_evidence.py
+tests/test_ctx_negation_preservation.py
 
 # eval harness (scorer + live-eval orchestration, mocked — DB-free)
 tests/test_ci_benchmark.py

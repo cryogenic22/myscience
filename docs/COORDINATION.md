@@ -266,13 +266,16 @@ merge (no self-merge), `App.tsx`/shell edits additive + minimal.
 canary + Track B follow-up.** Field-confirmed: market_zero app code loads a
 **vendored `ctxpack` 0.3.0** (`market_zero/ctxpack/`) whose prose compressor
 `md_parser._compress_prose` strips `"no"/"not"` → clinical inversion ("did **not**
-meet its primary endpoint" → "meet …"; probed 3/3, preserved under ≥0.5.0). Blast
+meet its primary endpoint" → "meet …"; probed 4/4, preserved under ≥0.5.0). Blast
 radius **latent, MEDIUM** — only `services/ctx_corpus.py` + `services/ctx_pipeline.py`
 import it (**both Platform-lane**; the ctx hooks/MCP already run ≥0.5.0 via `-P`), and
 the corpus is safe *today* only because `ctx_corpus` emits YAML (0.3.0's YAML value
-path keeps negations). **#317** adds `tests/test_ctx_negation_preservation.py` (Lane-1
-guard: YAML path pinned · corpus-dir-is-YAML-only · no end-to-end inversion · an
-`xfail(strict)` documenting the live defect, proven a real RED via `--runxfail`).
+path keeps negations). **#317** adds `tests/test_ctx_negation_preservation.py`,
+**wired into the Backend Unit Smoke hard gate** (`tests/backend_smoke_suite.txt` — a
+protected-surface file, so this edit is **flagged for owner/CODEOWNER review**) so the
+guard is a real Lane-1 floor, not just import-collected: YAML path pinned ·
+corpus-dir-is-YAML-only · negation survives a full `pack()` · an `xfail(strict)`
+documenting the live defect, proven a real RED via `--runxfail`.
 ctxpack maintainers endorsed the finding + banked it as field evidence.
 - **Track B (Platform-lane follow-up, sequenced AFTER #317 merges):** delete the
   vendored 0.3.0 so both files use ≥0.5.0; re-pack the corpus + re-baseline pack-byte

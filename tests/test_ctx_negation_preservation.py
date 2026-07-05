@@ -4,8 +4,9 @@ clinical meaning ("did not meet its primary endpoint" -> "meet ...").
 Why this file exists (finding 2026-07-04):
     market_zero's app code loads a VENDORED ctxpack 0.3.0 (`market_zero/ctxpack/`),
     whose prose compressor `md_parser._compress_prose` lists "no"/"not" as filler
-    words and strips them — a full clinical inversion (probed: 3/3 pharma negations
-    invert). The installed >=0.5.0 (used by the ctx hooks/MCP via `python -P`) fixed
+    words and strips them — a full clinical inversion (the 4 cases in
+    PHARMA_NEGATIONS below all invert under 0.3.0, all survive under >=0.5.0). The
+    installed >=0.5.0 (used by the ctx hooks/MCP via `python -P`) fixed
     this and guards it. `PharmaCorpusBuilder` is safe *today* only by an accident of
     data shape: it emits YAML entity files, and the vendored 0.3.0 *YAML* value path
     preserves negations — but the moment a markdown/prose source enters the corpus
@@ -102,9 +103,13 @@ def test_corpus_dir_is_yaml_only():
 # ── End-to-end: a planted negation is never inverted by a full pack ──
 
 def test_negation_never_inverted_end_to_end():
-    """Pack a corpus carrying pharma negations and assert none is inverted in the
-    serialized L2. (Field elision is acceptable — that drops the field, it does not
-    flip meaning; inversion is the safety event this guards.)"""
+    """Pack a corpus carrying pharma negations and assert each negation SURVIVES in
+    the serialized L2. The MockDB input is fixed and the balanced preset keeps these
+    fields (verified), so survival is deterministic — asserting it directly is
+    stronger than a substring "no-inversion" check, which a real prose regression
+    could dodge by ALSO stripping "its" (so the bare phrase never matches and the
+    guard silently no-ops). Stripping "not" trips these. If a future budgeter ever
+    starts eliding a safety-relevant field, that red is itself worth surfacing."""
     from services.ctx_corpus import PharmaCorpusBuilder
     from ctxpack.core.serializer import serialize
 
@@ -121,15 +126,16 @@ def test_negation_never_inverted_end_to_end():
         result = PharmaCorpusBuilder(db).pack(tmp)
     text = serialize(result.document).lower()
 
-    # No inversion: if an inverted phrase surfaces, its negation must be present too.
-    inversions = [
-        ("meet its primary endpoint", "not meet its primary endpoint"),
-        ("approved for pediatric use", "not approved for pediatric use"),
-    ]
-    for bare, negated in inversions:
-        if bare in text and negated not in text:
-            pytest.fail(f"NEGATION INVERTED in packed corpus: found {bare!r} "
-                        f"without {negated!r}")
+    # Each planted negation must survive with its claim; a prose regression strips
+    # "not" (and "its"), which trips these regexes (robust to filler-stripping).
+    assert re.search(r"not\s+approved", text), (
+        "approval negation lost or inverted in the packed corpus "
+        "(expected 'not approved …' to survive)"
+    )
+    assert re.search(r"not\s+meet|did\s+not\s+meet", text), (
+        "trial-endpoint negation lost or inverted in the packed corpus "
+        "(expected 'did not meet …' to survive)"
+    )
 
 
 # ── Documents the live defect; xpasses (strict -> RED) once Track B upgrade lands ──
