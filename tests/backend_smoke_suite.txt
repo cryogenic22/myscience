@@ -44,6 +44,10 @@ tests/test_ctx_evidence.py
 tests/test_ci_benchmark.py
 tests/test_live_eval.py
 
+# dataset catalog: all-source coverage + shared-table source_api scoping
+# (guards the no-double-count invariant on drugs/clinical_trials/market_events)
+tests/test_dataset_catalog_coverage.py
+
 # entity resolution + domain intelligence + misc pure logic
 tests/test_entity_resolver_cascade.py
 tests/test_domain_intelligence_playbook.py
