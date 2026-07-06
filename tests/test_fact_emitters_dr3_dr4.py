@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from services.fact_emitters.adverse_events import AdverseEventEmitter, build_claim
+from services.fact_emitters.adverse_events import (
+    AdverseEventEmitter,
+    build_claim,
+    is_non_adr_term,
+)
 from services.fact_emitters.drug_labels import (
     DrugLabelEmitter,
     clean_indication,
@@ -64,6 +68,80 @@ class TestAdverseEventMapping:
 
     def test_routes_to_clinical_profile(self):
         assert route_predicate_to_domain("adverse_event") == "clinical_profile"
+
+
+class TestAdverseEventDiscipline:
+    """FAERS hygiene: medication-error / lack-of-efficacy MedDRA terms are NOT
+    adverse drug reactions and must not surface as safety facts (the regression
+    flagged in docs/raw_notes.md + eval PV-01). Real ADRs still pass."""
+
+    # All confirmed present in prod for tirzepatide/semaglutide (read-only probe).
+    MED_ERROR_TERMS = [
+        "Incorrect dose administered",
+        "Extra dose administered",
+        "Increased dose administered",
+        "Product dose omission issue",
+        "Drug dose omission by device",
+        "Intentional dose omission",
+        "Off label use",
+        "Product use in unapproved indication",
+        "Accidental overdose",
+        "Product dispensing error",
+        "Intercepted product dispensing error",
+        "Wrong technique in product usage process",
+        "Wrong product administered",
+        "Wrong patient received product",
+        "Medication error",
+        "Circumstance or information capable of leading to medication error",
+        "Drug ineffective",
+        "Drug ineffective for unapproved indication",
+    ]
+
+    REAL_ADRS = [
+        "Nausea",
+        "Diarrhoea",
+        "Optic ischaemic neuropathy",
+        "Pancreatitis acute",
+        "Injection site reaction",
+        "Cholelithiasis",
+        "Hyperferritinaemia",
+    ]
+
+    def test_classifier_flags_medication_errors(self):
+        for t in self.MED_ERROR_TERMS:
+            assert is_non_adr_term(t), f"should flag non-ADR: {t!r}"
+
+    def test_classifier_passes_real_adrs(self):
+        for t in self.REAL_ADRS:
+            assert not is_non_adr_term(t), f"should NOT flag real ADR: {t!r}"
+
+    def test_classifier_is_case_insensitive(self):
+        assert is_non_adr_term("DRUG INEFFECTIVE")
+        assert is_non_adr_term("  incorrect dose administered  ")
+
+    def test_emitter_drops_medication_error_reactions(self):
+        em = AdverseEventEmitter()
+        for t in self.MED_ERROR_TERMS:
+            assert em.row_to_facts(_ae(reaction=t)) == [], f"emitted non-ADR: {t!r}"
+
+    def test_emitter_keeps_real_adrs(self):
+        em = AdverseEventEmitter()
+        for t in self.REAL_ADRS:
+            assert len(em.row_to_facts(_ae(reaction=t))) == 1, f"dropped ADR: {t!r}"
+
+    def test_safety_fact_carries_spontaneous_reporting_caveat(self):
+        f = AdverseEventEmitter().row_to_facts(_ae())[0]
+        assert f.object_value.get("reporting_caveat")
+        assert "spontaneous" in (f.evidence_text or "").lower()
+
+    def test_retraction_extracts_reaction_from_stored_fact(self):
+        from scripts.retract_non_adr_faers_facts import extract_reaction
+        assert extract_reaction({"reaction": "Incorrect dose administered"}) == \
+            "Incorrect dose administered"
+        # falls back to description head when reaction key absent
+        assert extract_reaction(
+            {"description": "Drug ineffective — 49 reports"}) == "Drug ineffective"
+        assert extract_reaction({}) == ""
 
 
 # ── DR-4: drug labels ──────────────────────────────────────────────
