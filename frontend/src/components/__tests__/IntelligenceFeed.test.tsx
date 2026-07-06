@@ -190,6 +190,31 @@ describe('IntelligenceFeed', () => {
       expect(screen.getByText(/All clear/)).toBeInTheDocument();
     });
   });
+
+  it('shows an error (not the "All clear" empty state) when the feed fails', async () => {
+    mockIntelligenceFeed.mockRejectedValue(new Error('feed 500'));
+
+    render(<IntelligenceFeed />);
+
+    const err = await screen.findByTestId('feed-error');
+    expect(err).toHaveTextContent(/couldn't load/i);
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    // A down pipeline must never read as a calm, healthy empty inbox.
+    expect(screen.queryByText(/All clear/)).not.toBeInTheDocument();
+  });
+
+  it('retry re-fetches the feed and recovers', async () => {
+    mockIntelligenceFeed
+      .mockRejectedValueOnce(new Error('feed 500'))
+      .mockResolvedValueOnce({ items: [makeItem({ event_id: 'ok-1', description: 'Recovered event' })], total: 1 });
+
+    render(<IntelligenceFeed />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /retry/i }));
+
+    await waitFor(() => expect(screen.getByText('Recovered event')).toBeInTheDocument());
+    expect(screen.queryByTestId('feed-error')).not.toBeInTheDocument();
+  });
 });
 
 describe('EventCard standalone', () => {
