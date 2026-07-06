@@ -39,6 +39,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<SearchViewMode>('cards');
   const [sortMode, setSortMode] = useState<SortMode>('relevance');
@@ -74,6 +75,7 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
 
       setIsLoading(true);
       setHasSearched(true);
+      setSearchError(null);
 
       try {
         const response = await api.search(
@@ -90,6 +92,9 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
         setActiveResultKey(first ? resultFingerprint(first) : null);
       } catch (err) {
         console.error('Search failed:', err);
+        // A failed search is NOT an empty search — surface it as an error so the
+        // user isn't told to "broaden" a query that never ran.
+        setSearchError(err instanceof Error ? err.message : 'Search failed. Please try again.');
         setResults([]);
         setTotalResults(0);
         setPage(1);
@@ -617,6 +622,8 @@ export default function SearchPage({ onBack, onChat, onGraph, onCatalog }: Props
                 query={query}
                 totalResults={totalResults}
                 visibleCount={visibleResults.length}
+                error={searchError}
+                onRetry={() => doSearch(query, page)}
               />
             )}
 

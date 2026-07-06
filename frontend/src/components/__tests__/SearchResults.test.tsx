@@ -61,6 +61,41 @@ describe('SearchResults', () => {
     expect(screen.getByText(/No results found/)).toBeInTheDocument();
   });
 
+  it('shows an error (not the "No results" empty state) when a search fails', () => {
+    render(
+      <SearchResults
+        {...defaultProps}
+        results={[]}
+        totalResults={0}
+        visibleCount={0}
+        error="Network error"
+        onRetry={vi.fn()}
+      />
+    );
+    const err = screen.getByTestId('search-error');
+    expect(err).toHaveTextContent(/search failed/i);
+    expect(err).toHaveTextContent(/network error/i);
+    // The fabricated "you matched nothing, broaden your query" message must NOT
+    // show when the search actually errored.
+    expect(screen.queryByText(/No results found/)).not.toBeInTheDocument();
+  });
+
+  it('the search error offers a working Retry', () => {
+    const onRetry = vi.fn();
+    render(
+      <SearchResults
+        {...defaultProps}
+        results={[]}
+        totalResults={0}
+        visibleCount={0}
+        error="boom"
+        onRetry={onRetry}
+      />
+    );
+    screen.getByRole('button', { name: /retry/i }).click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it('displays entity type badges', () => {
     const results = [
       makeResult({ entity_id: 'drug-1', title: 'Erlotinib', entity_type: 'drug' }),

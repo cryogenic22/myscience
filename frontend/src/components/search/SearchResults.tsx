@@ -143,6 +143,9 @@ interface SearchResultsProps {
   query: string;
   totalResults: number;
   visibleCount: number;
+  /** A failed search — distinct from a genuine 0-result search. */
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export default function SearchResults({
@@ -155,6 +158,8 @@ export default function SearchResults({
   query,
   totalResults,
   visibleCount,
+  error,
+  onRetry,
 }: SearchResultsProps) {
   if (isLoading) {
     return (
@@ -169,6 +174,41 @@ export default function SearchResults({
         <span className="ml-3 text-sm" style={{ color: 'var(--color-ink-3)' }}>
           Searching knowledge graph...
         </span>
+      </div>
+    );
+  }
+
+  // A failed search must NOT masquerade as "No results found" (which coaches the
+  // user to broaden a query that actually never ran). Checked before the empty
+  // state because the catch sets totalResults to 0.
+  if (hasSearched && error) {
+    return (
+      <div className="text-center" role="alert" data-testid="search-error" style={{ padding: '80px 0' }}>
+        <div
+          className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-md"
+          style={{
+            border: '1px solid var(--color-line)',
+            background: 'var(--color-surface)',
+          }}
+        >
+          <Search size={28} style={{ color: 'var(--color-red)' }} />
+        </div>
+        <p className="text-sm font-medium" style={{ color: 'var(--color-ink)' }}>
+          Search failed
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--color-ink-4)' }}>
+          {error}
+        </p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="btn btn-xs btn-secondary"
+            style={{ marginTop: '14px', borderRadius: '6px' }}
+          >
+            Retry
+          </button>
+        )}
       </div>
     );
   }
