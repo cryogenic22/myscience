@@ -859,7 +859,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl"
                 style={{
                   padding: '10px 20px',
-                  background: 'rgba(255,255,255,0.92)',
+                  // Was a fixed white bg paired with token text (--color-ink-2),
+                  // so the text turned light-on-white (unreadable) in dark mode.
+                  background: 'var(--color-surface)',
                   backdropFilter: 'blur(12px)',
                   border: '1px solid var(--color-line)',
                   boxShadow: 'var(--shadow-sm)',
@@ -956,7 +958,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               className="rounded-xl"
               style={{
                 padding: '16px',
-                background: 'rgba(255,255,255,0.96)',
+                // Fixed white bg + token text (--color-ink) → unreadable in dark
+                // mode; use the surface token so bg and text invert together.
+                background: 'var(--color-surface)',
                 backdropFilter: 'blur(12px)',
                 border: '1px solid var(--color-line)',
                 boxShadow: 'var(--shadow-md)',

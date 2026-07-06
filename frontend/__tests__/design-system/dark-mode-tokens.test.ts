@@ -54,6 +54,16 @@ describe('dark-mode token discipline (chat + graph flow)', () => {
     });
   }
 
+  it('GraphExplorer HUD: no near-white overlay card bg paired with token text', () => {
+    // The self-consistent DARK HUD (dark rgba bg + fixed light text over the
+    // dark graph canvas) is intentional and allowed. Banned: an opaque/near-
+    // white overlay bg on a card whose text/border are --color-* tokens — those
+    // tokens invert in dark mode, so it renders light text on white. The two
+    // offenders were the demo banner and the node-insight card (0.92 / 0.96).
+    const src = readFileSync(resolve(__dirname, '../../src/components/GraphExplorer.tsx'), 'utf-8');
+    expect(src).not.toMatch(/background:\s*'rgba\(255,\s*255,\s*255,\s*0\.9[26]\)'/);
+  });
+
   it('the fixed surfaces reference the theme tokens (swap direction is correct)', () => {
     const chat = readFileSync(resolve(__dirname, '../../src/components/ChatMessage.tsx'), 'utf-8');
     // The user bubble kept bg-ink but its text must be the inverting token.
