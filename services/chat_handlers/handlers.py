@@ -1484,6 +1484,20 @@ def handle_pipeline(
     early_heavy = sum(1 for p in top if (p.get("p1_count", 0) or 0) + (p.get("p2_count", 0) or 0) > (p.get("p3_count", 0) or 0) + (p.get("p4_count", 0) or 0))
     late_heavy = len(top) - early_heavy
     extra_context = f"PIPELINE MATURITY: {late_heavy} of {len(top)} drugs are late-stage heavy (Phase 3+4 > Phase 1+2)."
+    # Loop H2: ground trial answers in the clinical_trials registry — authoritative
+    # counts by phase + cited NCTs + as-of, prepended so the synthesizer answers
+    # "how many Phase 3 trials" from ground truth (not a RAG slice) and does not
+    # under-report. No-ops for TA / top-N views (only when a single drug resolved).
+    if resolved_drug_id and db is not None:
+        try:
+            from services.trial_grounding import trial_grounding
+            tg = trial_grounding(
+                db, resolved_drug_id,
+                drug_name=resolved_drug_label or ta or "this drug",
+            )
+            extra_context = tg["block"] + "\n\n" + extra_context
+        except Exception:
+            logger.exception("trial_grounding failed for %s", resolved_drug_id)
     if di_pipeline["context"]:
         extra_context = di_pipeline["context"] + "\n\n" + extra_context
     if ta:
