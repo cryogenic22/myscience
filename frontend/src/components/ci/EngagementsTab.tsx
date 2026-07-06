@@ -59,8 +59,10 @@ function deriveAttention(items: PortfolioEngagement[]): AttentionData {
     }));
   return {
     upcomingWorkshops,
-    staleEvidenceCount: 0,
-    unresolvedGapsCount: 0,
+    // Not computed yet (no endpoint) — null renders as "—", never a fake 0 that
+    // reads as a real "0 stale / 0 gaps" KPI or forces a false "all clear".
+    staleEvidenceCount: null,
+    unresolvedGapsCount: null,
   };
 }
 
@@ -68,8 +70,9 @@ function deriveStats(items: EngagementDTO[]): PortfolioStats {
   return {
     activeCount: items.filter((e) => e.status === 'active').length,
     archivedCount: items.filter((e) => e.status === 'archived').length,
-    decisionsCommitted30d: 0,
-    factsAsserted7d: 0,
+    // Not computed yet (no endpoint) — null renders as "—", never a fake 0.
+    decisionsCommitted30d: null,
+    factsAsserted7d: null,
   };
 }
 

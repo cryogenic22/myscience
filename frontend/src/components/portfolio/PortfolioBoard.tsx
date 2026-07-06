@@ -25,8 +25,9 @@ export interface AttentionData {
     daysUntil: number;
     readinessPct: number;
   }[];
-  staleEvidenceCount: number;
-  unresolvedGapsCount: number;
+  // null = not computed yet (no endpoint). Rendered as "—", never a fake 0.
+  staleEvidenceCount: number | null;
+  unresolvedGapsCount: number | null;
 }
 
 export interface PortfolioEngagement {
@@ -43,8 +44,9 @@ export interface PortfolioEngagement {
 export interface PortfolioStats {
   activeCount: number;
   archivedCount: number;
-  decisionsCommitted30d: number;
-  factsAsserted7d: number;
+  // null = not computed yet (no endpoint). Rendered as "—", never a fake 0.
+  decisionsCommitted30d: number | null;
+  factsAsserted7d: number | null;
 }
 
 export interface PortfolioBoardProps {
@@ -110,10 +112,12 @@ function AttentionBucket({
   onGapsReview: () => void;
   onStaleEvidenceReview: () => void;
 }) {
+  // An untracked (null) count is not evidence of a problem — only a tracked
+  // positive count is. Otherwise the fabricated 0s used to always read "clear".
   const allClear =
     attention.upcomingWorkshops.length === 0 &&
-    attention.staleEvidenceCount === 0 &&
-    attention.unresolvedGapsCount === 0;
+    !(attention.staleEvidenceCount && attention.staleEvidenceCount > 0) &&
+    !(attention.unresolvedGapsCount && attention.unresolvedGapsCount > 0);
 
   if (allClear) {
     return (
@@ -254,14 +258,14 @@ function AttentionBucket({
             fontSize: 32,
             fontWeight: 300,
             lineHeight: 1,
-            color: attention.staleEvidenceCount > 0 ? 'var(--color-amber)' : 'var(--color-ink-3)',
+            color: (attention.staleEvidenceCount ?? 0) > 0 ? 'var(--color-amber)' : 'var(--color-ink-3)',
             marginBottom: 4,
           }}
         >
-          {attention.staleEvidenceCount}
+          {attention.staleEvidenceCount ?? '—'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-          across committed decisions
+          {attention.staleEvidenceCount === null ? 'not tracked yet' : 'across committed decisions'}
         </div>
       </div>
 
@@ -287,14 +291,14 @@ function AttentionBucket({
             fontSize: 32,
             fontWeight: 300,
             lineHeight: 1,
-            color: attention.unresolvedGapsCount > 0 ? 'var(--color-red)' : 'var(--color-ink-3)',
+            color: (attention.unresolvedGapsCount ?? 0) > 0 ? 'var(--color-red)' : 'var(--color-ink-3)',
             marginBottom: 4,
           }}
         >
-          {attention.unresolvedGapsCount}
+          {attention.unresolvedGapsCount ?? '—'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-          high importance, awaiting remediation
+          {attention.unresolvedGapsCount === null ? 'not tracked yet' : 'high importance, awaiting remediation'}
         </div>
       </div>
     </section>
@@ -399,7 +403,7 @@ function EngagementCard({
 // ── Stats strip ────────────────────────────────────────────────────
 
 function StatsStrip({ stats }: { stats: PortfolioStats }) {
-  const items: Array<[string, number]> = [
+  const items: Array<[string, number | null]> = [
     ['active', stats.activeCount],
     ['archived', stats.archivedCount],
     ['decisions · 30d', stats.decisionsCommitted30d],
@@ -430,7 +434,7 @@ function StatsStrip({ stats }: { stats: PortfolioStats }) {
               letterSpacing: 0,
             }}
           >
-            {value}
+            {value ?? '—'}
           </span>
           <span style={{ textTransform: 'uppercase' }}>{label}</span>
         </div>
