@@ -6,7 +6,10 @@ deferred sources never alert (legitimate-empty != broken-empty).
 """
 from __future__ import annotations
 
-from scripts.health_alert import ALERT_TITLE, _unwrap, build_alert
+import json
+import sys
+
+from scripts.health_alert import ALERT_TITLE, _unwrap, build_alert, main
 
 
 def _s(source, verdict, *, deferred=False, notes=None, table="t", rows=1):
@@ -107,3 +110,38 @@ def test_unwrap_accepts_envelope_and_legacy_list():
     # legacy bare list (an old connector_health checkout) still parses
     s, l, d = _unwrap([{"source": "a"}])
     assert s == [{"source": "a"}] and l == [] and d is None
+
+
+def test_main_wires_the_envelope_through_unwrap(tmp_path, monkeypatch, capsys):
+    """MON-LIVE regression pin — at the seam, not just the helper.
+
+    ``_unwrap`` is unit-tested in isolation, but the live break was in
+    ``main()``: connector_health.py now emits the dict envelope and main must
+    route it through ``_unwrap`` before ``build_alert``. If main ever reads
+    ``json.loads(raw)`` straight into ``build_alert`` again, the envelope's
+    string keys reach ``_active()`` → ``AttributeError`` on every scheduled run
+    (the recovery branch then closes a healthy incident). This drives the real
+    ``main`` over a dict envelope carrying a RED source, so that regression can
+    never silently un-wire."""
+    envelope = {
+        "sources": [
+            {"source": "openfda_faers", "verdict": "RED", "deferred": False,
+             "table": "adverse_events", "rows": 0, "notes": ["never landed"]},
+            {"source": "clinical_trials_gov", "verdict": "GREEN", "deferred": False,
+             "table": "clinical_trials", "rows": 5898},
+        ],
+        "dlq": {"verdict": "AMBER", "pending_total": 1517},
+        "ledger": [{"source": "facts_ledger", "healthy": True}],
+    }
+    inp = tmp_path / "health.json"
+    inp.write_text(json.dumps(envelope), encoding="utf-8")
+    gho = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(gho))
+    monkeypatch.setattr(sys, "argv", ["health_alert.py", "--input", str(inp)])
+
+    rc = main()  # would raise AttributeError if main stopped un-wrapping
+
+    assert rc == 0
+    assert "should_alert=true" in gho.read_text(encoding="utf-8")
+    # the RED source drove the decision through the seam (not a bare-list fluke)
+    assert "red=['openfda_faers']" in capsys.readouterr().err
