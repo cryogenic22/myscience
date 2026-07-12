@@ -63,6 +63,18 @@ def test_debug_routes_reachable_with_correct_token(monkeypatch):
     assert "total_routes" in resp.json()
 
 
+def test_debug_route_non_ascii_token_is_404_not_500(monkeypatch):
+    """A malformed (non-ASCII) token must fail closed cleanly (404), not 500.
+
+    secrets.compare_digest on two `str` raises TypeError when either holds a
+    non-ASCII code point; Starlette latin-1-decodes header values, so a byte
+    like 0xE9 reaches the gate as a non-ASCII str. Comparing on bytes avoids it.
+    """
+    client = _client(monkeypatch, "correct-horse")
+    resp = client.get("/debug/routes", headers={"X-Debug-Token": b"\xe9-not-ascii"})
+    assert resp.status_code == 404
+
+
 # ------------------------------------------------------------------- /zs
 
 def test_zs_auth_fails_closed_when_unconfigured(monkeypatch):

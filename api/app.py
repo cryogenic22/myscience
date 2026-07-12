@@ -437,10 +437,15 @@ def create_app() -> FastAPI:
         ``X-Debug-Token`` header (e.g. the post-deploy migrate step).
         """
         expected = os.getenv("MZ_DEBUG_TOKEN")
+        # Compare on bytes: secrets.compare_digest raises TypeError on a str with
+        # a non-ASCII code point, and Starlette latin-1-decodes header values.
+        # The short-circuit guarantees both are truthy before .encode().
         if (
             not expected
             or not x_debug_token
-            or not secrets.compare_digest(x_debug_token, expected)
+            or not secrets.compare_digest(
+                x_debug_token.encode("utf-8"), expected.encode("utf-8")
+            )
         ):
             raise HTTPException(status_code=404, detail="Not Found")
 
