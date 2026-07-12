@@ -272,7 +272,13 @@ def compute_overall(
     license_health_score: Optional[float],
 ) -> float:
     """Weighted average of the 5 dimensions. Missing dims contribute 0.5
-    (neutral) so we don't punish sources for unknown dims."""
+    (neutral) so we don't punish sources for unknown dims.
+
+    The score alone is falsely precise: a neutral 0.5 for an *unknown* dim is
+    indistinguishable from a real 0.5. Callers should read the companion
+    ``inputs["provenance"]`` (see ``summarize_provenance``) to know how much of
+    the score is actually measured. The number here is deliberately unchanged
+    for backward compatibility — honesty is added alongside, not by moving it."""
     def _v(x): return 0.5 if x is None else max(0.0, min(1.0, float(x)))
     score = (
         QUALITY_WEIGHTS["coverage"]            * _v(coverage)            +
@@ -282,6 +288,51 @@ def compute_overall(
         QUALITY_WEIGHTS["license_health"]      * _v(license_health_score)
     )
     return max(0.0, min(1.0, score))
+
+
+# ── QUAL-001: quality-score provenance (honest measured/estimated/unknown) ──
+# Red-team 2026-07-10: the composite collapses real measurements and neutral
+# placeholders into one number. Today ~55% of the weight is NOT a measurement
+# (predictive_accuracy 0.30 = a flat 0.5 pending SPEC-028; coverage 0.25 = a
+# per-tier default). Recording each dimension's *basis* lets the catalog render
+# "45% measured / 25% estimated / 30% placeholder" instead of false precision.
+QUALITY_BASIS_MEASURED = "measured"    # derived from THIS source's real data
+QUALITY_BASIS_ESTIMATED = "estimated"  # a heuristic proxy (e.g. tier default), not a measurement
+QUALITY_BASIS_UNKNOWN = "unknown"      # no basis — a neutral 0.5 placeholder pending real wiring
+
+_VALID_BASES = frozenset({QUALITY_BASIS_MEASURED, QUALITY_BASIS_ESTIMATED, QUALITY_BASIS_UNKNOWN})
+
+
+def summarize_provenance(
+    basis_by_dim: dict, weights: Optional[dict] = None
+) -> dict:
+    """Aggregate per-dimension bases into an honest provenance summary.
+
+    ``basis_by_dim`` maps a QUALITY_WEIGHTS dimension key to one of the
+    ``QUALITY_BASIS_*`` values. Returns the dims grouped by basis plus the share
+    of the composite *weight* that is measured / estimated / unknown, so a
+    consumer can state how much of the score is real. Fails closed: an
+    unrecognised basis is counted as ``unknown`` (never silently promoted to
+    measured). ``weights`` defaults to ``QUALITY_WEIGHTS``.
+    """
+    weights = weights if weights is not None else QUALITY_WEIGHTS
+    buckets = {QUALITY_BASIS_MEASURED: [], QUALITY_BASIS_ESTIMATED: [], QUALITY_BASIS_UNKNOWN: []}
+    weight = {QUALITY_BASIS_MEASURED: 0.0, QUALITY_BASIS_ESTIMATED: 0.0, QUALITY_BASIS_UNKNOWN: 0.0}
+    for dim, basis in basis_by_dim.items():
+        b = basis if basis in _VALID_BASES else QUALITY_BASIS_UNKNOWN
+        buckets[b].append(dim)
+        weight[b] += float(weights.get(dim, 0.0))
+    total_w = sum(weight.values()) or 1.0
+    return {
+        "measured": sorted(buckets[QUALITY_BASIS_MEASURED]),
+        "estimated": sorted(buckets[QUALITY_BASIS_ESTIMATED]),
+        "unknown": sorted(buckets[QUALITY_BASIS_UNKNOWN]),
+        "measured_weight": round(weight[QUALITY_BASIS_MEASURED] / total_w, 4),
+        "estimated_weight": round(weight[QUALITY_BASIS_ESTIMATED] / total_w, 4),
+        "unknown_weight": round(weight[QUALITY_BASIS_UNKNOWN] / total_w, 4),
+        "n_measured": len(buckets[QUALITY_BASIS_MEASURED]),
+        "n_dims": len(basis_by_dim),
+    }
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -479,16 +530,20 @@ class SourceRegistryService:
 
         inputs: dict = {}
 
-        # license_health_score
+        # license_health_score — a real determination from the source's own
+        # license posture (active/expired/rate_limited/not_applicable) → measured.
         license_health = score_license_health(src.license_status, src.license_renewal_at)
         inputs["license"] = {
             "status": src.license_status,
             "renewal_at": src.license_renewal_at.isoformat() if src.license_renewal_at else None,
+            "basis": QUALITY_BASIS_MEASURED,
         }
 
-        # coverage default by tier (until SPEC-028 wires real ground truth)
+        # coverage default by tier (until SPEC-028 wires real ground truth) — a
+        # heuristic proxy from the source's tier, NOT a measurement of coverage.
         coverage = score_coverage_default_for_tier(src.tier)
-        inputs["coverage"] = {"method": "tier_default", "tier": src.tier}
+        inputs["coverage"] = {"method": "tier_default", "tier": src.tier,
+                              "basis": QUALITY_BASIS_ESTIMATED}
 
         # latency: median lag from evidence_records.retrieved_at vs created_at,
         # bounded to last 1000 rows for cost control. Falls back to 0.5.
@@ -514,16 +569,34 @@ class SourceRegistryService:
             logger.warning("latency query failed (falling back to default): %s", exc)
             p95_int = None
         latency_p95_ms, latency_score = score_latency(p95_int)
-        inputs["latency"] = {"p95_ms": latency_p95_ms, "method": "evidence_records_p95"}
+        # latency is measured only when real rows produced a p95; the 0.5
+        # fallback (no evidence rows) is an honest unknown, not a measurement.
+        latency_basis = QUALITY_BASIS_MEASURED if p95_int is not None else QUALITY_BASIS_UNKNOWN
+        inputs["latency"] = {"p95_ms": latency_p95_ms, "method": "evidence_records_p95",
+                             "basis": latency_basis}
 
-        # predictive_accuracy: deferred to SPEC-028; default 0.5
+        # predictive_accuracy: deferred to SPEC-028; a flat 0.5 placeholder with
+        # no source-specific basis → unknown (and it carries the largest weight).
         predictive_accuracy = 0.5
-        inputs["predictive_accuracy"] = {"method": "default_pending_spec_028"}
+        inputs["predictive_accuracy"] = {"method": "default_pending_spec_028",
+                                         "basis": QUALITY_BASIS_UNKNOWN}
 
-        # stability_score: stub — 1.0 if active, 0.0 if not. SPEC-028 will
-        # use connector lifecycle event log when that lands.
+        # stability_score: stub — 1.0 if active, 0.0 if not. Coarse, but read
+        # from the source's real `active` flag → measured (SPEC-028 will refine
+        # it from the connector lifecycle event log).
         stability_score = 1.0 if src.active else 0.0
-        inputs["stability"] = {"method": "active_flag", "active": src.active}
+        inputs["stability"] = {"method": "active_flag", "active": src.active,
+                               "basis": QUALITY_BASIS_MEASURED}
+
+        # QUAL-001: record how much of the composite is actually measured so the
+        # score is never read as more real than it is (keyed by QUALITY_WEIGHTS).
+        inputs["provenance"] = summarize_provenance({
+            "coverage": inputs["coverage"]["basis"],
+            "latency": latency_basis,
+            "predictive_accuracy": QUALITY_BASIS_UNKNOWN,
+            "stability": QUALITY_BASIS_MEASURED,
+            "license_health": QUALITY_BASIS_MEASURED,
+        })
 
         overall = compute_overall(
             coverage=coverage,
