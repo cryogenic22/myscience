@@ -2,6 +2,9 @@
 
 > **Single source of truth for product / feature / bug / infra work.**
 >
+> *(For lanes / cross-lane decisions / process, **`docs/COORDINATION.md`** is canonical —
+> GOV-001, resolved 2026-07-10. This file defers to it on ownership and cross-lane ASKs.)*
+>
 > Refreshed **2026-05-10** to reflect the 12-epic / 24-week plan from the
 > design review (`design-review-output/`). Replaces the 74 unfiltered
 > consolidator rows from Loop #3.
@@ -10,8 +13,9 @@
 > ship the experience to match. *Stop adding specs; finish the experience
 > of the specs we have.* See [`design-review-output/design-strategy.md`](../design-review-output/design-strategy.md).
 >
-> - **Cross-agent coordination** lives in [`docs/AGENT_BACKLOG.md`](AGENT_BACKLOG.md).
->   Backend asks here are mirrored there with concrete instructions (BE-1 through BE-41).
+> - **Cross-agent coordination** lives in [`docs/COORDINATION.md`](COORDINATION.md) (the
+>   canonical board + cross-lane ASKs §8). `docs/AGENT_BACKLOG.md` is **archived**
+>   (superseded 2026-06-13) — do not plan from it.
 > - **User-feedback queue** is cron-managed at [`feedback/live_user_feedback.md`](../feedback/live_user_feedback.md).
 > - **Each spec** lives at `specs/SPEC_NNN_*.md`; this file references it.
 > - **Design review source** for everything below: `design-review-output/enhancement-backlog.md` (12 epics, ~36 stories, ~120 tasks).
@@ -40,6 +44,23 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
+
+## ⛔ P0 — Security & control plane (red-team 2026-07-10 — SUPERSEDES the 24-week sequence for these items)
+
+> Verified architecture red-team (`docs/market_zero_architecture_review_2026_07_10.html`, every
+> code-checkable claim re-confirmed against the tree by two independent verifiers). Owner rulings:
+> **CONTAIN + PULL-FORWARD**, deployment **external pilot**. Full disposition + lane map + owner
+> rulings live in **`docs/COORDINATION.md` §9**. These P0s outrank the E1–E12 feature sequence
+> below; **in-flight non-security work continues, new feature *expansion* pauses** until the P0
+> gates have named owners + containment lands.
+
+| P0 | Item | Lane | Pointer |
+|---|---|---|---|
+| SEC-001 | Remove unauth `/debug/*` + `/zs` default creds; `require_role` on catalog/steward/enrichment mutations | Platform + DevOps | COORD §9.2 / §9.4 |
+| SEC-002 | Auth + caller-ownership on chat/session/research routes; **tenant column** on `chat_sessions`/`deep_research_jobs` (**E11, pulled forward**) | Platform + Data | COORD §8.1 A5 |
+| API-001 | Regenerate stale OpenAPI (381 paths; hub/forge/dossier/eval absent) + drift gate; update typed client | Platform + Frontend | COORD §8.1 A6 |
+| PRIV-001 | Route primary synthesis through the PII gateway before any sensitive data | Platform | COORD §9.2 |
+| MON-LIVE | Fix `connector_health.py --json` dict/list break that closes healthy incidents (before #319/#307) | Data/Platform (mine) | COORD §9.3 |
 
 ## 24-week sequencing — design-review plan
 
@@ -795,7 +816,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-05-10
 - **Notes**: Per-source SLA monitoring. "Missing because" inline message in user-facing answers when a source is degraded. (BE-36)
 
-### E11 — Multi-tenancy enforcement (week 23 · CRITICAL)
+### E11 — Multi-tenancy enforcement (week 23 · CRITICAL · ⛔ PULLED TO P0 2026-07-10 — see the P0 section above + COORDINATION §9)
 
 > **Why now:** the intelligence-layer audit identified this as a critical gap. `scope_key` exists on `chat_sessions` and `deep_research_jobs` but core entity tables have no `tenant_id` and `services/search.py` does not WHERE-filter by scope. **A misconfigured query returns Pfizer's data inside Roche's session.**
 

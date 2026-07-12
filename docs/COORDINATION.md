@@ -31,6 +31,12 @@ Anything in `specs/archive/` is **history**, not current intent. Don't plan from
 
 ## 2. Lanes (ownership)
 
+> **⚠️ SUPERSEDED on team-count by §10 (2026-07-11):** the 3-lane model below was
+> consolidated to **2 teams** — **Data / Substrate** and **Product-Platform** (which
+> absorbs the old *Frontend* **and** *Platform / Harness* lanes). The per-file ownership
+> rows below still map correctly onto the two teams (every *Frontend* row → Product-Platform).
+> **§10 is the authoritative split.**
+
 | Lane | Owner | Owns (primary) |
 |---|---|---|
 | **Platform / Harness** | backend session "platform" | harness + CI gates (`tests/test_conservation_gates.py`, `test_schema_completeness.py` **ceilings**, `test_backend_smoke_manifest.py`, `protected-surface.txt`, `.github/workflows/`, `scripts/connector_health.py`, `scripts/gen_codeowners.py`); **agentic orchestration** (`services/agent/`, `services/unified_handler.py`, `services/ctx_pipeline.py`); **API layer** (`api/`); **domain/chat** (`api/routes/chat.py`, `services/chat_handlers/`, `domain/`); **search** (`services/search.py`, `services/ask_engine.py`); **benchmark/live-eval** (`benchmark/`); **dossier read-path** (`resolve_asset` in `services/dossier_kb.py`); **CI UI** (`apps/ci/`, frontend CI surfaces) |
@@ -478,7 +484,7 @@ recorded. If it isn't in this file, do not build on it.
 **P2 — Strict lanes; never edit across the seam.**
 - **Platform:** synthesis/chat (`services/llm.py`, `unified_handler.py`, `ctx_pipeline.py`,
   `chat_handlers/`, `domain_intelligence/{planner,synthesis}` coverage/lens logic), API
-  (`api/`), search, eval-harness (`benchmark/`), dossier read-path, all `frontend/`.
+  (`api/`), search, eval-harness (`benchmark/`), dossier read-path, and the **CI-UI** surfaces (`apps/ci/`) **only** — **not** all `frontend/` (GOV-001 ruling 2026-07-10: the **Frontend** lane owns `frontend/`; §2 is canonical, see §9.1).
 - **Data:** connectors/emitters/ingestion, migrations, **the fact vocabulary**
   (`fact_class`, predicates, `_coerce_fact_class`, `VALID_FACT_CLASSES`, DB CHECKs),
   schema, resolution.
@@ -510,6 +516,8 @@ cross-seam verification claims.
 | A2 | Platform/FE → **Data** | On `GET /catalog/datasets/{key}/profile`: expose **per-entity-type record counts** (records per entity_type a source feeds), null-when-unknown. (The `license` half Platform can add itself from `_dataset_fair`'s `license_name` — a Platform follow-up, not a Data ask.) | The F1 dossier renders `coverage: []` today (kept honestly empty). Per-type counts make the dossier's coverage section real instead of a permanently-empty block. | **OPEN** (15 Jun) |
 | A3 | Platform/FE → **Data** | Stop the 6-strategy resolver merging a **branded product with a development-code product on shared INN alone** (`integration/entity_resolver.py` + `domain/pharma/mention_normalizer.py`): require corroboration beyond the shared INN (e.g. same sponsor or same NCT) before a brand↔dev-code merge, and **de-pollute the already-merged stored labels** (e.g. drug name literally `"Ozempic (TQF3510 (Semaglutide Injection))"` — a nested alias concatenation). Conservation: soft-delete/record, don't silent-drop. | Intelligence review **F5** (24 Jun): the live answer labelled `Ozempic (TQF3510 (Semaglutide Injection))`, conflating Ozempic (Novo) with TQF3510 (a Qilu generic semaglutide dev code) — a factual error AND an unreadable label that every downstream answer inherits. The conflated label is the **stored entity name**, not a chat-render artifact, so there is no honest platform-side fix — a cosmetic label-truncation would *mask* a real data conflation (conservation: no theatre). Resolver + canonical name are Data's surface. | **OPEN** (24 Jun) |
 | A4 | Synthesis/Platform → **Data/Intel** | Carry `clinical_trials.start_date` into the **decomposition matrix trial facts** (the `DecompositionPlanner` cell facts surfaced via `unified_handler._matrix_to_evidence`, which today expose only `claim`/`predicate`/`id`/`fact_class`), and ideally into the **corpus entity trial lists**, so each trial's date travels with the trial fact into the synthesis context. Conservation: additive, don't drop existing fact fields. | Intelligence review **F10 / TICKET-8** (recency): decade-old trials (e.g. NovoMix 30, NN5401) were narrated as "recent." Root cause is **upstream of synthesis** — the matrix trial facts + retrieved corpus sections that surface OLD trials carry no `start_date`, so synthesis can neither ground nor guard "recent": the corpus `trials.yaml` holds only the 200 most-recent (all 2026+), and a whole-narrative recency guard is defeated by ever-present corpus dates. Once dates travel with the facts, Platform adds a synthesis-side recency label/guard as a fast-follow. **Prod probe (30 Jun):** `clinical_trials.start_date` = **94.5%** coverage (5,554/5,880); 721 trials ≤24mo, **4,127 >5yr old** — the old trials exist and reach the model dateless. Like F5/F7 (synthesis symptom, data/intel root). | **OPEN** (30 Jun) |
+| A5 | Platform → **Data** | Add an authenticated-owner/tenant column (e.g. `owner_id` / `tenant_id`) to `chat_sessions` + `deep_research_jobs` + backfill; today they carry only a caller-supplied `scope_key` (mig 011) — **no ownership boundary**, so any caller can read/delete another scope's rows by guessing the key. Data reserves the migration (§7.4). | SEC-002 tenancy (red-team 2026-07-10, verified). **Stop-ship BEFORE any multi-tenant / customer-sensitive onboarding** — deployment is external-pilot / non-sensitive today (§9.1), so this is near-term, not 0-24h. | **OPEN** (10 Jul) |
+| A6 | Frontend → **Platform** | After route-auth lands (§9.4), regenerate `schema/openapi.json` (currently 381 paths, `/hub /forge /dossier /eval` absent, ~2 mo stale) and add a **deterministic OpenAPI-drift CI gate**; the typed `frontend/src/api.ts` client update is Frontend-lane (mine). | API-001 (verified): the typed FE client cannot be trusted against a stale contract; a drift gate makes silent divergence fail closed. | **OPEN** (10 Jul) |
 
 **BLOCKED surfaces — do NOT build over empty data (conservation, no theatre):** F5 write-path (until **A1**); the **F7 governance board** (prod `source_onboarding` = 0 rows — a permanently-empty board); and lenses **F2/F3/F4/F6** (their **D-API-3/4/5/6** backends don't exist — already tracked on the §7.6 F-board / §4). Surfaced by the 15 Jun DataHub frontend audit; the two correctness/honesty fixes that had NO data dependency shipped as **PR #284** (dossier /fair 404 + grid dup-key) and **PR #285** (SPA deep-link + F5 de-theatre + search copy/connectors link).
 
@@ -529,3 +537,123 @@ cross-seam verification claims.
   "platform data"), and re-verify G1 (A's classing should flip real-registry lenses to
   "covered | <source>", recovering the G1 the held #276 lost). Platform verifies the lens +
   eval flip.
+
+---
+
+## 9. Architecture red-team review — 2026-07-10 (verified triage + owner rulings)
+
+**Source:** `docs/market_zero_architecture_review_2026_07_10.html` (red-team rev 2; baseline
+`38889b5`; **static — no live DB / deploy / edge probe**, by its own disclosure). It reorders
+the stack to **security · tenancy · API-contract ahead of data-quality**. Per §8 P1 it was
+advisory until recorded here — now recorded.
+
+**Verification (DoD — not taken on the review's say-so):** two independent read-only sub-agents
+re-checked every code-checkable claim against the current working tree (2026-07-10). **All
+findings CONFIRMED** — cosmetic line-drift only (e.g. PRIV-001's real line is
+`services/llm.py:1353`; the tree has ~294 not 297 `tests/test_*.py`) — **plus one NEW live
+defect** the static pass could not see (§9.3). Nothing STALE / REFUTED. The one axis still
+genuinely unverified is **deployed reachability** of `/debug/*` + `/zs` (edge/routing, not a
+code fact) — §9.4 item 1.
+
+### 9.1 Owner rulings (P5 — recorded once; every lane READS here)
+- **Sequencing = CONTAIN + PULL-FORWARD** (not a full freeze). Edge-contain the acute unauth
+  surface now (§9.4); move security / tenancy / contract to **P0 at the top of the product
+  board**; **in-flight synthesis / FE / data loops continue**; only NEW feature-roadmap
+  *expansion* pauses until the P0 gates have named owners + containment lands.
+- **Deployment context = EXTERNAL PILOT** (few external users, non-sensitive data). ⇒ auth +
+  per-user/IP rate/cost limits are **now**; SEC-002 tenant isolation + PRIV-001 mandatory PII
+  egress are **stop-ship BEFORE any customer-sensitive or multi-tenant onboarding** — keep that
+  blocked (§8.1 BLOCKED surfaces; DataHub `preview:true`).
+- **GOV-001 lane ruling = the Frontend lane owns `frontend/`.** §8 P2 reconciled to §2:
+  Platform owns the **CI-UI** surfaces (`apps/ci/`) + API + synthesis; Frontend owns
+  `frontend/`. §2 stands as canonical. `PRODUCT_BACKLOG.md` is SoT for product/feature/bug
+  work; **this file is SoT for lanes / cross-lane / process** (the backlog's stale
+  `AGENT_BACKLOG.md` pointer is corrected).
+
+### 9.2 Verified disposition
+| Finding (all CONFIRMED in code unless noted) | Owner lane | Disposition / next |
+|---|---|---|
+| **SEC-001** unauth `/debug/*` (`api/app.py:427/445/479`), catalog/steward/enrichment mutations no `require_role`, `/zs` default creds (`zs.py:64`) | Platform + DevOps | **P0 contain** (§9.4): edge-deny, delete debug mutations + default-cred fallback, add `require_role` |
+| **SEC-002** chat/session/research-job routes no ownership; only `scope_key`, **no tenant column** (mig 011) | Platform + Data | **P0**: auth + caller-ownership now; tenant column = **ASK A5** (before multi-tenant onboarding) |
+| **API-001** `openapi.json` 381 paths, `/hub /forge /dossier /eval` absent (~2 mo stale) | Platform + **FE (mine)** | **P1** after auth: regen + drift gate (**ASK A6**); typed client = Frontend lane |
+| **PRIV-001** primary synthesis (`llm.py:1353`) bypasses PII gateway | Platform/synthesis | Route all provider calls via the gateway + static bypass gate **before** any sensitive data (pilot = non-sensitive ⇒ near-term) |
+| **MON-001** monitor crash → empty JSON → recovery branch closes the incident | DevOps + **mine** | Explicit healthy/degraded/monitor-failed states; **+ fix the live break §9.3 before #319/#307 merge** |
+| **REL-001** fail-open migrations (`app.py:865`), dead `_cfg` job (`app.py:793`), process-local schedulers (no lease) | Platform + DevOps | Dead-`_cfg` = trivial now; `/readyz` + release migrator + worker leases = 2–6 wk |
+| **DATA-001** unified handler `@lru_cache` pins handler-or-`None` for process life (`deps.py:295/317`) | **mine** (synthesis) | Versioned corpus publish outside requests; never cache failure; expose version/age |
+| **CI-001** required CI = 28 curated suites + collect-only + 1 vitest; no full run/build | Platform + DevOps | **Sharpened**: curated DB-free is the *deliberate* Lane-1 design; the gap is *no sharded full-suite + full-FE+build gate exists* — add one |
+| **LEDGER** `connector_health.py` still ignores `LEDGER_FRESHNESS_SLA_DAYS` | **mine** | **Land #319** (built, unmerged); the working-tree change here is the DLQ monitor, not ledger |
+| **GOV-001** lane / planning-authority contradiction | owner | **RULED (§9.1)**; §8 P2 fixed; backlog pointer fixed |
+| **IR-001** no RTO/RPO / restore drill / incident command | DevOps/owner | Owner-approved RTO/RPO + isolated restore drill (2–6 wk) — not static-checkable but real |
+| **DATAHUB-001** persistence needs secrets/egress/versioning model | Data + Platform | Already §8.1 **A1** + BLOCKED surfaces; keep `preview:true` |
+| **DATA-RESOLVE-001** resolver brand↔dev-code pollution | Data | Already OPEN §8.1 **A3** — no new row |
+| **QUAL-001** source-quality false precision (0.5 defaults → one score) | Data + **FE (mine)** | Scoring method = Data; honest `measured / estimated / unknown` display = Frontend |
+| **PIPE-001** embed before change-detection (`pipeline.py:364`) | Data | **Sharpened**: only embed-before-detection is live waste; `embed_batch` order/min-text bugs are **dead-path** (no app caller) — low-pri |
+
+### 9.3 NEW live defect (working tree — beyond the static review)
+**MON-LIVE.** The uncommitted `scripts/connector_health.py` change (DLQ monitor, +110/−2 vs
+HEAD) reshaped `--json` from a bare list to `{"sources":[…],"dlq":{…}}`, but
+`scripts/health_alert.py:39-40` still iterates the payload as a list → `AttributeError` on
+**every** run → `operational-health.yml`'s `always()` recovery branch (`:82`) reads the empty
+`should_alert` as "recovered" and **closes the open incident even when the check is healthy.**
+This turns MON-001 from a failure-mode into an every-run break. **Owner: mine (#319/#307
+lineage). Fix-before-merge:** make `health_alert.py` read `payload["sources"]` + add a Lane-2
+contract regression test pinning the exact `--json` shape (RED→GREEN, pasted). Do **not**
+hot-patch the shared dirty checkout without that test.
+
+### 9.4 Contain-now (0–24 h — owner + DevOps + Platform)
+1. **Probe deployed reachability** of `/debug/*`, `/zs*`, catalog/steward/enrichment
+   mutations, chat/research at the edge/router — *without invoking a mutation*. This is the
+   severity multiplier the static review could not check; if the edge already denies them, the
+   SEC-001 acuteness drops.
+2. Remove / env-guard+auth `/debug/migrate|seed-users|routes`; delete the `/zs` default-cred
+   fallback (fail closed, no known-default).
+3. Add `require_role` to catalog/steward/enrichment mutations + chat/session/research routes;
+   bind sessions/jobs to the authenticated caller.
+4. Keep customer-sensitive / multi-tenant onboarding **BLOCKED** until SEC-002 tenant column
+   (A5) + PRIV-001 egress land (deployment = external pilot, §9.1).
+5. **Do not scale the web tier** — schedulers + migrations are process-local (REL-001).
+
+### 9.5 What is MINE (Frontend/synthesis lane) vs handed off
+- **Mine, actionable now:** land **#319** (LEDGER); fix **MON-LIVE** (§9.3) before #319/#307
+  merges; **DATA-001** corpus lifecycle; **QUAL-001** honest measured/estimated/unknown display;
+  **API-001** typed-client half (A6).
+- **Handed off (recorded, not grabbed — I do not edit across the seam):** SEC-001/002 route
+  auth + tenant column → Platform + Data (A5); REL-001 runtime/worker → Platform + DevOps;
+  IR-001 + edge containment → DevOps/owner; PIPE-001 + DATAHUB-001 persistence + A3 → Data.
+
+---
+
+## 10. Team consolidation — 2 teams (2026-07-11, owner-decided)
+
+The multi-session sprawl (§7; GOV-001 in §9) is resolved by consolidating to **two teams
+along the produce-facts / consume-facts-into-a-product seam** — leaving exactly **one**
+Data⇄Product coordination boundary instead of an N-way mesh.
+
+| Team | Owns | vs old §2 model |
+|---|---|---|
+| **Data / Substrate** | *Produce trustworthy facts:* `connectors/`, `integration/` (ETL), `services/fact_emitters/`, resolver, ontology, `schema/migrations/`, `scheduler/config.py` (`FRESHNESS_SLA_DAYS`), freshness / FAIR / dataset-defs, DLQ, sensing, `services/dossier_kb.py` fact-routing | old *Data / Sensing / Intelligence* lane, **unchanged** |
+| **Product / Platform** *(this session)* | *Turn facts into a trustworthy, secure product + its UI:* **Platform** (`api/`, auth, middleware, `config.py`) · **Core dev** (`services/llm.py`, `ctx_pipeline`, `unified_handler`, `query_engine`, `search`) · **Agent dev** (`services/agent/`, `ctxpack/`, tools) · **Frontend** (`frontend/`) · **CI-gate authoring** (`.github/workflows/`, `protected-surface.txt`) | old *Platform / Harness* **+** *Frontend* lanes, **merged** |
+| **Owner** *(not a team)* | Server-side floor only: branch protection, `DATABASE_URL` secret, CODEOWNERS enforcement | — |
+
+### 10.1 Consequence for the §9 red-team disposition
+Because Product-Platform now owns Platform + Core + Agent + Frontend, items §9.5 listed as
+*handed off to Platform / DevOps* are now **this team's** (no longer cross-seam):
+
+- **MINE now (were handed off):** SEC-001 route auth + `/debug/*` containment · PRIV-001 PII
+  egress via `LLMGateway` · REL-001 runtime (fail-open migrations, dead `_cfg` event job,
+  scheduler leases) · API-001 `openapi.json` regen + drift gate + typed client · MON-001 /
+  CI-001 gate-authoring.
+- **DATA's now (I stand down — built in prior data-hub sessions, they hand back):** **#319**
+  (ledger freshness — a concurrent session is already landing it; I do **not** double-run),
+  **#320** (FAIR honest), **#322** (dataset-defs), **DATA-001** corpus lifecycle, PIPE-001,
+  DATA-RESOLVE-001, SEC-002 **tenant / owner column** (schema = Data; enforcement = me).
+- **The one remaining seam (A5):** SEC-002 — Data adds `owner_id` / `tenant_id`; Product-Platform
+  enforces it in the routes. Stays a coordinated ASK, not a merge.
+
+### 10.2 MON-LIVE reconciliation (grounded 2026-07-11)
+**#319 already carries the MON-LIVE fix** — its `health_alert.py` `_unwrap()` accepts both the
+old bare list and the `{"sources","dlq","ledger"}` envelope, backed by a contract test
+(`tests/test_health_alert.py`). So MON-LIVE is **not** a separate loop; it lands with #319 (now
+Data-owned). The stray uncommitted DLQ reshape in the shared checkout must be neutralized — not
+committed without the `health_alert.py` fix — which is Data's call as #319's owner. (This
+corrects §9.3's "mine" framing: ownership moved to Data under §10.)
