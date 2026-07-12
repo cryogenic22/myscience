@@ -1,8 +1,8 @@
 """Lane-1, DB-free tests for the password-gated /zs static page router.
 
-Asserts the HTTP Basic gate (401 without/with-wrong creds, 200 with right creds),
-that the page + its JSX source are actually served, and that ZS_PAGE_PASSWORD /
-ZS_PAGE_USER override the defaults.
+Asserts the HTTP Basic gate (503 until configured, 401 without/with-wrong creds,
+200 with right creds) and that the page + its JSX source are served. SEC-001a:
+the gate fails CLOSED — there is no default-credential fallback.
 """
 from __future__ import annotations
 
@@ -13,12 +13,17 @@ from fastapi.testclient import TestClient
 from api.routes import zs as zs_route
 
 
+_USER = "zs"
+_PW = "zs-future"
+
+
 @pytest.fixture
 def client(monkeypatch):
-    # Unset env so the documented defaults (zs / zs-future) apply unless a test
-    # sets them explicitly.
-    monkeypatch.delenv("ZS_PAGE_USER", raising=False)
-    monkeypatch.delenv("ZS_PAGE_PASSWORD", raising=False)
+    # SEC-001a: the gate fails closed unless creds are configured — configure
+    # known creds (as an operator would). There is no default fallback; these
+    # work only because the fixture sets them explicitly.
+    monkeypatch.setenv("ZS_PAGE_USER", _USER)
+    monkeypatch.setenv("ZS_PAGE_PASSWORD", _PW)
     app = FastAPI()
     app.include_router(zs_route.router)
     return TestClient(app)
@@ -36,7 +41,9 @@ def test_wrong_password_is_401(client):
     assert r.status_code == 401
 
 
-def test_correct_default_credentials_serve_page(client):
+def test_correct_configured_credentials_serve_page(client):
+    # SEC-001a: these creds work because the fixture CONFIGURES them, not because
+    # they are a built-in default (there is none).
     r = client.get("/zs", auth=("zs", "zs-future"))
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
@@ -68,3 +75,13 @@ def test_env_overrides_credentials(monkeypatch):
     assert c.get("/zs", auth=("zs", "zs-future")).status_code == 401
     # configured creds accepted
     assert c.get("/zs", auth=("alice", "s3cret")).status_code == 200
+
+
+def test_unconfigured_fails_closed_503(monkeypatch):
+    # SEC-001a: no ZS_PAGE_* env => deny (503), never accept the old default.
+    monkeypatch.delenv("ZS_PAGE_USER", raising=False)
+    monkeypatch.delenv("ZS_PAGE_PASSWORD", raising=False)
+    app = FastAPI()
+    app.include_router(zs_route.router)
+    c = TestClient(app)
+    assert c.get("/zs", auth=("zs", "zs-future")).status_code == 503

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -424,8 +425,27 @@ def create_app() -> FastAPI:
         app.include_router(r)                      # /chat, /search, etc. (legacy)
         app.include_router(r, prefix="/api/v1")    # /api/v1/chat, /api/v1/search, etc.
 
+    def _require_debug_token(
+        x_debug_token: str | None = Header(default=None, alias="X-Debug-Token"),
+    ) -> None:
+        """SEC-001a: gate /debug/* behind a deploy secret; fail closed.
+
+        Unset ``MZ_DEBUG_TOKEN``, or a missing/wrong token -> 404 (do not confirm
+        the endpoint exists). A user-JWT gate is deliberately NOT used:
+        ``/debug/seed-users`` bootstraps the first users, so a role check would
+        deadlock. Operators set ``MZ_DEBUG_TOKEN`` and pass it as the
+        ``X-Debug-Token`` header (e.g. the post-deploy migrate step).
+        """
+        expected = os.getenv("MZ_DEBUG_TOKEN")
+        if (
+            not expected
+            or not x_debug_token
+            or not secrets.compare_digest(x_debug_token, expected)
+        ):
+            raise HTTPException(status_code=404, detail="Not Found")
+
     @app.post("/debug/migrate")
-    def debug_migrate():
+    def debug_migrate(_: None = Depends(_require_debug_token)):
         """Debug: run pending migrations and report result."""
         try:
             from config import config as cfg
@@ -443,7 +463,7 @@ def create_app() -> FastAPI:
             return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
     @app.post("/debug/seed-users")
-    def debug_seed_users():
+    def debug_seed_users(_: None = Depends(_require_debug_token)):
         """SPEC_018 — Seed the 3 demo users. Idempotent (ON CONFLICT updates).
 
         Safe to call repeatedly: the seed script does ON CONFLICT (email)
@@ -477,7 +497,7 @@ def create_app() -> FastAPI:
             return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
     @app.get("/debug/routes")
-    def debug_routes():
+    def debug_routes(_: None = Depends(_require_debug_token)):
         """Debug: show registered route count and new router status."""
         import os
         route_count = len([r for r in app.routes if hasattr(r, 'path')])

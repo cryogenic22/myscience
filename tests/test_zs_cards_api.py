@@ -18,8 +18,10 @@ AUTH = ("zs", "zs-future")
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    monkeypatch.delenv("ZS_PAGE_USER", raising=False)
-    monkeypatch.delenv("ZS_PAGE_PASSWORD", raising=False)
+    # SEC-001a: the /zs gate fails closed unless creds are configured — set them
+    # (matching AUTH) as an operator would, rather than relying on a default.
+    monkeypatch.setenv("ZS_PAGE_USER", AUTH[0])
+    monkeypatch.setenv("ZS_PAGE_PASSWORD", AUTH[1])
     # isolate persistence to a tmp dir (no Railway var bleed-through)
     monkeypatch.setenv("ZS_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("RAILWAY_VOLUME_MOUNT_PATH", raising=False)
