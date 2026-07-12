@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Depends
 
-from api.deps import get_db
+from api.deps import get_db, require_role
 from db import Database
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,10 @@ router = APIRouter(prefix="/enrichment", tags=["enrichment"])
 
 
 @router.post("/run")
-def run_enrichment(db: Database = Depends(get_db)):
+def run_enrichment(
+    db: Database = Depends(get_db),
+    user: dict = Depends(require_role("enterprise")),
+):
     """Trigger deterministic enrichment pipeline."""
     from connectors.enrichment_runner import EnrichmentRunner
 
@@ -41,7 +44,11 @@ def run_enrichment(db: Database = Depends(get_db)):
 
 
 @router.post("/research")
-def run_research(max_iterations: int = 10, db: Database = Depends(get_db)):
+def run_research(
+    max_iterations: int = 10,
+    db: Database = Depends(get_db),
+    user: dict = Depends(require_role("enterprise")),
+):
     """Run autonomous research agent loop."""
     from services.research_agent import AutonomousResearchAgent
 
@@ -58,7 +65,11 @@ def run_research(max_iterations: int = 10, db: Database = Depends(get_db)):
 
 
 @router.post("/derive-competition")
-def derive_competition(dry_run: bool = False, db: Database = Depends(get_db)):
+def derive_competition(
+    dry_run: bool = False,
+    db: Database = Depends(get_db),
+    user: dict = Depends(require_role("enterprise")),
+):
     """Derive COMPETES_WITH links from shared mechanism + TA pairs."""
     from scripts.derive_competition import derive_competition as run_derivation
     result = run_derivation(db, dry_run=dry_run)
@@ -66,7 +77,11 @@ def derive_competition(dry_run: bool = False, db: Database = Depends(get_db)):
 
 
 @router.post("/refresh-source/{source_key}")
-def refresh_source(source_key: str, db: Database = Depends(get_db)):
+def refresh_source(
+    source_key: str,
+    db: Database = Depends(get_db),
+    user: dict = Depends(require_role("enterprise")),
+):
     """Re-run a single data connector to refresh stale records."""
     from scheduler.runner import DataPipelineScheduler
     scheduler = DataPipelineScheduler()
@@ -78,7 +93,10 @@ def refresh_source(source_key: str, db: Database = Depends(get_db)):
 
 
 @router.post("/curate")
-def run_curation(db: Database = Depends(get_db)):
+def run_curation(
+    db: Database = Depends(get_db),
+    user: dict = Depends(require_role("enterprise")),
+):
     """Run 5-pass deterministic data curation pipeline.
 
     Passes:
