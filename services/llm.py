@@ -1168,6 +1168,16 @@ class LLMSynthesizer:
         - "reject": raise PIIRejected (fail closed) if any PII is present
         - "allow":  explicit opt-out — send as-is
         Returns the (possibly redacted) messages; never mutates the inputs.
+
+        Note: the gateway's phone pattern reduces to a bare 10-digit match when
+        separators are absent, so a raw 10-digit numeric would be redacted
+        [PHONE_US]. NCT ids ("NCT" + 8 digits), dosages, and enrollment counts do
+        not match; a prod scan found 0/3000 evidence rows affected.
+
+        Scope: this closes the four direct provider calls on THIS synthesis path.
+        Other direct-egress callers (services/extraction_llm.py,
+        integration/entity_resolver.py) still bypass the gateway — a separate,
+        Data-lane follow-up (they sit on the ingestion/resolution surface).
         """
         from services.llm_gateway import (
             scan_pii, redact_pii, PIIRejected, VALID_PII_POLICIES,
