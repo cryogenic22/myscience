@@ -23,7 +23,8 @@ worktree from `origin/main`** — created this session:
 |---|---|
 | Baseline worktree | `C:/Users/kapil/Documents/mz-handoff-baseline` |
 | Baseline branch | `claude/handoff/h0-baseline` (based on `origin/main` only — **no #318 ctx-hooks ancestry**) |
-| Baseline HEAD | `31d923a712bdcd7611b885f438c858747960b0c2` (== `origin/main`, **0 divergence**) |
+| Baseline **base** (fork point) | `31d923a712bdcd7611b885f438c858747960b0c2` (== `origin/main`) |
+| Baseline **branch HEAD** | *advances per H0 docs commit* — `def736d` (board+specs) → `0b294e9` (inventory) → correction commit (this rev). `origin/main..HEAD` = docs only; pushed to `origin/claude/handoff/h0-baseline` |
 | origin/main tip | `31d923a` — 2026-07-04 17:53 +0100 (PR #312). **No PR merged in ~40d.** |
 | Migrations on baseline | up to `099_source_onboarding_contract.sql` |
 | Deployment SHA | assumed = `origin/main` `31d923a` (Railway auto-deploys `main`); **owner to confirm in Railway** |
@@ -72,7 +73,7 @@ ctx-hooks section (PR #318 concern) against main's wired version there.
 | Object | Count | Breakdown |
 |---|---|---|
 | Local branches | **312** | 202 merged · 57 on-origin/no-PR · 36 on-origin/open-PR · **13 LOCAL-ONLY (bundle required)** · 4 PROTECT |
-| Registered worktrees | **79** | 50 clean · 29 dirty · incl. the new baseline worktree (clean, PROTECT) |
+| Registered worktrees | **79** | **42 need preservation** (tracked-mod and/or untracked) · 37 clean/protected — recount via `--untracked-files=all` (the first pass used `--untracked-files=no` and missed untracked-only dirt) |
 | Open PRs | **41** | 32 MERGEABLE · 9 CONFLICTING · **0 with any review decision** |
 | Tracked-mod + untracked artifacts | **97** (6.6 MB) | full-SHA-256 in the manifest; rollup below |
 
@@ -111,10 +112,13 @@ ctx-hooks section (PR #318 concern) against main's wired version there.
 Everything at risk of local loss is preserved **before** any H0.2 cleanup:
 
 - **13 LOCAL-ONLY branches** (unique commits on **no** remote) → **Git bundles** (verified).
-- **29 dirty worktrees** → binary **staged + unstaged patches** (`git diff --binary`) + a
-  **hashed archive of untracked files** per worktree (not a patch alone).
-- **Tested restore** — at least one bundle cloned + verified and one patch re-applied in a
-  scratch clone; evidence in `PRESERVATION_README.md`.
+- **42 dirty worktrees** → binary **staged + unstaged patches** (`git diff --binary`); **33** of
+  them also have untracked content → **hashed `untracked.tgz` archives** (**90** non-main untracked
+  entries total). *(Corrected: the first pass silently produced 0 archives — a `C:`-drive GNU-tar
+  remote-host bug, fixed with `--force-local`.)*
+- **Tested restore** (all three mechanisms) — bundle restored (ABSENT→PRESENT, tip matches);
+  binary patch re-applied to a clean base; `untracked.tgz` extracted onto that base (files land on
+  disk). Evidence in `PRESERVATION_README.md`.
 - **PROTECT (never touched, never in an H0 commit):** the 17 `.claude/ctx/` session-ledger +
   gist files. No `.env`/secret is untracked this pass.
 - **202 merged branches** → prune-eligible (0 unique commits); **57 on-origin/no-PR** &
@@ -126,8 +130,13 @@ Everything at risk of local loss is preserved **before** any H0.2 cleanup:
 
 ## 6. Status & next steps
 
-- ✅ **H0.1 complete (hardened):** baseline created; board reconciled; specs ported; inventory
-  regenerated with full SHAs/hashes + 312-branch manifest; preservation bundled + tested.
+- ⚠ **H0.1 corrected (v2) — pending owner acceptance (NOT claimed complete):** an owner-directed
+  full `--untracked-files=all` re-scan found untracked content the first pass missed and **0**
+  archives actually written (the `C:`-drive tar bug). Fixed: 42 worktrees preserved, **90** untracked
+  entries archived + hashed, **9 worktrees reclassified B→C**, exact preservation paths, labels
+  corrected (COMMITTED-DRAFT/EVIDENCE), base SHA vs branch HEAD distinguished, patch+archive+bundle
+  restore all tested. Baseline created + pushed; board 3-way reconciled; inventory full-SHA/hash +
+  312-branch manifest.
 - ⏭ **H0.2 (this deliverable):** a **dry-run** cleanup action list is provided for owner
   sign-off — see `PRESERVATION_README.md` §"H0.2 dry-run". **No cleanup is executed.**
 - ⏭ **H1 (in parallel, authorized):** independent review + rebase of **#325 (SEC-001a)** and
