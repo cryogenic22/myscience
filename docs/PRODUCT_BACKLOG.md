@@ -84,7 +84,8 @@ canonical baseline + cleanup transaction + P0 PR sequence before H0.2/H1.
 | SEC-001 | Remove unauth `/debug/*` + `/zs` default creds; `require_role` on catalog/steward/enrichment mutations | Platform + DevOps | COORD §9.2 / §9.4 |
 | SEC-002 | Auth + caller-ownership on chat/session/research routes; **tenant column** on `chat_sessions`/`deep_research_jobs` (**E11, pulled forward**) | Platform + Data | COORD §8.1 A4 |
 | API-001 | Regenerate stale OpenAPI (381 paths; hub/forge/dossier/eval absent) + drift gate; update typed client | Platform + Frontend | COORD §8.1 A5 |
-| PRIV-001 | Route primary synthesis through the PII gateway before any sensitive data | Platform | COORD §9.2 |
+| PRIV-001a | Direct `llm.py` synthesis egress redacted (#326; review APPROVE-WITH-NITS) — does **NOT** close H1.1 | Platform | COORD §9.2 |
+| PRIV-001b | **P0** platform-wide egress guard (OpenAI+Anthropic; extraction/resolution/embeddings/scripts) + **AST static no-bypass test** + direct-vs-gateway parity + per-site capture tests (scan-fail⇒0 calls) | Platform | COORD §12; SPEC_HANDOFF §H1.1 |
 | MON-LIVE | Fix `connector_health.py --json` dict/list break that closes healthy incidents (before #319/#307) | Data/Platform (mine) | COORD §9.3 |
 
 ## ⛔ P0 — Data-platform hardening (red-team 2026-08-07 — additive hardening program)

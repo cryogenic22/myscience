@@ -219,6 +219,19 @@ This step begins only after owner review of H0.1.
 - direct synthesis and gateway synthesis redact the same PII fixture;
 - bypass inventory test fails when a new raw provider call site is introduced.
 
+**Disposition (2026-08-13 — independent review + owner ruling).** #326 is re-scoped **PRIV-001a**:
+it redacts PII on the direct `services/llm.py` synthesis egress (4 sites, fail-closed, real
+call-site tests — **APPROVE-WITH-NITS**) but does **NOT** satisfy item 4 or the last two minimum
+tests. Raw provider egress still exists at `services/extraction_llm.py` (OpenAI **and** Anthropic),
+`integration/entity_resolver.py` (chat + embeddings), `integration/embedder.py`, `services/search.py`,
+and operational scripts; neither the static no-bypass inventory test nor the direct-vs-gateway parity
+test exists. **H1.1 closure = CHANGES REQUIRED**, tracked as **P0 PRIV-001b** (COORDINATION §12 /
+PRODUCT_BACKLOG P0): one **provider-agnostic** egress guard (OpenAI chat + embeddings, Anthropic
+messages); an AST **static no-bypass test** that fails on any raw SDK `*.create` outside an
+allowlisted adapter (benchmarks/tests allowlisted with reasons); per-site capture tests proving a
+scan failure ⇒ **zero** provider calls; and `MZ_PII_POLICY=allow` forbidden/guarded in production.
+Sensitive-data / multi-tenant onboarding stays **BLOCKED** until PRIV-001b lands.
+
 ### H1.2 Finish SEC-001b with a route-policy registry
 
 Do not scatter another round of ad hoc `Depends(require_role(...))` calls without an enforceable inventory.
