@@ -2,6 +2,9 @@
 
 > **Single source of truth for product / feature / bug / infra work.**
 >
+> *(For lanes / cross-lane decisions / process, **`docs/COORDINATION.md`** is canonical —
+> GOV-001, resolved 2026-07-10. This file defers to it on ownership and cross-lane ASKs.)*
+>
 > Refreshed **2026-05-10** to reflect the 12-epic / 24-week plan from the
 > design review (`design-review-output/`). Replaces the 74 unfiltered
 > consolidator rows from Loop #3.
@@ -10,8 +13,9 @@
 > ship the experience to match. *Stop adding specs; finish the experience
 > of the specs we have.* See [`design-review-output/design-strategy.md`](../design-review-output/design-strategy.md).
 >
-> - **Cross-agent coordination** lives in [`docs/AGENT_BACKLOG.md`](AGENT_BACKLOG.md).
->   Backend asks here are mirrored there with concrete instructions (BE-1 through BE-41).
+> - **Cross-agent coordination** lives in [`docs/COORDINATION.md`](COORDINATION.md) (the
+>   canonical board + cross-lane ASKs §8). `docs/AGENT_BACKLOG.md` is **archived**
+>   (superseded 2026-06-13) — do not plan from it.
 > - **User-feedback queue** is cron-managed at [`feedback/live_user_feedback.md`](../feedback/live_user_feedback.md).
 > - **Each spec** lives at `specs/SPEC_NNN_*.md`; this file references it.
 > - **Design review source** for everything below: `design-review-output/enhancement-backlog.md` (12 epics, ~36 stories, ~120 tasks).
@@ -40,6 +44,68 @@
 - [PB-H07] Dossier — competitor threat assessment in competitive domain — backend-claude / adhoc
 - [PB-H10] NPV-scored decision options + recommended flag — backend-claude / adhoc
 - [PB-UX08] Brief persistence + comments (Stage wiring P2.5) — shared / adhoc
+
+## ⛔ P0 — Repository maturity & dev-team transfer (handoff floor — 2026-08-13, owner-approved)
+
+> Second independent review (`design-review-output/market_zero_handoff_readiness_review_2026_08_13.md`)
+> → execution spec **`specs/SPEC_HANDOFF_001_repository_maturity_and_transfer.md`**. Verdict:
+> **conditional NO-GO** for a clean, context-free dev-team handoff today; a bounded P0 integrity cycle
+> is required first. **Owner ruling (2026-08-13):** the SPEC-003 data-platform direction (below) is
+> **APPROVED but sequenced behind this floor** — one combined program-of-record. Full sequence +
+> standing status + governance in **`docs/COORDINATION.md §12`** (canonical; this table is a thin
+> mirror — board-sprawl guard). This floor gates the two P0 sections below **and** the E1–E12 sequence.
+
+| Gate | Work package | Transfer gate |
+|---|---|---|
+| H0 | Preserve work + select canonical baseline | no unclassified/unpreserved local state |
+| H1 | Security, privacy, mutation policy, ownership (land #325/#326; SEC-001b registry; demo-auth removal) | no unsafe default/control-plane/auth path |
+| H2 | Operational-health recovery (red sources, 22 stuck runs, 1,547 DLQ) | stable-healthy or owner-accepted degraded |
+| H3 | OpenAPI ↔ backend/frontend contract truth (381↔518 drift + drift gate) | generated contract == repo/client |
+| H4 | Frontend truthfulness (false "Saved", Rules-of-Hooks, mutation error visibility) | no false persistence/auth success |
+| H5 | Reproducible assurance + branch protection (full CI, independent approval) | full gates + independent approval |
+| H6 | *(P1)* maintainability + runtime boundaries | accepted debt if not complete at transfer |
+| H7 | Handoff docs + fresh-clone onboarding exercise | receiving team operates a fresh clone |
+| H8 | Delta-update + execute SPEC-003 WPs (WP-0→WP-1→WP-4; WP-12 throughout) | owner selects after P0 floor green |
+
+**Status (2026-08-13):** H0.1 inventory built under `docs/handoff/` — **awaiting owner review** of the
+canonical baseline + cleanup transaction + P0 PR sequence before H0.2/H1.
+
+## ⛔ P0 — Security & control plane (red-team 2026-07-10 — SUPERSEDES the 24-week sequence for these items)
+
+> Verified architecture red-team (`docs/market_zero_architecture_review_2026_07_10.html`, every
+> code-checkable claim re-confirmed against the tree by two independent verifiers). Owner rulings:
+> **CONTAIN + PULL-FORWARD**, deployment **external pilot**. Full disposition + lane map + owner
+> rulings live in **`docs/COORDINATION.md` §9**. These P0s outrank the E1–E12 feature sequence
+> below; **in-flight non-security work continues, new feature *expansion* pauses** until the P0
+> gates have named owners + containment lands.
+
+| P0 | Item | Lane | Pointer |
+|---|---|---|---|
+| SEC-001 | Remove unauth `/debug/*` + `/zs` default creds; `require_role` on catalog/steward/enrichment mutations | Platform + DevOps | COORD §9.2 / §9.4 |
+| SEC-002 | Auth + caller-ownership on chat/session/research routes; **tenant column** on `chat_sessions`/`deep_research_jobs` (**E11, pulled forward**) | Platform + Data | COORD §8.1 A4 |
+| API-001 | Regenerate stale OpenAPI (381 paths; hub/forge/dossier/eval absent) + drift gate; update typed client | Platform + Frontend | COORD §8.1 A5 |
+| PRIV-001 | Route primary synthesis through the PII gateway before any sensitive data | Platform | COORD §9.2 |
+| MON-LIVE | Fix `connector_health.py --json` dict/list break that closes healthy incidents (before #319/#307) | Data/Platform (mine) | COORD §9.3 |
+
+## ⛔ P0 — Data-platform hardening (red-team 2026-08-07 — additive hardening program)
+
+> Independent connector/data-transformation red-team (`design-review-output/data_pipeline_deep_design_review_2026_08_07.md`),
+> reconciled with the ground-up analysis (`docs/data-pipeline-groundup-analysis-20260805.html`).
+> Program spec: **`specs/SPEC_003_data_platform_hardening.md`**. Owner ruling (2026-08-07):
+> **run as one program end-to-end (lanes merged for this work); P0 design specs first, no build until owner picks.**
+> **UPDATE (2026-08-13): direction APPROVED** and sequenced **behind the SPEC_HANDOFF_001 handoff floor above**
+> (H0→H1→H2→WP-12→WP-0…). WP-0 is the first data-platform build once the handoff baseline + security work begins;
+> **WP-12 (assurance) applies immediately; WP-2 must be verified + specced before claiming the four-part floor complete.**
+> Each WP is re-verified against the canonical baseline before build (SPEC_HANDOFF §H8.1). Canonical sequence: `COORDINATION.md §12`.
+> The three P0-floor findings were **re-verified against current code** before speccing (see SPEC-003 §2).
+> Evolve-not-rewrite; no Kafka/Spark; **pause net-new connector breadth** except raw-capture / identifier work.
+
+| WP | Item | Findings | Verified | Spec |
+|---|---|---|---|---|
+| WP-0 | Truthful run outcomes & controls — required/advisory hook policy, act on blocks, quarantine≠skip, persist conservation counters, propagate partial | G-02, G-04(p), G-16 | ✅ confirmed | `specs/data_platform/WP-0_truthful_run_outcomes.md` |
+| WP-1 | Immutable raw artifacts + deterministic replay + per-record atomicity (bronze layer, top sources first) | G-03, G-04, G-12(p) | ✅ confirmed | `specs/data_platform/WP-1_raw_capture_and_replay.md` |
+| WP-4 | Deterministic identity spine — typed identifiers/grains, exact-ID resolver stage, quarantine-not-merge | G-05, G-09, G-13, G-15(p) | ✅ confirmed | `specs/data_platform/WP-4_deterministic_identity_spine.md` |
+| WP-2..WP-12 | Source-contract control plane, domain plugin, Document IR, derived-job registry, survivorship, quality-as-gate, cursors/leases, lineage/catalog, relationship normalization, assurance harness | G-01/G-06/G-07/G-08/G-10/G-11/G-14 | pending re-verify per WP | SPEC-003 §6 |
 
 ## 24-week sequencing — design-review plan
 
@@ -795,7 +861,7 @@ These have spec status = `Shipped`. Listed for context; not in the active queue.
 - **Last touched**: 2026-05-10
 - **Notes**: Per-source SLA monitoring. "Missing because" inline message in user-facing answers when a source is degraded. (BE-36)
 
-### E11 — Multi-tenancy enforcement (week 23 · CRITICAL)
+### E11 — Multi-tenancy enforcement (week 23 · CRITICAL · ⛔ PULLED TO P0 2026-07-10 — see the P0 section above + COORDINATION §9)
 
 > **Why now:** the intelligence-layer audit identified this as a critical gap. `scope_key` exists on `chat_sessions` and `deep_research_jobs` but core entity tables have no `tenant_id` and `services/search.py` does not WHERE-filter by scope. **A misconfigured query returns Pfizer's data inside Roche's session.**
 
