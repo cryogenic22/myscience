@@ -1,0 +1,98 @@
+git_status,path,size_bytes,sha256_full,class,proposed_disposition
+??,.claude/ctx/latest-gist.md,3839,b4eef73df14dd3aa71f39aa31cec55008c083aa92fb7d908fdfc18a040a08db6,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/project-gist.md,5663,02ae74ab8c2365ef023396ed22b5ff134243be61ba873ea014326f7f545251fc,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-135fcc6b-gist.md,7049,659f8b7dab6547c9f78333bc92a6ad660e279c6a07f09f52a59758921b8ebb96,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-2500bed2-gist.md,3839,b4eef73df14dd3aa71f39aa31cec55008c083aa92fb7d908fdfc18a040a08db6,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-29cb0e28-gist.md,5885,6d3ae94f38168a0196892a5e3c6a4c85e34149ca81236c1801610e84e5650f2f,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-68795549-gist.md,7008,d085c1aaac8aa8a19b7f505a3e5c8fc7f98ba3d6a36b987cfeefb0c47a6752ac,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-ceb1a96f-gist.md,6951,31ff98d848ccf225660754f8c7c98a6a7b31a4edca1ad097f73e6384c44867de,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-e53c3fad-gist.md,1305,c744ae3f6fc6967384a93799868ab68d548a1de99bd910eb7ac092f570fb0bfa,session-gist-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/checkpoints.jsonl,45026,686a18ff653686e9a0ed801d62798c510ac1ed50bd340ffed5ed807f8ae8aa26,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/events.jsonl,156955,1b43c2d717a587e63c9d0b21829ad12170ca13c790d2d3e61c5b799d6eb25fc5,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/injections.jsonl,2622,52e2a06e77c51c5c28fc0940d65a556cd3330673650d4b4b9371282cacf865b6,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-135fcc6b.ctx,120826,47ad2028b599cdf2e4851cc01bc8d04cc5531df682cbe26a42c48cde4629dc30,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-2500bed2.ctx,15528,5162b2ff4946a4461280019ef25167ff4849eed706c2786bff109bae23878a15,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-29cb0e28.ctx,43334,90439451722d1b8c05226e13538a0c91b7fa3b4847f0f744704b868d9105c94b,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-68795549.ctx,70023,a635200cbdf44b22b2c72e353ef29316e6c73fd170c28e7026fcb2384adee979,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-ceb1a96f.ctx,71332,28a09c4213f1f40012d7ffc7e9d7bb60884986480114a86e7a652a8870376cea,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,.claude/ctx/session-e53c3fad.ctx,2805,51832c1be8f04fd19f7e871f0da14a7784c84ee2ae055d7196994222020512b8,session-ledger-protect,"PROTECT — session-memory ledger (.claude/ctx); keep, never in H0 commit"
+??,benchmark/_decomp.py,3626,1994eaba540498bee55cb20957ea3e71443fa2d58910dfd05a8456e1cd80e405,code-py,REVIEW — ad-hoc benchmark script; commit if reused else scratch
+??,benchmark/_gen_f6_report.py,11160,3bdc2c9880b63f4442e71634f4dea4338ba3a2587e3f010926fc3944e9a46f34,code-py,REVIEW — ad-hoc benchmark script; commit if reused else scratch
+??,benchmark/_gen_html_report.py,12986,67b34571642edd20ccfc78c301d77744241b06e4767ed0c8c7044245be054f0c,code-py,REVIEW — ad-hoc benchmark script; commit if reused else scratch
+??,benchmark/_run_v2.py,1525,1588fdec4e57ef463fe3dbf69d68a2429bff41158022b279e21204c185eba9aa,code-py,REVIEW — ad-hoc benchmark script; commit if reused else scratch
+??,benchmark/reports/_chk.json,6395,6c0aa790bda9010140f0770974091e019a00d6b48474df166209a5d9627cda46,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_chk2.json,54955,220d96b923b68726af8f5fd12926f31431d41af3fb065df804b30ee224a06871,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_chk3.json,54960,eeabadbee5e244ec8fe2afd22525211813819855f3c263093f3c423540cb7832,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_chk4.json,55033,478f1bb7f80fbaa892d2d5d313fb319095302bd701d79c6cd1433521e7ec786b,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_html_baseline.json,578,3e4f58998906775b686fd1cfbc4dc898d89d7b48b34ad584a669d4e8e4826cc9,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_html_data.json,22771,d4676a013708afff923d0d77348efbdac2cd0b0ea7d69ad41142bb50b14d3508,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/_smoke_capture.json,14188,330900b3f71d9e0e4c057218889c4bc9ccbc9b7a5e3e16f3300e513849669fd0,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-captured.json,615948,bf05427e1f2a4cdf29461f7a3ef198f939f2c056f007898a6c0df7a5250241ec,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-v2-baseline-exec.json,60154,256fe01605179e4fd813896f224a4cc0dce79f41c5b7341e8f617d11c2be449b,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-v2-covquality-rerun.json,61132,62ca62a3276831aa87283c9080442c6461c5c65dd80617e30210c2212836c349,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-v2-covquality.json,61709,59367ceab242fa7d91dd6f9d3e782ebbfc727c9ca3acc9d1c930858f5ee27817,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-v2-fixes-exec.json,61820,18b305ce242912061a378abbcc30ae220b0d78411ed52c875c38adabb2f4cb69,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,benchmark/reports/pharma-v2-fixes2-exec.json,61229,5da1de454c6111a73f9903488a64a7990080c39cfa8ff6d3a4ccf6f02d4c19dd,data-json,PRESERVE — raw benchmark/eval evidence; retention-ignore
+??,design-review-output/_build/package-lock.json,8006,d1c48496505a6198ece0ada5eaa236ef5b013759046adda7123ba6a8a6341e3f,data-json,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/package.json,266,6b3c438c52f4532dca05cd419e3d038e1bce7057ffdf009398db7c4f85661051,data-json,PRESERVE — review-build scaffold; gitignore _build
+??,docs/sme_eval_capture_20260613.json,3361843,6a88678030952829243df922d82e1981ac47f5b5f14560acca8c488ee3b79777,data-json,PRESERVE — raw SME eval evidence
+??,frontend/scripts/ci-clickthrough-report.json,4659,d226406b04b3f6fb2e49a60cb6e57f1845e28d841944b0c710f7e525e9cd73de,data-json,REVIEW — classify in H0.2
+ M,CLAUDE.md,11147,6226bf2890309596bf191b12877068313f4358b1bb2afdd98c3c87fa3259d15c,doc-md,TRACKED-MOD — ctx-hooks section = PR #318 concern; main has newer 'wired' CLAUDE.md (H0.3 reconcile)
+??,design-review-output/data_pipeline_deep_design_review_2026_08_07.md,75571,e1db4922e4b987a4a6354489fd3383806648d243aa1010075041508b58e37aba,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,design-review-output/market_zero_handoff_readiness_review_2026_08_13.md,30918,fdaab506f8bb0a31aec653c74e40efe7b43c562fbe9ddeff7abb564ba9310eed,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/SPEC_003_data_platform_hardening.md,11448,0c2ee01248d9a386a5a457de449b2ffc4dc1cb26ac3534157378044c25968f32,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/SPEC_HANDOFF_001_repository_maturity_and_transfer.md,34013,f66756b4b0f8943aa7e2b5d04b31c73aa574612f12e4549b87bbfbba3037d89d,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/data_platform/WP-0_truthful_run_outcomes.md,11555,b4217ca03d713ffe5f698f60e4a3402aec68c25b6bce6c443b26637fbde629db,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/data_platform/WP-1_raw_capture_and_replay.md,9888,5b47b5535219466469899b388fbe124cef53965c64e317ab9a098cbc796392c7,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/data_platform/WP-4_deterministic_identity_spine.md,12065,63987d73c01d1d62947be2b8c885098e12e1814c338ed86e6b612d3283ffbf45,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,specs/data_strategy.md,49162,9617563eb6e0f59f4e3c3a562f0653c23ae2ad3d4e4387dd15ff78bf30762946,doc-md,RATIFIED-on-baseline — ported+committed to baseline worktree; main-checkout copy is a duplicate (H0.2 remove)
+??,docs/pharma-intelligence-eval-set.yaml,23772,8e8a7084df7f59d9708b6d567a00651c579eedff2196871d6199d3f9def25c2d,fixture-yaml,REVIEW — classify in H0.2
+??,docs/sample_eval.yaml,39894,08818d60b867040102228987b929f03df27e212c9e597801a9484b21d74d2494,fixture-yaml,REVIEW — classify in H0.2
+??,design-review-output/_build/_lib.js,10328,5ee99350598ae6f72e82ed6913efd2f1350352077ec0f0f8d721308677cebd19,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/api-mapping.js,8821,f37c334674e3f5719d3b138c1bb7989dce4bb513531d4f6f846cad9c5daa725c,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/data-layer-audit.js,26597,b0f1c022ffa605f8001e92fb7c0a7822708cb22a9a3425245d1d414e218a59d3,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/executive-summary.js,8231,38e6d76e08f84d9f8f9eb666be758854394a51486b043bf49021c2bbf1968d2f,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase1-recon.js,13768,b21ed1f0d12a1bc81891686042e62dd8ecfe8d42d44f8768d74ccf6eb2e7d151,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase2-persona.js,12278,78b45c14a0b3f09107f72ffd84abd20139b433a1d01cb1789721afba48b14d50,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase3-heuristics.js,11251,92659312ee55e63dfb79a6cc9ef988ad53020944cf1a3a2f33bcfce4e196e1c0,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase4-aesthetic.js,9054,1b8c2a47e887c288e393f7273b1bf07b2c6b952f8105970c750f35d64c4b94b7,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase5-gaps.js,9932,68b240c30afb47f8e40fa2f2c77703c96076e176c4e135480a3413215a3f4600,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase6-demo.js,9092,a53d0a9872af04c3c3dfaa4c642049633a714bff0a457a9a0d96da35b22b468a,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase7-response.js,9005,c580c0d780183372e6b35ac63e7917c5d07d6357cb1d1c11c66f9af01e6f6c67,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase8-verification.js,9006,e34bdb6ae20ce041657e6d2f0c495fde7883fe54255d327d019e77123afced48,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase9-backlog.js,13656,23943ede2e0e4315c932e1df028886368308e34ec0ad2114352798d8506a30d4,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase9-instruction-set.js,14106,15313d1604530c7b17b63fea2172e5bf3b8b9ba2e312e76d2ab3f4d088356fa0,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/phase9-tech-specs.js,14124,2780582d50c0d16e38480f830884131b0d2d2cf2fc1a807b848efe15c8f15846,other,PRESERVE — review-build scaffold; gitignore _build
+??,design-review-output/_build/v3-positioning.js,13198,3405bc455bf8de44d58154c5773fd79ae0ff4cf59a80562371d30da63d639b3c,other,PRESERVE — review-build scaffold; gitignore _build
+??,frontend/demo.tsx,127823,205e0801eb6915b73f109617a6f569ee6275716ee6dc58fc30cc0750f93dea09,other,REVIEW — 128KB demo/prototype; confirm before commit/remove
+??,frontend/scripts/ci-clickthrough.mjs,7604,1cfba6ba28d40951b0194f549ef9d94b831ae585d6dc8c5e6e7072d45d075e04,other,REVIEW — classify in H0.2
+??,design-review-output/market_zero_architecture_overview_2026_08_10.html,32281,189bbf90a2fbe4e305e98a2ecae93dc86f6504b6b580bed6837432ab3b8e55de,report-html,PRESERVE — review deliverable; commit or archive (H0.3)
+??,docs/archive/reports/DELIVERY_DASHBOARD.html,21260,2fb7ebbe1936fe6f7b2e7f2e4779dab612f3dbab1c4cb311f6085a66a7858742,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/backlog-triage.html,20843,0235b0efafd97ff72a7b40d258a555895f8209a44e8f208373579ed6b58626c4,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/data-layer-status-20260627.html,18673,8392ea90c0278ee50196735ab0decf951ebfb9c377ee9efe187dc45884a7d31d,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/harness-gate-coverage.html,13107,7a41b38e6ed16e48d0516ceb85521d97936771721d7d1b8ac5ff38292641ebf8,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/overnight-run-2-summary.html,10245,86a61e25df35b7249e8d4df7fb79183d6907df736ae41c3171ff72fba8a02abb,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/overnight-run-summary.html,12143,dcc2f275bfc712f852c64ae8d11f09d3898e46d509c98625cd7c12968eb04978,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/sense-data-side-review.html,27656,a4bd816968961c7d7f44d2d6cc3a9dff04157958739dae7d68c05d7cadae9df7,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/state-of-strategy-actuals-20260627.html,15562,7bc80ca0322e08549ef99badfe9061f032e0427f079956a51ad651671201d47f,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/archive/reports/v7-merge-review.html,27965,8d2c64113d4001ba141b5251e365c971749920c6efd7d2837fb47e9979be1030,report-html,ARCHIVE-COMMIT (H0.2) — already in archive dir but untracked
+??,docs/data-hub-agentic-layer-analysis.html,54323,1452fadd42098cce6020882d40a2330a50b757961aecb9f0cf1c3b1c5a1ef4b5,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/data-hub-future-state-architecture-20260705.html,57204,d075e274c195909e5f1e0510538d4416cce4ea474659774ae60561d808624f80,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/data-ingestion-pipeline-audit.html,24580,49cbd917284731026699dca6421e2f7c05381b09588a6b73d2e6485c0f8a0511,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/data-intelligence-strategy.html,28001,0863f6819f827ed543625ccd0e566a44023e0e7ffa3fdf08bec055535c6e8e85,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/data-pipeline-groundup-analysis-20260805.html,69259,cf290c3b5cc768452be74a17f44a73fdbd3af9fd5b3f10643b3edd1b0b24c79b,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/decision-system/decision_cockpit_prototype.html,30713,6e85f3ae536fa35cc3833d433c4018c4aaadd7be6959f70995823f727e9386fe,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/domain-forge-gamified-sme-spec.html,21126,f2ad13abfcc6dffa41f10d1b75af511888d1b740c9f747e17b85f546936e17b3,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/domain-intelligence-module-spec.html,21701,cd5981f1ca4c06d33abe4c9d46ecaae0c9a90ceafc6ccd719da4c8667bc7ee2c,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/eval-report-l0b-215.html,31554,29b86dc023ba1963eca2b4b33a45557e9b3bfa9f0b527b8c096745928ad655ca,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/f6-specialist-report.html,24295,713e5cf5ced5ad0c60c8fb4209ad56cfb5351f5111eee204e358b245b38ad47f,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/helix-v7-gap-analysis.html,55047,266e7c1f0d3e87672e20452df9328519df903e617ecfcc1d8cc2e249c5852c93,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/intelligence-layer-diagnosis.html,21931,991c3123a52ab38aed0bc51509788d7516ec7b2fdcdfe9873574a9713fe09644,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/intelligence-layer-master-plan.html,44678,15dd7c31b774142232f97b128815f3d09a7b843656130920baab42563173437c,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/market_zero_architecture_review_2026_07_10.html,75838,6e0e401da01e859140b854436d80b0da4013356f07e357aefecc1d2a5e1486b5,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/product-system-audit.html,28506,5d58e9c828b8e4f739fdbdd5ad2d4e9f163ec4aff7d9961281d95993a8a3ec33,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/sdlc-process-overview.html,30050,258577c583f2e4df58b720388499c82f6629c6166332816a2ed003b0eed48f0a,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/sense-layer-spec.html,50739,625a1ee2b2f8dca6ddf110517eec316645c917baeea5b98234985c4c9c0594bd,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,docs/sme_eval_reviewer_report_20260613.html,14045,26751f23f400a5ff5eb0514dc2f96c5ef1de9595b8d30e3edf7db0eb09d47642,report-html,PRESERVE — raw SME eval evidence
+??,docs/ux-analysis-personas-collaboration.html,65287,d7680551ca9f76c8a78bb4742045d23b6edfd2a416c6e4896be346b2acb20e12,report-html,REVIEW — report HTML; archive-candidate or commit if canonical
+??,prototypes/nextgen.html,29818,011114de061012140d5d0d3d5bc771f7cd2eccbb3e17e3aba440b19655562025,report-html,PRESERVE — prototype

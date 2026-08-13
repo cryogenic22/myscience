@@ -76,6 +76,7 @@ NUL
 !docs/PRODUCT_BACKLOG.md
 !docs/COORDINATION.md
 !docs/archive/**/*.md
+!docs/handoff/**/*.md
 !feedback/**/*.md
 !design-review-output/**/*.md
 !apps/**/README.md
