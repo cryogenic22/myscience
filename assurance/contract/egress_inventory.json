@@ -1,0 +1,21 @@
+{
+  "schema_version": "wp12c.v2",
+  "description": "WP-12C pinned inventory of LLM/provider egress sites. Keyed by unique call-site identity '<relpath>::<qualified-scope>::<kind>#<ordinal>' (qualified scope includes the enclosing class; the ordinal disambiguates multiple same-kind calls in one scope). The alias-resolving, terminal-complete scanner (assurance/egress_scan.py) must find exactly this set: no new uninventoried site, no stale entry. 'location' is advisory (line:col at pinning time); the identity key is line-independent so refactors don't churn the pin. guard_status is recorded here but the ENFORCING 'every runtime site is guarded' assertion lands with PRIV-001b GREEN, not in the assurance-kernel PR. Editing this file changes a security bar; it is a protected surface.",
+  "sites": {
+    "services/llm.py::LLMSynthesizer.raw_chat::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/llm.py:1316:23"},
+    "services/llm.py::LLMSynthesizer.synthesize::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/llm.py:1408:27"},
+    "services/llm.py::LLMSynthesizer.synthesize_stream::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/llm.py:1480:21"},
+    "services/llm.py::LLMSynthesizer.synthesize_research_report::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/llm.py:1616:23"},
+    "services/extraction_llm.py::make_anthropic_structured_call.call::messages#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/extraction_llm.py:500:27"},
+    "services/extraction_llm.py::make_openai_structured_call.call::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/extraction_llm.py:582:27"},
+    "integration/entity_resolver.py::EntityResolver._get_embedding::embeddings#0": {"class": "runtime", "guard_status": "unguarded", "location": "integration/entity_resolver.py:620:23"},
+    "integration/entity_resolver.py::EntityResolver._llm_lookup::chat#0": {"class": "runtime", "guard_status": "unguarded", "location": "integration/entity_resolver.py:696:23"},
+    "integration/embedder.py::Embedder.embed::embeddings#0": {"class": "runtime", "guard_status": "unguarded", "location": "integration/embedder.py:93:24"},
+    "integration/embedder.py::Embedder.embed_batch::embeddings#0": {"class": "runtime", "guard_status": "unguarded", "location": "integration/embedder.py:134:27"},
+    "services/search.py::HybridSearch._get_embedding::embeddings#0": {"class": "runtime", "guard_status": "unguarded", "location": "services/search.py:233:19"},
+    "backfill_embeddings.py::backfill::embeddings#0": {"class": "allowlist", "reason": "one-shot backfill script, not a request path; PRIV-001b-scripts follow-up", "location": "backfill_embeddings.py:98:27"},
+    "backfill_resolution.py::backfill_new_drug_embeddings::embeddings#0": {"class": "allowlist", "reason": "one-shot backfill script; PRIV-001b-scripts follow-up", "location": "backfill_resolution.py:327:23"},
+    "scripts/ai_enrich.py::_call_llm::chat#0": {"class": "allowlist", "reason": "operator-run enrichment script; PRIV-001b-scripts follow-up", "location": "scripts/ai_enrich.py:82:19"},
+    "benchmark/pharma_eval.py::llm_judge._judge_once::chat#0": {"class": "allowlist", "reason": "offline LLM-judge on fixture prompts, not production/user data", "location": "benchmark/pharma_eval.py:364:15"}
+  }
+}
