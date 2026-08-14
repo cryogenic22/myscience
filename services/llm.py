@@ -19,6 +19,8 @@ import logging
 import re
 from typing import Optional
 
+from services.llm_gateway import guard_openai_chat  # PRIV-001b: the one approved egress adapter
+
 logger = logging.getLogger(__name__)
 
 
@@ -1313,7 +1315,8 @@ class LLMSynthesizer:
         _last_err = None
         for model in models:
             try:
-                resp = client.chat.completions.create(
+                resp = guard_openai_chat(
+                    client,
                     model=model,
                     messages=messages,
                     max_tokens=max_tokens,
@@ -1405,7 +1408,8 @@ class LLMSynthesizer:
         _prompt_id = _resolve_synthesis_prompt_id(self._db, intent, format_hint)
         for model in models:
             try:
-                response = client.chat.completions.create(
+                response = guard_openai_chat(
+                    client,
                     model=model,
                     messages=messages,
                     max_tokens=self.config.llm.max_tokens,
@@ -1477,7 +1481,8 @@ class LLMSynthesizer:
 
         try:
             client = self._get_client()
-            stream = client.chat.completions.create(
+            stream = guard_openai_chat(
+                client,
                 model=self.config.llm.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -1613,7 +1618,8 @@ class LLMSynthesizer:
 
         try:
             client = self._get_client()
-            response = client.chat.completions.create(
+            response = guard_openai_chat(
+                client,
                 model=self.config.llm.model,
                 messages=[
                     {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -222,6 +223,123 @@ class PIIRejected(Exception):
     def __init__(self, matches: list[PIIMatch]):
         self.matches = matches
         super().__init__(f"PII detected: {[m.kind for m in matches]}")
+
+
+class PIIPolicyForbidden(Exception):
+    """Raised when MZ_PII_POLICY=allow is used in a production environment."""
+
+
+# ────────────────────────────────────────────────────────────────────
+# PRIV-001b — provider-agnostic egress guard (the ONE approved adapter)
+# ────────────────────────────────────────────────────────────────────
+#
+# These `guard_*` functions are the ONLY code permitted to call a provider
+# `.create(...)`. Every runtime egress site routes its outbound text through
+# here, so PII is scanned/redacted (or the call rejected) BEFORE anything leaves
+# the process. The WP-12C scanner (assurance/egress_scan.py) enforces structurally
+# that no raw provider `.create` exists outside this adapter — see
+# assurance/contract/egress_inventory.json and SPEC_HANDOFF §H1.1.4.
+
+_PROD_ENV_VARS = ("RAILWAY_ENVIRONMENT", "MZ_ENV", "ENVIRONMENT", "APP_ENV")
+_PROD_VALUES = {"production", "prod"}
+
+
+def _is_production() -> bool:
+    for var in _PROD_ENV_VARS:
+        if os.environ.get(var, "").strip().lower() in _PROD_VALUES:
+            return True
+    return False
+
+
+def resolve_pii_policy(policy: Optional[str] = None) -> str:
+    """Resolve the effective PII policy: explicit arg, else env MZ_PII_POLICY, else 'redact'.
+
+    'allow' (pass PII through unredacted) is FORBIDDEN in production — a builder cannot
+    disable the filter on the live path by flipping an env var.
+    """
+    p = (policy or os.environ.get("MZ_PII_POLICY") or "redact").strip().lower()
+    if p not in VALID_PII_POLICIES:
+        raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}, got {p!r}")
+    if p == "allow" and _is_production():
+        raise PIIPolicyForbidden(
+            "MZ_PII_POLICY=allow is forbidden in production — outbound PII must be redacted or rejected"
+        )
+    return p
+
+
+def _apply_policy_to_text(text: Optional[str], policy: str) -> Optional[str]:
+    """Sanitize one text value under the resolved policy.
+
+    reject + match -> PIIRejected (the provider is never called by the guard).
+    redact + match -> redacted text.  allow / no-match -> unchanged.
+    """
+    if not text:
+        return text
+    matches = scan_pii(text)
+    if not matches:
+        return text
+    if policy == "reject":
+        raise PIIRejected(matches)
+    if policy == "redact":
+        return redact_pii(text, matches)
+    return text  # allow (unreachable in production — resolve_pii_policy blocks it)
+
+
+def _sanitize_messages(messages, policy: str):
+    """Return a NEW messages list with each textual content sanitized.
+
+    Handles both string content and Anthropic-style content-block lists.
+    """
+    out = []
+    for m in messages or []:
+        if isinstance(m, dict) and isinstance(m.get("content"), str):
+            out.append({**m, "content": _apply_policy_to_text(m["content"], policy)})
+        elif isinstance(m, dict) and isinstance(m.get("content"), list):
+            blocks = []
+            for b in m["content"]:
+                if isinstance(b, dict) and isinstance(b.get("text"), str):
+                    blocks.append({**b, "text": _apply_policy_to_text(b["text"], policy)})
+                else:
+                    blocks.append(b)
+            out.append({**m, "content": blocks})
+        else:
+            out.append(m)
+    return out
+
+
+def _sanitize_input(value, policy: str):
+    """Embeddings input may be a single string or a list of strings."""
+    if isinstance(value, str):
+        return _apply_policy_to_text(value, policy)
+    if isinstance(value, list):
+        return [_apply_policy_to_text(v, policy) if isinstance(v, str) else v for v in value]
+    return value
+
+
+def guard_openai_chat(client, *, model, messages, pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for OpenAI chat.completions.create. Sanitizes `messages`
+    BEFORE the call; passes stream/tools/temperature/etc. straight through."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_messages = _sanitize_messages(messages, policy)
+    return client.chat.completions.create(model=model, messages=safe_messages, **kwargs)
+
+
+def guard_anthropic_messages(client, *, model, messages, system=None,
+                             pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for Anthropic messages.create. Sanitizes `system` + `messages`."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_messages = _sanitize_messages(messages, policy)
+    call_kwargs = dict(kwargs)
+    if system is not None:
+        call_kwargs["system"] = _apply_policy_to_text(system, policy)
+    return client.messages.create(model=model, messages=safe_messages, **call_kwargs)
+
+
+def guard_openai_embeddings(client, *, model, input, pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for OpenAI embeddings.create. `input` may be str or list[str]."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_input = _sanitize_input(input, policy)
+    return client.embeddings.create(model=model, input=safe_input, **kwargs)
 
 
 # ────────────────────────────────────────────────────────────────────

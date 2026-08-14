@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from services.llm_gateway import guard_openai_embeddings  # PRIV-001b egress adapter
+
 logger = logging.getLogger(__name__)
 
 
@@ -230,7 +232,8 @@ class HybridSearch:
             except ImportError:
                 raise RuntimeError("openai package not installed")
 
-        response = self._embedder_client.embeddings.create(
+        response = guard_openai_embeddings(
+            self._embedder_client,
             model=self.config.embedding.model,
             input=text,
         )
