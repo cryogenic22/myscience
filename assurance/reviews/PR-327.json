@@ -1,0 +1,42 @@
+{
+  "pr": "#327",
+  "title": "WP-12: closed-loop assurance kernel (WP-12A-D, bounded)",
+  "author": "builder self-assessment (NOT an independent review; WP12#7 stays unmet until /review-gate runs)",
+  "verdict": "CHANGES-REQUIRED",
+  "verdict_rationale": "Every builder-ownable criterion (WP12#1-6) is met with pasted evidence, but WP12#7 (independent review) is by construction not something the author can mark met. Per the WP-12A contract, a slice with any unmet ratified criterion is CHANGES-REQUIRED, not APPROVE. This artifact is the machine-checkable dogfood; the independent reviewer overwrites it with their verdict artifact.",
+  "reviewed_sha": "c7020c2f6b276c6862c73baba7ddde5b34115861",
+  "pr_head_sha": "c7020c2f6b276c6862c73baba7ddde5b34115861",
+  "final_commit_committed_at": "2026-08-14T19:59:00+01:00",
+  "spec_conformance": [
+    {"criterion_id": "WP12#1", "verdict": "met", "evidence_ref": "ev-validator-suite",
+     "note": "test_valid_verdicts_match_review_gate_command asserts contract.valid_verdicts == review-gate.md set."},
+    {"criterion_id": "WP12#2", "verdict": "met", "evidence_ref": "ev-validator-suite",
+     "note": "LAND-WITH-NITS + coerced-APPROVE rejected; fabricated self-attested APPROVE rejected on 7 axes; UNVERIFIABLE_APPROVE when no external truth."},
+    {"criterion_id": "WP12#3", "verdict": "met", "evidence_ref": "ev-scanner-suite",
+     "note": "callable-alias, .stream, .parse, direct-HTTP each turn the scanner RED; duplicate calls and same-named methods get distinct keys."},
+    {"criterion_id": "WP12#4", "verdict": "met", "evidence_ref": "ev-incident",
+     "note": "ESC registry links the WP-12B replay; #326 provenance corrected to a66dbcba; status OPEN/MITIGATED while unenforced."},
+    {"criterion_id": "WP12#5", "verdict": "met", "evidence_ref": "ev-protected-sync",
+     "note": "spec, incident registry, review-gate.md, test_protected_surface_sync.py added to protected-surface.txt; CODEOWNERS regenerated; sync test green."},
+    {"criterion_id": "WP12#6", "verdict": "met", "evidence_ref": "ev-ci-selftest",
+     "note": "assurance/check.py --self-test proves the gate is non-vacuous each run; assurance-gate.yml wires it + the WP-12 suites; this JSON is the artifact-of-record."},
+    {"criterion_id": "WP12#7", "verdict": "unmet", "evidence_ref": "pending: /review-gate independent pass",
+     "note": "MERGE-BLOCKING. Only an independent reviewer (not the author) can move this to met."}
+  ],
+  "findings": [
+    {"id": "SELF-1", "severity": "should", "must_fix": false, "resolved": false,
+     "note": "Live-head reconciliation of this self-committed artifact is exercised by assurance/check.py at merge time (WP-12E), not in the push job, since a self-review is inherently one commit behind its own head."}
+  ],
+  "gates": [
+    {"name": "conservation-lane1", "status": "pass"},
+    {"name": "wp12-assurance-tests", "status": "pass"},
+    {"name": "protected-surface-sync", "status": "pass"}
+  ],
+  "evidence": [
+    {"id": "ev-validator-suite", "ref": "pytest tests/test_wp12b_review_validator.py -q (28 passed)", "produced_at": "2026-08-14T19:59:00+01:00"},
+    {"id": "ev-scanner-suite", "ref": "pytest tests/test_wp12c_egress_mutation.py -q (22 passed)", "produced_at": "2026-08-14T19:59:00+01:00"},
+    {"id": "ev-incident", "ref": "assurance/incidents/ESC-2026-08-13-priv001-spec-conformance.md + README index", "produced_at": "2026-08-14T19:59:00+01:00"},
+    {"id": "ev-protected-sync", "ref": "pytest tests/test_protected_surface_sync.py -q + gen_codeowners.py --check", "produced_at": "2026-08-14T19:59:00+01:00"},
+    {"id": "ev-ci-selftest", "ref": "python -m assurance.check --self-test (exit 0, non-vacuous)", "produced_at": "2026-08-14T19:59:00+01:00"}
+  ]
+}
