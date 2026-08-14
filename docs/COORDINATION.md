@@ -750,3 +750,110 @@ only** (as §11 already established); §10's two-team model stands for all other
 — repository / PR / worktree / untracked-artifact census + baseline recommendation. **Awaiting owner
 review** of the canonical baseline + cleanup transaction + P0 PR sequence before H0.2 (cleanup) or any
 H1 code. Kickoff protocol: SPEC_HANDOFF §17.
+
+---
+
+## 13. Connector-Platform lane (WP-2) — 2026-08-14, spec-only
+
+A dedicated **Connector Platform** session is opened to specify **WP-2 (versioned
+source-contract control plane + `source_id` + SSRF/secret boundary)** in parallel with the
+handoff/hardening lane. This is a **parallelism-of-design, not of implementation**: two agents
+must not concurrently modify the shared pipeline/scheduler, and §12's approved sequence puts
+WP-2 *implementation* last — behind the full predecessor gate in §13.3.
+
+| | |
+|---|---|
+| **Branch** | `claude/connector/wp2-source-contract-spec` |
+| **Worktree** | `../mz-connector-platform` |
+| **Base** | `claude/handoff/h0-baseline` @ `da6887c` (H0.3) — the only line where SPEC-003 / WP-0/1/4 / SPEC_INDEX are tracked, clean of #318 ancestry, and the same base #327/#328 are stacked on |
+| **Mode** | **SPEC-ONLY.** No runtime wiring, no executable tests that leave CI red, no implementation until §13.3 clears |
+
+### 13.1 Ownership (claimed by this lane)
+
+**Owned — design/spec authorship now:**
+
+```
+specs/data_platform/WP-2*          (new — this lane authors)
+tests/connector_platform/          (new — test SPECIFICATIONS + golden fixtures only; see §13.3)
+services/connector_taxonomy.py
+api/routes/hub.py
+```
+
+**`connectors/` — read/design now; implementation ownership only after predecessor gates and
+collision clearance.** WP-1 will itself touch `BaseConnector` and the bronze-capture points, and
+#66 is still open on that tree. This lane does not edit `connectors/` in the spec-only phase, and
+adds no net-new connector breadth regardless (SPEC-003 §3).
+
+**CONTESTED — read-only, do not edit until the blocking PR lands or H0.2 formally disposes it:**
+
+| File(s) | Blocked by | State (verified 2026-08-14 via `gh`) |
+|---|---|---|
+| `services/source_registry.py` | **#324** QUAL-001 honest quality provenance (Data lane) | OPEN, active |
+| `api/routes/sources.py` | **#320** FAIR honest + reachable (Data lane) | OPEN, active |
+| `api/routes/sources.py` | **#56** BE-25 licence model | OPEN, 3 files, MERGEABLE — logged STALE-SCAFFOLD in `docs/handoff/PR_DISPOSITION.md` but **not yet closed** |
+| `connectors/base.py` + `biorxiv/cms_partd/cms_pricing/epo/fda_opdp/uspto/va_dod/who_ictrp` | **#66** BE-27..34 Phase-1 connector skeletons | OPEN, 10 files, CONFLICTING — logged STALE-SCAFFOLD, **not yet closed** |
+
+A PR being stale is not a disposal. These stay contested until H0.2 preserves/disposes them under
+owner sign-off.
+
+**Board-content landing risk:** **#317** and **#323** also modify `docs/COORDINATION.md`. The H0
+baseline likely supersedes their board content, but whichever lands second rebases — this §13 is
+append-only at EOF to keep that conflict trivial.
+
+### 13.2 Protected from this lane (do not edit — hardening lane / owner)
+
+```
+integration/pipeline.py            integration/pipeline_hooks.py     (WP-0 / WP-1 surface)
+scheduler/runner.py                                                  (WP-9 / hardening)
+services/agent/harness.py          services/llm_gateway.py           (#327/#328 + WP-0 bug, separate PRs)
+schema/openapi.json                                                  (H3 reconcile owns the regen)
+frontend/                                                            (Frontend lane; §12 H4)
+```
+
+Plus the standing **protected surface** (`protected-surface.txt`) — notably
+`scripts/connector_health.py`, `scheduler/config.py`, `tests/test_schema_completeness.py`,
+`.github/workflows/`, `.claude/rules/`, `CLAUDE.md`. A WP-2 gate that must become HARD couples
+protection with hardening **in the same change** (`protected-surface.txt` + `python
+scripts/gen_codeowners.py`).
+
+### 13.3 Sequence gate (what unblocks implementation)
+
+Implementation unlocks only on the **complete** §12 predecessor gate — not a subset:
+
+> **H0** (baseline) → **H1** (security floor) → **H2** (operational RED / stuck runs / DLQ) →
+> **WP-12** (corrected, owner-ratified assurance protocol) → **WP-0** (truthful run outcomes) →
+> **WP-1** (atomicity, then raw capture + replay) → **H3/H4/H5** (OpenAPI reconcile, frontend
+> truthfulness, full CI + branch protection) → **WP-2**.
+
+Changing that order is an owner decision recorded in §12, never a lane-local assumption.
+
+**Phase A — re-verification (now, read-only).** Re-verify WP-2's findings (G-01, G-07, G-10, G-12,
+G-14) against code at `da6887c`. SPEC-003 §6 marks WP-2 **"pending re-verify"** and §3 forbids
+speccing from the review's citations alone. Drift is recorded, not silently corrected.
+
+**Phase B — safe-fetch threat model (immediately after A, not instead of it).**
+
+**Phase C — the spec-only WP-2 package:** design + API/OpenAPI delta + DB design + contract /
+deployment / run / health state machines + durable cursor/lease/job model + promotion, approval,
+rollback and audit evidence + source identity/provenance design + preview response contract.
+
+**Test artifacts in the spec-only phase are specifications, not executable red tests:** test
+specifications, golden fixtures, expected invariants, mutation cases, and API examples. A
+spec-only branch must not merge carrying tests that intentionally leave CI red — that is a
+standing vacuous-red, the mirror of a vacuous green. Executable RED tests are introduced **inside
+each implementation PR**: demonstrate RED, then GREEN in the same bounded slice.
+
+**Phase D — implementation slices** (after the gate above): source identity + immutable contracts
+→ safe-fetch/secret boundary → no-write discovery and preview → durable scheduler/cursors →
+semantic model + identity integration → chat tools and frontend.
+
+### 13.4 Standing invariant for this lane (load-bearing)
+
+> **AI may propose declarative contracts; deterministic validators control network access,
+> persistence and production promotion.** No generation or execution of arbitrary connector code,
+> and no arbitrary SQL/Python callables in user-editable runtime contracts (SPEC-003 §8).
+
+**On assurance protocol:** once a corrected, owner-ratified WP-12 protocol lands, WP-2 work will
+adopt that protocol. Acceptance criteria must be owner-ratified **before** implementation; the
+builder must not self-author or modify its merge bar to pass. This lane makes no commitment to
+#327's current artifact design, which is under review.
