@@ -1,0 +1,51 @@
+{
+  "schema_version": "wp12a.v2",
+  "description": "WP-12A machine-readable acceptance contract. The WP-12B review-artifact validator consumes this file as its structural source of truth. The BINDING facts a review must reconcile against — the real PR head SHA, the final commit's committed-at, the canonical ratified criterion set, and the set of gates that must pass — are NOT taken from the review artifact; they are supplied to the validator as TrustedInputs sourced externally (git/GitHub for SHAs+timestamps; the owner-ratified acceptance manifest for criteria+gates). Editing this file changes the success bar for merges; it is a protected surface (see protected-surface.txt) and may only change under owner review. See specs/SPEC_WP12_assurance_kernel.md.",
+  "verdict_source_of_truth": ".claude/commands/review-gate.md",
+  "valid_verdicts": ["APPROVE", "CHANGES-REQUIRED", "BLOCK"],
+  "note_on_nits": "Interim, per-slice dispositions such as 'APPROVE-WITH-NITS' or 'LAND-WITH-NITS' are NOT valid final merge verdicts. A slice that leaves any ratified acceptance criterion unmet is CHANGES-REQUIRED, regardless of how small the residual looks. This is the exact PRIV-001 escaped-defect class (ESC-2026-08-13-priv001-spec-conformance).",
+  "note_on_trust": "reviewed_sha / pr_head_sha / final_commit_committed_at / the criterion set / gate results in the artifact are SELF-ATTESTED and are only believed insofar as they equal TrustedInputs. An APPROVE that cannot be reconciled against TrustedInputs fails closed (UNVERIFIABLE_APPROVE). A 40-hex lowercase SHA format is required; short or non-hex SHAs are rejected.",
+  "approve_requires": {
+    "open_must_items": 0,
+    "failing_gates": 0,
+    "unmet_spec_criteria": 0
+  },
+  "rules": {
+    "reviewed_sha_must_equal_trusted_head": true,
+    "criterion_set_must_equal_ratified": true,
+    "required_gates_must_pass": true,
+    "na_only_if_manifest_permits": true,
+    "evidence_required_nonempty": true,
+    "evidence_ref_must_resolve": true,
+    "evidence_not_before": "final_commit_committed_at",
+    "reject_future_timestamps": true,
+    "require_spec_conformance_matrix": true
+  },
+  "review_artifact_schema": {
+    "required_fields": [
+      "verdict",
+      "reviewed_sha",
+      "pr_head_sha",
+      "final_commit_committed_at",
+      "spec_conformance",
+      "findings",
+      "gates",
+      "evidence"
+    ],
+    "spec_conformance_item": {
+      "required_fields": ["criterion_id", "verdict", "evidence_ref"],
+      "allowed_verdicts": ["met", "unmet", "n/a"]
+    },
+    "finding_item": {
+      "required_fields": ["id", "severity", "must_fix", "resolved"],
+      "allowed_severities": ["blocker", "must", "should", "nit"]
+    },
+    "gate_item": {
+      "required_fields": ["name", "status"],
+      "allowed_status": ["pass", "fail", "skip"]
+    },
+    "evidence_item": {
+      "required_fields": ["id", "ref", "produced_at"]
+    }
+  }
+}

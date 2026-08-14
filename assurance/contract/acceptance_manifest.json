@@ -1,0 +1,20 @@
+{
+  "schema_version": "wp12.manifest.v1",
+  "description": "Owner-ratified acceptance manifest: the CANONICAL requirement set per PR. This is the source of the criteria + required-gates the WP-12B validator reconciles a review against — supplied as TrustedInputs, NOT taken from the review artifact. A reviewer cannot invent, drop, or renumber criteria: the set here must be enumerated completely. Criterion text is mirrored from the ratified spec section named in `spec`. Editing this file changes the merge bar; it is a protected surface (assurance/contract/ in protected-surface.txt) and changes route through the owner.",
+  "prs": {
+    "327": {
+      "spec": "specs/SPEC_WP12_assurance_kernel.md#5-acceptance-criteria-this-pr",
+      "required_gates": ["conservation-lane1", "wp12-assurance-tests", "protected-surface-sync"],
+      "na_allowed": [],
+      "criteria": [
+        {"id": "WP12#1", "text": "review_contract.json exists and is loadable; valid_verdicts matches review-gate.md exactly (a test asserts no drift)."},
+        {"id": "WP12#2", "text": "WP-12B rejects the real PRIV-001 LAND-WITH-NITS fixture AND a synthetic APPROVE-with-unmet-criterion; accepts a well-formed CHANGES-REQUIRED and APPROVE. Hardened: fabricated self-attested APPROVE (equal fake SHAs, invented criterion, empty evidence, required-gate skip) is rejected; APPROVE without external truth fails closed."},
+        {"id": "WP12#3", "text": "WP-12C scanner is RED on injected raw egress across every bypass class (direct, callable-alias, intermediate-variable, .stream/.parse terminals, direct provider HTTP); GREEN on the clean tree; identity is unique per call site (duplicate calls and same-named methods in different classes do not collapse)."},
+        {"id": "WP12#4", "text": "Incident ESC-2026-08-13-priv001-spec-conformance links the WP-12B replay test and records correct #326 provenance; status is not CLOSED while the gate is unmerged/unenforced."},
+        {"id": "WP12#5", "text": "New gate files present in protected-surface.txt (incl. the WP-12 spec, incident registry, review-gate.md, and test_protected_surface_sync.py); CODEOWNERS regenerated in the same commit; protected-surface sync test green."},
+        {"id": "WP12#6", "text": "An executable CI check runs the validator (self-test proves it is non-vacuous every run) and validates committed structured review artifacts; the Markdown PR table is not the artifact of record."},
+        {"id": "WP12#7", "text": "Independent review against this section's criteria (dogfooded via the WP-12B contract). MERGE-BLOCKING and owner/independent-only — the builder cannot mark this met."}
+      ]
+    }
+  }
+}
