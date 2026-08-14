@@ -1,5 +1,7 @@
 # WP-0 — Make Run Outcomes and Controls Truthful
 
+**Status:** P0 design spec — DRAFT for owner approval. No implementation authorized until the owner selects the WP (SPEC_003 owner ruling 2026-08-07; SPEC_HANDOFF §H0.3.5). Sequenced behind the handoff floor (H0–H1).
+
 ## Summary
 The ETL pipeline's control hooks fail open and its run accounting is not conservative, so a run can swallow a validation/change-detection/quality gate and still finalize as `SUCCESS`/report `OK`. This WP makes hook severity explicit (advisory may fail open; `required`/`promotion_gate` cannot), converts silent skips into recorded QUARANTINE rows that preserve the raw record, persists a full disposition ledger per run, and closes a row-conservation equation at finalize. P0 because it is the G-02 "fail-open false green" class: the harness floor's #1 and #3 principles (no silent loss, no vacuous green) are structurally violated in the hottest path in the system.
 

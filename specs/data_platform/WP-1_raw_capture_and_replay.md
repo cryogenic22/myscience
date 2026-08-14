@@ -1,5 +1,7 @@
 # WP-1 — Immutable Raw Artifacts, Deterministic Replay & Per-Record Atomicity
 
+**Status:** P0 design spec — DRAFT for owner approval. No implementation authorized until the owner selects the WP (SPEC_003 owner ruling 2026-08-07; SPEC_HANDOFF §H0.3.5). Sequenced behind the handoff floor (H0–H1).
+
 ## Summary
 
 Market Zero's ingestion keeps only a SHA-256 of each source response (`Provenance.raw_response_hash`, `connectors/base.py:153,161`) and discards the bytes, and it commits each record's writes under an autocommit connection (`db.py:73,103`), so a record's resolve → store → cross-link → quality → HITL steps are *separate* commits. The consequence: we cannot deterministically replay or audit what a source actually returned, and a mid-record failure leaves a half-written record with no rollback (a silent conservation break). This WP adds an immutable, content-addressed raw-artifact store for the top ~5 highest-value sources (bronze layer), links every source record to the exact bytes + locator it came from, stamps transform versions for deterministic replay, and wraps each record in the *existing* `db.transaction()` for per-record atomicity. It is P0 because without stored bytes there is no ground truth to replay against, and non-atomic records are undetectable partial-loss (G-03/G-04, part of G-12).

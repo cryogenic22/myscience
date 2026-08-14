@@ -1,9 +1,10 @@
 # Coordination — Market Zero (canonical board)
 
-> **This file is the single living coordination surface.** It supersedes
-> `docs/archive/AGENT_BACKLOG.md` (stale, 2026-05-11, framed backend↔frontend
-> only). If another doc disagrees with this one about lanes or process, this one
-> wins. Last updated: 2026-06-13.
+> **This file is the single living coordination surface** (SPEC_HANDOFF §H0.3.1 —
+> canonical lane/active-task board). It supersedes `docs/archive/AGENT_BACKLOG.md`
+> (stale, 2026-05-11, framed backend↔frontend only). If another doc disagrees with
+> this one about lanes or process, this one wins. The repository-maturity & transfer
+> program (SPEC_HANDOFF_001) is tracked in **§12**. Last updated: 2026-08-14.
 
 There are now **three** concurrent agent lanes, not two. The old board assumed a
 single backend agent; it didn't, and two backend sessions sharing one working

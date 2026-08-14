@@ -6,7 +6,9 @@
 > **`docs/COORDINATION.md`** — read that first. This file is retained for the
 > still-valid **backend↔frontend API contract** (the OpenAPI/changelog protocol
 > in §3–§4) and the frontend mandate (§7); treat its "two agents" framing in
-> §1–§2 as superseded by COORDINATION.md.
+> §1–§2 as superseded by COORDINATION.md. The §7 "Design rules" mirror `CLAUDE.md`
+> — that file is the source of truth; this copy is a convenience link, not a fork.
+> _(Reconciled under SPEC_HANDOFF §H0.3.3, 2026-08-14.)_
 
 This document defines the API contract, communication protocol, and the
 frontend/backend boundary so the lanes don't step on each other.

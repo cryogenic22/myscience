@@ -69,13 +69,13 @@ Read these before writing ANY code:
 - `integration/pipeline.py` — fetch → normalize → resolve → embed → store → cross-link
 - `integration/entity_resolver.py` — 6-strategy cascade (exact → alias → fuzzy → embedding → LLM → auto-create)
 - `integration/cross_linker.py` — Declarative link rules from domain pack
-- Connectors in `connectors/` — 9 active (ClinicalTrials.gov, PubMed, FDA, SEC, etc.)
-- Migrations in `schema/migrations/` (001-014)
+- Connectors in `connectors/` — 30 modules (15 carry a freshness SLA in the live scheduler; ClinicalTrials.gov, PubMed, FDA, SEC, etc.)
+- Migrations in `schema/migrations/` (001-099)
 
 ## Critical Conventions
 
 ### DO
-- **TDD**: Write tests FIRST, then implement. 180 tests currently passing.
+- **TDD**: Write tests FIRST, then implement. 303 test files (~4,287 `def test_` functions) — run the suite for the current pass count; never cite a remembered figure.
 - **Check anti-slop.md** before creating any new function/component/utility
 - **Use CSS custom properties** in frontend (`var(--color-ink)`, not `text-slate-900`)
 - **Use inline styles** for critical layout in frontend (not Tailwind utility classes)
@@ -111,7 +111,7 @@ Read these before writing ANY code:
 - **Run**: `python -m pytest tests/ -v`
 - **Fixtures**: `tests/conftest.py` (MockLLM, StubTool, make_*_result)
 - **Mock DB**: `tests/test_ctx_corpus.py` has `MockDB` for DB-free tests
-- **Current**: 180 passing, 0 unit failures
+- **Current**: 303 test files / ~4,287 test functions defined — run `python -m pytest tests/ -q` for the live pass/fail count (do not quote a remembered number)
 - **Coverage ratchet**: Never decrease test count
 
 ## Environment Variables

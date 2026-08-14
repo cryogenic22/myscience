@@ -1,5 +1,7 @@
 # WP-4 — Deterministic Identity Spine
 
+**Status:** P0 design spec — DRAFT for owner approval (ADR-first). No implementation authorized until the owner selects the WP (SPEC_003 owner ruling 2026-08-07; SPEC_HANDOFF §H0.3.5). Sequenced behind the handoff floor (H0–H1).
+
 ## Summary
 
 Market Zero has no authoritative-identifier path for molecules. `EXACT_LOOKUP_MAP` (`integration/entity_resolver.py:115-125`) carries only regulatory/bibliographic keys (`nct_id`, `pmid`, `nda_number`, `mesh_id`, `cik`, `ticker`, `orcid`, `patent_number`) — no `unii`, `rxcui`, `chembl_id`, `pubchem_cid`, `inchi_key`, `ndc`, or `drugbank_id`. Drug identity therefore collapses to name-based fuzzy matching plus a `LOWER(generic_name)` fallback in `_store_drug` (`integration/knowledge_store.py:285-293`), which silently conflates salts, formulations, combinations, brands, and substances. The governed `crosswalk_records` table (migration `091`) exists but is never queried by the resolver. This WP installs a grain-typed identity spine so exact identifiers resolve deterministically *before* any name matching runs. It is P0 because identity is the highest-leverage substrate defect: every downstream fact, edge, and synthesis inherits a wrong merge.
