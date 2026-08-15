@@ -1,12 +1,21 @@
 # SPEC WP-12 — Closed-Loop Assurance Kernel
 
-**Status:** DRAFT for owner approval. Assurance-kernel PR builds WP-12A–D + the WP-12C
-scanner redesign; WP-12E is owner/server-side only; WP-12F is a separate (non-security) PR.
-**Base:** `claude/handoff/h0-baseline@da6887c` (rebased onto the ratified H0.3 baseline so the
-reviewed head + test evidence include the H0.3 reconciliation).
-**Rev:** hardened after an independent review (2026-08-14) found the first pass trusted the
+**Status:** DRAFT — builder-PROPOSED, pending independent review + owner approval. Nothing here
+is "owner-ratified" yet: the acceptance manifest (`assurance/contract/acceptance_manifest.json`,
+`status: owner-review-pending`) becomes the ratified bar only when the owner approves this PR's
+protected-surface change. Assurance-kernel PR builds WP-12A–D + the WP-12C scanner redesign;
+WP-12E is owner/server-side only; WP-12F is a separate (non-security) PR.
+**Base:** `claude/handoff/h0-baseline@da6887c` (rebased onto the H0.3 baseline so the reviewed
+head + test evidence include the H0.3 reconciliation).
+**Rev 1:** hardened after an independent review (2026-08-14) found the first pass trusted the
 review artifact's own SHAs/criteria, and the egress scanner missed non-`.create` terminals,
-callable aliases, direct provider HTTP, and collapsed duplicate/same-named call sites. See §3.
+callable aliases, direct provider HTTP, and collapsed duplicate/same-named call sites.
+**Rev 2:** hardened again (2026-08-15) — gate results + reviewer identity now come from REAL
+GitHub check conclusions / `gh`, not the artifact; the review is an evidence-only commit whose
+parent is the reviewed code (a review committed in-branch cannot equal the head); the CLI fails
+closed on an unresolvable `--pr` (no local-HEAD fallback); the scanner covers call/subscript
+receiver bases and HTTP callable aliases; the CI workflow runs conservation + a fail-closed
+merge-gate on the exact PR head with least-privilege permissions and pinned actions. See §3.
 **Origin:** the PRIV-001 escaped defect (2026-08-13) — a live LLM-egress *bypass* was
 classified as a review "nit" and nearly landed under a non-canonical verdict
 ("LAND-WITH-NITS"), because **nothing machine-reconciled the review against the ratified
@@ -65,7 +74,8 @@ absent from `requirements.txt`). It pins:
 `assurance/review_artifact.py` — loads the contract + a structured review artifact (JSON) +
 `TrustedInputs`, returns `VALID` or a list of typed violations. **The binding facts are NOT
 taken from the artifact.** The real PR head SHA + final-commit time come from git/GitHub; the
-canonical criterion set + required gates come from the owner-ratified acceptance manifest
+canonical criterion set + required gates come from the acceptance manifest (owner-review-pending;
+ratified on owner approval)
 (`assurance/contract/acceptance_manifest.json`). It **rejects**: unknown verdicts,
 `APPROVE`-with-open-MUST/failing-gate/unmet-criterion, `reviewed_sha != trusted head` and a
 self-reported head that differs from the trusted head, malformed (non-40-hex) SHAs, an
@@ -138,7 +148,7 @@ not entangled with a security review.
 
 ## 5. Acceptance criteria (this PR)
 
-The ratified, machine-checkable form of these lives in
+The proposed, machine-checkable form of these lives in
 `assurance/contract/acceptance_manifest.json` (`prs["327"]`, ids `WP12#1..#7`), which the
 WP-12B validator reconciles a review against. Kept in sync (a test asserts 7 criteria):
 
@@ -150,9 +160,11 @@ WP-12B validator reconciles a review against. Kept in sync (a test asserts 7 cri
    evidence, required-gate `skip`) is rejected; an `APPROVE` with no external truth fails
    closed. RED→GREEN pasted.
 3. **WP12#3** — WP-12C scanner is RED on injected raw egress across every bypass class
-   (direct, callable-alias, intermediate-variable, `.stream`/`.parse`, direct provider HTTP);
-   GREEN on the clean tree; identity is unique per call site (duplicate calls and same-named
-   methods in different classes do not collapse). Pasted.
+   (direct, callable-alias, intermediate-variable, `.stream`/`.parse`, direct provider HTTP,
+   **factory-call receiver** `get_client().chat.completions.create`, **subscript receiver**
+   `clients["openai"].messages.create`, and **HTTP callable alias** `send = requests.post;
+   send(URL)`); GREEN on the clean tree; identity is unique per call site (duplicate calls and
+   same-named methods in different classes do not collapse). Pasted.
 4. **WP12#4** — Incident `ESC-2026-08-13-priv001-spec-conformance` links the WP-12B replay,
    records correct #326 provenance (`a66dbcba…`), and is `MITIGATED` (not `CLOSED`) while the
    gate is unmerged/unenforced.
@@ -160,7 +172,11 @@ WP-12B validator reconciles a review against. Kept in sync (a test asserts 7 cri
    `test_protected_surface_sync.py`) present in `protected-surface.txt`; sync test green;
    CODEOWNERS regenerated in the same commit; no protected threshold moved to pass.
 6. **WP12#6** — An executable CI check (`assurance/check.py --self-test`, wired in
-   `assurance-gate.yml`) is proven non-vacuous each run, and every committed structured review
-   artifact reconciles against its manifest. The Markdown PR table is not the artifact of record.
-7. **WP12#7** — Independent review against these criteria (dogfooded via the WP-12B contract).
-   **Merge-blocking and independent-only** — the author cannot mark it met.
+   `assurance-gate.yml`) is proven non-vacuous each run. The review of record is a structured
+   JSON artifact in an **evidence-only commit** (parent == reviewed code), not a Markdown table;
+   the `merge-gate` job reconciles it against the LIVE head + the REAL results of the
+   `assurance-kernel` and `conservation-lane1` jobs and **fails closed** until a valid
+   independent-review artifact exists. Workflow uses least-privilege permissions + pinned actions.
+7. **WP12#7** — Independent review against these criteria (dogfooded via the WP-12B contract),
+   with reviewer identity taken from GitHub (`gh pr view`), not the artifact. **Merge-blocking
+   and independent-only** — the author cannot mark it met, and the reviewer must not be the author.
