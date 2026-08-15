@@ -1,0 +1,61 @@
+# ESC-2026-08-15-egress-static-limit
+
+- **Date:** 2026-08-15
+- **Class:** security gate overclaimed its guarantee (a "cannot fail on a real bypass" static
+  scanner silently missed statically-resolvable egress forms; and static analysis has a real
+  runtime residual that must be named, not implied away)
+- **Severity:** P1 (no live bypass shipped, but the WP-12C scanner is the inventory gate that
+  later feeds PRIV-001b's guard-coverage assertion — a silent miss there is a silent hole)
+- **Status:** **MITIGATED (not CLOSED).** The statically-resolvable forms below are CLOSED with
+  passing regression tests. The *runtime-dynamic* residual is an accepted static-analysis
+  limit, backstopped by the PRIV-001b runtime guard — it stays MITIGATED until PRIV-001b lands
+  and is enforced.
+
+## What escaped
+
+An independent review of PR #327 (head `39df6cd`) reproduced four egress forms that the
+"terminal-complete" scanner scanned to `hits=0`, while its docstring claimed a gate that
+"cannot fail on a real bypass":
+
+1. `getattr(client.chat.completions, "create")(...)` — string-literal reflection terminal.
+2. `functools.partial(client.chat.completions.create)` then calling the result.
+3. `self._go = client.chat.completions.create` (instance-attribute cache) then `self._go(...)`.
+4. `go, _ = client.chat.completions.create, 1` (tuple-unpack) then `go(...)`.
+
+All four are **statically resolvable** — no runtime information is needed to see them — so
+deferring them while shipping the overclaim is the exact "treat a real bypass as out-of-scope"
+move WP-12 exists to stop (conservation principle #3: a gate blind to a real bypass is vacuous).
+
+## Root cause
+
+The AST visitor only resolved aliases assigned to a single `Name` target and only inspected
+call funcs that were `ast.Attribute`/`ast.Name`. It ignored: `ast.Call` funcs (`getattr(...)()`,
+`partial(...)()`), attribute-target assignments (`self.x = ...`), tuple/list-unpack targets,
+and the `getattr`/`partial` indirections.
+
+## The fix (structural)
+
+`assurance/egress_scan.py` now resolves the callable a value represents through `getattr` and
+`partial`, tracks attribute-target aliases module-wide with a pre-pass (so `self.x(...)` is
+caught regardless of method order), and handles tuple/list-unpack targets and `ast.Call` funcs.
+The module docstring is corrected to claim only what static analysis can deliver.
+
+## The runtime residual (named, not hidden)
+
+Static analysis **cannot** see egress whose shape exists only at runtime — a method/attr name
+in a variable (`getattr(o, name)` with `name` computed), a dict-of-callables chosen at runtime,
+`exec`/`eval`, or a client injected by a plugin/reflection. This is a boundary of the technique,
+not a bug to patch in the scanner. The backstop is the **runtime** egress guard (PRIV-001b),
+which intercepts at the gateway regardless of how the call site was written.
+
+## Regression tests
+
+- `tests/test_wp12c_egress_mutation.py::test_scanner_catches_getattr_reflection_terminal`
+- `::test_scanner_catches_functools_partial_alias` / `::test_scanner_catches_partial_immediate_call`
+- `::test_scanner_catches_self_attr_cached_callable`
+- `::test_scanner_catches_self_attr_even_when_call_precedes_init`
+- `::test_scanner_catches_tuple_unpack_alias` / `::test_scanner_catches_getattr_http`
+- `::test_runtime_dynamic_dispatch_is_a_known_static_limit` — an **xfail** that documents the
+  runtime residual: a runtime-computed `getattr(o, name)()` is NOT caught statically (and must
+  not be silently claimed as covered). It flips to a real failure if someone ever claims to
+  close it in the static scanner without the runtime guard.

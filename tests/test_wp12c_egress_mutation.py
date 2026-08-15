@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from assurance.egress_scan import scan_source, scan_tree, scan_keys, PROVIDER_CHAINS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -279,6 +281,102 @@ def test_scanner_catches_http_callable_alias():
     """send = requests.post ; send(PROVIDER_URL, ...) — the HTTP verb aliased to a callable."""
     hits = scan_source(_HTTP_CALLABLE_ALIAS)
     assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+# --- statically-resolvable forms a third independent review reproduced (round-3) ---
+
+_GETATTR_REFLECTION = """
+def synth(client, prompt):
+    return getattr(client.chat.completions, "create")(model="gpt", messages=prompt)
+"""
+
+_FUNCTOOLS_PARTIAL = """
+from functools import partial
+def synth(client, prompt):
+    go = partial(client.chat.completions.create, model="gpt")
+    return go(messages=prompt)
+"""
+
+_PARTIAL_IMMEDIATE = """
+from functools import partial
+def synth(client, prompt):
+    return partial(client.chat.completions.create)(model="gpt", messages=prompt)
+"""
+
+_SELF_ATTR_CACHE = """
+class Worker:
+    def __init__(self, client):
+        self._go = client.chat.completions.create
+    def run(self, prompt):
+        return self._go(model="gpt", messages=prompt)
+"""
+
+_SELF_ATTR_CALL_BEFORE_INIT = """
+class Worker:
+    def run(self, prompt):
+        return self._go(model="gpt", messages=prompt)
+    def __init__(self, client):
+        self._go = client.chat.completions.create
+"""
+
+_TUPLE_UNPACK = """
+def synth(client, prompt):
+    go, _ = client.chat.completions.create, 1
+    return go(model="gpt", messages=prompt)
+"""
+
+_GETATTR_HTTP = """
+import requests
+def synth(prompt):
+    return getattr(requests, "post")("https://api.openai.com/v1/chat/completions", json=prompt)
+"""
+
+
+def test_scanner_catches_getattr_reflection_terminal():
+    hits = scan_source(_GETATTR_REFLECTION)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_functools_partial_alias():
+    hits = scan_source(_FUNCTOOLS_PARTIAL)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_partial_immediate_call():
+    hits = scan_source(_PARTIAL_IMMEDIATE)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_self_attr_cached_callable():
+    hits = scan_source(_SELF_ATTR_CACHE)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_self_attr_even_when_call_precedes_init():
+    """Instance attributes are not source-ordered like locals — a pre-pass collects them."""
+    hits = scan_source(_SELF_ATTR_CALL_BEFORE_INIT)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_tuple_unpack_alias():
+    hits = scan_source(_TUPLE_UNPACK)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_getattr_http():
+    hits = scan_source(_GETATTR_HTTP)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "runtime-computed attribute name is beyond STATIC analysis by construction; the backstop is "
+    "the PRIV-001b runtime egress guard (ESC-2026-08-15-egress-static-limit). strict=True: if "
+    "this ever XPASSes, the scanner changed — update the incident before claiming coverage."))
+def test_runtime_dynamic_dispatch_is_a_known_static_limit():
+    """A method name only known at runtime cannot be resolved statically. This xfail names the
+    boundary so it is never silently claimed as covered."""
+    src = "def synth(client, p, method):\n    return getattr(client.chat.completions, method)(messages=p)\n"
+    assert len(scan_source(src)) >= 1
 
 
 def test_production_directories_are_not_skipped(tmp_path):

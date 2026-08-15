@@ -1,23 +1,31 @@
-"""WP-12C — LLM/provider egress scanner (alias-resolving, terminal-complete, fail-closed).
+"""WP-12C — LLM/provider egress scanner (alias-resolving, fail-closed static analysis).
 
 Supersedes the first-pass scanner in tests/test_priv001b_egress_inventory.py, which
 substring-matched provider call chains and could be defeated by an intermediate variable.
-This scanner is hardened against the bypass classes an independent review demonstrated the
-earlier redesign still missed:
+This scanner closes every STATICALLY-RESOLVABLE egress form that three independent review
+rounds demonstrated the earlier passes missed:
 
   1. **Callable alias.**   f = client.chat.completions.create ; f(...)
   2. **Non-.create terminals.**  client.chat.completions.stream(...) / .parse(...)
   3. **Direct provider HTTP.**   requests.post("https://api.openai.com/v1/chat/completions", ...)
   4. **Intermediate-variable receiver.**  c = client.chat.completions ; c.create(...)
-  5. **Collapsed identity.** two egress calls in one function, or a same-named method in two
-     classes, previously collapsed to ONE inventory key — so one could be added/removed
-     silently. Identity is now (relpath, qualified-scope, kind, source-ordinal): unique per
-     call site AND stable across line edits (line/col are carried as reporting metadata, not
-     as the pinned key — a line-number key would make the inventory break on every refactor,
-     which trains reviewers to ignore it: exactly the failure mode conservation-gates warns of).
+  5. **Non-Name receiver bases.**  get_client().chat...create ; clients["openai"].messages.create
+  6. **Reflection / partial.**  getattr(chain, "create")(...) ; functools.partial(chain.create)(...)
+  7. **Attribute-target cache.**  self._go = client...create (any method order) ; self._go(...)
+  8. **Tuple-unpack alias.**  go, _ = client...create, 1 ; go(...)
+  9. **Collapsed identity.** two egress calls in one scope, or a same-named method in two classes,
+     no longer collapse to one inventory key — identity is (relpath, qualified-scope, kind,
+     source-ordinal): unique per call site AND stable across line edits (line/col are reporting
+     metadata, not the pinned key — a line-number key would churn on every refactor).
 
-A security gate that cannot fail on a real bypass is a vacuous gate (conservation principle
-#3); tests/test_wp12c_egress_mutation.py proves each class above turns the scanner RED.
+**Boundary (honest scope, not an overclaim):** this is *static* analysis. It cannot see forms
+that only exist at runtime — a method/attr name computed at runtime (`getattr(o, name)` where
+`name` is a variable), a dict-of-callables selected at runtime, `exec`/`eval`, or a provider
+client injected via reflection/plugin. Those are OUT of static reach BY CONSTRUCTION and are
+tracked as ESC-2026-08-15-egress-static-limit; the backstop for them is the *runtime* egress
+guard (PRIV-001b), not this scanner. A gate that cannot fail on a real *statically-visible*
+bypass would be vacuous (principle #3); tests/test_wp12c_egress_mutation.py proves each class
+1–9 turns the scanner RED, and documents the runtime residual.
 
 Importable so both the assurance gate and PRIV-001b consume ONE scanner, not two.
 """
@@ -94,6 +102,10 @@ class _Scanner(ast.NodeVisitor):
         self.scope_stack: list[str] = ["<module>"]
         self.alias_stack: list[dict[str, str]] = [{}]       # name -> resolved dotted chain
         self.str_alias_stack: list[dict[str, str]] = [{}]   # name -> str constant value
+        # Attribute-target callable aliases (e.g. `self._go = client...create`), keyed by the
+        # dotted target ("self._go"). Module-wide (NOT scope-stacked) because an instance
+        # attribute set in __init__ is called from another method — a different scope.
+        self.attr_alias: dict[str, str] = {}
         self.raw: list[tuple[str, str, int, int]] = []      # (scope, kind, lineno, col)
 
     # --- scope handling: inner scopes inherit outer aliases (module-level client, etc.) ---
@@ -155,16 +167,76 @@ class _Scanner(ast.NodeVisitor):
         # path off it can still carry a provider chain (get_client().chat.completions.create).
         return tail or None
 
+    def _getattr_chain(self, call: ast.Call) -> str | None:
+        """getattr(<expr>, "<method>") -> resolved '<chain>.<method>' (string-literal method)."""
+        fn = call.func
+        is_getattr = (isinstance(fn, ast.Name) and fn.id == "getattr") or \
+                     (isinstance(fn, ast.Attribute) and fn.attr == "getattr")
+        if is_getattr and len(call.args) >= 2:
+            obj, meth = call.args[0], call.args[1]
+            if isinstance(meth, ast.Constant) and isinstance(meth.value, str) \
+                    and isinstance(obj, (ast.Attribute, ast.Name)):
+                base = self._chain_of(obj)
+                if base is not None:
+                    return f"{base}.{meth.value}"
+        return None
+
+    def _partial_inner_chain(self, call: ast.Call) -> str | None:
+        """(functools.)partial(<callable>, ...) -> the resolved chain of its first arg."""
+        fn = call.func
+        is_partial = (isinstance(fn, ast.Name) and fn.id == "partial") or \
+                     (isinstance(fn, ast.Attribute) and fn.attr == "partial")
+        if is_partial and call.args:
+            return self._callable_chain_of(call.args[0])
+        return None
+
+    def _callable_chain_of(self, value: ast.AST) -> str | None:
+        """The dotted chain a value resolves to WHEN USED AS A CALLABLE: a plain attribute/name
+        chain, or the callable hidden inside getattr(...) / partial(...)."""
+        if isinstance(value, (ast.Attribute, ast.Name)):
+            return self._chain_of(value)
+        if isinstance(value, ast.Call):
+            return self._getattr_chain(value) or self._partial_inner_chain(value)
+        return None
+
+    def _store_alias(self, target: ast.AST, value: ast.AST) -> None:
+        """Record target <- value for later callable resolution (Name in scope; self.x module-wide)."""
+        if isinstance(target, ast.Name):
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                self.str_alias_stack[-1][target.id] = value.value
+                return
+            chain = self._callable_chain_of(value)
+            if chain is not None:
+                self.alias_stack[-1][target.id] = chain
+        elif isinstance(target, ast.Attribute):
+            key = self._chain_of(target)           # e.g. "self._go"
+            chain = self._callable_chain_of(value)
+            if key is not None and chain is not None:
+                self.attr_alias[key] = chain
+
     def visit_Assign(self, n: ast.Assign) -> None:
-        if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
-            target = n.targets[0].id
-            if isinstance(n.value, ast.Constant) and isinstance(n.value.value, str):
-                self.str_alias_stack[-1][target] = n.value.value
+        for tgt in n.targets:
+            if isinstance(tgt, (ast.Tuple, ast.List)) and isinstance(n.value, (ast.Tuple, ast.List)) \
+                    and len(tgt.elts) == len(n.value.elts):
+                for t, v in zip(tgt.elts, n.value.elts):   # go, _ = client...create, 1
+                    self._store_alias(t, v)
             else:
-                chain = self._chain_of(n.value)
-                if chain is not None:
-                    self.alias_stack[-1][target] = chain
+                self._store_alias(tgt, n.value)
         self.generic_visit(n)
+
+    def _record_callable(self, chain: str | None, node: ast.Call) -> bool:
+        """Record a hit if `chain` is a provider SDK terminal or an HTTP verb hitting a provider
+        URL in `node`'s args. Returns True if recorded."""
+        if not chain:
+            return False
+        last = chain.rsplit(".", 1)[-1]
+        if last in TERMINAL_METHODS and any(c in chain for c in PROVIDER_CHAINS):
+            self._record(_kind(chain), node)
+            return True
+        if last in HTTP_VERBS and any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(node)):
+            self._record("http", node)
+            return True
+        return False
 
     def _record(self, kind: str, node: ast.AST) -> None:
         self.raw.append((self._qualscope(), kind, node.lineno, node.col_offset))
@@ -199,19 +271,19 @@ class _Scanner(ast.NodeVisitor):
             elif f.attr in HTTP_VERBS:
                 if any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)):
                     self._record("http", n)
+            # (e) attribute-target callable alias: self._go = client...create ; self._go(...)
+            else:
+                self._record_callable(self.attr_alias.get(self._chain_of(f) or ""), n)
 
         elif isinstance(f, ast.Name):
+            # (c)/(d) callable alias (incl. getattr/partial assigned to a name): f(...)
             resolved = self._resolve(f.id)
             if resolved != f.id:
-                last = resolved.rsplit(".", 1)[-1]
-                # (c) SDK callable alias: f = client.chat.completions.create ; f(...)
-                if last in TERMINAL_METHODS and any(c in resolved for c in PROVIDER_CHAINS):
-                    self._record(_kind(resolved), n)
-                # (d) HTTP callable alias: send = requests.post ; send(PROVIDER_URL, ...)
-                elif last in HTTP_VERBS and any(
-                    any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)
-                ):
-                    self._record("http", n)
+                self._record_callable(resolved, n)
+
+        elif isinstance(f, ast.Call):
+            # (f) immediate reflection/partial: getattr(chain,"create")(...) / partial(chain.create)(...)
+            self._record_callable(self._getattr_chain(f) or self._partial_inner_chain(f), n)
 
         self.generic_visit(n)
 
@@ -220,6 +292,14 @@ def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
     """Scan one Python source string. Raises SyntaxError on unparseable input."""
     tree = ast.parse(src)
     s = _Scanner()
+    # Pre-pass: collect instance-attribute callable aliases (self.x = client...create) BEFORE
+    # visiting calls, so a `self.x(...)` call in a method defined ABOVE __init__ still resolves
+    # (instance attributes are not source-ordered like locals).
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Attribute):
+                    s._store_alias(tgt, node.value)
     s.visit(tree)
     # Assign a stable source-order ordinal per (scope, kind) so duplicate calls in one scope
     # and same-named methods across classes each get a distinct identity key.

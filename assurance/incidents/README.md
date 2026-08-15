@@ -20,3 +20,4 @@ test is the "never regress" half.
 | ID | Class | Status | Regression test |
 |---|---|---|---|
 | ESC-2026-08-13-priv001-spec-conformance | review-not-reconciled-against-ratified-criteria | MITIGATED (gate green + tested; not yet merged/enforced) | `tests/test_wp12b_review_validator.py::test_priv001_land_with_nits_is_rejected` |
+| ESC-2026-08-15-egress-static-limit | egress scanner overclaimed coverage; static-analysis runtime residual | MITIGATED (statically-resolvable forms closed + tested; runtime residual backstopped by PRIV-001b) | `tests/test_wp12c_egress_mutation.py::test_scanner_catches_getattr_reflection_terminal` (+6) and `::test_runtime_dynamic_dispatch_is_a_known_static_limit` |
