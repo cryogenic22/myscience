@@ -240,29 +240,43 @@ class PIIPolicyForbidden(Exception):
 # that no raw provider `.create` exists outside this adapter — see
 # assurance/contract/egress_inventory.json and SPEC_HANDOFF §H1.1.4.
 
-_PROD_ENV_VARS = ("RAILWAY_ENVIRONMENT", "MZ_ENV", "ENVIRONMENT", "APP_ENV")
-_PROD_VALUES = {"production", "prod"}
+# Env vars consulted to classify the runtime environment. RAILWAY_ENVIRONMENT_NAME is the
+# variable Railway actually injects (https://docs.railway.com/variables/reference); omitting it
+# was the bypass an independent review found — on Railway the old list saw no prod marker, so
+# MZ_PII_POLICY=allow slipped through in production.
+_ENV_VARS = ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "MZ_ENV", "ENVIRONMENT", "APP_ENV")
+_PROD_VALUES = {"production", "prod", "prd", "live", "staging", "stage"}
+_DEV_VALUES = {"development", "dev", "test", "testing", "local", "ci", "sandbox"}
 
 
 def _is_production() -> bool:
-    for var in _PROD_ENV_VARS:
-        if os.environ.get(var, "").strip().lower() in _PROD_VALUES:
-            return True
-    return False
+    """True if ANY consulted env var names a production-like environment."""
+    return any(os.environ.get(v, "").strip().lower() in _PROD_VALUES for v in _ENV_VARS)
+
+
+def _is_development() -> bool:
+    """True ONLY if an env var POSITIVELY designates a development/test environment.
+    An unset/unknown environment is NOT development — that is the fail-closed default."""
+    return any(os.environ.get(v, "").strip().lower() in _DEV_VALUES for v in _ENV_VARS)
 
 
 def resolve_pii_policy(policy: Optional[str] = None) -> str:
     """Resolve the effective PII policy: explicit arg, else env MZ_PII_POLICY, else 'redact'.
 
-    'allow' (pass PII through unredacted) is FORBIDDEN in production — a builder cannot
-    disable the filter on the live path by flipping an env var.
+    'allow' (pass PII through unredacted) is FAIL-CLOSED: it is permitted ONLY with a POSITIVE
+    development/test designation. Production, OR an unknown/unset environment, both forbid it —
+    the mere ABSENCE of a recognised production marker is not permission to leak PII (that
+    absence-implies-safe assumption is exactly what the Railway RAILWAY_ENVIRONMENT_NAME gap
+    exploited). A builder cannot disable the filter on the live path by flipping an env var.
     """
     p = (policy or os.environ.get("MZ_PII_POLICY") or "redact").strip().lower()
     if p not in VALID_PII_POLICIES:
         raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}, got {p!r}")
-    if p == "allow" and _is_production():
+    if p == "allow" and not _is_development():
         raise PIIPolicyForbidden(
-            "MZ_PII_POLICY=allow is forbidden in production — outbound PII must be redacted or rejected"
+            "MZ_PII_POLICY=allow requires an explicit development/test environment "
+            "(e.g. MZ_ENV=development); it is forbidden in production and when the environment "
+            "is unknown/unset (fail closed) - outbound PII must be redacted or rejected"
         )
     return p
 
@@ -580,8 +594,9 @@ class LLMGateway:
     ) -> InvokeResult:
         """Resolve prompt, render template, scan PII, invoke chat_with_telemetry,
         return result with telemetry baked in."""
-        if pii_policy not in VALID_PII_POLICIES:
-            raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}")
+        # Same fail-closed policy gate as the guard_* adapters: 'allow' is forbidden off an
+        # explicit dev/test environment, so the higher-level invoke path cannot leak PII either.
+        pii_policy = resolve_pii_policy(pii_policy)
 
         # Resolve prompt by UUID or name (+ optional version)
         resolved: Optional[Prompt] = None
