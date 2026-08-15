@@ -272,11 +272,16 @@ def resolve_pii_policy(policy: Optional[str] = None) -> str:
     p = (policy or os.environ.get("MZ_PII_POLICY") or "redact").strip().lower()
     if p not in VALID_PII_POLICIES:
         raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}, got {p!r}")
-    if p == "allow" and not _is_development():
+    # 'allow' requires a POSITIVE dev/test designation AND no production marker present — a
+    # production marker DOMINATES a coexisting dev marker (on Railway RAILWAY_ENVIRONMENT_NAME
+    # =production is always injected, so a builder must not re-enable passthrough by ALSO
+    # setting MZ_ENV=dev). Unknown/unset is not dev either. Fail closed on any doubt.
+    if p == "allow" and not (_is_development() and not _is_production()):
         raise PIIPolicyForbidden(
-            "MZ_PII_POLICY=allow requires an explicit development/test environment "
-            "(e.g. MZ_ENV=development); it is forbidden in production and when the environment "
-            "is unknown/unset (fail closed) - outbound PII must be redacted or rejected"
+            "MZ_PII_POLICY=allow requires an explicit development/test environment with NO "
+            "production marker present (e.g. MZ_ENV=development and no RAILWAY_ENVIRONMENT_NAME"
+            "=production); it is forbidden in production and when the environment is unknown/unset "
+            "(fail closed) - outbound PII must be redacted or rejected"
         )
     return p
 
@@ -299,35 +304,37 @@ def _apply_policy_to_text(text: Optional[str], policy: str) -> Optional[str]:
     return text  # allow (unreachable in production — resolve_pii_policy blocks it)
 
 
-def _sanitize_messages(messages, policy: str):
-    """Return a NEW messages list with each textual content sanitized.
+def _deep_sanitize(obj, policy: str):
+    """Recursively sanitize EVERY string leaf of a nested messages/content structure.
 
-    Handles both string content and Anthropic-style content-block lists.
+    A shallow "top-level string or top-level {'text': ...} block" sanitizer failed OPEN on
+    mainstream shapes an independent review demonstrated: Anthropic ``tool_result`` blocks whose
+    text is nested one level deeper, multimodal parts, a message ``name`` field, or a
+    list-valued ``system``. Walking every string leaf closes those: structure is preserved and
+    only string leaves change; a non-PII string (role names, "text"/"tool_result" type markers,
+    JSON keys) never matches so it passes through unchanged; under ``reject`` the first PII match
+    raises before any provider call (fail closed). Non-string leaves (e.g. token-id ints in an
+    embeddings input) are left untouched.
     """
-    out = []
-    for m in messages or []:
-        if isinstance(m, dict) and isinstance(m.get("content"), str):
-            out.append({**m, "content": _apply_policy_to_text(m["content"], policy)})
-        elif isinstance(m, dict) and isinstance(m.get("content"), list):
-            blocks = []
-            for b in m["content"]:
-                if isinstance(b, dict) and isinstance(b.get("text"), str):
-                    blocks.append({**b, "text": _apply_policy_to_text(b["text"], policy)})
-                else:
-                    blocks.append(b)
-            out.append({**m, "content": blocks})
-        else:
-            out.append(m)
-    return out
+    if isinstance(obj, str):
+        return _apply_policy_to_text(obj, policy)
+    if isinstance(obj, dict):
+        return {k: _deep_sanitize(v, policy) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_sanitize(v, policy) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_deep_sanitize(v, policy) for v in obj)
+    return obj
+
+
+def _sanitize_messages(messages, policy: str):
+    """Deep-sanitize a messages list — every nested string leaf, not just top-level content."""
+    return _deep_sanitize(messages or [], policy)
 
 
 def _sanitize_input(value, policy: str):
-    """Embeddings input may be a single string or a list of strings."""
-    if isinstance(value, str):
-        return _apply_policy_to_text(value, policy)
-    if isinstance(value, list):
-        return [_apply_policy_to_text(v, policy) if isinstance(v, str) else v for v in value]
-    return value
+    """Embeddings input may be a str, a list of str, or nested; deep-sanitize string leaves."""
+    return _deep_sanitize(value, policy)
 
 
 def guard_openai_chat(client, *, model, messages, pii_policy: Optional[str] = None, **kwargs):
@@ -345,7 +352,8 @@ def guard_anthropic_messages(client, *, model, messages, system=None,
     safe_messages = _sanitize_messages(messages, policy)
     call_kwargs = dict(kwargs)
     if system is not None:
-        call_kwargs["system"] = _apply_policy_to_text(system, policy)
+        # system may be a plain string OR a list of content blocks — deep-sanitize both.
+        call_kwargs["system"] = _deep_sanitize(system, policy)
     return client.messages.create(model=model, messages=safe_messages, **call_kwargs)
 
 
