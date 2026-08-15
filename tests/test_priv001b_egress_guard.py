@@ -69,8 +69,10 @@ class FakeAnthropic:
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    """Neutral environment: no prod markers, no policy override, unless a test sets them."""
-    for v in ("RAILWAY_ENVIRONMENT", "MZ_ENV", "ENVIRONMENT", "APP_ENV", "MZ_PII_POLICY"):
+    """Neutral environment: no prod/dev markers, no policy override, unless a test sets them.
+    A neutral env is now UNKNOWN (not dev) — 'allow' is fail-closed here."""
+    for v in ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "MZ_ENV", "ENVIRONMENT",
+              "APP_ENV", "MZ_PII_POLICY"):
         monkeypatch.delenv(v, raising=False)
 
 
@@ -163,11 +165,98 @@ def test_allow_forbidden_in_production(monkeypatch):
     assert c.chat_calls == [], "allow must not reach the provider in production"
 
 
-def test_allow_permitted_off_prod_passes_through_unredacted():
+def test_allow_forbidden_on_railway_environment_name(monkeypatch):
+    """The exact bypass an independent review found: Railway injects RAILWAY_ENVIRONMENT_NAME,
+    not RAILWAY_ENVIRONMENT. 'allow' must be blocked when that var names production."""
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    with pytest.raises(PIIPolicyForbidden):
+        resolve_pii_policy("allow")
+    c = FakeOpenAI()
+    with pytest.raises(PIIPolicyForbidden):
+        guard_openai_chat(c, model="m", messages=[{"role": "user", "content": "a@b.com"}], pii_policy="allow")
+    assert c.chat_calls == [], "allow must not reach the provider on Railway production"
+
+
+def test_allow_forbidden_when_environment_unknown():
+    """Fail closed: an unset/unknown environment is NOT permission to pass PII through.
+    (Absence of a prod marker must not equal 'safe' — the Railway gap's root lesson.)"""
+    with pytest.raises(PIIPolicyForbidden):
+        resolve_pii_policy("allow")
+
+
+def test_allow_permitted_only_with_positive_dev_designation(monkeypatch):
+    """'allow' is permitted ONLY when the environment is POSITIVELY designated dev/test."""
+    monkeypatch.setenv("MZ_ENV", "development")
     assert resolve_pii_policy("allow") == "allow"
     c = FakeOpenAI()
     guard_openai_chat(c, model="m", messages=[{"role": "user", "content": "a@b.com"}], pii_policy="allow")
-    assert c.chat_calls[0]["messages"][0]["content"] == "a@b.com"  # allow = no redaction (off-prod only)
+    assert c.chat_calls[0]["messages"][0]["content"] == "a@b.com"  # allow = no redaction (dev only)
+
+
+# ============================ scan failure ⇒ fail closed (0 calls) =============
+
+@pytest.mark.parametrize("guard,client_factory,call", [
+    ("chat", FakeOpenAI, lambda g, c: guard_openai_chat(c, model="m", messages=[{"role": "user", "content": "x"}], pii_policy="redact")),
+    ("emb", FakeOpenAI, lambda g, c: guard_openai_embeddings(c, model="m", input="x", pii_policy="redact")),
+    ("anthropic", FakeAnthropic, lambda g, c: guard_anthropic_messages(c, model="m", messages=[{"role": "user", "content": "x"}], pii_policy="redact")),
+])
+def test_scan_failure_fails_closed_no_provider_call(guard, client_factory, call, monkeypatch):
+    """If scan_pii itself raises unexpectedly, the guard must NOT call the provider (fail closed):
+    a scanner bug must never become a silent PII leak."""
+    import services.llm_gateway as gw
+
+    def boom(_text):
+        raise RuntimeError("scanner blew up")
+    monkeypatch.setattr(gw, "scan_pii", boom)
+    c = client_factory()
+    with pytest.raises(RuntimeError):
+        call(guard, c)
+    calls = c.chat_calls if guard == "chat" else (c.emb_calls if guard == "emb" else c.calls)
+    assert calls == [], "provider was called despite a scanner failure — data would have leaked"
+
+
+# ============================ LLMGateway.invoke enforces the policy =============
+
+def test_invoke_enforces_allow_forbidden_off_dev():
+    """The higher-level LLMGateway.invoke path also fails closed on 'allow' off an explicit
+    dev/test env — the policy gate runs before any prompt resolution or provider call."""
+    from services.llm_gateway import LLMGateway
+    with pytest.raises(PIIPolicyForbidden):
+        LLMGateway.invoke(None, None, prompt="anything", pii_policy="allow")
+
+
+# ============================ operational scripts are really routed ============
+
+def test_operational_scripts_are_not_deferred_anymore():
+    """Blocker: the three operational scripts must be ROUTED through the guard, not left as
+    allowlisted raw egress. They no longer appear in the inventory at all."""
+    sites = set(_INVENTORY["sites"])
+    for script in ("backfill_embeddings.py", "backfill_resolution.py", "scripts/ai_enrich.py"):
+        assert not any(k.startswith(script + "::") for k in sites), f"{script} still an inventoried egress site"
+    # Only the 3 adapter functions + the offline benchmark judge remain.
+    assert len(sites) == 4, sorted(sites)
+
+
+def test_backfill_script_call_site_fails_closed_on_pii(monkeypatch):
+    """Real per-call-site capture at an operational script: with reject policy and PII in the
+    row text, the wired guard rejects and the provider is never called (0 embedding calls)."""
+    monkeypatch.setenv("MZ_PII_POLICY", "reject")
+    import backfill_resolution
+
+    class FakeDB:
+        def __init__(self, rows):
+            self._rows = rows
+            self.updates = []
+        def fetch_all(self, *a, **k):
+            return self._rows
+        def execute(self, *a, **k):
+            self.updates.append((a, k))
+
+    client = FakeOpenAI()
+    db = FakeDB([{"id": 1, "generic_name": "contact a@b.com for details"}])
+    backfill_resolution.backfill_new_drug_embeddings(db, client)
+    assert client.emb_calls == [], "operational script reached the provider despite PII+reject"
+    assert db.updates == [], "a redacted/leaked embedding was written despite rejection"
 
 
 def test_default_policy_is_redact():
