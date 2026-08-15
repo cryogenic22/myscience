@@ -242,6 +242,45 @@ def test_first_pass_and_prior_redesign_both_miss_the_new_classes():
         assert len(scan_source(src)) == 1           # hardened: catches it
 
 
+# --- receiver-base classes an independent review found still uncovered ---
+
+_FACTORY_CALL_RECEIVER = """
+def synth(prompt):
+    return get_client().chat.completions.create(model="gpt", messages=prompt)
+"""
+
+_SUBSCRIPT_RECEIVER = """
+def synth(prompt):
+    return clients["openai"].messages.create(model="claude", messages=prompt)
+"""
+
+_HTTP_CALLABLE_ALIAS = """
+import requests
+PROVIDER_URL = "https://api.openai.com/v1/chat/completions"
+def synth(prompt):
+    send = requests.post
+    return send(PROVIDER_URL, json=prompt)
+"""
+
+
+def test_scanner_catches_factory_call_receiver():
+    """get_client().chat.completions.create(...) — receiver is a Call, not a Name."""
+    hits = scan_source(_FACTORY_CALL_RECEIVER)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_subscript_receiver():
+    """clients['openai'].messages.create(...) — receiver is a Subscript."""
+    hits = scan_source(_SUBSCRIPT_RECEIVER)
+    assert len(hits) == 1 and hits[0].kind == "messages", hits
+
+
+def test_scanner_catches_http_callable_alias():
+    """send = requests.post ; send(PROVIDER_URL, ...) — the HTTP verb aliased to a callable."""
+    hits = scan_source(_HTTP_CALLABLE_ALIAS)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
 def test_production_directories_are_not_skipped(tmp_path):
     """The skip list must never grow to hide a real runtime dir. A synthetic egress placed
     under a production-shaped path (services/, apps/, packages/) is still found."""

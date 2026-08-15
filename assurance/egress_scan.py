@@ -136,16 +136,24 @@ class _Scanner(ast.NodeVisitor):
         return None
 
     def _chain_of(self, node: ast.AST) -> str | None:
-        """Resolved dotted chain for an attribute/name expr; None if the base is not a Name."""
+        """Resolved dotted chain for an attribute/name expr.
+
+        Name base -> alias-resolved full chain (e.g. ``client.chat.completions``). Non-Name
+        base (a Call like ``get_client()`` or a Subscript like ``clients["openai"]``) -> the
+        attribute SUFFIX alone (e.g. ``chat.completions``), so a provider chain hanging off a
+        factory call or a dict lookup is still detected. None only if there is no attribute
+        suffix and no Name base to resolve."""
         attrs: list[str] = []
         while isinstance(node, ast.Attribute):
             attrs.append(node.attr)
             node = node.value
+        tail = ".".join(reversed(attrs))
         if isinstance(node, ast.Name):
             base = self._resolve(node.id)
-            tail = ".".join(reversed(attrs))
             return base + ("." + tail if tail else "")
-        return None  # base is a Call/Subscript/etc — not aliasable, do not record
+        # base is a Call/Subscript/etc: the receiver is not a stable name, but the attribute
+        # path off it can still carry a provider chain (get_client().chat.completions.create).
+        return tail or None
 
     def visit_Assign(self, n: ast.Assign) -> None:
         if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
@@ -193,12 +201,17 @@ class _Scanner(ast.NodeVisitor):
                     self._record("http", n)
 
         elif isinstance(f, ast.Name):
-            # (c) callable alias: f = client.chat.completions.create ; f(...)
             resolved = self._resolve(f.id)
-            if resolved != f.id and any(c in resolved for c in PROVIDER_CHAINS):
+            if resolved != f.id:
                 last = resolved.rsplit(".", 1)[-1]
-                if last in TERMINAL_METHODS:
+                # (c) SDK callable alias: f = client.chat.completions.create ; f(...)
+                if last in TERMINAL_METHODS and any(c in resolved for c in PROVIDER_CHAINS):
                     self._record(_kind(resolved), n)
+                # (d) HTTP callable alias: send = requests.post ; send(PROVIDER_URL, ...)
+                elif last in HTTP_VERBS and any(
+                    any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)
+                ):
+                    self._record("http", n)
 
         self.generic_visit(n)
 
