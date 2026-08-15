@@ -82,8 +82,12 @@ def commit_time(sha: str | None) -> str | None:
 
 
 def artifact_commit_parent(path: Path) -> str | None:
-    """Parent SHA of the commit that last introduced/changed the review artifact."""
-    rel = path.relative_to(REPO_ROOT).as_posix()
+    """Parent SHA of the commit that last introduced/changed the review artifact.
+    Returns None (fail closed, no traceback) if the path is outside the repo or untracked."""
+    try:
+        rel = path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return None
     c = _run(["git", "log", "-1", "--format=%H", "--", rel])
     return _run(["git", "rev-parse", f"{c}^"]) if c else None
 
