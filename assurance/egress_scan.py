@@ -11,21 +11,24 @@ rounds demonstrated the earlier passes missed:
   4. **Intermediate-variable receiver.**  c = client.chat.completions ; c.create(...)
   5. **Non-Name receiver bases.**  get_client().chat...create ; clients["openai"].messages.create
   6. **Reflection / partial.**  getattr(chain, "create")(...) ; functools.partial(chain.create)(...)
-  7. **Attribute-target cache.**  self._go = client...create (any method order) ; self._go(...)
-  8. **Tuple-unpack alias.**  go, _ = client...create, 1 ; go(...)
+  7. **Attribute-target cache.**  self._go = client...create (any method order, incl. the attr
+     named like a terminal `self.create = ...create`, and transitively `self._go = self._raw`) ; self._go(...)
+  8. **Tuple-unpack + walrus alias.**  go, _ = client...create, 1 ; go(...)  /  (go := client...create)(...)
   9. **Collapsed identity.** two egress calls in one scope, or a same-named method in two classes,
      no longer collapse to one inventory key — identity is (relpath, qualified-scope, kind,
      source-ordinal): unique per call site AND stable across line edits (line/col are reporting
      metadata, not the pinned key — a line-number key would churn on every refactor).
 
 **Boundary (honest scope, not an overclaim):** this is *static* analysis. It cannot see forms
-that only exist at runtime — a method/attr name computed at runtime (`getattr(o, name)` where
-`name` is a variable), a dict-of-callables selected at runtime, `exec`/`eval`, or a provider
-client injected via reflection/plugin. Those are OUT of static reach BY CONSTRUCTION and are
-tracked as ESC-2026-08-15-egress-static-limit; the backstop for them is the *runtime* egress
-guard (PRIV-001b), not this scanner. A gate that cannot fail on a real *statically-visible*
-bypass would be vacuous (principle #3); tests/test_wp12c_egress_mutation.py proves each class
-1–9 turns the scanner RED, and documents the runtime residual.
+that are only decidable at runtime — a method/attr name computed at runtime (`getattr(o, name)`
+where `name` is a variable), `exec`/`eval`, or a provider client injected via reflection/plugin.
+It also does NOT model container/subscript indirection, even with a literal key
+(`{"create": chain}["create"]()`), which would open an unbounded dict/`.get`/list surface. Those
+are OUT of static reach BY CONSTRUCTION, tracked as ESC-2026-08-15-egress-static-limit, each
+pinned by a strict=True xfail so it can never be silently claimed as covered; the backstop for
+them is the *runtime* egress guard (PRIV-001b), not this scanner. A gate that cannot fail on a
+real *statically-visible* bypass would be vacuous (principle #3);
+tests/test_wp12c_egress_mutation.py proves each class 1–9 turns the scanner RED.
 
 Importable so both the assurance gate and PRIV-001b consume ONE scanner, not two.
 """
@@ -33,6 +36,7 @@ from __future__ import annotations
 
 import ast
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -214,6 +218,16 @@ class _Scanner(ast.NodeVisitor):
             if key is not None and chain is not None:
                 self.attr_alias[key] = chain
 
+    def _resolve_attr(self, key: str) -> str | None:
+        """Transitively resolve an attribute-target alias through attr_alias
+        (self._go -> self._raw -> client...create). Cycle-safe."""
+        v = self.attr_alias.get(key)
+        seen: set[str] = set()
+        while v is not None and v in self.attr_alias and v not in seen:
+            seen.add(v)
+            v = self.attr_alias[v]
+        return v
+
     def visit_Assign(self, n: ast.Assign) -> None:
         for tgt in n.targets:
             if isinstance(tgt, (ast.Tuple, ast.List)) and isinstance(n.value, (ast.Tuple, ast.List)) \
@@ -222,6 +236,11 @@ class _Scanner(ast.NodeVisitor):
                     self._store_alias(t, v)
             else:
                 self._store_alias(tgt, n.value)
+        self.generic_visit(n)
+
+    def visit_NamedExpr(self, n: ast.NamedExpr) -> None:
+        # walrus: (go := client...create) — record the alias for later `go(...)` uses.
+        self._store_alias(n.target, n.value)
         self.generic_visit(n)
 
     def _record_callable(self, chain: str | None, node: ast.Call) -> bool:
@@ -262,24 +281,33 @@ class _Scanner(ast.NodeVisitor):
         f = n.func
 
         if isinstance(f, ast.Attribute):
+            recorded = False
             # (a) SDK terminal call: <chain>.create/.stream/.parse(...)
             if f.attr in TERMINAL_METHODS:
                 chain = self._chain_of(f)
                 if chain and any(c in chain for c in PROVIDER_CHAINS):
                     self._record(_kind(chain), n)
+                    recorded = True
             # (b) direct provider HTTP: session.post("https://api.openai.com/...", ...)
             elif f.attr in HTTP_VERBS:
                 if any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)):
                     self._record("http", n)
-            # (e) attribute-target callable alias: self._go = client...create ; self._go(...)
-            else:
-                self._record_callable(self.attr_alias.get(self._chain_of(f) or ""), n)
+                    recorded = True
+            # (e) attribute-target callable alias — ALWAYS also consult attr_alias, even when the
+            #     attr name IS a terminal/http word (self.create = client...create ; self.create(...)):
+            #     the direct-chain check above misses it because 'self.create' has no provider substring.
+            if not recorded:
+                self._record_callable(self._resolve_attr(self._chain_of(f) or ""), n)
 
         elif isinstance(f, ast.Name):
             # (c)/(d) callable alias (incl. getattr/partial assigned to a name): f(...)
             resolved = self._resolve(f.id)
             if resolved != f.id:
                 self._record_callable(resolved, n)
+
+        elif isinstance(f, ast.NamedExpr):
+            # (g) walrus as callable: (go := client...create)(...)
+            self._record_callable(self._callable_chain_of(f.value), n)
 
         elif isinstance(f, ast.Call):
             # (f) immediate reflection/partial: getattr(chain,"create")(...) / partial(chain.create)(...)
@@ -289,8 +317,15 @@ class _Scanner(ast.NodeVisitor):
 
 
 def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
-    """Scan one Python source string. Raises SyntaxError on unparseable input."""
-    tree = ast.parse(src)
+    """Scan one Python source string. Raises SyntaxError on unparseable input.
+
+    We are parsing OTHER files to find egress, not linting them; suppress their benign
+    SyntaxWarnings (e.g. an unescaped '\\s' in a non-raw string) so they don't pollute the
+    gate's output. A real SyntaxError still propagates and is reported as unparseable upstream.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        tree = ast.parse(src)
     s = _Scanner()
     # Pre-pass: collect instance-attribute callable aliases (self.x = client...create) BEFORE
     # visiting calls, so a `self.x(...)` call in a method defined ABOVE __init__ still resolves

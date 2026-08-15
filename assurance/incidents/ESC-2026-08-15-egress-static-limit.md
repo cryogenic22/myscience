@@ -37,16 +37,31 @@ and the `getattr`/`partial` indirections.
 
 `assurance/egress_scan.py` now resolves the callable a value represents through `getattr` and
 `partial`, tracks attribute-target aliases module-wide with a pre-pass (so `self.x(...)` is
-caught regardless of method order), and handles tuple/list-unpack targets and `ast.Call` funcs.
-The module docstring is corrected to claim only what static analysis can deliver.
+caught regardless of method order), resolves them transitively (`self._go = self._raw = chain`),
+handles tuple/list-unpack targets, `ast.Call` funcs, and walrus (`:=`) aliases, and — critically
+— consults the attribute-alias table even when the attribute name IS a terminal word. The module
+docstring is corrected to claim only what static analysis can deliver.
 
-## The runtime residual (named, not hidden)
+## Round-3 recurrence (found by the verification review, now closed)
 
-Static analysis **cannot** see egress whose shape exists only at runtime — a method/attr name
-in a variable (`getattr(o, name)` with `name` computed), a dict-of-callables chosen at runtime,
-`exec`/`eval`, or a client injected by a plugin/reflection. This is a boundary of the technique,
-not a bug to patch in the scanner. The backstop is the **runtime** egress guard (PRIV-001b),
-which intercepts at the gateway regardless of how the call site was written.
+A verification review reproduced a member of THIS class that the first fix missed:
+`self.create = client.chat.completions.create ; self.create(...)` → `hits=0`. The
+terminal-method branch matched `.create` on the *direct* chain (`self.create`, no provider
+substring) and never fell through to the attribute-alias table. This is the exact "class claimed
+closed while a realistic member is open" pattern; it is now closed (fall-through added), with
+`test_scanner_catches_self_attr_named_like_terminal` plus walrus + two-hop tests. Lesson logged:
+when you claim a *class* closed, test the most NATURAL member, not only a non-colliding one.
+
+## The residual (named, not hidden)
+
+Static analysis **cannot** see egress whose shape is only decidable at runtime — a method/attr
+name in a variable (`getattr(o, name)` with `name` computed), a client injected by a
+plugin/reflection, or `exec`/`eval`. It also does **not** model **container/subscript
+indirection**, even with a literal key (`{"create": chain}["create"]()`), because that opens an
+unbounded dict/`.get`/list-modeling surface. These are boundaries of the technique, not bugs to
+patch in the scanner; each is pinned by a `strict=True` xfail so it can never be silently claimed
+as covered. The backstop for all of them is the **runtime** egress guard (PRIV-001b), which
+intercepts at the gateway regardless of how the call site was written.
 
 ## Regression tests
 

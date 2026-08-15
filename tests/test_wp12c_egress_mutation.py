@@ -379,6 +379,68 @@ def test_runtime_dynamic_dispatch_is_a_known_static_limit():
     assert len(scan_source(src)) >= 1
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "container/subscript indirection (even a literal key) is not modeled; a static residual, "
+    "backstopped by the PRIV-001b runtime guard (ESC-2026-08-15-egress-static-limit). strict=True "
+    "flips this to a failure if someone closes it without updating the incident."))
+def test_dict_subscript_indirection_is_a_known_static_limit():
+    src = 'def synth(client, p):\n    return {"create": client.chat.completions.create}["create"](messages=p)\n'
+    assert len(scan_source(src)) >= 1
+
+
+# --- forms a round-3 verification review reproduced; now CLOSED ---
+
+_SELF_TERMINAL_NAME_CACHE = """
+class Worker:
+    def __init__(self, client):
+        self.create = client.chat.completions.create
+    def run(self, prompt):
+        return self.create(model="gpt", messages=prompt)
+"""
+
+_WALRUS_IMMEDIATE = """
+def synth(client, prompt):
+    return (go := client.chat.completions.create)(model="gpt", messages=prompt)
+"""
+
+_WALRUS_IN_CONDITION = """
+def synth(client, prompt):
+    if (go := client.chat.completions.create):
+        return go(model="gpt", messages=prompt)
+"""
+
+_TWO_HOP_SELF_ATTR = """
+class Worker:
+    def __init__(self, client):
+        self._raw = client.chat.completions.create
+        self._go = self._raw
+    def run(self, prompt):
+        return self._go(model="gpt", messages=prompt)
+"""
+
+
+def test_scanner_catches_self_attr_named_like_terminal():
+    """self.create = client...create ; self.create(...) — the natural attr name must NOT slip
+    through the terminal-method branch (the round-3 recurrence of the attribute-cache class)."""
+    hits = scan_source(_SELF_TERMINAL_NAME_CACHE)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_walrus_immediate():
+    hits = scan_source(_WALRUS_IMMEDIATE)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_walrus_in_condition():
+    hits = scan_source(_WALRUS_IN_CONDITION)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_two_hop_self_attr_alias():
+    hits = scan_source(_TWO_HOP_SELF_ATTR)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
 def test_production_directories_are_not_skipped(tmp_path):
     """The skip list must never grow to hide a real runtime dir. A synthetic egress placed
     under a production-shaped path (services/, apps/, packages/) is still found."""
