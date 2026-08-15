@@ -19,10 +19,6 @@ on:
       pr:
         description: "PR number to reconcile (digits only)"
         required: true
-      require_approve:
-        description: "Also require the artifact verdict == APPROVE"
-        required: false
-        default: "false"
 
 # Least privilege for the whole workflow; the merge-gate job widens read scope only.
 permissions:
@@ -101,6 +97,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-test.txt
       - name: Reconcile review artifact against live head + real job results
+        # The merge-gate ALWAYS requires APPROVE — it is the "is this mergeable" gate. A valid
+        # CHANGES-REQUIRED artifact must NOT read green here (that is the assurance-kernel job's
+        # structural check, not a merge signal). Red until an independent APPROVE reconciles.
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -109,15 +108,12 @@ jobs:
           KERNEL_RESULT: ${{ needs.assurance-kernel.result }}
           CONSERVATION_RESULT: ${{ needs.conservation-lane1.result }}
           RUN_ID: ${{ github.run_id }}
-          REQUIRE_APPROVE: ${{ github.event.inputs.require_approve }}
         run: |
           set -euo pipefail
           PR="${EVENT_PR:-${INPUT_PR:-}}"
           case "$PR" in ''|*[!0-9]*) echo "invalid or missing PR number: '$PR'"; exit 2;; esac
-          EXTRA=""
-          if [ "${REQUIRE_APPROVE:-}" = "true" ]; then EXTRA="--require-verdict APPROVE"; fi
           python -m assurance.check --merge-gate \
             --pr "$PR" --repo "$GH_REPO" \
             --kernel-result "$KERNEL_RESULT" \
             --conservation-result "$CONSERVATION_RESULT" \
-            --run-id "$RUN_ID" $EXTRA
+            --run-id "$RUN_ID" --require-verdict APPROVE
