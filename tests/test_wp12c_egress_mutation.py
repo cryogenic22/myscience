@@ -388,6 +388,21 @@ def test_dict_subscript_indirection_is_a_known_static_limit():
     assert len(scan_source(src)) >= 1
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "cross-receiver attribute-cache (cls.create set via classmethod, read via self.create) aliases "
+    "the same slot through Python's class/instance attribute semantics, which static name-resolution "
+    "does not unify; a static residual backstopped by the PRIV-001b runtime guard "
+    "(ESC-2026-08-15-egress-static-limit). SAME-receiver forms (self.x/self.x) are closed."))
+def test_cross_receiver_attr_cache_is_a_known_static_limit():
+    src = ("class W:\n"
+           "    @classmethod\n"
+           "    def setup(cls, client):\n"
+           "        cls.create = client.chat.completions.create\n"
+           "    def run(self, prompt):\n"
+           "        return self.create(model='gpt', messages=prompt)\n")
+    assert len(scan_source(src)) >= 1
+
+
 # --- forms a round-3 verification review reproduced; now CLOSED ---
 
 _SELF_TERMINAL_NAME_CACHE = """

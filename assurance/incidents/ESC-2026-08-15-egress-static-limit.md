@@ -58,10 +58,14 @@ Static analysis **cannot** see egress whose shape is only decidable at runtime â
 name in a variable (`getattr(o, name)` with `name` computed), a client injected by a
 plugin/reflection, or `exec`/`eval`. It also does **not** model **container/subscript
 indirection**, even with a literal key (`{"create": chain}["create"]()`), because that opens an
-unbounded dict/`.get`/list-modeling surface. These are boundaries of the technique, not bugs to
-patch in the scanner; each is pinned by a `strict=True` xfail so it can never be silently claimed
-as covered. The backstop for all of them is the **runtime** egress guard (PRIV-001b), which
-intercepts at the gateway regardless of how the call site was written.
+unbounded dict/`.get`/list-modeling surface; nor **cross-receiver attribute-cache namespace
+unification** â€” `cls.create = client...create` set in a classmethod and read as `self.create(...)`
+aliases the same slot through Python's class/instance attribute semantics, which static
+name-resolution does not unify (same-receiver forms `self.x = ...; self.x(...)` ARE closed).
+These are boundaries of the technique, not bugs to patch in the scanner; each is pinned by a
+`strict=True` xfail so it can never be silently claimed as covered. The backstop for all of them
+is the **runtime** egress guard (PRIV-001b), which intercepts at the gateway regardless of how
+the call site was written.
 
 ## Regression tests
 
