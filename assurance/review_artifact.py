@@ -40,16 +40,28 @@ class Violation:
 @dataclass(frozen=True)
 class TrustedInputs:
     """Facts sourced OUTSIDE the review artifact. The validator believes the artifact's
-    self-attested values only insofar as they equal these.
+    self-attested values (SHAs, gate ``status``, ``reviewer``) only insofar as they equal
+    these. Nothing here is read from the artifact.
 
-    - ``pr_head_sha``: the real PR head, from ``gh pr view`` / the GitHub event payload /
-      ``git rev-parse`` — never from the artifact.
-    - ``final_commit_committed_at``: committer date of that head, from ``git show``.
+    - ``pr_head_sha``: the real PR head, from ``gh pr view`` / the GitHub event payload.
+    - ``final_commit_committed_at``: committer date of the reviewed commit, from ``git show``.
     - ``required_criteria``: the canonical ratified acceptance-criterion IDs (from the
       owner-protected acceptance manifest) the review MUST enumerate — completely.
-    - ``required_gates``: gate names that MUST be present AND ``pass``.
+    - ``required_gates``: gate names that MUST have a real ``success`` conclusion for APPROVE.
     - ``na_allowed_criteria``: criteria the manifest explicitly permits to be ``n/a``.
     - ``now``: trusted current time (ISO-8601) for future-timestamp rejection.
+    - ``gate_conclusions``: REAL check conclusions keyed by gate name (from GitHub check-runs /
+      same-workflow ``needs.*.result``), e.g. ``{"assurance-kernel": "success"}``. The
+      artifact's own ``gates[].status`` is NOT trusted — it is cross-checked against this.
+    - ``reviewer_login`` / ``pr_author_login``: the externally-observed reviewer and PR author
+      (from ``gh pr view --json reviews,author``). An APPROVE requires a reviewer, and the
+      reviewer must not be the author (independence).
+    - ``artifact_commit_parent``: parent SHA of the commit that introduced the review artifact.
+      When set, the review is in an evidence-only commit and ``reviewed_sha`` must equal this
+      (a review committed inside the reviewed branch cannot equal the resulting head).
+    - ``head_is_evidence_only``: whether ``reviewed_sha..pr_head_sha`` touches ONLY
+      ``assurance/reviews/`` — i.e. no code changed after the review.
+    - ``run_id``: the CI run id binding these conclusions to a concrete external execution.
     """
     pr_head_sha: str
     final_commit_committed_at: str | None = None
@@ -57,6 +69,12 @@ class TrustedInputs:
     required_gates: tuple[str, ...] = ()
     na_allowed_criteria: tuple[str, ...] = ()
     now: str | None = None
+    gate_conclusions: dict[str, str] = field(default_factory=dict)
+    reviewer_login: str | None = None
+    pr_author_login: str | None = None
+    artifact_commit_parent: str | None = None
+    head_is_evidence_only: bool | None = None
+    run_id: str | None = None
 
 
 def load_contract(path: str | Path | None = None) -> dict:
@@ -230,22 +248,37 @@ def validate_review(
 
     # 9. Reconciliation against TrustedInputs (external truth). Fail closed if absent for APPROVE.
     if trusted is not None:
-        # 9a. reviewed_sha and the artifact's own pr_head_sha must equal the trusted head.
-        if artifact.get("reviewed_sha") != trusted.pr_head_sha:
-            out.append(Violation("STALE_REVIEW_SHA",
-                                 f"reviewed_sha {artifact.get('reviewed_sha')!r} != trusted PR head "
-                                 f"{trusted.pr_head_sha!r} (the review does not cover the current head)"))
+        # 9a. Which SHA the review covers must be externally anchored — two supported modes.
+        if trusted.artifact_commit_parent is not None:
+            # Evidence-only-commit model: the review artifact lives in a commit ON TOP of the
+            # reviewed code, so a review committed inside the branch cannot equal the head —
+            # reviewed_sha must equal that commit's PARENT (the code it reviewed).
+            if artifact.get("reviewed_sha") != trusted.artifact_commit_parent:
+                out.append(Violation("EVIDENCE_COMMIT_UNBOUND",
+                                     f"reviewed_sha {artifact.get('reviewed_sha')!r} != the review commit's parent "
+                                     f"{trusted.artifact_commit_parent!r} (the artifact must sit atop the code it reviews)"))
+            if trusted.head_is_evidence_only is False:
+                out.append(Violation("CODE_CHANGED_AFTER_REVIEW",
+                                     "reviewed_sha..head changes files outside assurance/reviews/ — the head is not an "
+                                     "evidence-only commit over the reviewed code (the review would be stale)"))
+        else:
+            # Simple/external model: reviewed_sha is the head itself.
+            if artifact.get("reviewed_sha") != trusted.pr_head_sha:
+                out.append(Violation("STALE_REVIEW_SHA",
+                                     f"reviewed_sha {artifact.get('reviewed_sha')!r} != trusted PR head "
+                                     f"{trusted.pr_head_sha!r} (the review does not cover the current head)"))
+        # 9b. The artifact's self-reported pr_head_sha must equal the trusted head regardless.
         if artifact.get("pr_head_sha") != trusted.pr_head_sha:
             out.append(Violation("HEAD_MISMATCH",
                                  f"artifact pr_head_sha {artifact.get('pr_head_sha')!r} != trusted head "
                                  f"{trusted.pr_head_sha!r} (artifact self-reports a different head than git/GitHub)"))
-        # 9b. committed-at must match the trusted value when supplied.
+        # 9c. committed-at must match the trusted value when supplied.
         if trusted.final_commit_committed_at is not None \
                 and artifact.get("final_commit_committed_at") != trusted.final_commit_committed_at:
             out.append(Violation("COMMIT_TIME_MISMATCH",
                                  f"final_commit_committed_at {artifact.get('final_commit_committed_at')!r} != trusted "
                                  f"{trusted.final_commit_committed_at!r}"))
-        # 9c. Criterion set must EQUAL the ratified set (no missing, no fabricated).
+        # 9d. Criterion set must EQUAL the ratified set (no missing, no fabricated).
         if contract["rules"].get("criterion_set_must_equal_ratified") and trusted.required_criteria:
             required = set(trusted.required_criteria)
             listed = set(criterion_dispositions)
@@ -255,26 +288,33 @@ def validate_review(
             for extra in sorted(listed - required):
                 out.append(Violation("UNKNOWN_CRITERION",
                                      f"criterion {extra!r} is not in the ratified acceptance set (fabricated/renamed)"))
-            # 9d. n/a only where the manifest permits it.
             na_ok = set(trusted.na_allowed_criteria)
             for cid, disp in criterion_dispositions.items():
                 if disp == "n/a" and cid not in na_ok:
                     out.append(Violation("NA_NOT_PERMITTED",
                                          f"criterion {cid!r} marked 'n/a' but the manifest does not permit n/a for it"))
-        # 9e. Required gates must be present and pass (a 'skip' does NOT satisfy a required gate).
-        if contract["rules"].get("required_gates_must_pass"):
-            for gname in trusted.required_gates:
-                st = gate_status.get(gname)
-                if st != "pass":
-                    out.append(Violation("REQUIRED_GATE_NOT_PASSED",
-                                         f"required gate {gname!r} is {st or 'absent'!r}, not 'pass' "
-                                         f"(skip/fail/absent do not satisfy a required gate)"))
+        # 9e. A self-declared gate 'pass' that contradicts the REAL check conclusion is a lie.
+        for name, st in gate_status.items():
+            real = trusted.gate_conclusions.get(name)
+            if st == "pass" and real is not None and real != "success":
+                out.append(Violation("GATE_CONCLUSION_MISMATCH",
+                                     f"gate {name!r} claims 'pass' but its real check conclusion is {real!r}"))
+        # 9f. Reviewer identity + independence (external, not the artifact's 'author').
+        if trusted.reviewer_login and trusted.pr_author_login \
+                and trusted.reviewer_login == trusted.pr_author_login:
+            out.append(Violation("REVIEWER_NOT_INDEPENDENT",
+                                 f"reviewer {trusted.reviewer_login!r} is the PR author — not an independent review"))
+        declared_reviewer = artifact.get("reviewer")
+        if declared_reviewer and trusted.reviewer_login and declared_reviewer != trusted.reviewer_login:
+            out.append(Violation("REVIEWER_MISMATCH",
+                                 f"artifact reviewer {declared_reviewer!r} != externally-observed reviewer "
+                                 f"{trusted.reviewer_login!r}"))
     elif verdict == "APPROVE":
         out.append(Violation("UNVERIFIABLE_APPROVE",
-                             "APPROVE requires TrustedInputs (external PR head + ratified criteria) to reconcile; "
-                             "none were supplied, so the approval cannot be verified (fail closed)"))
+                             "APPROVE requires TrustedInputs (external PR head + ratified criteria + real check "
+                             "conclusions + reviewer identity) to reconcile; none supplied — fail closed"))
 
-    # 10. APPROVE gating — the core reconciliation against ratified criteria.
+    # 10. APPROVE gating — the core reconciliation against ratified criteria + external truth.
     if verdict == "APPROVE":
         req = contract["approve_requires"]
         if open_musts > req["open_must_items"]:
@@ -287,6 +327,22 @@ def validate_review(
             out.append(Violation("APPROVE_WITH_UNMET_CRITERION",
                                  f"APPROVE with {unmet_criteria} unmet ratified criterion/criteria; "
                                  f"contract requires {req['unmet_spec_criteria']} (the PRIV-001 escaped-defect class)"))
+        if trusted is not None:
+            # 10a. Required gates must have a REAL 'success' conclusion (not the artifact's word).
+            if contract["rules"].get("required_gates_must_pass"):
+                if not trusted.gate_conclusions:
+                    out.append(Violation("APPROVE_UNVERIFIABLE_GATES",
+                                         "APPROVE requires real check conclusions (trusted.gate_conclusions); none supplied"))
+                for gname in trusted.required_gates:
+                    real = trusted.gate_conclusions.get(gname)
+                    if real != "success":
+                        out.append(Violation("REQUIRED_GATE_NOT_PASSED",
+                                             f"required gate {gname!r} real conclusion is {real or 'absent'!r}, not "
+                                             f"'success' (skip/fail/absent/pending do not satisfy a required gate)"))
+            # 10b. APPROVE requires an independent reviewer identity from external truth.
+            if not trusted.reviewer_login:
+                out.append(Violation("MISSING_REVIEWER",
+                                     "APPROVE requires an externally-observed independent reviewer identity"))
 
     return out
 
