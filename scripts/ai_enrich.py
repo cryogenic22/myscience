@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from config import config
 from db import Database
+from services.llm_gateway import guard_openai_chat
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,9 @@ def _call_llm(prompt: str, system_prompt: str = "") -> dict | None:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = client.chat.completions.create(
+        # Route through the PRIV-001b egress guard (scan/redact before the provider call).
+        response = guard_openai_chat(
+            client,
             model=config.llm.model,
             messages=messages,
             temperature=0.1,

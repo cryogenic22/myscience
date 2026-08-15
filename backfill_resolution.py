@@ -17,6 +17,7 @@ from datetime import datetime
 
 from config import config
 from db import Database
+from services.llm_gateway import guard_openai_embeddings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
 logger = logging.getLogger(__name__)
@@ -324,9 +325,11 @@ def backfill_new_drug_embeddings(db, openai_client):
         batch_texts = texts[i:i + BATCH]
         batch_ids = ids[i:i + BATCH]
         try:
-            response = openai_client.embeddings.create(
-                input=batch_texts,
+            # Route through the PRIV-001b egress guard (scan/redact before the provider call).
+            response = guard_openai_embeddings(
+                openai_client,
                 model=config.embedding.model,
+                input=batch_texts,
             )
             for row_id, emb_data in zip(batch_ids, response.data):
                 db.execute(

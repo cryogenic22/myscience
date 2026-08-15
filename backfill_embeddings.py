@@ -9,6 +9,7 @@ import time
 from config import config
 from db import Database
 from openai import OpenAI
+from services.llm_gateway import guard_openai_embeddings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
 logger = logging.getLogger(__name__)
@@ -95,7 +96,8 @@ def backfill():
             ids = [r[id_col] for r in batch]
 
             try:
-                response = client.embeddings.create(input=texts, model=MODEL)
+                # Route through the PRIV-001b egress guard (scan/redact before the provider call).
+                response = guard_openai_embeddings(client, model=MODEL, input=texts)
 
                 for row_id, emb_data in zip(ids, response.data):
                     embedding = emb_data.embedding
