@@ -857,3 +857,35 @@ semantic model + identity integration → chat tools and frontend.
 adopt that protocol. Acceptance criteria must be owner-ratified **before** implementation; the
 builder must not self-author or modify its merge bar to pass. This lane makes no commitment to
 #327's current artifact design, which is under review.
+
+### 13.5 Cross-lane ASKs — WP-0 ⇄ WP-2 ⇄ WP-9 (BLOCKING, opened 2026-08-15)
+
+Two boundaries must be ratified **before any of the three work packages lands**. Both were
+discovered by an independent review of the WP-2 Phase C draft, which had asserted agreement that
+does not exist and claimed ownership that SPEC-003 assigns elsewhere.
+
+**ASK-WP2-1 — Run-outcome vocabulary (WP-0 owns; WP-2 proposes inputs).**
+WP-2 needs `truncated`, `cursor_advanced`, `contract_validation_failed`, `credential_unresolved`
+and `egress_refused` to reach a terminal outcome rather than a log line. `classify_run_outcome`
+(`integration/pipeline.py:125-168`) is WP-0's. **Deliverable: one shared normative table** mapping
+each input to a terminal outcome *and* a Lane-2 health consequence. A test that merely rejects
+unknown strings does not prove semantic mapping, so the WP-2 suite carries **M-28a**, which stays
+RED until this table exists. Do not mark it pending to make a suite green.
+
+**ASK-WP2-2 — Cursor / lease ownership (WP-9 owns).**
+SPEC-003 §6 row 10 assigns *"durable cursors, streaming batches, leases, cost controls"* to
+**WP-9**. The WP-2 Phase C draft specified a cursor table, a lease and rollback semantics; that is
+**withdrawn** in C.1. WP-2 retains only `source_jobs` run identity (recording `cursor_before` /
+`cursor_after`). **Deliverable: one normative cursor/lease interface published by WP-9** before
+either lane specs its side, covering: cardinality per `(source_instance_id, stream_key)`, cursor
+typing, whether "empty page + advanced token" is legitimate (it is, for some sync APIs), advisory
+lock **vs** TTL/heartbeat/fencing (alternatives, not a stack), and whether rollback is automatic
+(WP-2's position: it must not be — safety depends on cursor kind and sink idempotency).
+
+**Provisional dependency (not an ASK, recorded for traceability):** WP-2's object names are
+*aligned with* `specs/trusted_intelligence_v2/` (TIV2-020), which is **untracked and labelled
+DRAFT with "Implementation authority: none until the owner records ratification"**. Per §12's own
+rule that a board must not cite an untracked doc as ratified truth, the seam is **provisional**,
+pinned by content digest in `WP-2_source_contract_control_plane.md` §2. If TIV2 ratifies with
+different names, WP-2 renames; if it never ratifies, the names still stand on the Phase A finding
+that a bare `source_id` collides with `cross_linker.py`'s graph-edge usage.

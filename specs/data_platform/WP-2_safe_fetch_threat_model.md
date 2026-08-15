@@ -1,8 +1,19 @@
 # WP-2 — Safe-fetch & secret-boundary threat model (Phase B)
 
-**Status:** Design activity. Spec-only — no runtime wiring, no executable tests in this branch.
+**Status:** Design activity, **revision C.1**. Spec-only — no runtime wiring, no executable tests
+in this branch.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
 **Date:** 2026-08-15
+
+### Revision log
+
+| Rev | Change | Cause |
+|---|---|---|
+| C.1 | **T-07 corrected** — the response cursor does *not* drive the next request's origin; it is a query parameter on the configured URL. Re-scoped to T-07a/b/c. | Independent review; verified at `rest_connector.py:386-397` |
+| C.1 | **C-06 re-scoped** — a blanket grep of `connectors/` would be RED against 23 of 30 modules at the baseline. Replaced with a hard gate for contract-driven connectors plus a shrink-only allowlist for the bespoke fleet. | Independent review; verified by grep |
+| C.1 | **C-02 extended** — TLS SNI/hostname verification under IP pinning, actual-peer verification, all DNS answers, IPv4-mapped IPv6, environment proxies. | Independent review |
+| C.1 | **C-03/C-04 tightened** — cross-origin redirect terminates the run; auth binding covers header, API-key header *and* API-key query param. | Contract/mutation-case mismatch |
+| C.1 | **C-11/C-12 reconciled** — reject at admission, project at persistence, in that order. | The two rules read as contradictory |
 **Grounded in:** `WP-2_findings_reverification.md` (Phase A) — every "today" claim below is a
 verified file:line finding from that record, not a restatement of the 2026-08-07 review.
 
@@ -66,12 +77,39 @@ Naming: **T-nn**. Each carries the *verified* current state from Phase A.
 | **T-04** | Public URL 302-redirects to a private address | **Open.** `requests` follows redirects by default; no re-validation per hop |
 | **T-05** | DNS rebinding — hostname resolves public at validation, private at fetch (TOCTOU) | **Open.** No pinning; validation and fetch would resolve independently |
 | **T-06** | Credentials attached to a redirect target — token leaks to an attacker host | **Open.** `_build_auth()` (`rest_connector.py:333-342`) sets headers once; `requests` forwards on same-host redirect |
-| **T-07** | Pagination cursor/`next` URL from the *response body* drives the next fetch | **Open.** `rest_connector.py:428` reads `cursor_path` out of the payload; a hostile source controls the next request |
+| **T-07** | Response-supplied pagination cursor influences the next request | **Open, but NOT as an SSRF vector — see the correction below** |
 
-**T-07 is the subtle one and it is specific to this codebase.** The stuck-cursor guard added at
-`:428` prevents an infinite loop but not a *redirection* — the cursor is attacker-influenced data
-that feeds the next request. Any egress control that validates only the contract's declared URL and
-not each derived request is bypassed by T-07.
+### T-07 — corrected in revision C.1
+
+**The first version of this document was wrong.** It claimed the response-body cursor "drives the
+next fetch" and could redirect the request to an attacker-chosen host. Re-read at
+`connectors/rest_connector.py:386-397`, the loop always fetches **`cfg.url`** — the contract's
+configured URL — and places the cursor in a *query parameter*:
+
+```python
+elif cfg.pagination == "cursor" and cursor is not None:
+    params[cfg.cursor_param] = cursor
+resp = self._fetch_with_retry(cfg.url, params=params)
+```
+
+So a hostile cursor **cannot change the origin**. The host never varies within a REST fetch loop.
+The residual threat is real but smaller and differently shaped:
+
+- **T-07a — parameter injection.** A hostile cursor value is echoed back into the next request's
+  query string, where it may alter server-side query semantics, widen a result set, or carry an
+  injection payload to the upstream API.
+- **T-07b — poisoned pagination.** A source can drive duplicate or unbounded page traversal within
+  `max_pages`. The stuck-cursor guard at `:428` catches only the *identical-cursor* case; an
+  alternating or cycling cursor defeats it.
+- **T-07c — a future next-URL adapter.** If a later connector kind takes an absolute `next` link
+  from the payload (a common REST idiom, and one this contract model would permit), the original
+  SSRF framing becomes correct. The control must therefore exist **before** such an adapter, not
+  after.
+
+**Consequence for the controls:** C-05 stays, but its justification changes — it is a *forward*
+guard for T-07c and a typing/bounding guard for T-07a/b, not a fix for a live SSRF hole. The
+corresponding mutation case is rewritten in the test specification: a hostile-next-URL case cannot
+reproduce a current failure and must not be presented as if it does.
 
 ### 4.2 Local file disclosure — target A2
 
@@ -116,19 +154,39 @@ Each control is stated so a test can falsify it. **C-nn ↔ T-nn** mapping in §
 
 - **C-01 — Scheme allowlist.** Only `https` (and `http` only for an explicitly flagged internal
   contract). Enforced at contract validation *and* at fetch.
-- **C-02 — Resolve-then-validate-then-pin.** Resolve the hostname, reject any answer in
-  private / loopback / link-local / unique-local / multicast / reserved ranges, then **connect to
-  the validated IP** (host header preserved). This is the only defense that closes T-05; a
-  hostname-string check does not.
+- **C-02 — Resolve-then-validate-then-pin.** Resolve the hostname, reject **every** returned
+  address (not just the first) in private / loopback / link-local / unique-local / multicast /
+  reserved ranges **including IPv4-mapped IPv6 forms**, then **connect to the validated IP**. This
+  is the only defense that closes T-05; a hostname-string check does not. Pinning has consequences
+  the first revision omitted and which the implementation must specify:
+  - **TLS must still verify against the *hostname*,** not the pinned IP — set SNI and the
+    certificate-verification hostname explicitly, or pinning silently degrades TLS.
+  - **Verify the actual peer** after connect; a connection-level assertion, not a pre-flight one.
+  - **Environment proxies (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) must be disabled or explicitly
+    allowlisted** — a proxy makes the pinned IP meaningless because the proxy re-resolves.
 - **C-03 — Per-hop revalidation.** Redirects disabled by default; if a contract opts in, every hop
-  re-runs C-01 + C-02, with a hop cap.
-- **C-04 — Credentials never survive a host change.** Auth headers are bound to the validated host;
-  a cross-host redirect drops them and fails the run.
-- **C-05 — Derived requests are requests.** Every URL built from response data (T-07 cursors,
-  `next` links) passes C-01 + C-02 + C-04. No "the contract was validated once" shortcut.
-- **C-06 — Single choke point.** All of the above live in **one** fetch primitive that
-  `connectors/base.py` uses, so a new connector cannot opt out by calling `requests` directly. A
-  Lane-1 gate greps the connector tree for direct `requests.`/`urllib`/`httpx` use.
+  re-runs C-01 + C-02, with a hop cap. **A cross-origin redirect terminates the run with
+  `egress_refused` — it is not followed with credentials stripped.** (The first revision's
+  contract text said "fail" while its mutation case only asserted header removal; the contract is
+  authoritative and the case is rewritten to match.)
+- **C-04 — Credentials never survive an origin change.** Auth material is bound to the validated
+  origin. This covers **every** auth placement, not just `Authorization`: bearer headers, arbitrary
+  API-key headers (`api_key_header`), **and query-parameter keys** (`api_key_param`) — all three
+  exist in `RestConfig` today (`connectors/rest_connector.py:88-95`).
+- **C-05 — Derived requests are requests.** Every request whose URL, origin, or parameters derive
+  from response data re-runs C-01 + C-02 + C-04, and cursor values are type- and length-bounded
+  before being echoed into a query string (T-07a/b). Forward-guards T-07c.
+- **C-06 — Single choke point, scoped honestly.** All of the above live in **one** fetch primitive.
+  **The first revision specified a blanket Lane-1 grep of `connectors/` for direct
+  `requests.`/`httpx`/`urlopen` use. That gate would be RED against the baseline: 23 of the 30
+  connector modules make direct HTTP calls today.** A gate that is red on day one gets weakened or
+  excluded — the exact failure this harness exists to prevent. Corrected scope:
+  - the gate is **hard** for contract-driven connectors (the generic Rest/Csv/Rss adapters, the
+    fetch primitive, and any new connector);
+  - the 23 bespoke modules sit on an **explicit, enumerated, expiring allowlist** with a named
+    owner, and the gate asserts the allowlist **only shrinks** — a monotonic ratchet, the same
+    shape as `ORPHAN_CEILINGS`;
+  - adding a file to the allowlist is a protected-surface change routed through the owner.
 - **C-07 — Optional egress allowlist per contract.** A deployed contract declares its hosts; the
   deployed *version* pins them, so a later contract edit cannot silently widen egress without a new
   version + approval.
@@ -148,12 +206,18 @@ Each control is stated so a test can falsify it. **C-nn ↔ T-nn** mapping in §
   (`{"credential_ref": "src/<source_instance_id>/token"}`). The config dataclasses lose their
   plaintext `auth_token` / `auth_password` / `api_key` fields; a runtime resolver injects the value
   at request time and it never enters the contract object graph.
-- **C-11 — Persistence is allowlist-shaped, not denylist-shaped.** The persisted contract is built
-  by *projecting declared, non-secret fields*, so an unknown key (T-14) is dropped by construction
-  rather than by name matching.
-- **C-12 — Reject, don't strip, at the boundary.** A contract submitted with inline credentials is
-  **rejected with a diagnostic**, not silently cleaned. Silent stripping teaches authors that inline
-  secrets work, and it is exactly how T-12/T-13 hid behind a passing test.
+- **C-11 / C-12 — Reject at admission; project at persistence. In that order.** The first revision
+  stated these as competing rules ("dropped by construction" vs "reject, don't strip"); they are
+  one ordered pair:
+  1. **Validation rejects** — an unknown field, an inline credential, or URL userinfo returns a
+     typed diagnostic and the contract is **not stored**. Silent cleaning teaches authors that
+     inline secrets work, and is exactly how T-12/T-13 hid behind a passing test.
+  2. **Persistence projects** — the stored row is then built by copying *declared, non-secret*
+     fields only. This is defence in depth: if validation is ever bypassed or a new field is added
+     to a config dataclass without a validator update, the undeclared value still cannot reach
+     storage.
+
+  Both are required. Rejection is the user-visible contract; projection is the containment.
 - **C-13 — URL userinfo is a validation error** (T-13), checked by parsing, not substring search.
 - **C-14 — Redaction at every egress of the *contract itself*:** logs, `ConnectorError` messages,
   API responses, catalog UI. One redaction helper, applied at the boundary.
@@ -194,11 +258,24 @@ introduced inside the implementation PR that makes them GREEN.
 2. Contract with `url: file:///etc/passwd` → rejected (C-01).
 3. Public hostname whose DNS answer is `127.0.0.1` → rejected at resolve, and the connection is
    made to the validated IP (C-02). Asserted with a stubbed resolver, no live DNS.
-4. 302 from an allowlisted host to `http://10.0.0.5/` → run fails; **no** request is issued to the
-   private address (C-03).
-5. Cross-host redirect → `Authorization` header absent on hop 2 (C-04).
-6. Response body supplies a cursor that is an absolute URL to a private host → rejected (C-05).
-7. A new connector calling `requests.get` directly → the choke-point gate is RED (C-06).
+4. 302 from an allowlisted host to `http://10.0.0.5/` → run terminates with `egress_refused`;
+   **no** request is issued to the private address, and no hop-2 request is made at all (C-03).
+5. Cross-origin redirect → the run **fails**; assert no second request was issued, *and*
+   separately assert that no auth material (bearer header, API-key header, **or API-key query
+   param**) is present on any attempted follow-up (C-04, all three placements).
+6. **Rewritten in C.1** — the original case ("cursor is an absolute URL to a private host") cannot
+   reproduce a current failure, because the REST loop always fetches `cfg.url` and puts the cursor
+   in a query param (`rest_connector.py:386-397`). Replaced by three honest cases:
+   6a. an over-long / wrong-typed cursor value → rejected before it is echoed into the query
+       string (T-07a);
+   6b. an alternating two-value cursor cycle → bounded and reported as truncation, not looped
+       (T-07b — the existing identical-cursor guard does not catch this);
+   6c. a *hypothetical* next-URL adapter fed an absolute private-host link → rejected by C-05.
+       Marked explicitly as a **forward guard for T-07c**, not a live-defect reproduction.
+7. A **contract-driven** connector calling `requests.get` directly → the choke-point gate is RED.
+   Separately: the bespoke allowlist grows by one entry → RED (monotonic-ratchet assertion). The
+   gate is **not** a blanket grep of `connectors/`, which would be red against 23 of 30 modules at
+   the baseline (C-06).
 8. `CsvConfig.path` present on a wizard-authored contract → rejected (C-08); a path escaping the
    root via symlink → rejected (C-09).
 9. **The Phase A probe, inverted into a gate:** the exact config that survived stripping
