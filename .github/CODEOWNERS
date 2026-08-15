@@ -30,6 +30,7 @@
 /tests/test_wp12b_review_validator.py @cryogenic22
 /tests/test_wp12c_egress_mutation.py @cryogenic22
 /tests/test_wp12_assurance_gate.py @cryogenic22
+/tests/test_priv001b_egress_guard.py @cryogenic22
 /protected-surface.txt @cryogenic22
 /.github/CODEOWNERS @cryogenic22
 /.githooks/ @cryogenic22

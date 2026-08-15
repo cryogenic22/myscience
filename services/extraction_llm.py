@@ -44,6 +44,7 @@ from services.extraction.financial_disclosure import (
 )
 from services.extraction.regulatory_crl import CRLExtraction
 from services.extraction.trial_readout import TrialReadoutExtraction
+from services.llm_gateway import guard_anthropic_messages, guard_openai_chat  # PRIV-001b egress adapter
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +498,8 @@ def make_anthropic_structured_call(
         last_exc: Optional[Exception] = None
         for attempt in range(max_retries):
             try:
-                response = client.messages.create(
+                response = guard_anthropic_messages(
+                    client,
                     model=model,
                     max_tokens=max_tokens,
                     system=system_prompt,
@@ -579,7 +581,8 @@ def make_openai_structured_call(
         last_exc: Optional[Exception] = None
         for attempt in range(max_retries):
             try:
-                response = client.chat.completions.create(
+                response = guard_openai_chat(
+                    client,
                     model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},

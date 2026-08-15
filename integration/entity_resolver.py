@@ -32,6 +32,7 @@ from domain.pharma.mention_normalizer import (
     COMPANY_SKIP_TERMS,
 )
 from integration.normalizer import NormalizedRecord
+from services.llm_gateway import guard_openai_chat, guard_openai_embeddings  # PRIV-001b egress adapter
 
 logger = logging.getLogger(__name__)
 
@@ -617,7 +618,8 @@ class EntityResolver:
         if text in self._embedding_cache:
             return self._embedding_cache[text]
         try:
-            response = self.openai_client.embeddings.create(
+            response = guard_openai_embeddings(
+                self.openai_client,
                 input=[text],
                 model=self.config.embedding.model,
             )
@@ -693,7 +695,8 @@ class EntityResolver:
             )
 
         try:
-            response = self.openai_client.chat.completions.create(
+            response = guard_openai_chat(
+                self.openai_client,
                 model=self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from integration.entity_resolver import ResolvedRecord
+from services.llm_gateway import guard_openai_embeddings  # PRIV-001b egress adapter
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,8 @@ class Embedder:
 
         try:
             response = _retry_with_backoff(
-                lambda: self.client.embeddings.create(
+                lambda: guard_openai_embeddings(
+                    self.client,
                     input=truncated,
                     model=self.model,
                 )
@@ -131,7 +133,8 @@ class Embedder:
             texts = [t[2] for t in batch]
 
             try:
-                response = self.client.embeddings.create(
+                response = guard_openai_embeddings(
+                    self.client,
                     input=texts,
                     model=self.model,
                 )

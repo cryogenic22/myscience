@@ -64,6 +64,9 @@ tests/test_wp12b_review_validator.py
 tests/test_wp12c_egress_mutation.py
 tests/test_wp12_assurance_gate.py
 
+# ── PRIV-001b egress guard acceptance (the enforcing driver + capture/parity tests) ──
+tests/test_priv001b_egress_guard.py
+
 # ── The boundary apparatus itself (fail-closed if any of these go missing) ──
 protected-surface.txt
 .github/CODEOWNERS

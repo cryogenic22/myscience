@@ -11,9 +11,12 @@ name: Assurance Gate (WP-12 — deterministic)
 
 on:
   push:
-    branches: [main, 'claude/handoff/**']
+    branches: [main, 'claude/handoff/**', 'claude/assurance/**']
   pull_request:
-    branches: [main, 'claude/handoff/**']
+    # Also match stacked PRs whose BASE is the assurance branch (e.g. #328 -> wp12-kernel),
+    # so the gate is not silently absent on a stacked security PR. A gate that never triggers
+    # is a vacuous gate.
+    branches: [main, 'claude/handoff/**', 'claude/assurance/**']
   workflow_dispatch:
     inputs:
       pr:

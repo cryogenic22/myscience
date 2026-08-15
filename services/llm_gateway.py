@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -222,6 +223,145 @@ class PIIRejected(Exception):
     def __init__(self, matches: list[PIIMatch]):
         self.matches = matches
         super().__init__(f"PII detected: {[m.kind for m in matches]}")
+
+
+class PIIPolicyForbidden(Exception):
+    """Raised when MZ_PII_POLICY=allow is used in a production environment."""
+
+
+# ────────────────────────────────────────────────────────────────────
+# PRIV-001b — provider-agnostic egress guard (the ONE approved adapter)
+# ────────────────────────────────────────────────────────────────────
+#
+# These `guard_*` functions are the ONLY code permitted to call a provider
+# `.create(...)`. Every runtime egress site routes its outbound text through
+# here, so PII is scanned/redacted (or the call rejected) BEFORE anything leaves
+# the process. The WP-12C scanner (assurance/egress_scan.py) enforces structurally
+# that no raw provider `.create` exists outside this adapter — see
+# assurance/contract/egress_inventory.json and SPEC_HANDOFF §H1.1.4.
+
+# Env vars consulted to classify the runtime environment. RAILWAY_ENVIRONMENT_NAME is the
+# variable Railway actually injects (https://docs.railway.com/variables/reference); omitting it
+# was the bypass an independent review found — on Railway the old list saw no prod marker, so
+# MZ_PII_POLICY=allow slipped through in production.
+_ENV_VARS = ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "MZ_ENV", "ENVIRONMENT", "APP_ENV")
+_PROD_VALUES = {"production", "prod", "prd", "live", "staging", "stage"}
+_DEV_VALUES = {"development", "dev", "test", "testing", "local", "ci", "sandbox"}
+
+
+def _is_production() -> bool:
+    """True if ANY consulted env var names a production-like environment."""
+    return any(os.environ.get(v, "").strip().lower() in _PROD_VALUES for v in _ENV_VARS)
+
+
+def _is_development() -> bool:
+    """True ONLY if an env var POSITIVELY designates a development/test environment.
+    An unset/unknown environment is NOT development — that is the fail-closed default."""
+    return any(os.environ.get(v, "").strip().lower() in _DEV_VALUES for v in _ENV_VARS)
+
+
+def resolve_pii_policy(policy: Optional[str] = None) -> str:
+    """Resolve the effective PII policy: explicit arg, else env MZ_PII_POLICY, else 'redact'.
+
+    'allow' (pass PII through unredacted) is FAIL-CLOSED: it is permitted ONLY with a POSITIVE
+    development/test designation. Production, OR an unknown/unset environment, both forbid it —
+    the mere ABSENCE of a recognised production marker is not permission to leak PII (that
+    absence-implies-safe assumption is exactly what the Railway RAILWAY_ENVIRONMENT_NAME gap
+    exploited). A builder cannot disable the filter on the live path by flipping an env var.
+    """
+    p = (policy or os.environ.get("MZ_PII_POLICY") or "redact").strip().lower()
+    if p not in VALID_PII_POLICIES:
+        raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}, got {p!r}")
+    # 'allow' requires a POSITIVE dev/test designation AND no production marker present — a
+    # production marker DOMINATES a coexisting dev marker (on Railway RAILWAY_ENVIRONMENT_NAME
+    # =production is always injected, so a builder must not re-enable passthrough by ALSO
+    # setting MZ_ENV=dev). Unknown/unset is not dev either. Fail closed on any doubt.
+    if p == "allow" and not (_is_development() and not _is_production()):
+        raise PIIPolicyForbidden(
+            "MZ_PII_POLICY=allow requires an explicit development/test environment with NO "
+            "production marker present (e.g. MZ_ENV=development and no RAILWAY_ENVIRONMENT_NAME"
+            "=production); it is forbidden in production and when the environment is unknown/unset "
+            "(fail closed) - outbound PII must be redacted or rejected"
+        )
+    return p
+
+
+def _apply_policy_to_text(text: Optional[str], policy: str) -> Optional[str]:
+    """Sanitize one text value under the resolved policy.
+
+    reject + match -> PIIRejected (the provider is never called by the guard).
+    redact + match -> redacted text.  allow / no-match -> unchanged.
+    """
+    if not text:
+        return text
+    matches = scan_pii(text)
+    if not matches:
+        return text
+    if policy == "reject":
+        raise PIIRejected(matches)
+    if policy == "redact":
+        return redact_pii(text, matches)
+    return text  # allow (unreachable in production — resolve_pii_policy blocks it)
+
+
+def _deep_sanitize(obj, policy: str):
+    """Recursively sanitize EVERY string leaf of a nested messages/content structure.
+
+    A shallow "top-level string or top-level {'text': ...} block" sanitizer failed OPEN on
+    mainstream shapes an independent review demonstrated: Anthropic ``tool_result`` blocks whose
+    text is nested one level deeper, multimodal parts, a message ``name`` field, or a
+    list-valued ``system``. Walking every string leaf closes those: structure is preserved and
+    only string leaves change; a non-PII string (role names, "text"/"tool_result" type markers,
+    JSON keys) never matches so it passes through unchanged; under ``reject`` the first PII match
+    raises before any provider call (fail closed). Non-string leaves (e.g. token-id ints in an
+    embeddings input) are left untouched.
+    """
+    if isinstance(obj, str):
+        return _apply_policy_to_text(obj, policy)
+    if isinstance(obj, dict):
+        return {k: _deep_sanitize(v, policy) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_sanitize(v, policy) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_deep_sanitize(v, policy) for v in obj)
+    return obj
+
+
+def _sanitize_messages(messages, policy: str):
+    """Deep-sanitize a messages list — every nested string leaf, not just top-level content."""
+    return _deep_sanitize(messages or [], policy)
+
+
+def _sanitize_input(value, policy: str):
+    """Embeddings input may be a str, a list of str, or nested; deep-sanitize string leaves."""
+    return _deep_sanitize(value, policy)
+
+
+def guard_openai_chat(client, *, model, messages, pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for OpenAI chat.completions.create. Sanitizes `messages`
+    BEFORE the call; passes stream/tools/temperature/etc. straight through."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_messages = _sanitize_messages(messages, policy)
+    return client.chat.completions.create(model=model, messages=safe_messages, **kwargs)
+
+
+def guard_anthropic_messages(client, *, model, messages, system=None,
+                             pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for Anthropic messages.create. Sanitizes `system` + `messages`."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_messages = _sanitize_messages(messages, policy)
+    call_kwargs = dict(kwargs)
+    if system is not None:
+        # system may be a plain string OR a list of content blocks — deep-sanitize both.
+        call_kwargs["system"] = _deep_sanitize(system, policy)
+    return client.messages.create(model=model, messages=safe_messages, **call_kwargs)
+
+
+def guard_openai_embeddings(client, *, model, input, pii_policy: Optional[str] = None, **kwargs):
+    """Approved adapter for OpenAI embeddings.create. `input` may be str or list[str]."""
+    policy = resolve_pii_policy(pii_policy)
+    safe_input = _sanitize_input(input, policy)
+    return client.embeddings.create(model=model, input=safe_input, **kwargs)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -462,8 +602,9 @@ class LLMGateway:
     ) -> InvokeResult:
         """Resolve prompt, render template, scan PII, invoke chat_with_telemetry,
         return result with telemetry baked in."""
-        if pii_policy not in VALID_PII_POLICIES:
-            raise ValueError(f"pii_policy must be one of {sorted(VALID_PII_POLICIES)}")
+        # Same fail-closed policy gate as the guard_* adapters: 'allow' is forbidden off an
+        # explicit dev/test environment, so the higher-level invoke path cannot leak PII either.
+        pii_policy = resolve_pii_policy(pii_policy)
 
         # Resolve prompt by UUID or name (+ optional version)
         resolved: Optional[Prompt] = None
