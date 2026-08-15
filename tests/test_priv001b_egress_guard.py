@@ -259,6 +259,75 @@ def test_backfill_script_call_site_fails_closed_on_pii(monkeypatch):
     assert db.updates == [], "a redacted/leaked embedding was written despite rejection"
 
 
+# ============================ round-3: fail-closed gaps a review found =========
+
+def test_allow_forbidden_when_prod_marker_coexists_with_dev(monkeypatch):
+    """A production marker DOMINATES a coexisting dev marker: on Railway
+    RAILWAY_ENVIRONMENT_NAME=production is always injected, so ALSO setting MZ_ENV=dev must NOT
+    re-enable passthrough."""
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    monkeypatch.setenv("MZ_ENV", "dev")
+    with pytest.raises(PIIPolicyForbidden):
+        resolve_pii_policy("allow")
+    c = FakeOpenAI()
+    with pytest.raises(PIIPolicyForbidden):
+        guard_openai_chat(c, model="m", messages=[{"role": "user", "content": "ssn 123-45-6789"}], pii_policy="allow")
+    assert c.chat_calls == []
+
+
+def test_nested_anthropic_tool_result_is_deep_redacted():
+    """PII nested inside an Anthropic tool_result content block must be redacted, not passed
+    through (the shallow sanitizer failed open on this mainstream tool-use shape)."""
+    c = FakeAnthropic()
+    guard_anthropic_messages(
+        c, model="m",
+        messages=[{"role": "user", "content": [
+            {"type": "tool_result", "content": [{"type": "text", "text": "ssn 123-45-6789"}]}
+        ]}],
+        pii_policy="redact",
+    )
+    dumped = json.dumps(c.calls)
+    assert "123-45-6789" not in dumped and "[SSN]" in dumped
+
+
+def test_nested_reject_makes_zero_calls():
+    c = FakeAnthropic()
+    with pytest.raises(PIIRejected):
+        guard_anthropic_messages(
+            c, model="m",
+            messages=[{"role": "user", "content": [
+                {"type": "tool_result", "content": [{"type": "text", "text": "ssn 123-45-6789"}]}
+            ]}],
+            pii_policy="reject",
+        )
+    assert c.calls == []
+
+
+def test_dict_content_and_name_field_are_sanitized():
+    """Non-string message content (dict) and the message `name` field are string leaves too."""
+    c = FakeOpenAI()
+    guard_openai_chat(
+        c, model="m",
+        messages=[{"role": "user", "name": "mail a@b.com",
+                   "content": {"type": "text", "text": "call 415-555-1234"}}],
+        pii_policy="redact",
+    )
+    dumped = json.dumps(c.chat_calls)
+    assert "a@b.com" not in dumped and "415-555-1234" not in dumped
+
+
+def test_anthropic_system_as_list_is_redacted_not_crashed():
+    """system may be a list of content blocks (a valid API shape) — deep-sanitize, don't crash."""
+    c = FakeAnthropic()
+    guard_anthropic_messages(
+        c, model="m",
+        system=[{"type": "text", "text": "ssn 123-45-6789"}],
+        messages=[{"role": "user", "content": "hello"}],
+        pii_policy="redact",
+    )
+    assert "123-45-6789" not in json.dumps(c.calls)
+
+
 def test_default_policy_is_redact():
     assert resolve_pii_policy() == "redact"
 
