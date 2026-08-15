@@ -233,6 +233,58 @@ def test_code_changed_after_review_rejected():
     assert "CODE_CHANGED_AFTER_REVIEW" in {v.code for v in validate_review(art, CONTRACT, trusted)}
 
 
+def test_evidence_only_undeterminable_fails_closed():
+    """Round-3: an undeterminable evidence-only diff (git unavailable) must fail closed, not open."""
+    trusted = TrustedInputs(
+        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
+        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
+        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
+        gate_conclusions={"conservation-lane1": "success"},
+        reviewer_login="independent-reviewer", pr_author_login="the-builder",
+        artifact_commit_parent=_PARENT, head_is_evidence_only=None,   # undeterminable
+    )
+    art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
+    assert "EVIDENCE_ONLY_UNVERIFIABLE" in {v.code for v in validate_review(art, CONTRACT, trusted)}
+
+
+def test_approve_with_empty_ratified_criteria_fails_closed():
+    """Round-3: an empty ratified set means completeness was NOT checked — an APPROVE that
+    reconciled against nothing must fail closed, not silently pass."""
+    trusted = TrustedInputs(
+        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
+        required_criteria=(),                       # empty ratified set
+        required_gates=("conservation-lane1",), now=_NOW,
+        gate_conclusions={"conservation-lane1": "success"},
+        reviewer_login="independent-reviewer", pr_author_login="the-builder",
+    )
+    assert "MISSING_RATIFIED_CRITERIA" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+
+
+def test_approve_with_empty_required_gates_fails_closed():
+    trusted = TrustedInputs(
+        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
+        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=(),   # no gate actually required
+        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
+        gate_conclusions={"conservation-lane1": "success"},
+        reviewer_login="independent-reviewer", pr_author_login="the-builder",
+    )
+    assert "MISSING_RATIFIED_GATES" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+
+
+def test_empty_evidence_ref_rejected():
+    """Round-3: a 'met' criterion cannot resolve to an evidence entry whose ref is empty."""
+    art = _mut(
+        spec_conformance=[
+            {"criterion_id": "SPEC_X#1", "verdict": "met", "evidence_ref": "ev-tests"},
+            {"criterion_id": "SPEC_X#2", "verdict": "n/a", "evidence_ref": "-"},
+        ],
+        evidence=[{"id": "ev-tests", "ref": "   ", "produced_at": "2026-08-14T10:05:00+00:00"}],
+    )
+    codes = _codes(art)
+    assert "MALFORMED_EVIDENCE" in codes, codes
+    assert "UNRESOLVED_EVIDENCE_REF" in codes, codes
+
+
 def test_fabricated_selfattested_approval_is_rejected():
     """The round-1 headline defect, now also with lying gate + non-independent reviewer."""
     fabricated = {

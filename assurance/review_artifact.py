@@ -218,7 +218,12 @@ def validate_review(
                 out.append(Violation("MALFORMED_EVIDENCE",
                                      f"evidence[{i}] missing required fields {ev_item['required_fields']}"))
                 continue
-            evidence_ids.add(item["id"])
+            eid, eref = item["id"], item["ref"]
+            if not (isinstance(eid, str) and eid.strip()) or not (isinstance(eref, str) and eref.strip()):
+                out.append(Violation("MALFORMED_EVIDENCE",
+                                     f"evidence[{i}] has an empty 'id' or 'ref' — a pointer with no content proves nothing"))
+                continue
+            evidence_ids.add(eid)
             ets = _parse_ts(item["produced_at"])
             if ets is None:
                 out.append(Violation("MALFORMED_TIMESTAMP", f"evidence[{i}].produced_at not ISO-8601"))
@@ -261,6 +266,12 @@ def validate_review(
                 out.append(Violation("CODE_CHANGED_AFTER_REVIEW",
                                      "reviewed_sha..head changes files outside assurance/reviews/ — the head is not an "
                                      "evidence-only commit over the reviewed code (the review would be stale)"))
+            elif trusted.head_is_evidence_only is None:
+                # Undeterminable (e.g. the git diff could not be computed). Fail closed:
+                # "anything the validator cannot positively confirm is a violation."
+                out.append(Violation("EVIDENCE_ONLY_UNVERIFIABLE",
+                                     "could not verify that reviewed_sha..head is evidence-only (git diff unavailable); "
+                                     "fail closed rather than assume no code changed after the review"))
         else:
             # Simple/external model: reviewed_sha is the head itself.
             if artifact.get("reviewed_sha") != trusted.pr_head_sha:
@@ -328,8 +339,19 @@ def validate_review(
                                  f"APPROVE with {unmet_criteria} unmet ratified criterion/criteria; "
                                  f"contract requires {req['unmet_spec_criteria']} (the PRIV-001 escaped-defect class)"))
         if trusted is not None:
-            # 10a. Required gates must have a REAL 'success' conclusion (not the artifact's word).
+            # 10a. An empty ratified set means completeness/gate reconciliation was SKIPPED
+            #      (§9d/§10b guard on non-empty). An APPROVE that reconciled against nothing is
+            #      not verified — fail closed rather than silently pass.
+            if not trusted.required_criteria:
+                out.append(Violation("MISSING_RATIFIED_CRITERIA",
+                                     "APPROVE cannot be reconciled: no ratified criterion set supplied "
+                                     "(criterion-completeness was not checked) — fail closed"))
+            # 10b. Required gates must have a REAL 'success' conclusion (not the artifact's word).
             if contract["rules"].get("required_gates_must_pass"):
+                if not trusted.required_gates:
+                    out.append(Violation("MISSING_RATIFIED_GATES",
+                                         "APPROVE cannot be reconciled: no required-gate set supplied "
+                                         "(no gate was actually required) — fail closed"))
                 if not trusted.gate_conclusions:
                     out.append(Violation("APPROVE_UNVERIFIABLE_GATES",
                                          "APPROVE requires real check conclusions (trusted.gate_conclusions); none supplied"))
@@ -339,7 +361,7 @@ def validate_review(
                         out.append(Violation("REQUIRED_GATE_NOT_PASSED",
                                              f"required gate {gname!r} real conclusion is {real or 'absent'!r}, not "
                                              f"'success' (skip/fail/absent/pending do not satisfy a required gate)"))
-            # 10b. APPROVE requires an independent reviewer identity from external truth.
+            # 10c. APPROVE requires an independent reviewer identity from external truth.
             if not trusted.reviewer_login:
                 out.append(Violation("MISSING_REVIEWER",
                                      "APPROVE requires an externally-observed independent reviewer identity"))
