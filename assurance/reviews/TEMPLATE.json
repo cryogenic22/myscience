@@ -1,0 +1,23 @@
+{
+  "_comment": "FORMAT TEMPLATE — not a review of any PR. The independent reviewer copies this to PR-<n>.json in an EVIDENCE-ONLY COMMIT whose parent is the reviewed code SHA (so reviewed_sha == that parent; a review committed inside the branch cannot equal the resulting head). Placeholders below are 40-hex/login stand-ins. See README.md.",
+  "pr": "#<number>",
+  "verdict": "CHANGES-REQUIRED",
+  "reviewer": "<github-login-of-independent-reviewer>",
+  "reviewed_sha": "0000000000000000000000000000000000000000",
+  "pr_head_sha": "1111111111111111111111111111111111111111",
+  "final_commit_committed_at": "2026-01-01T00:00:00+00:00",
+  "spec_conformance": [
+    {"criterion_id": "<CRIT#1>", "verdict": "met", "evidence_ref": "ev-1"},
+    {"criterion_id": "<CRIT#2>", "verdict": "unmet", "evidence_ref": "why-it-is-unmet"}
+  ],
+  "findings": [
+    {"id": "F1", "severity": "must", "must_fix": true, "resolved": false}
+  ],
+  "gates": [
+    {"name": "assurance-kernel", "status": "pass"},
+    {"name": "conservation-lane1", "status": "pass"}
+  ],
+  "evidence": [
+    {"id": "ev-1", "ref": "pytest tests/... (pasted output)", "produced_at": "2026-01-01T00:05:00+00:00"}
+  ]
+}

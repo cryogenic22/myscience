@@ -1,10 +1,11 @@
 {
-  "schema_version": "wp12.manifest.v1",
-  "description": "Owner-ratified acceptance manifest: the CANONICAL requirement set per PR. This is the source of the criteria + required-gates the WP-12B validator reconciles a review against — supplied as TrustedInputs, NOT taken from the review artifact. A reviewer cannot invent, drop, or renumber criteria: the set here must be enumerated completely. Criterion text is mirrored from the ratified spec section named in `spec`. Editing this file changes the merge bar; it is a protected surface (assurance/contract/ in protected-surface.txt) and changes route through the owner.",
+  "schema_version": "wp12.manifest.v2",
+  "status": "owner-review-pending",
+  "description": "Acceptance manifest: the CANONICAL requirement set per PR — the source of the criteria + required-gates the WP-12B validator reconciles a review against, supplied as TrustedInputs, NOT taken from the review artifact. A reviewer cannot invent, drop, or renumber criteria: the set here must be enumerated completely. Criterion text is mirrored from the ratified spec section named in `spec`. STATUS is owner-review-pending: this is the builder's PROPOSED bar; it becomes the ratified bar when the owner approves this PR's protected-surface change (it lives under assurance/contract/ in protected-surface.txt, so a builder cannot later edit it without owner review). `required_gates` are logical keys the CI merge-gate binds to REAL check conclusions (github needs.*.result); the validator requires each to be a real 'success' for APPROVE.",
   "prs": {
     "327": {
       "spec": "specs/SPEC_WP12_assurance_kernel.md#5-acceptance-criteria-this-pr",
-      "required_gates": ["conservation-lane1", "wp12-assurance-tests", "protected-surface-sync"],
+      "required_gates": ["assurance-kernel", "conservation-lane1"],
       "na_allowed": [],
       "criteria": [
         {"id": "WP12#1", "text": "review_contract.json exists and is loadable; valid_verdicts matches review-gate.md exactly (a test asserts no drift)."},

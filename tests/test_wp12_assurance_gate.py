@@ -1,23 +1,19 @@
 """WP-12A/B — the executable assurance gate (dogfood), hermetic.
 
-Proves the enforcement seam is real and non-vacuous WITHOUT touching the network:
+Proves the enforcement seam is real and non-vacuous WITHOUT the network:
   1. assurance.check.self_test has teeth — a fabricated APPROVE is rejected AND a well-formed
      APPROVE is accepted (a gate that inverts either way is vacuous, principle #3).
   2. The acceptance manifest is well-formed and its PR-327 criteria match SPEC_WP12 §5.
-  3. Every committed structured review artifact (assurance/reviews/PR-*.json) reconciles
-     against its ratified manifest entry — the Markdown PR table is not the artifact of record.
-
-Live-head reconciliation (reviewed_sha == the current PR head from git/GitHub) is the CLI's
-job at merge time (assurance/check.py --artifact ... --pr ...); it is intentionally NOT run
-here because a self-committed artifact is one commit behind its own head.
+  3. The review-artifact TEMPLATE validates structurally (the format is real, not a Markdown table).
+  4. resolve_head_sha fails CLOSED on an unresolvable --pr (no local-HEAD fallback), and the
+     evidence-only-commit detector classifies diffs correctly — the round-2 review's blockers.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import pytest
-
+import assurance.check as chk
 from assurance.check import self_test, load_manifest
 from assurance.review_artifact import TrustedInputs, load_contract, validate_review
 
@@ -25,20 +21,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 REVIEWS_DIR = REPO_ROOT / "assurance" / "reviews"
 CONTRACT = load_contract()
 MANIFEST = load_manifest()
-
-# Far-future so the timestamp checks are gated only by the artifact's OWN internal
-# consistency (evidence >= final_commit), never by a wall clock this test cannot control.
 _FAR_FUTURE = "2100-01-01T00:00:00+00:00"
 
 
 def test_selftest_is_non_vacuous():
-    """The CLI self-test must report zero failures: reject fixture rejected, accept accepted."""
     assert self_test(CONTRACT) == []
 
 
 def test_selftest_would_fail_if_gate_were_vacuous(monkeypatch):
-    """Meta-proof: if the validator suddenly accepted everything, self_test must catch it."""
-    import assurance.check as chk
     monkeypatch.setattr(chk, "validate_review", lambda *a, **k: [])
     failures = chk.self_test(CONTRACT)
     assert any("VACUOUS" in f for f in failures), failures
@@ -54,7 +44,6 @@ def test_manifest_wellformed():
 
 
 def test_pr327_manifest_matches_spec_section():
-    """The manifest's PR-327 criteria count matches the 7 acceptance criteria in SPEC_WP12 §5."""
     entry = MANIFEST["prs"]["327"]
     assert len(entry["criteria"]) == 7, entry["criteria"]
     spec = (REPO_ROOT / "specs" / "SPEC_WP12_assurance_kernel.md").read_text(encoding="utf-8")
@@ -62,31 +51,59 @@ def test_pr327_manifest_matches_spec_section():
     assert "## 5. Acceptance criteria" in spec
 
 
-def _committed_reviews() -> list[Path]:
-    return sorted(REVIEWS_DIR.glob("PR-*.json")) if REVIEWS_DIR.exists() else []
+def test_manifest_status_is_not_overclaimed():
+    """Blocker 7: the manifest must not claim owner-ratified while the spec is DRAFT."""
+    assert MANIFEST.get("status") == "owner-review-pending"
+    assert "owner-ratified" not in MANIFEST["description"].lower()
 
 
-def test_at_least_one_committed_review_artifact_exists():
-    """Dogfood: there is a structured artifact of record, not just a Markdown table."""
-    assert _committed_reviews(), "no assurance/reviews/PR-*.json artifact committed"
-
-
-@pytest.mark.parametrize("path", _committed_reviews(), ids=lambda p: p.name)
-def test_committed_review_artifact_reconciles(path: Path):
-    """Each committed artifact must reconcile against its ratified manifest entry: enumerate
-    every criterion, pass every required gate, resolve every 'met' evidence_ref, valid verdict.
-    (Structural + criteria + gate reconciliation; live-head equality is the merge-gate's job.)"""
-    artifact = json.loads(path.read_text(encoding="utf-8"))
-    pr = str(artifact["pr"]).lstrip("#")
-    assert pr in MANIFEST["prs"], f"{path.name}: no manifest entry for PR {pr}"
-    entry = MANIFEST["prs"][pr]
+def test_review_template_validates_structurally():
+    """The evidence-only-commit TEMPLATE is a real, machine-checkable artifact (not a table)."""
+    tpl = json.loads((REVIEWS_DIR / "TEMPLATE.json").read_text(encoding="utf-8"))
+    ids = tuple(c["criterion_id"] for c in tpl["spec_conformance"])
     trusted = TrustedInputs(
-        pr_head_sha=artifact["reviewed_sha"],           # self-consistent (not live-head)
-        final_commit_committed_at=None,                 # commit-time equality is the CLI's job
-        required_criteria=tuple(c["id"] for c in entry["criteria"]),
-        required_gates=tuple(entry.get("required_gates", ())),
-        na_allowed_criteria=tuple(entry.get("na_allowed", ())),
+        pr_head_sha=tpl["pr_head_sha"],
+        required_criteria=ids,
+        artifact_commit_parent=tpl["reviewed_sha"],   # evidence-commit parent == reviewed_sha
+        head_is_evidence_only=True,
         now=_FAR_FUTURE,
     )
-    violations = validate_review(artifact, CONTRACT, trusted)
+    violations = validate_review(tpl, CONTRACT, trusted)
     assert violations == [], [f"{v.code}: {v.message}" for v in violations]
+
+
+def test_no_builder_authored_verdict_artifact_present():
+    """The self-referential builder artifact is gone; only the TEMPLATE + README remain here.
+    Real PR-<n>.json verdicts are added later by the independent reviewer in an evidence commit."""
+    names = {p.name for p in REVIEWS_DIR.glob("*") if p.is_file()}
+    assert names == {"TEMPLATE.json", "README.md"}, names
+
+
+# ---- CLI external-truth behaviour (blocker 3 + the evidence-only detector) ----
+
+def test_resolve_head_sha_fails_closed_on_unresolvable_pr(monkeypatch):
+    """--pr given but GitHub cannot resolve it -> (None, ...), NEVER a local-HEAD fallback."""
+    monkeypatch.setattr(chk, "_run", lambda cmd: None)   # every git/gh call fails
+    sha, source = chk.resolve_head_sha(pr="999999", explicit=None, repo="owner/repo")
+    assert sha is None and source == "gh-unresolved", (sha, source)
+
+
+def test_resolve_head_sha_prefers_explicit(monkeypatch):
+    monkeypatch.setattr(chk, "_run", lambda cmd: "SHOULD_NOT_BE_USED")
+    sha, source = chk.resolve_head_sha(pr="1", explicit="deadbeef", repo=None)
+    assert sha == "deadbeef" and source == "--head-sha"
+
+
+def test_head_is_evidence_only_true_for_reviews_only_diff(monkeypatch):
+    monkeypatch.setattr(chk, "_run", lambda cmd: "assurance/reviews/PR-1.json")
+    assert chk.head_is_evidence_only("aaa", "bbb") is True
+
+
+def test_head_is_evidence_only_false_when_code_changed(monkeypatch):
+    monkeypatch.setattr(chk, "_run", lambda cmd: "assurance/reviews/PR-1.json\nservices/llm.py")
+    assert chk.head_is_evidence_only("aaa", "bbb") is False
+
+
+def test_head_is_evidence_only_true_for_empty_diff(monkeypatch):
+    monkeypatch.setattr(chk, "_run", lambda cmd: "")
+    assert chk.head_is_evidence_only("aaa", "aaa") is True
