@@ -1,41 +1,42 @@
 name: Assurance Gate (WP-12 — deterministic)
 
-# WP-12 closed-loop assurance kernel, PR-HARD and hermetic (no network, no DB).
-#  - WP-12B review-artifact validator + WP-12C egress scanner mutation proofs
-#  - the executable review gate (assurance/check.py --self-test) proven non-vacuous each run
-#  - every committed structured review artifact reconciles against its ratified manifest
-#  - protected-surface.txt <-> CODEOWNERS stay in sync
-#
-# Live-head reconciliation of a review artifact (reviewed_sha == the real PR head) is the
-# `review-artifact-merge-gate` job below (owner-dispatched), since a self-committed artifact
-# is one commit behind its own head. See specs/SPEC_WP12_assurance_kernel.md and
-# .claude/rules/conservation-gates.md.
+# WP-12 closed-loop assurance kernel. Three jobs, all running against the EXACT PR head:
+#   - assurance-kernel   : WP-12B validator + WP-12C scanner + self-test + protected-surface sync
+#   - conservation-lane1 : the deterministic conservation invariants
+#   - merge-gate         : reconciles the independent-review artifact against the LIVE head + the
+#                          REAL results of the two jobs above; FAILS CLOSED until a valid
+#                          independent-review evidence commit exists (a skipped job is not a
+#                          passed merge gate). See assurance/reviews/README.md and
+#                          specs/SPEC_WP12_assurance_kernel.md.
 
 on:
   push:
     branches: [main, 'claude/handoff/**']
   pull_request:
-    # Runs on PRs targeting main AND the handoff baseline chain, so this gate is not silently
-    # inert on a stacked PR (e.g. #327 -> claude/handoff/h0-baseline). A security gate that
-    # never triggers is a vacuous gate.
     branches: [main, 'claude/handoff/**']
   workflow_dispatch:
     inputs:
       pr:
-        description: "PR number whose assurance/reviews/PR-<n>.json to reconcile against live head"
+        description: "PR number to reconcile (digits only)"
         required: true
       require_approve:
-        description: "Also require the artifact verdict == APPROVE (merge gate)"
+        description: "Also require the artifact verdict == APPROVE"
         required: false
         default: "false"
+
+# Least privilege for the whole workflow; the merge-gate job widens read scope only.
+permissions:
+  contents: read
 
 jobs:
   assurance-kernel:
     runs-on: ubuntu-latest
-    name: WP-12 assurance kernel (DB-free, hermetic)
+    name: assurance-kernel
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: '3.13'
       - name: Install dependencies
@@ -50,38 +51,73 @@ jobs:
             tests/test_wp12_assurance_gate.py \
             -q --no-header
       - name: Executable review gate is non-vacuous (self-test)
-        # A gate that checks nothing fails closed (conservation principle #3): the self-test
-        # asserts a fabricated APPROVE is rejected AND a well-formed APPROVE is accepted.
         run: python -m assurance.check --self-test
       - name: Protected-surface <-> CODEOWNERS in sync (HARD)
-        run: |
-          python -m pytest tests/test_protected_surface_sync.py -q --no-header
+        run: python -m pytest tests/test_protected_surface_sync.py -q --no-header
 
-  review-artifact-merge-gate:
-    # OWNER-DISPATCHED live reconciliation: validate a review artifact against the REAL PR
-    # head SHA (external truth), not the artifact's self-attested value. This is the WP-12E
-    # merge-gate seam the kernel cannot self-grant.
-    if: github.event_name == 'workflow_dispatch'
+  conservation-lane1:
     runs-on: ubuntu-latest
-    name: Review artifact vs live PR head
+    name: conservation-lane1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+      - name: Conservation Lane-1 invariants (DB-free; live-DB tests auto-skip)
+        run: |
+          python -m pytest \
+            tests/test_conservation_gates.py \
+            tests/test_schema_completeness.py \
+            tests/test_dossier_kb.py \
+            tests/test_migration_integrity.py \
+            -q --no-header
+
+  merge-gate:
+    # Reconcile the independent-review artifact against the exact live head + the REAL results
+    # of the jobs above. Runs even if they failed (always()) so it reports fail-closed truth,
+    # never a skipped-as-passed. Not run on plain pushes (no PR context).
+    needs: [assurance-kernel, conservation-lane1]
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    name: merge-gate
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: '3.13'
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-test.txt
-      - name: Reconcile review artifact against live head
+      - name: Reconcile review artifact against live head + real job results
         env:
           GH_TOKEN: ${{ github.token }}
-          REQUIRE_APPROVE: ${{ inputs.require_approve }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ github.event.inputs.pr }}
+          KERNEL_RESULT: ${{ needs.assurance-kernel.result }}
+          CONSERVATION_RESULT: ${{ needs.conservation-lane1.result }}
+          RUN_ID: ${{ github.run_id }}
+          REQUIRE_APPROVE: ${{ github.event.inputs.require_approve }}
         run: |
+          set -euo pipefail
+          PR="${EVENT_PR:-${INPUT_PR:-}}"
+          case "$PR" in ''|*[!0-9]*) echo "invalid or missing PR number: '$PR'"; exit 2;; esac
           EXTRA=""
-          if [ "$REQUIRE_APPROVE" = "true" ]; then EXTRA="--require-verdict APPROVE"; fi
-          python -m assurance.check \
-            --artifact "assurance/reviews/PR-${{ inputs.pr }}.json" \
-            --pr "${{ inputs.pr }}" \
-            --repo "${{ github.repository }}" \
-            $EXTRA
+          if [ "${REQUIRE_APPROVE:-}" = "true" ]; then EXTRA="--require-verdict APPROVE"; fi
+          python -m assurance.check --merge-gate \
+            --pr "$PR" --repo "$GH_REPO" \
+            --kernel-result "$KERNEL_RESULT" \
+            --conservation-result "$CONSERVATION_RESULT" \
+            --run-id "$RUN_ID" $EXTRA
