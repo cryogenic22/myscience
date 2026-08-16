@@ -21,7 +21,6 @@ CONTRACT = load_contract()
 
 _HEAD = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
 _OTHER = "ffffffffffffffffffffffffffffffffffffffff"
-_PARENT = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 _FINAL_AT = "2026-08-14T10:00:00+00:00"
 _NOW = "2026-08-14T12:00:00+00:00"
 _BOT = "codexindependentreviewer[bot]"
@@ -130,12 +129,11 @@ def test_good_approve_is_valid():
     assert validate_review(_GOOD_APPROVE, CONTRACT, _TRUSTED) == []
 
 
-def test_good_approve_in_evidence_commit_mode_is_valid():
-    """Evidence-only-commit model: reviewed_sha == the review commit's parent; head is the
-    evidence commit; nothing outside assurance/reviews/ changed."""
-    art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
-    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=True)
-    assert validate_review(art, CONTRACT, trusted) == []
+def test_review_of_record_is_the_body_payload_no_committed_artifact():
+    """Rev 4: the review payload lives in the trusted bot's review BODY; reviewed_sha equals the
+    live head directly (no self-referential evidence commit, no artifact_commit_parent). A payload
+    that covers the exact head validates clean."""
+    assert validate_review(_GOOD_APPROVE, CONTRACT, _TRUSTED) == []
 
 
 def test_changes_required_with_open_items_is_valid():
@@ -204,7 +202,7 @@ def test_approve_without_trusted_fails_closed():
 
 
 # =========================================================================
-# External truth beats self-attestation (gates + evidence-commit).
+# External truth beats self-attestation (real gate conclusions).
 # =========================================================================
 
 def test_gate_pass_contradicting_real_conclusion_rejected():
@@ -222,24 +220,6 @@ def test_required_gate_real_conclusion_absent_rejected():
 
 def test_approve_with_no_real_conclusions_fails_closed():
     assert "APPROVE_UNVERIFIABLE_GATES" in _codes(_GOOD_APPROVE, _ti(gate_conclusions={}))
-
-
-def test_evidence_commit_unbound_rejected():
-    trusted = _ti(artifact_commit_parent=_OTHER, head_is_evidence_only=True)
-    art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
-    assert "EVIDENCE_COMMIT_UNBOUND" in {v.code for v in validate_review(art, CONTRACT, trusted)}
-
-
-def test_code_changed_after_review_rejected():
-    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=False)
-    art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
-    assert "CODE_CHANGED_AFTER_REVIEW" in {v.code for v in validate_review(art, CONTRACT, trusted)}
-
-
-def test_evidence_only_undeterminable_fails_closed():
-    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=None)
-    art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
-    assert "EVIDENCE_ONLY_UNVERIFIABLE" in {v.code for v in validate_review(art, CONTRACT, trusted)}
 
 
 def test_approve_with_empty_ratified_criteria_fails_closed():

@@ -16,13 +16,14 @@ Modes:
     python -m assurance.check --merge-gate --pr <n> --repo <owner/repo> \
         --kernel-result <success|failure|...> --conservation-result <...> [--run-id <id>] \
         [--require-verdict APPROVE]
-        Reconcile the independent-review artifact (assurance/reviews/PR-<n>.json) against the
-        LIVE PR head. The review is an evidence-only commit whose PARENT is the reviewed code
-        (reviewed_sha == parent); the head must change nothing outside assurance/reviews/.
-        Gate conclusions come from the REAL job results (passed in from GitHub needs.*.result);
-        the reviewer identity comes from `gh pr view`. Fails CLOSED if the PR cannot be
-        resolved, if no artifact exists, or on any violation. There is NO local-HEAD fallback
-        when --pr is supplied.
+        Reconcile the review of record — the typed JSON payload in the trusted bot's GitHub
+        review BODY (NOT a file committed to the branch; that was self-referential) — against
+        the LIVE PR head. The review's own commit_id (external) must equal the head, so the
+        payload directly covers it. Gate conclusions come from the REAL job results (passed in
+        from GitHub needs.*.result); reviewer/author identities come from the GitHub review API.
+        Fails CLOSED if the PR head cannot be resolved externally (no local-HEAD fallback), if
+        the trusted reviewer has no review, if the review body carries no parseable payload, or
+        on any validation violation.
 
 Exit codes: 0 = valid; 1 = violations / fail-closed; 2 = usage / IO error.
 """
@@ -81,28 +82,6 @@ def commit_time(sha: str | None) -> str | None:
     return _run(["git", "show", "-s", "--format=%cI", sha]) if sha else None
 
 
-def artifact_commit_parent(path: Path) -> str | None:
-    """Parent SHA of the commit that last introduced/changed the review artifact.
-    Returns None (fail closed, no traceback) if the path is outside the repo or untracked."""
-    try:
-        rel = path.resolve().relative_to(REPO_ROOT).as_posix()
-    except ValueError:
-        return None
-    c = _run(["git", "log", "-1", "--format=%H", "--", rel])
-    return _run(["git", "rev-parse", f"{c}^"]) if c else None
-
-
-def head_is_evidence_only(reviewed_sha: str | None, head: str | None) -> bool | None:
-    """True iff reviewed_sha..head touches ONLY assurance/reviews/ (no code changed after review)."""
-    if not reviewed_sha or not head:
-        return None
-    out = _run(["git", "diff", "--name-only", f"{reviewed_sha}..{head}"])
-    if out is None:
-        return None
-    files = [f for f in out.splitlines() if f.strip()]
-    return all(f.startswith("assurance/reviews/") for f in files) if files else True
-
-
 def pr_author(pr: str, repo: str | None) -> str | None:
     """PR author login from GitHub (external truth)."""
     base = ["gh", "pr", "view", str(pr)]
@@ -115,10 +94,11 @@ def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dic
     """Externally-grounded review reconciliation (replaces the old pr_identities()).
 
     Fetch the review submitted by the ONE trusted reviewer identity via the GitHub reviews API
-    and return {actor, state, commit_id, dismissed}. If the reviewer has multiple reviews, take
-    the LATEST (GitHub returns them in submission order). Returns None if the trusted reviewer
-    has no review — the caller then fails closed. We deliberately query by the trusted actor so
-    a COMMENTED/other-actor review can never be mistaken for the approval.
+    and return {actor, state, commit_id, dismissed, body}. `body` carries the typed JSON review
+    payload (the review of record — NOT a file committed to the branch). If the reviewer has
+    multiple reviews, take the LATEST. Returns None if the trusted reviewer has no review — the
+    caller then fails closed. Querying by the trusted actor means a COMMENTED/other-actor review
+    can never be mistaken for the approval.
     """
     endpoint = f"repos/{repo}/pulls/{pr}/reviews" if repo else None
     if not endpoint:
@@ -141,22 +121,46 @@ def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dic
         "state": state,
         "commit_id": r.get("commit_id"),
         "dismissed": state == "DISMISSED",
+        "body": r.get("body") or "",
     }
+
+
+def parse_review_payload(body: str) -> dict | None:
+    """Extract the typed JSON review payload from a GitHub review body. Accepts either a body
+    that is pure JSON, or JSON inside a ```json … ``` (or bare ``` … ```) fenced block. Returns
+    None if no JSON object can be parsed (caller fails closed). No self-reference: the payload
+    is authored in the review body attached to the already-existing head, never committed."""
+    if not body:
+        return None
+    candidates = []
+    stripped = body.strip()
+    candidates.append(stripped)
+    import re
+    for m in re.finditer(r"```(?:json)?\s*(.+?)```", body, re.DOTALL | re.IGNORECASE):
+        candidates.append(m.group(1).strip())
+    for cand in candidates:
+        try:
+            obj = json.loads(cand)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
 
 
 def load_manifest(path: Path | None = None) -> dict:
     return json.loads((path or MANIFEST_PATH).read_text(encoding="utf-8"))
 
 
-def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str, reviewed_sha: str,
+def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
                   gate_conclusions: dict[str, str], pr_author_login: str | None,
-                  review: dict | None, artifact_parent: str | None,
-                  evidence_only: bool | None, run_id: str | None, now: str | None = None) -> TrustedInputs:
+                  review: dict | None, run_id: str | None, now: str | None = None) -> TrustedInputs:
     entry = manifest["prs"][str(pr)]
     review = review or {}
     return TrustedInputs(
         pr_head_sha=head_sha,
-        final_commit_committed_at=commit_time(reviewed_sha),
+        # committed-at of the head itself (the review targets the live head directly).
+        final_commit_committed_at=commit_time(head_sha),
         required_criteria=tuple(c["id"] for c in entry["criteria"]),
         required_gates=tuple(entry.get("required_gates", ())),
         na_allowed_criteria=tuple(entry.get("na_allowed", ())),
@@ -168,8 +172,6 @@ def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str, rev
         review_state=review.get("state"),
         review_commit_id=review.get("commit_id"),
         review_dismissed=bool(review.get("dismissed")),
-        artifact_commit_parent=artifact_parent,
-        head_is_evidence_only=evidence_only,
         run_id=run_id,
     )
 
@@ -270,25 +272,26 @@ def run_merge_gate(args) -> int:
         return 1
     print(f"[assurance.check] trusted PR head = {head} (source: {source})")
 
-    artifact_path = Path(args.artifact) if args.artifact else (REVIEWS_DIR / f"PR-{args.pr}.json")
-    if not artifact_path.exists():
-        print(f"[assurance.check] MERGE BLOCKED: no independent-review artifact at "
-              f"{artifact_path.relative_to(REPO_ROOT).as_posix()} (fail closed).")
-        return 1
-    try:
-        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        print(f"[assurance.check] cannot parse artifact: {e}")
-        return 2
-
-    parent = artifact_commit_parent(artifact_path)
-    reviewed_sha = parent or head
-    evidence_only = head_is_evidence_only(reviewed_sha, head)
     author = pr_author(args.pr, args.repo)
     expected_reviewer = contract.get("trusted_independent_reviewer")
-    review = independent_review(args.pr, args.repo, expected_reviewer) if expected_reviewer else None
+    if not expected_reviewer:
+        print("[assurance.check] FAIL CLOSED: contract has no trusted_independent_reviewer.")
+        return 1
+    review = independent_review(args.pr, args.repo, expected_reviewer)
 
-    # Real gate conclusions from the CI job results (GitHub needs.*.result), never the artifact.
+    # The review of record is the typed JSON payload in the trusted bot's review BODY — not a
+    # file committed to the branch (that would be self-referential). No review → fail closed.
+    if not review:
+        print(f"[assurance.check] MERGE BLOCKED: no review by {expected_reviewer!r} on PR "
+              f"{args.pr} (fail closed).")
+        return 1
+    payload = parse_review_payload(review.get("body", ""))
+    if payload is None:
+        print(f"[assurance.check] MERGE BLOCKED: the {expected_reviewer!r} review body carries no "
+              f"parseable typed JSON review payload (fail closed).")
+        return 1
+
+    # Real gate conclusions from the CI job results (GitHub needs.*.result), never the payload.
     gate_conclusions: dict[str, str] = {}
     if args.kernel_result:
         gate_conclusions["assurance-kernel"] = args.kernel_result
@@ -296,23 +299,23 @@ def run_merge_gate(args) -> int:
         gate_conclusions["conservation-lane1"] = args.conservation_result
 
     trusted = build_trusted(
-        args.pr, manifest, contract, head_sha=head, reviewed_sha=reviewed_sha,
+        args.pr, manifest, contract, head_sha=head,
         gate_conclusions=gate_conclusions, pr_author_login=author,
-        review=review, artifact_parent=parent, evidence_only=evidence_only, run_id=args.run_id,
+        review=review, run_id=args.run_id,
     )
-    print(f"[assurance.check] reviewed_sha(parent)={parent} evidence_only={evidence_only} "
-          f"author={author!r} expected_reviewer={expected_reviewer!r} review={review} "
-          f"gate_conclusions={gate_conclusions}")
+    review_meta = {k: review.get(k) for k in ("actor", "state", "commit_id", "dismissed")}
+    print(f"[assurance.check] author={author!r} expected_reviewer={expected_reviewer!r} "
+          f"review={review_meta} gate_conclusions={gate_conclusions}")
 
-    viols = list(validate_review(artifact, contract, trusted))
-    if args.require_verdict and artifact.get("verdict") != args.require_verdict:
+    viols = list(validate_review(payload, contract, trusted))
+    if args.require_verdict and payload.get("verdict") != args.require_verdict:
         viols.append(Violation("VERDICT_NOT_REQUIRED",
-                               f"verdict {artifact.get('verdict')!r} != required {args.require_verdict!r}"))
+                               f"verdict {payload.get('verdict')!r} != required {args.require_verdict!r}"))
     if viols:
-        _print_violations(artifact_path.name, viols)
+        _print_violations(f"PR-{args.pr} review body", viols)
         return 1
-    print(f"[assurance.check] {artifact_path.name}: VALID against PR-{args.pr} ratified criteria "
-          f"+ real check conclusions at head {head}.")
+    print(f"[assurance.check] PR-{args.pr} review-body payload: VALID against ratified criteria "
+          f"+ real check conclusions + independent APPROVE at head {head}.")
     return 0
 
 
@@ -320,12 +323,12 @@ def run_merge_gate(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="assurance.check", description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="prove the gate is non-vacuous")
-    ap.add_argument("--merge-gate", action="store_true", help="reconcile the PR's review artifact against live head")
+    ap.add_argument("--merge-gate", action="store_true",
+                    help="reconcile the trusted bot's review-body payload against the live head")
     ap.add_argument("--pr", help="PR number (keys into the acceptance manifest)")
     ap.add_argument("--head-sha", help="trusted PR head SHA (overrides env/gh)")
     ap.add_argument("--repo", help="owner/repo for gh")
     ap.add_argument("--manifest", help="override acceptance manifest path")
-    ap.add_argument("--artifact", help="override review artifact path")
     ap.add_argument("--kernel-result", help="real conclusion of the assurance-kernel job (needs.*.result)")
     ap.add_argument("--conservation-result", help="real conclusion of the conservation-lane1 job")
     ap.add_argument("--run-id", help="CI run id binding the conclusions to a concrete execution")

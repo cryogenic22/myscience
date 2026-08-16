@@ -63,12 +63,14 @@ class TrustedInputs:
       is APPROVED, by the trusted reviewer, not the author, not dismissed, and targets the exact
       live head — anything else fails closed. (NOTE: this custom gate does NOT replace GitHub's
       native branch-protection approval; WP-12E still requires that separately.)
-    - ``artifact_commit_parent``: parent SHA of the commit that introduced the review artifact.
-      When set, the review is in an evidence-only commit and ``reviewed_sha`` must equal this
-      (a review committed inside the reviewed branch cannot equal the resulting head).
-    - ``head_is_evidence_only``: whether ``reviewed_sha..pr_head_sha`` touches ONLY
-      ``assurance/reviews/`` — i.e. no code changed after the review.
     - ``run_id``: the CI run id binding these conclusions to a concrete external execution.
+
+    NOTE (Rev 4): the review of record is the typed JSON payload in the trusted bot's GitHub
+    review BODY — NOT a file committed to the branch. That removes the self-reference of the
+    old evidence-commit model (a committed artifact had to name the SHA of the commit that
+    contained it). The reviewed SHA is the review's own ``commit_id`` (external truth from
+    GitHub), which must equal the live head, so ``reviewed_sha`` in the payload is checked
+    directly against ``pr_head_sha`` — there is no artifact-commit parent to bind.
     """
     pr_head_sha: str
     final_commit_committed_at: str | None = None
@@ -84,8 +86,6 @@ class TrustedInputs:
     review_state: str | None = None
     review_commit_id: str | None = None
     review_dismissed: bool = False
-    artifact_commit_parent: str | None = None
-    head_is_evidence_only: bool | None = None
     run_id: str | None = None
 
 
@@ -265,32 +265,16 @@ def validate_review(
 
     # 9. Reconciliation against TrustedInputs (external truth). Fail closed if absent for APPROVE.
     if trusted is not None:
-        # 9a. Which SHA the review covers must be externally anchored — two supported modes.
-        if trusted.artifact_commit_parent is not None:
-            # Evidence-only-commit model: the review artifact lives in a commit ON TOP of the
-            # reviewed code, so a review committed inside the branch cannot equal the head —
-            # reviewed_sha must equal that commit's PARENT (the code it reviewed).
-            if artifact.get("reviewed_sha") != trusted.artifact_commit_parent:
-                out.append(Violation("EVIDENCE_COMMIT_UNBOUND",
-                                     f"reviewed_sha {artifact.get('reviewed_sha')!r} != the review commit's parent "
-                                     f"{trusted.artifact_commit_parent!r} (the artifact must sit atop the code it reviews)"))
-            if trusted.head_is_evidence_only is False:
-                out.append(Violation("CODE_CHANGED_AFTER_REVIEW",
-                                     "reviewed_sha..head changes files outside assurance/reviews/ — the head is not an "
-                                     "evidence-only commit over the reviewed code (the review would be stale)"))
-            elif trusted.head_is_evidence_only is None:
-                # Undeterminable (e.g. the git diff could not be computed). Fail closed:
-                # "anything the validator cannot positively confirm is a violation."
-                out.append(Violation("EVIDENCE_ONLY_UNVERIFIABLE",
-                                     "could not verify that reviewed_sha..head is evidence-only (git diff unavailable); "
-                                     "fail closed rather than assume no code changed after the review"))
-        else:
-            # Simple/external model: reviewed_sha is the head itself.
-            if artifact.get("reviewed_sha") != trusted.pr_head_sha:
-                out.append(Violation("STALE_REVIEW_SHA",
-                                     f"reviewed_sha {artifact.get('reviewed_sha')!r} != trusted PR head "
-                                     f"{trusted.pr_head_sha!r} (the review does not cover the current head)"))
-        # 9b. The artifact's self-reported pr_head_sha must equal the trusted head regardless.
+        # 9a. The review payload lives in the trusted bot's GitHub review BODY (not committed to
+        #     the branch), so it directly covers the live head — reviewed_sha must equal it. The
+        #     review's own commit_id (external) is separately checked to equal the head in
+        #     _reconcile_independent_review (REVIEW_STALE_SHA), closing the loop without any
+        #     self-referential committed artifact.
+        if artifact.get("reviewed_sha") != trusted.pr_head_sha:
+            out.append(Violation("STALE_REVIEW_SHA",
+                                 f"reviewed_sha {artifact.get('reviewed_sha')!r} != trusted PR head "
+                                 f"{trusted.pr_head_sha!r} (the review does not cover the current head)"))
+        # 9b. The payload's self-reported pr_head_sha must equal the trusted head regardless.
         if artifact.get("pr_head_sha") != trusted.pr_head_sha:
             out.append(Violation("HEAD_MISMATCH",
                                  f"artifact pr_head_sha {artifact.get('pr_head_sha')!r} != trusted head "

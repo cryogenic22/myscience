@@ -57,29 +57,41 @@ def test_manifest_status_is_not_overclaimed():
     assert "owner-ratified" not in MANIFEST["description"].lower()
 
 
-def test_review_template_validates_structurally():
-    """The evidence-only-commit TEMPLATE is a real, machine-checkable artifact (not a table)."""
+def test_review_body_template_validates_structurally():
+    """The TEMPLATE documents the review-BODY payload format (Rev 4 — not a committed file).
+    It must reconcile as a real, machine-checkable payload against a trusted APPROVE on its head."""
     tpl = json.loads((REVIEWS_DIR / "TEMPLATE.json").read_text(encoding="utf-8"))
+    head = tpl["pr_head_sha"]
+    assert tpl["reviewed_sha"] == head, "template reviewed_sha must equal the head (review-body model)"
     ids = tuple(c["criterion_id"] for c in tpl["spec_conformance"])
+    na = tuple(c["criterion_id"] for c in tpl["spec_conformance"] if c["verdict"] == "n/a")
+    gate = tpl["gates"][0]["name"]
     trusted = TrustedInputs(
-        pr_head_sha=tpl["pr_head_sha"],
+        pr_head_sha=head,
         required_criteria=ids,
-        artifact_commit_parent=tpl["reviewed_sha"],   # evidence-commit parent == reviewed_sha
-        head_is_evidence_only=True,
+        required_gates=(gate,),
+        na_allowed_criteria=na,
+        gate_conclusions={gate: "success"},
+        pr_author_login="the-builder",
+        trusted_reviewer_login="codexindependentreviewer[bot]",
+        review_actor="codexindependentreviewer[bot]",
+        review_state="APPROVED",
+        review_commit_id=head,
         now=_FAR_FUTURE,
     )
     violations = validate_review(tpl, CONTRACT, trusted)
     assert violations == [], [f"{v.code}: {v.message}" for v in violations]
 
 
-def test_no_builder_authored_verdict_artifact_present():
-    """The self-referential builder artifact is gone; only the TEMPLATE + README remain here.
-    Real PR-<n>.json verdicts are added later by the independent reviewer in an evidence commit."""
+def test_no_committed_verdict_artifact_present():
+    """Rev 4: the review of record is the bot's review BODY, NOT a file. Only the format
+    TEMPLATE + README live here — never a PR-<n>.json verdict committed to the branch."""
     names = {p.name for p in REVIEWS_DIR.glob("*") if p.is_file()}
     assert names == {"TEMPLATE.json", "README.md"}, names
+    assert not list(REVIEWS_DIR.glob("PR-*.json")), "no committed per-PR verdict artifact allowed"
 
 
-# ---- CLI external-truth behaviour (blocker 3 + the evidence-only detector) ----
+# ---- CLI external-truth behaviour ----
 
 def test_resolve_head_sha_fails_closed_on_unresolvable_pr(monkeypatch):
     """--pr given but GitHub cannot resolve it -> (None, ...), NEVER a local-HEAD fallback."""
@@ -94,19 +106,22 @@ def test_resolve_head_sha_prefers_explicit(monkeypatch):
     assert sha == "deadbeef" and source == "--head-sha"
 
 
-def test_head_is_evidence_only_true_for_reviews_only_diff(monkeypatch):
-    monkeypatch.setattr(chk, "_run", lambda cmd: "assurance/reviews/PR-1.json")
-    assert chk.head_is_evidence_only("aaa", "bbb") is True
+# ---- review-body payload extraction (Rev 4) ----
+
+def test_parse_review_payload_pure_json():
+    body = '{"verdict": "APPROVE", "reviewed_sha": "abc"}'
+    assert chk.parse_review_payload(body) == {"verdict": "APPROVE", "reviewed_sha": "abc"}
 
 
-def test_head_is_evidence_only_false_when_code_changed(monkeypatch):
-    monkeypatch.setattr(chk, "_run", lambda cmd: "assurance/reviews/PR-1.json\nservices/llm.py")
-    assert chk.head_is_evidence_only("aaa", "bbb") is False
+def test_parse_review_payload_fenced_json():
+    body = "Independent review follows.\n\n```json\n{\"verdict\": \"APPROVE\"}\n```\nthanks"
+    assert chk.parse_review_payload(body) == {"verdict": "APPROVE"}
 
 
-def test_head_is_evidence_only_true_for_empty_diff(monkeypatch):
-    monkeypatch.setattr(chk, "_run", lambda cmd: "")
-    assert chk.head_is_evidence_only("aaa", "aaa") is True
+def test_parse_review_payload_none_when_no_json():
+    assert chk.parse_review_payload("LGTM 👍 no json here") is None
+    assert chk.parse_review_payload("") is None
+    assert chk.parse_review_payload("[1, 2, 3]") is None  # a list is not a review object
 
 
 # ---- independent_review(): externally-grounded review fetch (replaces pr_identities) ----
@@ -119,15 +134,16 @@ def _reviews_json(*reviews):
 
 
 def test_independent_review_extracts_trusted_reviewers_latest(monkeypatch):
-    """Picks the LATEST review by the trusted actor and extracts actor/state/commit_id/dismissed."""
+    """Picks the LATEST review by the trusted actor and extracts actor/state/commit_id/dismissed/body."""
     payload = _reviews_json(
-        {"user": {"login": "someone"}, "state": "COMMENTED", "commit_id": "x"},
-        {"user": {"login": _BOT}, "state": "CHANGES_REQUESTED", "commit_id": "old"},
-        {"user": {"login": _BOT}, "state": "APPROVED", "commit_id": "headsha"},
+        {"user": {"login": "someone"}, "state": "COMMENTED", "commit_id": "x", "body": "hi"},
+        {"user": {"login": _BOT}, "state": "CHANGES_REQUESTED", "commit_id": "old", "body": "{}"},
+        {"user": {"login": _BOT}, "state": "APPROVED", "commit_id": "headsha", "body": '{"verdict":"APPROVE"}'},
     )
     monkeypatch.setattr(chk, "_run", lambda cmd: payload)
     r = chk.independent_review("1", "owner/repo", _BOT)
-    assert r == {"actor": _BOT, "state": "APPROVED", "commit_id": "headsha", "dismissed": False}
+    assert r == {"actor": _BOT, "state": "APPROVED", "commit_id": "headsha", "dismissed": False,
+                 "body": '{"verdict":"APPROVE"}'}
 
 
 def test_independent_review_flags_dismissed(monkeypatch):
