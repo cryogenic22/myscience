@@ -103,26 +103,57 @@ def head_is_evidence_only(reviewed_sha: str | None, head: str | None) -> bool | 
     return all(f.startswith("assurance/reviews/") for f in files) if files else True
 
 
-def pr_identities(pr: str, repo: str | None) -> tuple[str | None, str | None]:
-    """(reviewer_login, pr_author_login) from GitHub — the independent reviewer and PR author."""
+def pr_author(pr: str, repo: str | None) -> str | None:
+    """PR author login from GitHub (external truth)."""
     base = ["gh", "pr", "view", str(pr)]
     if repo:
         base += ["--repo", repo]
-    author = _run(base + ["--json", "author", "-q", ".author.login"])
-    reviewer = _run(base + ["--json", "reviews", "-q",
-                            '[.reviews[] | select(.author.login != null)] | last | .author.login'])
-    return reviewer, author
+    return _run(base + ["--json", "author", "-q", ".author.login"])
+
+
+def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dict | None:
+    """Externally-grounded review reconciliation (replaces the old pr_identities()).
+
+    Fetch the review submitted by the ONE trusted reviewer identity via the GitHub reviews API
+    and return {actor, state, commit_id, dismissed}. If the reviewer has multiple reviews, take
+    the LATEST (GitHub returns them in submission order). Returns None if the trusted reviewer
+    has no review — the caller then fails closed. We deliberately query by the trusted actor so
+    a COMMENTED/other-actor review can never be mistaken for the approval.
+    """
+    endpoint = f"repos/{repo}/pulls/{pr}/reviews" if repo else None
+    if not endpoint:
+        # No repo → cannot address the API deterministically; fail closed upstream.
+        return None
+    raw = _run(["gh", "api", "--paginate", endpoint])
+    if raw is None:
+        return None
+    try:
+        reviews = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    mine = [r for r in reviews if (r.get("user") or {}).get("login") == expected_reviewer]
+    if not mine:
+        return None
+    r = mine[-1]  # latest review by the trusted reviewer
+    state = r.get("state")
+    return {
+        "actor": (r.get("user") or {}).get("login"),
+        "state": state,
+        "commit_id": r.get("commit_id"),
+        "dismissed": state == "DISMISSED",
+    }
 
 
 def load_manifest(path: Path | None = None) -> dict:
     return json.loads((path or MANIFEST_PATH).read_text(encoding="utf-8"))
 
 
-def build_trusted(pr: str, manifest: dict, *, head_sha: str, reviewed_sha: str,
-                  gate_conclusions: dict[str, str], reviewer_login: str | None,
-                  pr_author_login: str | None, artifact_parent: str | None,
+def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str, reviewed_sha: str,
+                  gate_conclusions: dict[str, str], pr_author_login: str | None,
+                  review: dict | None, artifact_parent: str | None,
                   evidence_only: bool | None, run_id: str | None, now: str | None = None) -> TrustedInputs:
     entry = manifest["prs"][str(pr)]
+    review = review or {}
     return TrustedInputs(
         pr_head_sha=head_sha,
         final_commit_committed_at=commit_time(reviewed_sha),
@@ -131,8 +162,12 @@ def build_trusted(pr: str, manifest: dict, *, head_sha: str, reviewed_sha: str,
         na_allowed_criteria=tuple(entry.get("na_allowed", ())),
         now=now or datetime.now(timezone.utc).isoformat(),
         gate_conclusions=gate_conclusions,
-        reviewer_login=reviewer_login,
         pr_author_login=pr_author_login,
+        trusted_reviewer_login=contract.get("trusted_independent_reviewer"),
+        review_actor=review.get("actor"),
+        review_state=review.get("state"),
+        review_commit_id=review.get("commit_id"),
+        review_dismissed=bool(review.get("dismissed")),
         artifact_commit_parent=artifact_parent,
         head_is_evidence_only=evidence_only,
         run_id=run_id,
@@ -141,6 +176,7 @@ def build_trusted(pr: str, manifest: dict, *, head_sha: str, reviewed_sha: str,
 
 # --------------------------------------------------------------------------- self-test (non-vacuous)
 _SELFTEST_HEAD = "1234567890abcdef1234567890abcdef12345678"
+_SELFTEST_BOT = "codexindependentreviewer[bot]"
 _SELFTEST_TRUSTED = TrustedInputs(
     pr_head_sha=_SELFTEST_HEAD,
     final_commit_committed_at="2026-08-14T10:00:00+00:00",
@@ -149,12 +185,16 @@ _SELFTEST_TRUSTED = TrustedInputs(
     na_allowed_criteria=("C#2",),
     now="2026-08-14T12:00:00+00:00",
     gate_conclusions={"gate-a": "success"},
-    reviewer_login="independent-reviewer",
     pr_author_login="the-builder",
+    trusted_reviewer_login=_SELFTEST_BOT,
+    review_actor=_SELFTEST_BOT,                 # trusted reviewer
+    review_state="APPROVED",                    # APPROVED
+    review_commit_id=_SELFTEST_HEAD,            # targets the exact head
+    review_dismissed=False,
 )
 _SELFTEST_GOOD = {
     "verdict": "APPROVE",
-    "reviewer": "independent-reviewer",
+    "reviewer": _SELFTEST_BOT,
     "reviewed_sha": _SELFTEST_HEAD,
     "pr_head_sha": _SELFTEST_HEAD,
     "final_commit_committed_at": "2026-08-14T10:00:00+00:00",
@@ -184,8 +224,12 @@ _SELFTEST_FAB_TRUSTED = TrustedInputs(
     na_allowed_criteria=("C#2",),
     now="2026-08-14T12:00:00+00:00",
     gate_conclusions={"gate-a": "failure"},    # GitHub says the gate FAILED; artifact lied
-    reviewer_login="the-builder",
-    pr_author_login="the-builder",             # reviewer == author (not independent)
+    pr_author_login="the-builder",
+    trusted_reviewer_login=_SELFTEST_BOT,
+    review_actor="the-builder",                 # wrong actor AND == author
+    review_state="COMMENTED",                   # not APPROVED
+    review_commit_id="0" * 40,                   # stale vs head
+    review_dismissed=False,
 )
 
 
@@ -240,7 +284,9 @@ def run_merge_gate(args) -> int:
     parent = artifact_commit_parent(artifact_path)
     reviewed_sha = parent or head
     evidence_only = head_is_evidence_only(reviewed_sha, head)
-    reviewer, author = pr_identities(args.pr, args.repo)
+    author = pr_author(args.pr, args.repo)
+    expected_reviewer = contract.get("trusted_independent_reviewer")
+    review = independent_review(args.pr, args.repo, expected_reviewer) if expected_reviewer else None
 
     # Real gate conclusions from the CI job results (GitHub needs.*.result), never the artifact.
     gate_conclusions: dict[str, str] = {}
@@ -250,12 +296,13 @@ def run_merge_gate(args) -> int:
         gate_conclusions["conservation-lane1"] = args.conservation_result
 
     trusted = build_trusted(
-        args.pr, manifest, head_sha=head, reviewed_sha=reviewed_sha,
-        gate_conclusions=gate_conclusions, reviewer_login=reviewer, pr_author_login=author,
-        artifact_parent=parent, evidence_only=evidence_only, run_id=args.run_id,
+        args.pr, manifest, contract, head_sha=head, reviewed_sha=reviewed_sha,
+        gate_conclusions=gate_conclusions, pr_author_login=author,
+        review=review, artifact_parent=parent, evidence_only=evidence_only, run_id=args.run_id,
     )
     print(f"[assurance.check] reviewed_sha(parent)={parent} evidence_only={evidence_only} "
-          f"reviewer={reviewer!r} author={author!r} gate_conclusions={gate_conclusions}")
+          f"author={author!r} expected_reviewer={expected_reviewer!r} review={review} "
+          f"gate_conclusions={gate_conclusions}")
 
     viols = list(validate_review(artifact, contract, trusted))
     if args.require_verdict and artifact.get("verdict") != args.require_verdict:

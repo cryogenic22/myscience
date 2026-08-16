@@ -107,3 +107,49 @@ def test_head_is_evidence_only_false_when_code_changed(monkeypatch):
 def test_head_is_evidence_only_true_for_empty_diff(monkeypatch):
     monkeypatch.setattr(chk, "_run", lambda cmd: "")
     assert chk.head_is_evidence_only("aaa", "aaa") is True
+
+
+# ---- independent_review(): externally-grounded review fetch (replaces pr_identities) ----
+
+_BOT = "codexindependentreviewer[bot]"
+
+
+def _reviews_json(*reviews):
+    return json.dumps(list(reviews))
+
+
+def test_independent_review_extracts_trusted_reviewers_latest(monkeypatch):
+    """Picks the LATEST review by the trusted actor and extracts actor/state/commit_id/dismissed."""
+    payload = _reviews_json(
+        {"user": {"login": "someone"}, "state": "COMMENTED", "commit_id": "x"},
+        {"user": {"login": _BOT}, "state": "CHANGES_REQUESTED", "commit_id": "old"},
+        {"user": {"login": _BOT}, "state": "APPROVED", "commit_id": "headsha"},
+    )
+    monkeypatch.setattr(chk, "_run", lambda cmd: payload)
+    r = chk.independent_review("1", "owner/repo", _BOT)
+    assert r == {"actor": _BOT, "state": "APPROVED", "commit_id": "headsha", "dismissed": False}
+
+
+def test_independent_review_flags_dismissed(monkeypatch):
+    payload = _reviews_json({"user": {"login": _BOT}, "state": "DISMISSED", "commit_id": "h"})
+    monkeypatch.setattr(chk, "_run", lambda cmd: payload)
+    r = chk.independent_review("1", "owner/repo", _BOT)
+    assert r["state"] == "DISMISSED" and r["dismissed"] is True
+
+
+def test_independent_review_ignores_other_actors(monkeypatch):
+    """A COMMENTED/APPROVED review by a NON-trusted actor is never returned as the approval."""
+    payload = _reviews_json({"user": {"login": "attacker"}, "state": "APPROVED", "commit_id": "h"})
+    monkeypatch.setattr(chk, "_run", lambda cmd: payload)
+    assert chk.independent_review("1", "owner/repo", _BOT) is None
+
+
+def test_independent_review_none_when_no_reviews(monkeypatch):
+    monkeypatch.setattr(chk, "_run", lambda cmd: "[]")
+    assert chk.independent_review("1", "owner/repo", _BOT) is None
+
+
+def test_independent_review_fails_closed_without_repo(monkeypatch):
+    """No repo → cannot address the reviews API deterministically → None (caller fails closed)."""
+    monkeypatch.setattr(chk, "_run", lambda cmd: (_ for _ in ()).throw(AssertionError("must not call gh")))
+    assert chk.independent_review("1", None, _BOT) is None

@@ -53,9 +53,16 @@ class TrustedInputs:
     - ``gate_conclusions``: REAL check conclusions keyed by gate name (from GitHub check-runs /
       same-workflow ``needs.*.result``), e.g. ``{"assurance-kernel": "success"}``. The
       artifact's own ``gates[].status`` is NOT trusted — it is cross-checked against this.
-    - ``reviewer_login`` / ``pr_author_login``: the externally-observed reviewer and PR author
-      (from ``gh pr view --json reviews,author``). An APPROVE requires a reviewer, and the
-      reviewer must not be the author (independence).
+    - ``pr_author_login``: the PR author's GitHub login (from ``gh pr view --json author``).
+    - Independent-review binding (all sourced from GitHub's review API, NOT the artifact):
+      ``trusted_reviewer_login`` = the ONE reviewer identity the contract accepts (the
+      calibrated App bot, e.g. ``codexindependentreviewer[bot]``); ``review_actor`` = the login
+      that actually submitted the review; ``review_state`` = APPROVED / CHANGES_REQUESTED /
+      COMMENTED / DISMISSED; ``review_commit_id`` = the exact SHA the review targeted;
+      ``review_dismissed`` = whether it was dismissed. An APPROVE is believed ONLY if the review
+      is APPROVED, by the trusted reviewer, not the author, not dismissed, and targets the exact
+      live head — anything else fails closed. (NOTE: this custom gate does NOT replace GitHub's
+      native branch-protection approval; WP-12E still requires that separately.)
     - ``artifact_commit_parent``: parent SHA of the commit that introduced the review artifact.
       When set, the review is in an evidence-only commit and ``reviewed_sha`` must equal this
       (a review committed inside the reviewed branch cannot equal the resulting head).
@@ -70,8 +77,13 @@ class TrustedInputs:
     na_allowed_criteria: tuple[str, ...] = ()
     now: str | None = None
     gate_conclusions: dict[str, str] = field(default_factory=dict)
-    reviewer_login: str | None = None
     pr_author_login: str | None = None
+    # Independent-review binding (external truth from the GitHub review API):
+    trusted_reviewer_login: str | None = None
+    review_actor: str | None = None
+    review_state: str | None = None
+    review_commit_id: str | None = None
+    review_dismissed: bool = False
     artifact_commit_parent: str | None = None
     head_is_evidence_only: bool | None = None
     run_id: str | None = None
@@ -310,20 +322,16 @@ def validate_review(
             if st == "pass" and real is not None and real != "success":
                 out.append(Violation("GATE_CONCLUSION_MISMATCH",
                                      f"gate {name!r} claims 'pass' but its real check conclusion is {real!r}"))
-        # 9f. Reviewer identity + independence (external, not the artifact's 'author').
-        if trusted.reviewer_login and trusted.pr_author_login \
-                and trusted.reviewer_login == trusted.pr_author_login:
-            out.append(Violation("REVIEWER_NOT_INDEPENDENT",
-                                 f"reviewer {trusted.reviewer_login!r} is the PR author — not an independent review"))
+        # 9f. Declared reviewer (informational) must match the externally-observed actor.
         declared_reviewer = artifact.get("reviewer")
-        if declared_reviewer and trusted.reviewer_login and declared_reviewer != trusted.reviewer_login:
+        if declared_reviewer and trusted.review_actor and declared_reviewer != trusted.review_actor:
             out.append(Violation("REVIEWER_MISMATCH",
-                                 f"artifact reviewer {declared_reviewer!r} != externally-observed reviewer "
-                                 f"{trusted.reviewer_login!r}"))
+                                 f"artifact reviewer {declared_reviewer!r} != externally-observed review actor "
+                                 f"{trusted.review_actor!r}"))
     elif verdict == "APPROVE":
         out.append(Violation("UNVERIFIABLE_APPROVE",
                              "APPROVE requires TrustedInputs (external PR head + ratified criteria + real check "
-                             "conclusions + reviewer identity) to reconcile; none supplied — fail closed"))
+                             "conclusions + an independent review) to reconcile; none supplied — fail closed"))
 
     # 10. APPROVE gating — the core reconciliation against ratified criteria + external truth.
     if verdict == "APPROVE":
@@ -361,11 +369,51 @@ def validate_review(
                         out.append(Violation("REQUIRED_GATE_NOT_PASSED",
                                              f"required gate {gname!r} real conclusion is {real or 'absent'!r}, not "
                                              f"'success' (skip/fail/absent/pending do not satisfy a required gate)"))
-            # 10c. APPROVE requires an independent reviewer identity from external truth.
-            if not trusted.reviewer_login:
-                out.append(Violation("MISSING_REVIEWER",
-                                     "APPROVE requires an externally-observed independent reviewer identity"))
+            # 10c. APPROVE requires a fully-reconciled independent review (external truth).
+            out.extend(_reconcile_independent_review(trusted))
 
+    return out
+
+
+def _reconcile_independent_review(trusted: TrustedInputs) -> list[Violation]:
+    """The independent-review gate. An APPROVE is believed ONLY if ALL hold; every failure is a
+    typed violation, and any missing external fact fails closed (never a silent pass):
+      - a review exists (state present)          else REVIEW_MISSING
+      - actor == the ONE trusted reviewer login  else REVIEWER_NOT_TRUSTED
+      - state == APPROVED                        else REVIEW_NOT_APPROVED   (COMMENTED/CHANGES_REQUESTED)
+      - not dismissed (and state != DISMISSED)   else REVIEW_DISMISSED
+      - commit_id == the exact live head SHA      else REVIEW_STALE_SHA      (a later push invalidates)
+      - actor != the PR author                    else REVIEWER_NOT_INDEPENDENT
+    """
+    out: list[Violation] = []
+    if not trusted.trusted_reviewer_login:
+        out.append(Violation("MISSING_TRUSTED_REVIEWER",
+                             "APPROVE cannot be reconciled: no trusted reviewer identity configured "
+                             "(contract.trusted_independent_reviewer) — fail closed"))
+        return out
+    if not trusted.review_state:
+        out.append(Violation("REVIEW_MISSING",
+                             f"APPROVE requires an independent review by {trusted.trusted_reviewer_login!r}; "
+                             "none found for this PR (fail closed)"))
+        return out
+    if trusted.review_actor != trusted.trusted_reviewer_login:
+        out.append(Violation("REVIEWER_NOT_TRUSTED",
+                             f"review actor {trusted.review_actor!r} is not the trusted reviewer "
+                             f"{trusted.trusted_reviewer_login!r}"))
+    if trusted.review_dismissed or trusted.review_state == "DISMISSED":
+        out.append(Violation("REVIEW_DISMISSED",
+                             "the independent review was dismissed — it no longer approves this head"))
+    elif trusted.review_state != "APPROVED":
+        out.append(Violation("REVIEW_NOT_APPROVED",
+                             f"review state is {trusted.review_state!r}, not 'APPROVED' "
+                             "(COMMENTED / CHANGES_REQUESTED do not approve)"))
+    if trusted.review_commit_id != trusted.pr_head_sha:
+        out.append(Violation("REVIEW_STALE_SHA",
+                             f"review targeted commit {trusted.review_commit_id!r} != the live head "
+                             f"{trusted.pr_head_sha!r} (a push after approval invalidates it — re-approve the new head)"))
+    if trusted.pr_author_login and trusted.review_actor == trusted.pr_author_login:
+        out.append(Violation("REVIEWER_NOT_INDEPENDENT",
+                             f"review actor {trusted.review_actor!r} is the PR author — not an independent review"))
     return out
 
 

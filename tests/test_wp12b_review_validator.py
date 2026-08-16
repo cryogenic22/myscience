@@ -1,13 +1,15 @@
-"""WP-12B — typed review-artifact validator (SPEC_WP12 §3 WP-12B), hardened twice.
+"""WP-12B — typed review-artifact validator (SPEC_WP12 §3 WP-12B), hardened across rounds.
 
 The validator reconciles a structured review artifact against the WP-12A contract AND against
 TrustedInputs — the real PR head SHA, commit time, the ratified criterion/gate set, the REAL
-check conclusions, and the reviewer/author identities, all sourced OUTSIDE the artifact. It is
-the machine that would have caught the PRIV-001 escaped defect.
+check conclusions, and the INDEPENDENT REVIEW (actor/state/commit_id/dismissed), all sourced
+OUTSIDE the artifact from GitHub. It is the machine that would have caught the PRIV-001
+escaped defect.
 
-Round-2 hardening (independent review of 1b4be50): the artifact's self-declared gate 'pass'
-and 'author' are not external truth; a review committed inside the branch cannot equal the
-head; an APPROVE needs an independent reviewer and real 'success' gate conclusions.
+Independent-review binding (owner calibration): an APPROVE is believed ONLY when the review
+is by the ONE trusted reviewer (codexindependentreviewer[bot]), state == APPROVED, not
+dismissed, targets the EXACT live head, and the actor != the PR author. COMMENTED,
+CHANGES_REQUESTED, wrong-actor, stale-SHA, dismissed, and missing all fail closed.
 """
 from __future__ import annotations
 
@@ -22,24 +24,38 @@ _OTHER = "ffffffffffffffffffffffffffffffffffffffff"
 _PARENT = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 _FINAL_AT = "2026-08-14T10:00:00+00:00"
 _NOW = "2026-08-14T12:00:00+00:00"
+_BOT = "codexindependentreviewer[bot]"
+_AUTHOR = "the-builder"
 
-# TrustedInputs matching the good APPROVE below — the external truth the review reconciles to.
-_TRUSTED = TrustedInputs(
-    pr_head_sha=_HEAD,
-    final_commit_committed_at=_FINAL_AT,
-    required_criteria=("SPEC_X#1", "SPEC_X#2"),
-    required_gates=("conservation-lane1",),
-    na_allowed_criteria=("SPEC_X#2",),
-    now=_NOW,
-    gate_conclusions={"conservation-lane1": "success"},
-    reviewer_login="independent-reviewer",
-    pr_author_login="the-builder",
-)
+
+def _ti(**over) -> TrustedInputs:
+    """A fully-reconcilable TrustedInputs (approved by the trusted bot on the exact head),
+    with keyword overrides for the axis under test."""
+    base = dict(
+        pr_head_sha=_HEAD,
+        final_commit_committed_at=_FINAL_AT,
+        required_criteria=("SPEC_X#1", "SPEC_X#2"),
+        required_gates=("conservation-lane1",),
+        na_allowed_criteria=("SPEC_X#2",),
+        now=_NOW,
+        gate_conclusions={"conservation-lane1": "success"},
+        pr_author_login=_AUTHOR,
+        trusted_reviewer_login=_BOT,
+        review_actor=_BOT,
+        review_state="APPROVED",
+        review_commit_id=_HEAD,
+        review_dismissed=False,
+    )
+    base.update(over)
+    return TrustedInputs(**base)
+
+
+_TRUSTED = _ti()
 
 _GOOD_APPROVE = {
     "pr": "#999",
     "verdict": "APPROVE",
-    "reviewer": "independent-reviewer",
+    "reviewer": _BOT,
     "reviewed_sha": _HEAD,
     "pr_head_sha": _HEAD,
     "final_commit_committed_at": _FINAL_AT,
@@ -85,13 +101,12 @@ PRIV001_LAND_WITH_NITS = {
     "evidence": [{"id": "ev1", "ref": "pytest tests/test_llm_gateway.py",
                   "produced_at": "2026-08-13T11:00:00+00:00"}],
 }
-_PRIV001_TRUSTED = TrustedInputs(
+_PRIV001_TRUSTED = _ti(
     pr_head_sha=_PRIV001_HEAD,
     final_commit_committed_at="2026-08-13T10:00:00+00:00",
     required_criteria=("SPEC_HANDOFF_001#H1.1.4", "SPEC_HANDOFF_001#H1.1.min-tests"),
-    gate_conclusions={"conservation-lane1": "success"},
-    reviewer_login="independent-reviewer",
-    pr_author_login="the-builder",
+    na_allowed_criteria=(),
+    review_commit_id=_PRIV001_HEAD,
 )
 
 
@@ -119,14 +134,7 @@ def test_good_approve_in_evidence_commit_mode_is_valid():
     """Evidence-only-commit model: reviewed_sha == the review commit's parent; head is the
     evidence commit; nothing outside assurance/reviews/ changed."""
     art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-        artifact_commit_parent=_PARENT, head_is_evidence_only=True,
-    )
+    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=True)
     assert validate_review(art, CONTRACT, trusted) == []
 
 
@@ -140,153 +148,113 @@ def test_changes_required_with_open_items_is_valid():
 
 
 # =========================================================================
-# Round-2 hardening: external truth beats self-attestation.
+# Independent-review binding — the owner-calibrated review-state / SHA matrix.
+# Every non-APPROVED / wrong-actor / stale / dismissed / missing case fails closed.
 # =========================================================================
 
-def test_gate_pass_contradicting_real_conclusion_rejected():
-    """A self-declared gate 'pass' whose REAL conclusion is failure is a lie."""
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "failure"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-    )
-    codes = {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
-    assert "GATE_CONCLUSION_MISMATCH" in codes, codes
-    assert "REQUIRED_GATE_NOT_PASSED" in codes, codes
+def test_commented_review_is_rejected():
+    assert "REVIEW_NOT_APPROVED" in _codes(_GOOD_APPROVE, _ti(review_state="COMMENTED"))
 
 
-def test_required_gate_real_conclusion_absent_rejected():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"some-other-check": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-    )
-    art = _mut(gates=[{"name": "conservation-lane1", "status": "skip"}])
-    assert "REQUIRED_GATE_NOT_PASSED" in {v.code for v in validate_review(art, CONTRACT, trusted)}
+def test_changes_requested_review_is_rejected():
+    assert "REVIEW_NOT_APPROVED" in _codes(_GOOD_APPROVE, _ti(review_state="CHANGES_REQUESTED"))
 
 
-def test_approve_with_no_real_conclusions_fails_closed():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={}, reviewer_login="independent-reviewer", pr_author_login="the-builder",
-    )
-    assert "APPROVE_UNVERIFIABLE_GATES" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+def test_approved_review_on_previous_sha_is_rejected():
+    """An approval left on an older commit does not approve the current head (a push invalidates)."""
+    assert "REVIEW_STALE_SHA" in _codes(_GOOD_APPROVE, _ti(review_commit_id=_OTHER))
 
 
-def test_reviewer_equals_author_is_not_independent():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="the-builder", pr_author_login="the-builder",
-    )
-    art = _mut(reviewer="the-builder")
-    assert "REVIEWER_NOT_INDEPENDENT" in {v.code for v in validate_review(art, CONTRACT, trusted)}
+def test_wrong_actor_review_is_rejected():
+    assert "REVIEWER_NOT_TRUSTED" in _codes(_GOOD_APPROVE, _ti(review_actor="someone-else[bot]"))
+
+
+def test_reviewer_equal_to_author_is_not_independent():
+    """If the trusted-reviewer login somehow equals the PR author, it is not independent."""
+    codes = _codes(_GOOD_APPROVE, _ti(review_actor=_AUTHOR, pr_author_login=_AUTHOR,
+                                      trusted_reviewer_login=_AUTHOR))
+    assert "REVIEWER_NOT_INDEPENDENT" in codes
+
+
+def test_dismissed_review_is_rejected():
+    assert "REVIEW_DISMISSED" in _codes(_GOOD_APPROVE, _ti(review_dismissed=True))
+
+
+def test_dismissed_state_is_rejected():
+    assert "REVIEW_DISMISSED" in _codes(_GOOD_APPROVE, _ti(review_state="DISMISSED"))
+
+
+def test_missing_review_is_rejected():
+    """No review by the trusted reviewer at all → fail closed."""
+    codes = _codes(_GOOD_APPROVE, _ti(review_state=None, review_actor=None, review_commit_id=None))
+    assert "REVIEW_MISSING" in codes
+
+
+def test_no_trusted_reviewer_configured_fails_closed():
+    codes = _codes(_GOOD_APPROVE, _ti(trusted_reviewer_login=None))
+    assert "MISSING_TRUSTED_REVIEWER" in codes
 
 
 def test_declared_reviewer_mismatch_rejected():
     assert "REVIEWER_MISMATCH" in _codes(_mut(reviewer="someone-else"))
 
 
-def test_approve_without_reviewer_identity_rejected():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login=None, pr_author_login="the-builder",
-    )
-    assert "MISSING_REVIEWER" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+def test_approve_without_trusted_fails_closed():
+    assert "UNVERIFIABLE_APPROVE" in _codes(_GOOD_APPROVE, trusted=None)
+
+
+# =========================================================================
+# External truth beats self-attestation (gates + evidence-commit).
+# =========================================================================
+
+def test_gate_pass_contradicting_real_conclusion_rejected():
+    trusted = _ti(gate_conclusions={"conservation-lane1": "failure"})
+    codes = {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+    assert "GATE_CONCLUSION_MISMATCH" in codes, codes
+    assert "REQUIRED_GATE_NOT_PASSED" in codes, codes
+
+
+def test_required_gate_real_conclusion_absent_rejected():
+    trusted = _ti(gate_conclusions={"some-other-check": "success"})
+    art = _mut(gates=[{"name": "conservation-lane1", "status": "skip"}])
+    assert "REQUIRED_GATE_NOT_PASSED" in {v.code for v in validate_review(art, CONTRACT, trusted)}
+
+
+def test_approve_with_no_real_conclusions_fails_closed():
+    assert "APPROVE_UNVERIFIABLE_GATES" in _codes(_GOOD_APPROVE, _ti(gate_conclusions={}))
 
 
 def test_evidence_commit_unbound_rejected():
-    """reviewed_sha must equal the review commit's parent in evidence-commit mode."""
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-        artifact_commit_parent=_OTHER, head_is_evidence_only=True,   # parent != reviewed_sha
-    )
+    trusted = _ti(artifact_commit_parent=_OTHER, head_is_evidence_only=True)
     art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
     assert "EVIDENCE_COMMIT_UNBOUND" in {v.code for v in validate_review(art, CONTRACT, trusted)}
 
 
 def test_code_changed_after_review_rejected():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-        artifact_commit_parent=_PARENT, head_is_evidence_only=False,  # code changed after review
-    )
+    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=False)
     art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
     assert "CODE_CHANGED_AFTER_REVIEW" in {v.code for v in validate_review(art, CONTRACT, trusted)}
 
 
 def test_evidence_only_undeterminable_fails_closed():
-    """Round-3: an undeterminable evidence-only diff (git unavailable) must fail closed, not open."""
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-        artifact_commit_parent=_PARENT, head_is_evidence_only=None,   # undeterminable
-    )
+    trusted = _ti(artifact_commit_parent=_PARENT, head_is_evidence_only=None)
     art = _mut(reviewed_sha=_PARENT, pr_head_sha=_HEAD)
     assert "EVIDENCE_ONLY_UNVERIFIABLE" in {v.code for v in validate_review(art, CONTRACT, trusted)}
 
 
 def test_approve_with_empty_ratified_criteria_fails_closed():
-    """Round-3: an empty ratified set means completeness was NOT checked — an APPROVE that
-    reconciled against nothing must fail closed, not silently pass."""
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=(),                       # empty ratified set
-        required_gates=("conservation-lane1",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-    )
-    assert "MISSING_RATIFIED_CRITERIA" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+    assert "MISSING_RATIFIED_CRITERIA" in _codes(_GOOD_APPROVE, _ti(required_criteria=()))
 
 
 def test_approve_with_empty_required_gates_fails_closed():
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=(),   # no gate actually required
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
-        gate_conclusions={"conservation-lane1": "success"},
-        reviewer_login="independent-reviewer", pr_author_login="the-builder",
-    )
-    assert "MISSING_RATIFIED_GATES" in {v.code for v in validate_review(_GOOD_APPROVE, CONTRACT, trusted)}
+    assert "MISSING_RATIFIED_GATES" in _codes(_GOOD_APPROVE, _ti(required_gates=()))
 
 
-def test_empty_evidence_ref_rejected():
-    """Round-3: a 'met' criterion cannot resolve to an evidence entry whose ref is empty."""
-    art = _mut(
-        spec_conformance=[
-            {"criterion_id": "SPEC_X#1", "verdict": "met", "evidence_ref": "ev-tests"},
-            {"criterion_id": "SPEC_X#2", "verdict": "n/a", "evidence_ref": "-"},
-        ],
-        evidence=[{"id": "ev-tests", "ref": "   ", "produced_at": "2026-08-14T10:05:00+00:00"}],
-    )
-    codes = _codes(art)
-    assert "MALFORMED_EVIDENCE" in codes, codes
-    assert "UNRESOLVED_EVIDENCE_REF" in codes, codes
-
+# =========================================================================
+# The fabricated self-attested APPROVE — rejected on every axis.
+# =========================================================================
 
 def test_fabricated_selfattested_approval_is_rejected():
-    """The round-1 headline defect, now also with lying gate + non-independent reviewer."""
     fabricated = {
         "pr": "#EVIL",
         "verdict": "APPROVE",
@@ -299,22 +267,20 @@ def test_fabricated_selfattested_approval_is_rejected():
         "gates": [{"name": "conservation-lane1", "status": "pass"}],
         "evidence": [],
     }
-    trusted = TrustedInputs(
-        pr_head_sha=_HEAD, final_commit_committed_at=_FINAL_AT,
-        required_criteria=("SPEC_X#1", "SPEC_X#2"), required_gates=("conservation-lane1",),
-        na_allowed_criteria=("SPEC_X#2",), now=_NOW,
+    trusted = _ti(
         gate_conclusions={"conservation-lane1": "failure"},
-        reviewer_login="the-builder", pr_author_login="the-builder",
+        review_actor="the-builder", review_state="COMMENTED", review_commit_id="0" * 40,
     )
     codes = {v.code for v in validate_review(fabricated, CONTRACT, trusted)}
     for expected in ("STALE_REVIEW_SHA", "HEAD_MISMATCH", "UNKNOWN_CRITERION",
                      "INCOMPLETE_SPEC_CONFORMANCE", "EMPTY_EVIDENCE", "UNRESOLVED_EVIDENCE_REF",
-                     "GATE_CONCLUSION_MISMATCH", "REQUIRED_GATE_NOT_PASSED", "REVIEWER_NOT_INDEPENDENT"):
+                     "GATE_CONCLUSION_MISMATCH", "REQUIRED_GATE_NOT_PASSED",
+                     "REVIEWER_NOT_TRUSTED", "REVIEW_NOT_APPROVED", "REVIEW_STALE_SHA"):
         assert expected in codes, (expected, codes)
 
 
 # =========================================================================
-# Structural rules (unchanged) still reject their violation
+# Structural rules (unchanged) still reject their violation.
 # =========================================================================
 
 def test_empty_evidence_rejected():
@@ -372,13 +338,21 @@ def test_unresolved_evidence_ref_rejected():
     assert "UNRESOLVED_EVIDENCE_REF" in _codes(art)
 
 
+def test_empty_evidence_ref_rejected():
+    art = _mut(
+        spec_conformance=[
+            {"criterion_id": "SPEC_X#1", "verdict": "met", "evidence_ref": "ev-tests"},
+            {"criterion_id": "SPEC_X#2", "verdict": "n/a", "evidence_ref": "-"},
+        ],
+        evidence=[{"id": "ev-tests", "ref": "   ", "produced_at": "2026-08-14T10:05:00+00:00"}],
+    )
+    codes = _codes(art)
+    assert "MALFORMED_EVIDENCE" in codes and "UNRESOLVED_EVIDENCE_REF" in codes
+
+
 def test_future_evidence_rejected():
     art = _mut(evidence=[{"id": "ev-tests", "ref": "x", "produced_at": "2027-01-01T00:00:00+00:00"}])
     assert "FUTURE_EVIDENCE" in _codes(art)
-
-
-def test_approve_without_trusted_fails_closed():
-    assert "UNVERIFIABLE_APPROVE" in _codes(_GOOD_APPROVE, trusted=None)
 
 
 def test_evidence_before_final_commit_rejected():
@@ -426,7 +400,7 @@ def test_violations_are_typed():
 
 
 # =========================================================================
-# Contract ↔ review-gate.md must not drift
+# Contract ↔ review-gate.md must not drift; trusted reviewer is pinned.
 # =========================================================================
 
 def test_valid_verdicts_match_review_gate_command():
@@ -440,3 +414,7 @@ def test_valid_verdicts_match_review_gate_command():
     assert gate_verdicts == set(CONTRACT["valid_verdicts"]), (
         f"drift: review-gate.md={gate_verdicts} contract={set(CONTRACT['valid_verdicts'])}"
     )
+
+
+def test_contract_pins_the_trusted_independent_reviewer():
+    assert CONTRACT.get("trusted_independent_reviewer") == "codexindependentreviewer[bot]"
