@@ -368,6 +368,122 @@ def test_scanner_catches_getattr_http():
     assert len(hits) == 1 and hits[0].kind == "http", hits
 
 
+# --- urllib egress (owner-directed): urlopen bypasses the SDK gateway entirely -----------
+
+_URLLIB_DIRECT = """
+import urllib.request
+def s(payload):
+    return urllib.request.urlopen("https://api.openai.com/v1/chat/completions")
+"""
+
+_URLLIB_REQUEST_INLINE = """
+import urllib.request
+def s(payload):
+    return urllib.request.urlopen(urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload))
+"""
+
+_URLLIB_REQUEST_ASSIGNED = """
+import urllib.request
+def s(payload):
+    req = urllib.request.Request("https://api.openai.com/v1/embeddings", data=payload)
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return resp.read()
+"""
+
+_URLLIB_IMPORTED_BARE = """
+from urllib.request import urlopen, Request
+def s(payload):
+    r = Request("https://api.anthropic.com/v1/messages", data=payload)
+    return urlopen(r)
+"""
+
+_URLLIB_MODULE_ALIAS = """
+import urllib.request as U
+def s(payload):
+    return U.urlopen(U.Request("https://api.openai.com/v1/chat/completions", data=payload))
+"""
+
+_URLLIB_KEYWORD_URL = """
+import urllib.request
+def s(payload):
+    req = urllib.request.Request(url="https://api.openai.com/v1/chat/completions", data=payload)
+    return urllib.request.urlopen(req)
+"""
+
+_URLLIB_GEMINI_FSTRING = """
+import urllib.request
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+def s(model, payload):
+    url = f"{GEMINI_API_BASE}/{model}:generateContent?key=k"
+    req = urllib.request.Request(url, data=payload)
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return resp.read()
+"""
+
+_URLLIB_CONST_CONCAT = """
+import urllib.request
+BASE = "https://api.openai.com"
+def s(payload):
+    return urllib.request.urlopen(urllib.request.Request(BASE + "/v1/chat/completions", data=payload))
+"""
+
+# Non-provider urllib egress MUST NOT be flagged (fda / localhost / raw.githubusercontent).
+_URLLIB_NON_PROVIDER = """
+import urllib.request
+def s():
+    return urllib.request.urlopen(urllib.request.Request("https://api.fda.gov/drug/label.json"))
+def t(path):
+    return urllib.request.urlopen(urllib.request.Request("http://localhost:8000" + path))
+"""
+
+
+@pytest.mark.parametrize("src,label", [
+    (_URLLIB_DIRECT, "direct urlopen(URL)"),
+    (_URLLIB_REQUEST_INLINE, "urlopen(Request(URL))"),
+    (_URLLIB_REQUEST_ASSIGNED, "req=Request(URL); urlopen(req)"),
+    (_URLLIB_IMPORTED_BARE, "imported bare urlopen"),
+    (_URLLIB_MODULE_ALIAS, "aliased urllib module"),
+    (_URLLIB_KEYWORD_URL, "keyword url= arg"),
+    (_URLLIB_GEMINI_FSTRING, "gemini f-string + constant"),
+    (_URLLIB_CONST_CONCAT, "'+'-concatenated constant URL"),
+])
+def test_scanner_catches_urllib_provider_egress(src, label):
+    """Every urllib shape the owner enumerated turns the scanner RED (kind='http')."""
+    hits = scan_source(src)
+    assert len(hits) == 1 and hits[0].kind == "http", (label, hits)
+
+
+def test_scanner_ignores_non_provider_urllib():
+    """urllib to non-provider hosts (FDA public API, localhost) is NOT flagged (no false positive)."""
+    assert scan_source(_URLLIB_NON_PROVIDER) == []
+
+
+def test_urllib_covers_all_three_provider_hosts():
+    """OpenAI, Anthropic, and Gemini hosts are each recognized."""
+    for host in ("https://api.openai.com/v1/chat/completions",
+                 "https://api.anthropic.com/v1/messages",
+                 "https://generativelanguage.googleapis.com/v1beta/models/x:generateContent"):
+        src = f'import urllib.request\ndef s(p): return urllib.request.urlopen(urllib.request.Request("{host}", data=p))\n'
+        assert len(scan_source(src)) == 1, host
+
+
+def test_prior_scanner_was_blind_to_urllib():
+    """Proof this is a real gap the fix closes: the SDK-chain/requests-verb scanner never
+    inspected urlopen, so all urllib provider egress scanned to zero before this change."""
+    import ast as _ast
+    # A faithful model of the pre-urllib scanner: only Attribute .create/HTTP-verb calls.
+    def pre_urllib_hits(src):
+        n = 0
+        for node in _ast.walk(_ast.parse(src)):
+            if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute):
+                if node.func.attr in ("create", "post", "put", "patch", "request", "send", "stream"):
+                    n += 1
+        return n
+    for src in (_URLLIB_DIRECT, _URLLIB_REQUEST_INLINE, _URLLIB_GEMINI_FSTRING):
+        assert pre_urllib_hits(src) == 0        # pre-fix: blind to urlopen
+        assert len(scan_source(src)) == 1       # fixed: caught
+
+
 @pytest.mark.xfail(strict=True, reason=(
     "runtime-computed attribute name is beyond STATIC analysis by construction; the backstop is "
     "the PRIV-001b runtime egress guard (ESC-2026-08-15-egress-static-limit). strict=True: if "
@@ -542,8 +658,22 @@ def test_inventory_has_no_stale_entries():
 def test_inventory_is_wellformed():
     data = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
     for key, meta in data["sites"].items():
-        assert meta.get("class") in {"runtime", "allowlist"}, key
-        if meta["class"] == "allowlist":
-            assert meta.get("reason"), f"allowlisted site needs a reason: {key}"
+        assert meta.get("class") in {"runtime", "allowlist", "fixture-only"}, key
+        if meta["class"] in {"allowlist", "fixture-only"}:
+            # A non-runtime classification is NEVER a bare skip — it must carry a per-site,
+            # narrowly-proven reason (no broad directory allowlist).
+            assert meta.get("reason"), f"{meta['class']} site needs a per-site reason: {key}"
         else:
             assert meta.get("guard_status") in {"unguarded", "guarded"}, key
+
+
+def test_fixture_only_sites_are_confined_to_benchmark_eval_trees():
+    """A 'fixture-only' classification is only honest for offline benchmark/eval code. Guard
+    that the class can never be applied to a production module to wave egress through."""
+    data = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    for key, meta in data["sites"].items():
+        if meta.get("class") == "fixture-only":
+            relpath = key.split("::", 1)[0]
+            assert relpath.startswith(("ctxpack/benchmarks/", "benchmark/")), (
+                f"fixture-only must live under a benchmark/eval tree, not production: {key}"
+            )

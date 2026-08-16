@@ -19,16 +19,23 @@ rounds demonstrated the earlier passes missed:
      source-ordinal): unique per call site AND stable across line edits (line/col are reporting
      metadata, not the pinned key — a line-number key would churn on every refactor).
 
+Direct HTTP is covered too — provider egress via requests/httpx verbs AND via urllib
+(`urlopen(url)` / `urlopen(Request(url))` / `req=Request(url); urlopen(req)`, with url a literal,
+constant, f-string, or '+'-concat, across OpenAI/Anthropic/Gemini hosts, through any
+qualified/imported alias). This matters because the PRIV-001b **runtime** guard wraps the SDK
+client's `.create(...)` — it does NOT see hand-rolled HTTP, so for those forms the STATIC scanner
+is the SOLE control, not a runtime backstop.
+
 **Boundary (honest scope, not an overclaim):** this is *static* analysis. It cannot see forms
 that are only decidable at runtime — a method/attr name computed at runtime (`getattr(o, name)`
 where `name` is a variable), `exec`/`eval`, or a provider client injected via reflection/plugin.
 It also does NOT model container/subscript indirection, even with a literal key
 (`{"create": chain}["create"]()`), which would open an unbounded dict/`.get`/list surface. Those
 are OUT of static reach BY CONSTRUCTION, tracked as ESC-2026-08-15-egress-static-limit, each
-pinned by a strict=True xfail so it can never be silently claimed as covered; the backstop for
-them is the *runtime* egress guard (PRIV-001b), not this scanner. A gate that cannot fail on a
-real *statically-visible* bypass would be vacuous (principle #3);
-tests/test_wp12c_egress_mutation.py proves each class 1–9 turns the scanner RED.
+pinned by a strict=True xfail so it can never be silently claimed as covered. Those residuals are
+backstopped by the runtime guard ONLY because they still terminate in an SDK `.create`; a gate
+that cannot fail on a real *statically-visible* bypass would be vacuous (principle #3);
+tests/test_wp12c_egress_mutation.py proves each class turns the scanner RED.
 
 Importable so both the assurance gate and PRIV-001b consume ONE scanner, not two.
 """
@@ -50,13 +57,22 @@ TERMINAL_METHODS = frozenset({
     "create", "acreate", "stream", "astream", "parse", "aparse",
 })
 
-# Direct-HTTP egress: a provider endpoint literal passed to an HTTP verb defeats SDK-chain
-# detection entirely. Match the host / path markers, resolved through simple str constants.
+# Direct-HTTP egress: a provider endpoint literal passed to an HTTP verb (requests/httpx) OR
+# to urllib defeats SDK-chain detection entirely. Match the host / path markers, resolved
+# through str constants, f-strings, and constant concatenation. Gemini
+# (generativelanguage.googleapis.com) is a provider host too.
 PROVIDER_URL_MARKERS = (
     "api.openai.com", "api.anthropic.com", "openai.azure.com",
+    "generativelanguage.googleapis.com",
     "/v1/chat/completions", "/v1/messages", "/v1/embeddings", "/v1/responses",
+    ":generateContent",
 )
 HTTP_VERBS = frozenset({"post", "put", "patch", "request", "send", "stream"})
+# urllib egress: urlopen(url) / urlopen(Request(url)) / req=Request(url); urlopen(req).
+# Matched by TERMINAL NAME so qualified/imported aliases all resolve:
+#   urllib.request.urlopen · request.urlopen · from urllib.request import urlopen · urlopen
+URLOPEN_NAMES = frozenset({"urlopen"})
+REQUEST_CTORS = frozenset({"Request"})
 
 # Only genuinely non-production trees are skipped. apps/ and packages/ are NOT skipped so a
 # future .py egress there is caught (fail-closed). tests/ and assurance/ are skipped because
@@ -110,6 +126,9 @@ class _Scanner(ast.NodeVisitor):
         # dotted target ("self._go"). Module-wide (NOT scope-stacked) because an instance
         # attribute set in __init__ is called from another method — a different scope.
         self.attr_alias: dict[str, str] = {}
+        # Names bound to a urllib.request.Request(<provider-url>, ...) — so `req = Request(URL)`
+        # then `urlopen(req)` resolves. Scope-stacked (Request objects are locals).
+        self.req_alias_stack: list[dict[str, str]] = [{}]   # name -> resolved provider URL
         self.raw: list[tuple[str, str, int, int]] = []      # (scope, kind, lineno, col)
 
     # --- scope handling: inner scopes inherit outer aliases (module-level client, etc.) ---
@@ -117,11 +136,13 @@ class _Scanner(ast.NodeVisitor):
         self.scope_stack.append(name)
         self.alias_stack.append(dict(self.alias_stack[-1]))
         self.str_alias_stack.append(dict(self.str_alias_stack[-1]))
+        self.req_alias_stack.append(dict(self.req_alias_stack[-1]))
 
     def _pop(self) -> None:
         self.scope_stack.pop()
         self.alias_stack.pop()
         self.str_alias_stack.pop()
+        self.req_alias_stack.pop()
 
     def visit_FunctionDef(self, n: ast.AST) -> None:
         self._push(n.name)
@@ -149,6 +170,66 @@ class _Scanner(ast.NodeVisitor):
         for scope in reversed(self.str_alias_stack):
             if name in scope:
                 return scope[name]
+        return None
+
+    def _resolve_req(self, name: str) -> str | None:
+        for scope in reversed(self.req_alias_stack):
+            if name in scope:
+                return scope[name]
+        return None
+
+    def _resolve_url_expr(self, node: ast.AST) -> str:
+        """Best-effort string a URL expression resolves to (for provider-host matching):
+        a str literal, a str-constant Name, an f-string (with {CONST} names expanded), or
+        '+'-concatenation of the above. Unknown parts contribute ''. This lets a URL built
+        as f"{GEMINI_API_BASE}/{model}:generateContent" resolve to the host marker."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return self._resolve_str(node.id) or ""
+        if isinstance(node, ast.JoinedStr):
+            out = []
+            for v in node.values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    out.append(v.value)
+                elif isinstance(v, ast.FormattedValue):
+                    out.append(self._resolve_url_expr(v.value))
+            return "".join(out)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return self._resolve_url_expr(node.left) + self._resolve_url_expr(node.right)
+        return ""
+
+    @staticmethod
+    def _is_provider_url(s: str) -> bool:
+        return bool(s) and any(m in s for m in PROVIDER_URL_MARKERS)
+
+    @staticmethod
+    def _terminal_name(func: ast.AST) -> str | None:
+        """Last name of a call target: 'urlopen' for urlopen / urllib.request.urlopen / a bare
+        imported urlopen / U.urlopen; 'Request' for Request / urllib.request.Request."""
+        if isinstance(func, ast.Attribute):
+            return func.attr
+        if isinstance(func, ast.Name):
+            return func.id
+        return None
+
+    def _url_arg(self, call: ast.Call) -> ast.AST | None:
+        """The URL argument of a Request(...)/urlopen(...) call: first positional, else url=."""
+        if call.args:
+            return call.args[0]
+        for kw in call.keywords:
+            if kw.arg == "url":
+                return kw.value
+        return None
+
+    def _request_provider_url(self, call: ast.Call) -> str | None:
+        """If `call` is a Request(<url>, ...) whose url resolves to a provider host, return it."""
+        if self._terminal_name(call.func) in REQUEST_CTORS:
+            arg = self._url_arg(call)
+            if arg is not None:
+                url = self._resolve_url_expr(arg)
+                if self._is_provider_url(url):
+                    return url
         return None
 
     def _chain_of(self, node: ast.AST) -> str | None:
@@ -208,6 +289,18 @@ class _Scanner(ast.NodeVisitor):
         if isinstance(target, ast.Name):
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 self.str_alias_stack[-1][target.id] = value.value
+                return
+            # `req = Request(<provider-url>, ...)` — remember so a later urlopen(req) resolves.
+            if isinstance(value, ast.Call):
+                req_url = self._request_provider_url(value)
+                if req_url is not None:
+                    self.req_alias_stack[-1][target.id] = req_url
+                    return
+            # A URL built into a local var (`url = f"{GEMINI_API_BASE}/..."`) — remember as a
+            # string so Request(url)/urlopen(url) resolves it.
+            built = self._resolve_url_expr(value)
+            if built:
+                self.str_alias_stack[-1][target.id] = built
                 return
             chain = self._callable_chain_of(value)
             if chain is not None:
@@ -277,8 +370,33 @@ class _Scanner(ast.NodeVisitor):
                         out.append(v.value)
         return out
 
+    def _maybe_urlopen(self, n: ast.Call) -> bool:
+        """(h) urllib egress: urlopen(<provider-url>) / urlopen(Request(<provider-url>)) /
+        req=Request(<provider-url>); urlopen(req). Matches urlopen by TERMINAL NAME so
+        qualified/imported aliases (urllib.request.urlopen, request.urlopen, bare urlopen,
+        U.urlopen) all resolve. URL may be a literal, a constant, an f-string, or '+'-concat."""
+        if self._terminal_name(n.func) not in URLOPEN_NAMES:
+            return False
+        arg = self._url_arg(n)
+        if arg is None:
+            return False
+        hit = False
+        if isinstance(arg, ast.Call):                       # urlopen(Request(URL, ...))
+            hit = self._request_provider_url(arg) is not None
+        elif isinstance(arg, ast.Name):                     # req=Request(URL); urlopen(req)  OR  url=str; urlopen(url)
+            hit = (self._resolve_req(arg.id) is not None) or self._is_provider_url(self._resolve_str(arg.id) or "")
+        else:                                               # urlopen("https://api.openai.com/...") / f-string / concat
+            hit = self._is_provider_url(self._resolve_url_expr(arg))
+        if hit:
+            self._record("http", n)
+        return hit
+
     def visit_Call(self, n: ast.Call) -> None:
         f = n.func
+
+        if self._maybe_urlopen(n):
+            self.generic_visit(n)
+            return
 
         if isinstance(f, ast.Attribute):
             recorded = False
