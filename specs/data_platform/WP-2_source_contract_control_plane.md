@@ -1,12 +1,12 @@
-# WP-2 — Versioned source-contract control plane (Phase C.1 specification)
+# WP-2 — Versioned source-contract control plane (Phase C.2 specification)
 
-**Status:** Specification, **revision C.1**. **Spec-only** — no runtime wiring, no migration
+**Status:** Specification, **revision C.2**. **Spec-only** — no runtime wiring, no migration
 reserved, no executable tests, no identity slice.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
-**Date:** 2026-08-15
+**Date:** 2026-08-15 (rev C.2: 2026-08-16)
 **Covers:** G-01, G-07, G-10 (part — see §6.0), G-12, G-14 (SPEC-003 §6).
 **Preceded by:** `WP-2_findings_reverification.md` (Phase A) · `WP-2_safe_fetch_threat_model.md`
-(Phase B, rev C.1). Every "today" claim is a verified file:line, not a restatement of the review.
+(Phase B, rev C.2). Every "today" claim is a verified file:line, not a restatement of the review.
 
 **Implementation gate (COORDINATION §13.3, unchanged):**
 
@@ -15,7 +15,7 @@ reserved, no executable tests, no identity slice.
 > foundations **may land with execution disabled**. Safe fetch and secret resolution are
 > **mandatory before any probe, preview or scheduled outbound request can execute**.
 
-### Revision log — what C.1 changed and why
+### C.1 revision log — what C.1 changed and why
 
 | # | Change | Cause |
 |---|---|---|
@@ -26,6 +26,21 @@ reserved, no executable tests, no identity slice.
 | 5 | **Cursors/leases handed to WP-9**; WP-2 keeps only run-identity | Verified: SPEC-003 §6 assigns "durable cursors, streaming batches, leases, cost controls" to **WP-9** |
 | 6 | **Keys, cardinalities, job and audit objects specified** | They were promised and absent |
 | 7 | **TIV2 seam marked provisional and pinned by content digest** | Verified: TIV2 is **untracked** (`??`) and labelled *"DRAFT … Implementation authority: none until the owner records ratification"* |
+
+### C.2 revision log — ten specification defects
+
+| # | Change | Cause |
+|---|---|---|
+| 1 | Threat-model **C-10 rewritten**, **C-10a added** (query credentials excluded, not hashed) | C-10 still mandated `credential_ref`; value-hashing contradicted "secrets never enter URLs" |
+| 2 | **Output streams become a relational table** `source_contract_streams`; per-stream run outcomes representable | Streams were JSONB while certifications, grants, jobs and provenance referenced them relationally — a FK cannot point into JSONB |
+| 3 | **Composite FK given its required parent UNIQUE**; certification keys made NOT NULL with a sentinel | The C.1 composite FK was invalid SQL; nullable `stream_key` permitted duplicate certifications (NULLs are distinct in a UNIQUE) |
+| 4 | **Event log is the sole authority; deployments/certifications relabelled as rebuildable projections** | They claimed append-only semantics while carrying mutable state columns |
+| 5 | **ASK-WP2-3 opened** — WP-1 attaches `retention_class` to the content-addressed blob | Verified `WP-1 …:38` — `raw_artifacts` is content-addressed, so identical bytes under two licences cannot carry two retentions |
+| 6 | **Tenancy specified at service / repository / worker boundaries**, not routes alone | Route-only enforcement leaves schedulers and background jobs unscoped |
+| 7 | **Legacy backfill single-state-machine** — secret-bearing rows are quarantined and **not** admitted | The text said rows were both admitted and quarantined |
+| 8 | **COORDINATION §13.1/§13.3 corrected** | The board still assigned cursors/leases and "no-write preview" to WP-2 after C.1 withdrew them |
+| 9 | **M-28a relabelled an unmet design criterion**, not RED evidence | No executable test exists; "RED" implies an observed failing run |
+| 10 | **Residual "recorded and committed" fixture claim removed** | C.1 corrected the header but left the same claim in the fixture section |
 
 ---
 
@@ -95,21 +110,38 @@ the baseline:
 | `pubmed.py` | `LITERATURE`, `INVESTIGATOR` |
 
 A scalar cannot backfill or instantiate those. **The fetch contract is separated from its typed
-outputs:**
+outputs — and in C.2 the streams are a relational table, not JSONB.**
 
-```text
-SourceContractVersion
-  └── transport        (1)  — how bytes are acquired: url, pagination, auth placement, limits
-  └── output_streams   (1..n) — what those bytes become
-        stream_key           TEXT     -- stable within the contract
-        record_type          TEXT     -- one RecordType
-        records_path         TEXT     -- where in the payload this stream lives
-        external_id_field    TEXT
-        field_map            JSONB
-        identifiers_map      JSONB
-        must_capture         TEXT[]
-        certification_scope  TEXT     -- streams certify independently (§3.4)
+C.1 declared `output_streams JSONB` while certifications, grants, jobs and `Provenance` all
+referenced `stream_key` as if it were a key. **A foreign key cannot reference a value inside a
+JSONB document**, so nothing enforced that a certification's `stream_key` named a stream that
+existed, and a run could claim a stream the contract never declared.
+
+```sql
+source_contract_streams
+  stream_id                  UUID PRIMARY KEY
+  source_contract_version_id UUID NOT NULL REFERENCES source_contract_versions
+  stream_key                 TEXT NOT NULL      -- stable within the contract
+  record_type                TEXT NOT NULL      -- one RecordType
+  records_path               TEXT NOT NULL
+  external_id_field          TEXT NOT NULL
+  field_map                  JSONB NOT NULL     -- leaf mapping data: JSONB is correct here
+  identifiers_map            JSONB NOT NULL
+  must_capture               TEXT[] NOT NULL DEFAULT '{}'
+  UNIQUE (source_contract_version_id, stream_key)
+  UNIQUE (stream_id, source_contract_version_id)   -- parent key for composite FKs (§9.2)
 ```
+
+Streams are immutable with their contract version: a stream change is a new contract version, so
+the table is append-only alongside its parent. `field_map` stays JSONB because it is *leaf* data
+nothing references; `stream_key` leaves JSONB because four other objects reference it.
+
+**Per-stream run outcomes (C.2).** C.1 could not represent a run where one stream landed and
+another failed — the outcome was scalar per run. Corrected in §3.6: `source_jobs` carries an
+overall terminal outcome **and** `source_job_streams` carries one row per stream with its own
+outcome and counts. The run-level outcome is a deterministic **rollup**, and the rollup rule is
+part of ASK-WP2-1 because WP-0 owns the vocabulary: a run whose streams mixed `LANDED` and
+`ZERO_ROWS` must not silently report `LANDED`.
 
 One fetch, many typed streams. This also makes certification honest: a SEC contract may be
 `decision`-grade for `COMPANY` and only `discovery`-grade for `DOCUMENT_CHUNK`. **Migration 099's
@@ -151,7 +183,6 @@ SourceContractVersion             -- IMMUTABLE from the moment of admission
   version             INTEGER NOT NULL
   connector_type      TEXT NOT NULL          -- §3.0 vocabulary
   transport           JSONB NOT NULL
-  output_streams      JSONB NOT NULL         -- 1..n, §3.0
   credential_slots    JSONB NOT NULL         -- named slots + placement, NOT values (§7)
   egress_allowlist    TEXT[] NOT NULL        -- normalized origins
   rights_policy_version_id UUID FK NOT NULL  -- §3.5
@@ -159,11 +190,18 @@ SourceContractVersion             -- IMMUTABLE from the moment of admission
   sla_days            INTEGER NULL
   trust_tier          INTEGER
   canonical_hash      TEXT NOT NULL          -- sha256 over the canonical serialization
+                                             -- (covers the stream rows too, §3.2)
   validator_version   TEXT NOT NULL
   admitted_by, admitted_at
   UNIQUE (source_instance_id, version)
   UNIQUE (source_instance_id, canonical_hash)
+  -- C.2: the parent key the deployment/certification composite FKs require (§9.2)
+  UNIQUE (source_instance_id, source_contract_version_id)
 ```
+
+Output streams live in `source_contract_streams` (§3.0), inserted in the same transaction as the
+version row. The `canonical_hash` covers the version body **and** its ordered stream rows — a
+contract whose streams changed is a different contract.
 
 - **Admission is the immutability boundary.** A draft is validated; on success a version row is
   inserted; the draft is never promoted in place. There is no `UPDATE` path, and an append-only
@@ -174,48 +212,96 @@ SourceContractVersion             -- IMMUTABLE from the moment of admission
 - Canonical serialization must be deterministic (sorted keys, normalized numbers/unicode, explicit
   null handling); a hash that is not reproducible is not a control (test case in the suite).
 
-### 3.3 `SourceDeployment` — which version is live, where
+### 3.3 `SourceDeployment` — a rebuildable **projection**, not a record of authority
 
-```text
-deployment_id  UUID PK
-source_instance_id UUID FK NOT NULL
-source_contract_version_id UUID FK NOT NULL
-environment    TEXT NOT NULL          -- draft | staging | prod
-execution_enabled BOOLEAN NOT NULL DEFAULT FALSE
-superseded_by  UUID NULL
+**C.2 correction.** C.1 said current state "is a projection of the event log" while this table
+carried mutable `execution_enabled` and `superseded_by` columns and §3.6 called the design
+append-only. Both cannot be true. The resolution names each object honestly:
 
--- C.1 finding 2: cross-instance pairing was possible. Two guards:
-FOREIGN KEY (source_instance_id, source_contract_version_id)
-    REFERENCES source_contract_versions (source_instance_id, source_contract_version_id)
--- and at most one effective deployment per scope:
-UNIQUE (source_instance_id, environment) WHERE superseded_by IS NULL
+| Layer | Mutability | Authority |
+|---|---|---|
+| `control_plane_events` | **append-only, immutable** | **the sole authority** |
+| `source_deployments`, `source_certifications` | **mutable projections** | derived; rebuildable by replay |
+
+Mutable columns on a projection are correct — a projection's whole job is to hold current state.
+What C.1 got wrong was calling the projections append-only. A projection may be **dropped and
+rebuilt** from the event log at any time, and a Lane-1 test asserts replay reproduces it exactly
+(M-35a). No writer may update a projection without emitting the corresponding event in the same
+transaction.
+
+```sql
+source_deployments                    -- PROJECTION of control_plane_events
+  deployment_id              UUID PRIMARY KEY
+  source_instance_id         UUID NOT NULL
+  source_contract_version_id UUID NOT NULL
+  environment                TEXT NOT NULL   -- draft | staging | prod
+  execution_enabled          BOOLEAN NOT NULL DEFAULT FALSE
+  superseded_by              UUID NULL REFERENCES source_deployments
+  last_event_id              UUID NOT NULL   -- the event this row was derived from
+
+  -- C.2: a composite FK REQUIRES a matching UNIQUE on the parent. C.1 omitted it,
+  -- so the constraint below was invalid SQL. The parent key is added in §3.2.
+  FOREIGN KEY (source_instance_id, source_contract_version_id)
+      REFERENCES source_contract_versions (source_instance_id, source_contract_version_id)
+
+  -- at most one effective deployment per scope
+  UNIQUE (source_instance_id, environment) WHERE superseded_by IS NULL
 ```
 
 The composite FK is the fix for "a deployment could pair a contract version belonging to a
 different source instance." `source_instance_id` is *derived and constrained*, not independently
-supplied.
+supplied — and it is now enforceable, because the parent carries
+`UNIQUE (source_instance_id, source_contract_version_id)`.
 
 Separating deployment from contract is what makes the §13.3 sequencing rule mechanical: a contract
 can be authored, admitted, versioned and deployed with `execution_enabled = FALSE` before safe
 fetch exists.
 
-### 3.4 `SourceCertification` — versioned history, not a current-value row
+### 3.4 `SourceCertification` — projection over an append-only decision log
 
-```text
-certification_id UUID PK
-source_instance_id + source_contract_version_id   -- composite FK as §3.3
-stream_key       TEXT NULL      -- NULL = whole contract; else per output stream (§3.0)
-purpose          TEXT           -- discovery | evidence | decision | restricted_internal
-allowed_record_types / allowed_predicates / allowed_jurisdictions  TEXT[]
-rights_policy_version_id UUID FK
-certifier_principal, certification_evidence
-effective_from, effective_to, review_due_at
-revoked_at, revoked_by, revocation_reason
-UNIQUE (source_contract_version_id, stream_key, purpose, effective_from)
+```sql
+source_certifications                 -- PROJECTION (see §3.3); events are the authority
+  certification_id           UUID PRIMARY KEY
+  source_instance_id         UUID NOT NULL
+  source_contract_version_id UUID NOT NULL
+  -- C.2: was `stream_key TEXT NULL` meaning "whole contract". In Postgres NULLs are
+  -- DISTINCT in a UNIQUE constraint, so two contract-wide certifications for the same
+  -- purpose and effective_from were both admissible. A NOT NULL sentinel closes it.
+  stream_key                 TEXT NOT NULL DEFAULT '*'   -- '*' = whole contract
+  purpose                    TEXT NOT NULL   -- discovery | evidence | decision | restricted_internal
+  allowed_record_types       TEXT[] NOT NULL DEFAULT '{}'
+  allowed_predicates         TEXT[] NOT NULL DEFAULT '{}'
+  allowed_jurisdictions      TEXT[] NOT NULL DEFAULT '{}'
+  rights_policy_version_id   UUID NOT NULL REFERENCES rights_policy_versions
+  certifier_principal        TEXT NOT NULL
+  certification_evidence     JSONB NOT NULL
+  effective_from             TIMESTAMPTZ NOT NULL
+  effective_to               TIMESTAMPTZ NULL
+  review_due_at              TIMESTAMPTZ NOT NULL
+  revoked_at                 TIMESTAMPTZ NULL
+  revoked_by                 TEXT NULL
+  revocation_reason          TEXT NULL
+  last_event_id              UUID NOT NULL
+
+  FOREIGN KEY (source_instance_id, source_contract_version_id)
+      REFERENCES source_contract_versions (source_instance_id, source_contract_version_id)
+  -- a stream_key other than '*' must name a declared stream of THIS contract version
+  FOREIGN KEY (source_contract_version_id, stream_key)
+      REFERENCES source_contract_streams (source_contract_version_id, stream_key)
+      -- enforced for non-'*' rows via a trigger or a '*' sentinel row per version
+  UNIQUE (source_contract_version_id, stream_key, purpose, effective_from)
+  -- at most one live certification per scope
+  UNIQUE (source_contract_version_id, stream_key, purpose)
+      WHERE revoked_at IS NULL AND effective_to IS NULL
 ```
 
-**Append-only history**, not an updatable status column: a certification is superseded or revoked,
-never edited. Revocation must be observable *during* execution (§7.4).
+**The decision history is append-only in `control_plane_events`;** this table is its current-state
+projection (§3.3). A certification is superseded or revoked, never semantically edited, and the
+`revoked_*` columns are projection state written alongside a `revoked` event in one transaction.
+Revocation must be observable *during* execution (§7.4).
+
+The stream FK is what the C.1 JSONB model could not express: a certification can no longer name a
+stream the contract never declared.
 
 **Not a quality number** — deliberately, and it corrects a live defect class: QUAL-001 found
 `source_registry.recompute_quality` filling missing dimensions with `0.5`, producing a composite
@@ -238,9 +324,38 @@ C.1 makes it **one versioned table**, referenced by FK from the contract version
 
 **Attachment point (C.1 finding 7):** rights belong to the **acquisition** — the
 contract-version-scoped fetch that produced the bytes — **not to the content-addressed blob**. The
-same bytes acquired under two contracts, licences, or tenants carry two rights envelopes. WP-1's
-`raw_artifacts` is content-addressed and therefore cannot be the rights owner; the join is through
-the artefact-version/acquisition record.
+same bytes acquired under two contracts, licences, or tenants carry two rights envelopes.
+
+### 3.5.1 Direct conflict with WP-1 — BLOCKING (new in C.2)
+
+This is not a preference; it conflicts with the WP-1 design as written. Verified in
+`specs/data_platform/WP-1_raw_capture_and_replay.md`:
+
+- **line 38** — `raw_artifacts` (append-only, keyed by `sha256 PK`) carries
+  **`retention_class`** and `legal_hold` **on the content-addressed row**;
+- **line 23** — the store interface exposes `apply_retention(source_type, before) -> int`, keyed by
+  `source_type`, not by acquisition;
+- **line 19** — "retention/legal-hold governs eventual expiry per source".
+
+Because the table is content-addressed with `ON CONFLICT (sha256) DO NOTHING`, **identical bytes
+fetched under two different licences, retention classes, or tenants collapse to one row and one
+retention class — silently, and in favour of whichever acquisition arrived first.** That is a
+conservation failure of exactly the class this program exists to stop: a governance attribute is
+lost without a record.
+
+**The required interface** (ASK-WP2-3, COORDINATION §13.5):
+
+1. `raw_artifacts` stays content-addressed and **loses `retention_class`** — bytes are bytes.
+2. A per-acquisition row (WP-1's `artifact_usage`, or the TIV2 artefact-version object if that
+   epic ratifies) carries `source_instance_id`, `source_contract_version_id`,
+   `rights_policy_version_id`, `retention_class`, `redistribution_class`, `data_classification`.
+3. **Retention and legal hold resolve over all acquisitions of a blob**, most-restrictive wins: a
+   blob is deletable only when *every* acquisition referencing it is expired and unheld.
+4. `apply_retention` is keyed by acquisition, not `source_type`.
+
+**Neither WP-1 nor WP-2 may land its side of this unilaterally.** WP-2 does not have the authority
+to alter WP-1's schema, and WP-1's current design cannot carry WP-2's rights model. This is
+recorded as a blocking cross-lane ASK rather than resolved here.
 
 ### 3.6 Event log and current-state projections
 
@@ -264,11 +379,27 @@ source_jobs                         -- one row per execution attempt
   deployment_id, source_contract_version_id  (composite FK)
   trigger        TEXT   -- scheduled | manual | replay
   grant_id       UUID   -- §7
-  cursor_before / cursor_after  JSONB   -- OWNED BY WP-9, recorded here (§6.0)
   etl_run_id     UUID
-  terminal_outcome TEXT -- WP-0 vocabulary (§5.3)
+  rollup_outcome TEXT   -- DETERMINISTIC rollup of the stream rows below (§3.0, ASK-WP2-1)
   started_at, finished_at
+
+source_job_streams                  -- NEW in C.2: per-stream outcome (§3.0)
+  job_id     UUID NOT NULL REFERENCES source_jobs
+  stream_id  UUID NOT NULL REFERENCES source_contract_streams
+  cursor_before / cursor_after  JSONB   -- OWNED BY WP-9, recorded here (§6.0)
+  records_in / records_mapped / records_dropped  INTEGER NOT NULL
+  drop_reasons     JSONB NOT NULL
+  terminal_outcome TEXT NOT NULL   -- WP-0 vocabulary (§5.3)
+  truncated        BOOLEAN NOT NULL
+  PRIMARY KEY (job_id, stream_id)
 ```
+
+**Why the split (C.2).** A single scalar outcome on `source_jobs` could not represent a run where
+one stream landed and another returned zero rows or was refused — the honest case for every
+multi-output connector (ClinicalTrials has four streams). Cursors are also per-stream, so recording
+them on the job row was wrong. `rollup_outcome` is derived, never independently written, and **the
+rollup rule belongs to ASK-WP2-1** because WP-0 owns the vocabulary: a run mixing `LANDED` and
+`ZERO_ROWS` must not report `LANDED`.
 
 Current state (`deployment.state`, `contract.state`, `certification.status`) is a **projection**
 over `control_plane_events`, not an independently writable column. Storing state twice is how the
@@ -284,10 +415,19 @@ two silently diverge.
 | `_finalize_etl_run` (`:549-580`) | counts + `outcome` | **+ per-stream counts, truncation, per-stage outcomes** |
 | Catalog | static `DATASET_DEFINITIONS` | integrity gate (§9.4) |
 
-**Redaction of run rows (C.1 finding 3).** The Phase C draft said to persist "real query params."
-That would persist resolved credentials for any `api_key_param` contract. Corrected: `etl_runs`
-stores the **normalized origin + path + the declared parameter *names*** and a hash of the
-parameter values — never resolved values. The same rule covers logs, errors and API responses.
+**Redaction of run rows (C.1 finding 3; tightened in C.2).** The Phase C draft said to persist
+"real query params," which would persist resolved credentials for any `api_key_param` contract.
+C.1 corrected that to "parameter names plus a hash of the values" — but **a hash of a credential is
+still a credential artefact**: low-entropy or structured tokens are recoverable offline, so that
+still contradicted "secrets never enter persisted artefacts". Final rule (threat model C-10a):
+
+| Parameter kind | Persisted in `etl_runs` / `source_jobs` / events / logs |
+|---|---|
+| Non-credential | name **and** a hash of the value (supports reconciliation and replay) |
+| **Credential-bound** (any slot binding) | name **and the literal marker `REDACTED:credential`** — no hash, no length, no prefix, no value-derived material |
+
+Plus the normalized origin and path. Query-placed credentials are forbidden by default and require
+an owner-approved exception (C-10a).
 
 **Naming rule:** never `source_id` inside `integration/` — `cross_linker.py` uses it for graph-edge
 endpoints at 25 sites (Phase A §1.2).
@@ -432,6 +572,16 @@ Values live in the resolver and are versioned. The contract grammar has no field
 secret, which is what makes Phase A's four bypasses (nested header, nested query param, URL
 userinfo, unrecognised key) unrepresentable rather than stripped.
 
+**Placement is header-only by default (C.2, threat model C-10a).** `placement: query:<name>` is
+rejected with `CREDENTIAL_PLACEMENT_FORBIDDEN` unless the contract carries an owner-approved
+`query_credential_exception`. Under that exception the value exists only in the in-flight request
+and is **excluded — never hashed** — from every persisted artefact (§4). This closes the C.1
+contradiction between "secrets never enter URLs" and the existence of `RestConfig.api_key_param`.
+
+**This spec's single credential model is: slot (in the contract) + grant binding (at runtime).**
+There is no `credential_ref` locator anywhere in WP-2; references to it in this document and in the
+threat model are historical, describing what C.1 replaced.
+
 ### 7.4 Revocation during execution
 
 A `revocation_epoch` on the source instance is bumped on credential rotation, certification
@@ -530,9 +680,15 @@ COORDINATION §7.4; the highest existing is `099`. Reserving now would collide w
 
 ### 9.1 Tables
 
-`source_instances` · `contract_drafts` · `source_contract_versions` · `source_deployments` ·
-`source_certifications` · `rights_policy_versions` · `control_plane_events` · `source_jobs` ·
-`fetch_grants`
+**Immutable / append-only (authority):** `source_contract_versions` · `source_contract_streams` ·
+`control_plane_events` · `source_jobs` · `source_job_streams` · `fetch_grants` ·
+`rights_policy_versions`
+
+**Mutable projections (rebuildable by replay, §3.3):** `source_deployments` ·
+`source_certifications`
+
+**Mutable working state:** `source_instances` (metadata) · `contract_drafts`
+
 *(cursors and leases are **WP-9**, §6.0)*
 
 ### 9.2 Keys and cardinalities
@@ -541,12 +697,23 @@ COORDINATION §7.4; the highest existing is `099`. Reserving now would collide w
 |---|---|---|
 | instance → contract versions | 1..n | `UNIQUE (source_instance_id, version)` |
 | instance → contract hash | 1..n | `UNIQUE (source_instance_id, canonical_hash)` |
-| deployment → (instance, version) | n..1 | **composite FK** (§3.3) — no cross-instance pairing |
+| **parent key for composite FKs** | — | **`UNIQUE (source_instance_id, source_contract_version_id)`** on `source_contract_versions` — *C.2: without this the composite FKs below are invalid SQL* |
+| contract version → streams | 1..n | `UNIQUE (source_contract_version_id, stream_key)`; plus `UNIQUE (stream_id, source_contract_version_id)` as a parent key |
+| deployment → (instance, version) | n..1 | composite FK, now satisfiable (§3.3) |
 | instance+environment → effective deployment | 1 | partial `UNIQUE … WHERE superseded_by IS NULL` |
-| contract version + stream + purpose → certification | 1..n history | `UNIQUE (…, effective_from)`; revoke, never delete |
+| certification → (version, stream) | n..1 | composite FK; `stream_key NOT NULL DEFAULT '*'` — *C.2: a nullable key made duplicates admissible, since NULLs are distinct in a UNIQUE* |
+| certification liveness | ≤1 per scope | partial `UNIQUE (version, stream_key, purpose) WHERE revoked_at IS NULL AND effective_to IS NULL` |
 | contract version → rights policy | n..1 | FK `NOT NULL` |
 | job → deployment | n..1 | composite FK |
+| job → stream outcomes | 1..n | `PRIMARY KEY (job_id, stream_id)` |
+| projection → event | n..1 | `last_event_id` FK; replay must reproduce the projection exactly |
 | legacy alias | 1..1 | `legacy_source_key UNIQUE` |
+
+**Composite-FK rule (C.2).** PostgreSQL requires a referenced column list to be backed by a
+`UNIQUE` or `PRIMARY KEY` constraint on the parent. C.1 declared composite FKs against
+`(source_instance_id, source_contract_version_id)` while the parent had only a single-column PK —
+the constraint would have failed at migration time. Every composite FK in this spec now names its
+parent key explicitly.
 
 ### 9.3 Migration and backfill — corrected
 
@@ -556,16 +723,39 @@ later PR (SPEC-003 §9: shadow → dual-read → reversible flag → cutover →
 **Legacy configs are quarantined, not trusted (C.1 finding 7).** The Phase C draft would have
 turned existing onboarding rows into trusted v1 contracts. Corrected backfill:
 
+**One state machine, three terminal states (corrected in C.2).** C.1 said rows are "admitted as
+`legacy_unverified`" *and* that secret-bearing rows are "quarantined" — leaving it undefined
+whether a secret-bearing row became a contract. It does not:
+
+```text
+                    ┌─ clean ──────────▶ ADMITTED as legacy_unverified
+profile for         │                     (a real contract version: disabled,
+embedded secrets ───┤                      uncertified, NO grant issuable)
+                    │
+                    ├─ credential-shaped ▶ QUARANTINED
+                    │                     (NOT admitted; NO contract version created;
+                    │                      original row preserved verbatim, flagged,
+                    │                      reported for manual remediation)
+                    │
+                    └─ unparseable ──────▶ SKIPPED (reported with reason)
+```
+
 1. every `sources` row → one `source_instances` row, `legacy_source_key` set and UNIQUE;
 2. every existing `source_onboarding` contract is **profiled for embedded secrets first** — the
    Phase A probe proved the current strip covers only three top-level keys, so nested headers,
    query params, URL userinfo and unrecognised keys may be sitting in production config today;
-3. rows are admitted as `legacy_unverified`: **disabled, uncertified, no grant issuable**;
-4. a row containing credential-shaped material is quarantined and reported — never silently cleaned;
+3. **clean rows only** are admitted as `legacy_unverified` contract versions: disabled,
+   uncertified, no grant issuable;
+4. **secret-bearing rows are quarantined and never admitted.** No contract version is created for
+   them. The original row is preserved verbatim (evidence for remediation), flagged, and reported
+   — never silently cleaned, and never turned into a contract carrying a live credential;
 5. the migration emits a conservation report: rows in, instances created, contracts admitted,
-   quarantined, skipped, **and why**. A silent partial backfill is the designed-against failure.
+   **quarantined**, skipped, **and why**. A silent partial backfill is the designed-against failure;
 6. **Single authority:** after backfill, `source_onboarding`'s contract columns become read-only
    (trigger or revoked grants) so they cannot remain a second mutable authority.
+
+Quarantine is a **halt with evidence**, not a downgrade: remediating a quarantined row means
+rotating the exposed credential and re-authoring the contract with a slot, which is a human action.
 
 ### 9.4 `list_runnable_sources()` and catalog integrity
 
@@ -583,7 +773,7 @@ turned existing onboarding rows into trusted v1 contracts. Corrected backfill:
 | Class | Codes |
 |---|---|
 | Transport | `URL_SCHEME_FORBIDDEN`, `URL_USERINFO_PRESENT`, `ORIGIN_NOT_ALLOWLISTED`, `LOCAL_PATH_FORBIDDEN` |
-| Secret | `INLINE_CREDENTIAL_PRESENT`, `CREDENTIAL_SLOT_UNKNOWN`, `CREDENTIAL_PLACEMENT_FORBIDDEN` |
+| Secret | `INLINE_CREDENTIAL_PRESENT`, `CREDENTIAL_SLOT_UNKNOWN`, `CREDENTIAL_PLACEMENT_FORBIDDEN`, `QUERY_CREDENTIAL_EXCEPTION_UNAPPROVED` |
 | Streams | `STREAM_KEY_DUPLICATE`, `RECORDS_PATH_INVALID`, `EXTERNAL_ID_FIELD_MISSING`, `MAPPING_TARGET_UNKNOWN` |
 | Schema | `MUST_CAPTURE_UNMAPPED`, `IDENTIFIER_NAMESPACE_UNKNOWN` |
 | Rights | `RIGHTS_POLICY_MISSING`, `RETENTION_CLASS_UNKNOWN`, `PURPOSE_NOT_CERTIFIED` |
@@ -627,9 +817,22 @@ from this lane would be harmful.
   (`conservation-gates.md`, "Reviewer identity"). Until a non-owner agent identity exists, this is
   **discipline, not structure**. WP-2 records `actor_kind` and principal separately so the
   violation is *visible*, and the acceptance suite asserts the intent — it cannot enforce it.
-- **Tenancy** is the recorded cross-lane seam (COORDINATION §10.1 A4): Data adds `owner_id` /
-  `tenant_id`; Product-Platform enforces in routes. WP-2 carries the column and grant-scopes on it;
-  it does not implement route enforcement.
+- **Tenancy is enforced at four boundaries, not one (corrected in C.2).** C.1 delegated enforcement
+  to "routes", which leaves every non-route path unscoped — and the scheduler, the backfill and the
+  health gate all reach this data without passing through a route. The seam
+  (COORDINATION §10.1 A4) stays "Data adds the column, Product-Platform enforces", but the
+  enforcement surface is specified here so it cannot be read as route-only:
+
+  | Boundary | Requirement |
+  |---|---|
+  | **Route / API** | Principal's tenant resolved from the authenticated session, never from a request body or query parameter |
+  | **Service** | Every control-plane operation takes an explicit tenant-scoped caller context; no ambient/default tenant, no `None` meaning "all" |
+  | **Repository / query** | Every read and write of a WP-2 table is tenant-filtered at the query layer. RLS is **defence in depth, not the only filter** |
+  | **Worker / scheduler / migration** | A background job runs under an explicit tenant context per source instance. A job with no resolvable tenant **fails closed** rather than running unscoped |
+
+  A `FetchGrant` is tenant-bound (§7.1), so the fetch primitive is scoped even when reached from a
+  worker. WP-2 carries the column, grant-scopes on it, and states these four requirements; the
+  route-layer implementation remains Product-Platform's.
 
 ## 13. Explicitly out of scope
 
@@ -650,6 +853,12 @@ from this lane would be harmful.
    terminal outcome and health consequence. Agreement is currently *asserted, not held*.
 2. **WP-2 ⇄ WP-9 boundary.** Ratify §6.0's split and publish one normative cursor/lease interface
    before either specs its side.
+3. **WP-1 ⇄ WP-2 rights/retention attachment (ASK-WP2-3, new in C.2).** WP-1 puts
+   `retention_class` on the content-addressed `raw_artifacts` row, so identical bytes acquired
+   under two licences or tenants collapse to one retention class, silently. Publish one
+   acquisition-scoped rights/retention interface (§3.5.1) before either lane lands. **Neither may
+   resolve this unilaterally** — WP-2 cannot alter WP-1's schema, and WP-1's current design cannot
+   carry WP-2's rights model.
 
 **Owner decisions:**
 

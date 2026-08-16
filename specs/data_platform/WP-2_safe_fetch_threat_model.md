@@ -1,6 +1,6 @@
 # WP-2 — Safe-fetch & secret-boundary threat model (Phase B)
 
-**Status:** Design activity, **revision C.1**. Spec-only — no runtime wiring, no executable tests
+**Status:** Design activity, **revision C.2**. Spec-only — no runtime wiring, no executable tests
 in this branch.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
 **Date:** 2026-08-15
@@ -14,6 +14,9 @@ in this branch.
 | C.1 | **C-02 extended** — TLS SNI/hostname verification under IP pinning, actual-peer verification, all DNS answers, IPv4-mapped IPv6, environment proxies. | Independent review |
 | C.1 | **C-03/C-04 tightened** — cross-origin redirect terminates the run; auth binding covers header, API-key header *and* API-key query param. | Contract/mutation-case mismatch |
 | C.1 | **C-11/C-12 reconciled** — reject at admission, project at persistence, in that order. | The two rules read as contradictory |
+| **C.2** | **C-10 rewritten** — it still mandated `credential_ref` after C.1 replaced that model with `FetchGrant` + credential slots in the control-plane spec. | Independent review: the two documents contradicted each other |
+| **C.2** | **C-10a added** — query-placed credentials forbidden by default; under an owner-approved exception the value is **excluded, not hashed**, from every persisted artefact. | Independent review: "secrets never enter URLs" contradicted both `RestConfig.api_key_param` and the proposed value-hashing |
+
 **Grounded in:** `WP-2_findings_reverification.md` (Phase A) — every "today" claim below is a
 verified file:line finding from that record, not a restatement of the 2026-08-07 review.
 
@@ -202,10 +205,40 @@ Each control is stated so a test can falsify it. **C-nn ↔ T-nn** mapping in §
 
 ### 5.3 Secrets
 
-- **C-10 — `credential_ref`, not credentials.** The contract carries a *reference*
-  (`{"credential_ref": "src/<source_instance_id>/token"}`). The config dataclasses lose their
-  plaintext `auth_token` / `auth_password` / `api_key` fields; a runtime resolver injects the value
-  at request time and it never enters the contract object graph.
+- **C-10 — credential *slots* bound by a grant; not a `credential_ref` locator.**
+  **Corrected in C.2.** C.1 replaced `credential_ref` with a `FetchGrant` in the control-plane spec
+  but left this control still mandating `credential_ref` — the two documents contradicted each
+  other. There is one model:
+  - the contract declares a **slot** — `{"slot": "primary_token", "placement": "header:Authorization"}`
+    — a name and a placement, never a value and never a store locator;
+  - a **`FetchGrant`** (control-plane spec §7) binds that slot to a specific credential *version*
+    and permits exactly one placement;
+  - the config dataclasses lose their plaintext `auth_token` / `auth_password` / `api_key` fields
+    entirely, so the contract grammar has no field capable of holding a secret.
+
+  A locator was insufficient because it named *where* a secret lives without binding *who* may
+  resolve it, *for which origin*, or *until when*.
+
+- **C-10a — query-placed credentials: forbidden by default, never persisted, never hashed.**
+  **New in C.2.** C.1 asserted "resolved secrets never enter URLs" while `RestConfig.api_key_param`
+  exists and the control-plane spec proposed persisting a *hash* of query-parameter values. Both
+  contradicted the rule. Resolved:
+  1. `placement: query:<name>` is **rejected by default** (`CREDENTIAL_PLACEMENT_FORBIDDEN`);
+     header placement is the only default-permitted binding.
+  2. Where an upstream genuinely offers no header auth, the contract must carry an explicit
+     owner-approved `query_credential_exception` naming the parameter and the reason — recorded on
+     the protected surface, never self-granted.
+  3. Under that exception the secret exists **only in the in-flight request**. It is excluded —
+     **not hashed** — from every persisted or emitted artefact: `etl_runs`, `source_jobs`,
+     `control_plane_events`, logs, errors, API responses, catalog payloads.
+  4. **A hash of a credential is still a credential artefact.** Low-entropy or structured tokens are
+     offline-recoverable from a hash, so value-hashing is permitted only for
+     **non-credential-bound** parameters. A credential-bound parameter persists as its *name* plus
+     the literal marker `REDACTED:credential`, with no value-derived material of any kind.
+
+  Honest residual: an upstream requiring query auth will see the secret in *its own* access logs.
+  That is outside our boundary, and is a reason to prefer a header-auth source — recorded as a
+  certification consideration rather than silently accepted.
 - **C-11 / C-12 — Reject at admission; project at persistence. In that order.** The first revision
   stated these as competing rules ("dropped by construction" vs "reject, don't strip"); they are
   one ordered pair:
@@ -239,7 +272,7 @@ Each control is stated so a test can falsify it. **C-nn ↔ T-nn** mapping in §
 | T-06 | C-04 | — |
 | T-07 | C-05 | — |
 | T-08, T-09, T-10 | C-08, C-09 | operator-authored specs remain trusted input (explicit) |
-| T-11…T-14 | C-10, C-11, C-12, C-13 | a resolver-side compromise still yields the secret (out of scope) |
+| T-11…T-14 | C-10, C-10a, C-11, C-12, C-13 | a resolver-side compromise still yields the secret (out of scope); an upstream's own logs under a query-auth exception (C-10a residual) |
 | T-15, T-16 | C-14, C-11 | — |
 | T-17, T-18 | C-15 | streaming ingestion proper is WP-9 |
 | T-19, T-20 | — | **explicitly deferred** to WP-8 / WP-5; recorded so they are not assumed covered |

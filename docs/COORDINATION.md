@@ -834,8 +834,11 @@ speccing from the review's citations alone. Drift is recorded, not silently corr
 **Phase B — safe-fetch threat model (immediately after A, not instead of it).**
 
 **Phase C — the spec-only WP-2 package:** design + API/OpenAPI delta + DB design + contract /
-deployment / run / health state machines + durable cursor/lease/job model + promotion, approval,
+deployment / run / health state machines + **run-identity (job) model** + promotion, approval,
 rollback and audit evidence + source identity/provenance design + preview response contract.
+*(Corrected 2026-08-16, rev C.2: this line previously read "durable cursor/lease/job model".
+**Durable cursors and leases are WP-9's** — SPEC-003 §6 row 10 — and WP-2's cursor/lease design is
+withdrawn. WP-2 retains only per-stream job rows that **record** cursor positions. See ASK-WP2-2.)*
 
 **Test artifacts in the spec-only phase are specifications, not executable red tests:** test
 specifications, golden fixtures, expected invariants, mutation cases, and API examples. A
@@ -844,8 +847,15 @@ standing vacuous-red, the mirror of a vacuous green. Executable RED tests are in
 each implementation PR**: demonstrate RED, then GREEN in the same bounded slice.
 
 **Phase D — implementation slices** (after the gate above): source identity + immutable contracts
-→ safe-fetch/secret boundary → no-write discovery and preview → durable scheduler/cursors →
-semantic model + identity integration → chat tools and frontend.
+→ safe-fetch/secret boundary → **grant-authorized discovery and preview** → semantic model +
+identity integration → chat tools and frontend.
+
+*(Corrected 2026-08-16, rev C.2. Two changes. (1) "durable scheduler/cursors" is **removed** — it
+is **WP-9's** slice, not this lane's; WP-2 consumes an interface it does not design (ASK-WP2-2).
+(2) "no-write discovery and preview" is **wrong as stated**: preview performs outbound egress, so
+it **must** durably write a security-audit event and rate-limit accounting. What it must not write
+is any domain fact, entity, `etl_runs` row, cursor advance, DLQ record or downstream pipeline
+output. The correct phrasing is grant-authorized, no-domain-write.)*
 
 ### 13.4 Standing invariant for this lane (load-bearing)
 
@@ -881,6 +891,20 @@ either lane specs its side, covering: cardinality per `(source_instance_id, stre
 typing, whether "empty page + advanced token" is legitimate (it is, for some sync APIs), advisory
 lock **vs** TTL/heartbeat/fencing (alternatives, not a stack), and whether rollback is automatic
 (WP-2's position: it must not be — safety depends on cursor kind and sink idempotency).
+
+**ASK-WP2-3 — Rights/retention attachment point (WP-1 ⇄ WP-2; opened 2026-08-16, rev C.2).**
+WP-1 places `retention_class` and `legal_hold` on the **content-addressed** `raw_artifacts` row
+(`specs/data_platform/WP-1_raw_capture_and_replay.md:38`, insert is
+`ON CONFLICT (sha256) DO NOTHING`), and exposes `apply_retention(source_type, before)` (`:23`).
+Because the row is keyed by content hash, **identical bytes acquired under two different licences,
+retention classes or tenants collapse to one row and one retention class — silently, in favour of
+whichever acquisition arrived first.** That is a silent loss of a governance attribute.
+WP-2 requires rights to attach to the **acquisition** (contract-version-scoped), not the blob.
+**Deliverable: one acquisition-scoped rights/retention interface** — blob keeps bytes only;
+per-acquisition rows carry rights; retention and legal hold resolve **most-restrictive across all
+acquisitions** of a blob; `apply_retention` keyed by acquisition. **Neither lane may resolve this
+unilaterally:** WP-2 cannot alter WP-1's schema, and WP-1's current design cannot carry WP-2's
+rights model. Detail: `WP-2_source_contract_control_plane.md` §3.5.1.
 
 **Provisional dependency (not an ASK, recorded for traceability):** WP-2's object names are
 *aligned with* `specs/trusted_intelligence_v2/` (TIV2-020), which is **untracked and labelled
