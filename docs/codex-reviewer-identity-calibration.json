@@ -1,5 +1,6 @@
 {
   "purpose": "Disposable GitHub App reviewer-identity calibration; never merge",
-  "iteration": 1,
-  "app_slug": "codexindependentreviewer"
+  "iteration": 2,
+  "app_slug": "codexindependentreviewer",
+  "reason": "stale-approval calibration push"
 }
