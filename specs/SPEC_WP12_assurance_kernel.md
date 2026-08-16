@@ -31,6 +31,13 @@ head is re-approved. The workflow also triggers on `pull_request_review` (submit
 (c) Corrected the earlier overclaim: the PRIV-001b **runtime** guard wraps the SDK client, so it
 does NOT intercept hand-rolled `urllib`/`requests`/`httpx` HTTP — for those the STATIC scanner
 is the sole control. This custom review gate does NOT replace GitHub-native branch approval.
+**Rev 4:** owner follow-up (2026-08-16) — the evidence-only-commit design was itself still
+self-referential (a committed artifact must name the SHA of the commit that contains it). The
+review of record is now the **typed JSON payload in the trusted bot's GitHub review BODY**, never
+committed to the branch: the reviewed SHA is the review's own `commit_id` (external, == the live
+head), so the payload's `reviewed_sha` is checked directly against the head with no artifact-commit
+parent. The `EVIDENCE_COMMIT_UNBOUND` / `CODE_CHANGED_AFTER_REVIEW` / `EVIDENCE_ONLY_UNVERIFIABLE`
+violations and the `--artifact` path are removed; the CLI parses the payload from the review body.
 **Origin:** the PRIV-001 escaped defect (2026-08-13) — a live LLM-egress *bypass* was
 classified as a review "nit" and nearly landed under a non-canonical verdict
 ("LAND-WITH-NITS"), because **nothing machine-reconciled the review against the ratified
@@ -187,11 +194,14 @@ WP-12B validator reconciles a review against. Kept in sync (a test asserts 7 cri
    `test_protected_surface_sync.py`) present in `protected-surface.txt`; sync test green;
    CODEOWNERS regenerated in the same commit; no protected threshold moved to pass.
 6. **WP12#6** — An executable CI check (`assurance/check.py --self-test`, wired in
-   `assurance-gate.yml`) is proven non-vacuous each run. The review of record is a structured
-   JSON artifact in an **evidence-only commit** (parent == reviewed code), not a Markdown table;
-   the `merge-gate` job reconciles it against the LIVE head + the REAL results of the
-   `assurance-kernel` and `conservation-lane1` jobs and **fails closed** until a valid
-   independent-review artifact exists. Workflow uses least-privilege permissions + pinned actions.
+   `assurance-gate.yml`) is proven non-vacuous each run. The review of record is a **typed JSON
+   payload in the trusted bot's GitHub review BODY** (Rev 4 — not a file committed to the branch,
+   which was self-referential), not a Markdown table; the `merge-gate` job parses that body and
+   reconciles it against the LIVE head + the REAL results of the `assurance-kernel` and
+   `conservation-lane1` jobs and **fails closed** until a valid independent APPROVE on the exact
+   head exists. Workflow uses least-privilege permissions + pinned actions + `pull_request_review`.
 7. **WP12#7** — Independent review against these criteria (dogfooded via the WP-12B contract),
-   with reviewer identity taken from GitHub (`gh pr view`), not the artifact. **Merge-blocking
-   and independent-only** — the author cannot mark it met, and the reviewer must not be the author.
+   with reviewer identity + state + commit_id taken from GitHub's review API, not the payload.
+   **Merge-blocking and independent-only** — the author cannot mark it met, the reviewer must be
+   `codexindependentreviewer[bot]` and must not be the author, and the approval must target the
+   exact live head.
