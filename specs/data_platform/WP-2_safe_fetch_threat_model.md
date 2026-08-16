@@ -1,6 +1,6 @@
 # WP-2 — Safe-fetch & secret-boundary threat model (Phase B)
 
-**Status:** Design activity, **revision C.2**. Spec-only — no runtime wiring, no executable tests
+**Status:** Design activity, **revision C.3**. Spec-only — no runtime wiring, no executable tests
 in this branch.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
 **Date:** 2026-08-15
@@ -16,6 +16,8 @@ in this branch.
 | C.1 | **C-11/C-12 reconciled** — reject at admission, project at persistence, in that order. | The two rules read as contradictory |
 | **C.2** | **C-10 rewritten** — it still mandated `credential_ref` after C.1 replaced that model with `FetchGrant` + credential slots in the control-plane spec. | Independent review: the two documents contradicted each other |
 | **C.2** | **C-10a added** — query-placed credentials forbidden by default; under an owner-approved exception the value is **excluded, not hashed**, from every persisted artefact. | Independent review: "secrets never enter URLs" contradicted both `RestConfig.api_key_param` and the proposed value-hashing |
+| **C.3** | **"ships fixtures" corrected to fixture *designs*** (§7) | Contradicted the test spec, which correctly says none exist |
+| **C.3** | **8 new C-02/C-06 mutation cases** — mixed DNS answers, IPv4-mapped IPv6, SNI/cert-hostname mismatch, peer verification, env proxy, same-size allowlist substitution, exception/grant expiry, alternate HTTP stacks (`http.client`, `Session`) | The C.2 set tested the happy path; several control clauses had no failing case |
 
 **Grounded in:** `WP-2_findings_reverification.md` (Phase A) — every "today" claim below is a
 verified file:line finding from that record, not a restatement of the 2026-08-07 review.
@@ -229,8 +231,9 @@ Each control is stated so a test can falsify it. **C-nn ↔ T-nn** mapping in §
      owner-approved `query_credential_exception` naming the parameter and the reason — recorded on
      the protected surface, never self-granted.
   3. Under that exception the secret exists **only in the in-flight request**. It is excluded —
-     **not hashed** — from every persisted or emitted artefact: `etl_runs`, `source_jobs`,
-     `control_plane_events`, logs, errors, API responses, catalog payloads.
+     **not hashed** — from every persisted or emitted artefact: `etl_runs`, `source_acquisitions`,
+     `source_stream_executions`, `control_plane_events`, logs, errors, API responses, catalog
+     payloads.
   4. **A hash of a credential is still a credential artefact.** Low-entropy or structured tokens are
      offline-recoverable from a hash, so value-hashing is permitted only for
      **non-credential-bound** parameters. A credential-bound parameter persists as its *name* plus
@@ -282,8 +285,11 @@ quietly omits them would read as coverage.
 
 ## 7. Test specifications (Phase C artifacts — NOT executable in this branch)
 
-Per COORDINATION §13.3, this branch ships *specifications and fixtures*; executable RED tests are
-introduced inside the implementation PR that makes them GREEN.
+Per COORDINATION §13.3, this branch ships **specifications and fixture *designs*** — **no fixture
+files and no executable tests exist in this branch** (C.3 correction: the earlier wording said the
+branch ships fixtures, contradicting the test specification, which correctly says none exist).
+Executable tests and their fixtures are introduced inside the implementation PR that makes them
+GREEN.
 
 **Mutation cases** — each must be RED before the control lands:
 
@@ -309,6 +315,28 @@ introduced inside the implementation PR that makes them GREEN.
    Separately: the bespoke allowlist grows by one entry → RED (monotonic-ratchet assertion). The
    gate is **not** a blanket grep of `connectors/`, which would be red against 23 of 30 modules at
    the baseline (C-06).
+
+**C-02 / C-06 mutation gaps closed in C.3.** The C.2 set tested the happy path of pinning and one
+bypass of the choke point. Each control clause now has a case that can fail:
+
+8.  **Mixed DNS answers** — a hostname resolving to one public and one private address. RED: *every*
+    answer is validated, not the first (C.2 asserted this in prose only).
+9.  **IPv4-mapped IPv6** — `::ffff:169.254.169.254` and `::ffff:10.0.0.1`. RED.
+10. **SNI / certificate-hostname mismatch under pinning** — connect to the pinned IP with TLS
+    verification still bound to the hostname; a certificate valid for the *IP* but not the host
+    must fail. This is the clause most likely to be silently dropped when pinning is implemented.
+11. **Peer verification** — assert the connected peer *is* the validated IP, not merely that
+    validation ran before connecting (the TOCTOU that pinning exists to close).
+12. **Environment proxy** — set `HTTPS_PROXY`; the pinned address must not be silently re-resolved
+    by a proxy. RED unless the proxy is explicitly allowlisted.
+13. **Same-size allowlist substitution** — replace an allowlisted origin with a different one,
+    keeping the array length identical. RED — a length or count assertion is not a set assertion.
+14. **Allowlist / exception expiry** — a `query_credential_exception` past `effective_to`, and a
+    grant past `expires_at`. RED at the request boundary.
+15. **Alternate HTTP stacks** — the same bypass attempted via `httpx`, `urllib.request.urlopen`,
+    `http.client`, and a `requests.Session`. All RED for contract-driven connectors. C.2's gate
+    named only `requests.`/`httpx`/`urlopen`, so `http.client` and Session-based calls would have
+    passed.
 8. `CsvConfig.path` present on a wizard-authored contract → rejected (C-08); a path escaping the
    root via symlink → rejected (C-09).
 9. **The Phase A probe, inverted into a gate:** the exact config that survived stripping

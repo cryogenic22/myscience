@@ -870,7 +870,10 @@ builder must not self-author or modify its merge bar to pass. This lane makes no
 
 ### 13.5 Cross-lane ASKs — WP-0 ⇄ WP-2 ⇄ WP-9 (BLOCKING, opened 2026-08-15)
 
-Two boundaries must be ratified **before any of the three work packages lands**. Both were
+**Three** boundaries must be ratified, **each gating its own pair of work packages** — ASK-WP2-1
+gates WP-0⇄WP-2, ASK-WP2-2 gates WP-9⇄WP-2, ASK-WP2-3 gates WP-1⇄WP-2. A pair may land once *its*
+ASK is ratified; none of the three waits on the other two. *(C.3 correction: this said "two
+boundaries" while listing three ASKs, and implied one joint gate.)* They were
 discovered by an independent review of the WP-2 Phase C draft, which had asserted agreement that
 does not exist and claimed ownership that SPEC-003 assigns elsewhere.
 
@@ -879,8 +882,10 @@ WP-2 needs `truncated`, `cursor_advanced`, `contract_validation_failed`, `creden
 and `egress_refused` to reach a terminal outcome rather than a log line. `classify_run_outcome`
 (`integration/pipeline.py:125-168`) is WP-0's. **Deliverable: one shared normative table** mapping
 each input to a terminal outcome *and* a Lane-2 health consequence. A test that merely rejects
-unknown strings does not prove semantic mapping, so the WP-2 suite carries **M-28a**, which stays
-RED until this table exists. Do not mark it pending to make a suite green.
+unknown strings does not prove semantic mapping, so the WP-2 suite carries **M-28a**, which
+**cannot be satisfied** until this table exists. *(C.3 correction: this previously said M-28a
+"stays RED". Nothing unwritten is RED — RED means executed and observed to fail. M-28a is an
+**unmet design criterion**.)* Do not mark it pending or delete it to make a suite green.
 
 **ASK-WP2-2 — Cursor / lease ownership (WP-9 owns).**
 SPEC-003 §6 row 10 assigns *"durable cursors, streaming batches, leases, cost controls"* to

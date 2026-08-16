@@ -1,6 +1,6 @@
-# WP-2 — Test specifications, invariants and fixture designs (rev C.2)
+# WP-2 — Test specifications, invariants and fixture designs (rev C.3)
 
-**Status:** Specifications only, **revision C.2**. **No executable tests and no fixture files exist
+**Status:** Specifications only, **revision C.3**. **No executable tests and no fixture files exist
 in this branch** — a spec-only branch that merged intentionally-red tests would be a standing
 *vacuous red*, the mirror of a vacuous green (COORDINATION §13.3). Each case becomes an executable
 RED test **inside the implementation PR that turns it GREEN**.
@@ -15,8 +15,8 @@ RED test **inside the implementation PR that turns it GREEN**.
 > §3 below is a fixture *design*, not an inventory. Describing an artefact as existing when it does
 > not is the ungrounded-claim failure this harness exists to catch.
 
-**Companions:** `WP-2_source_contract_control_plane.md` (rev C.2) ·
-`WP-2_safe_fetch_threat_model.md` (rev C.2, §7 owns the 11 safe-fetch cases — **not duplicated or
+**Companions:** `WP-2_source_contract_control_plane.md` (rev C.3) ·
+`WP-2_safe_fetch_threat_model.md` (rev C.3, §7 owns the 11 safe-fetch cases — **not duplicated or
 counted here**) · `WP-2_findings_reverification.md`.
 
 **Lane:** every case is **Lane 1** (deterministic, DB-free or seeded, PR-blocking) unless marked
@@ -39,6 +39,13 @@ Lane 2. No live-source dependency may enter a PR gate.
 | **C.2** | **Residual "recorded and committed" fixture claim removed** (§3) | C.1 fixed the header, missed the body |
 | **C.2** | **M-20b rewritten** — credential-bound params persist as `REDACTED:credential`, never a value hash | A hash of a credential is still a credential artefact |
 | **C.2** | **New cases** for relational streams, composite-FK validity, projection replay, per-stream outcomes, tenancy at four boundaries, legacy quarantine-not-admission | C.2 spec defects 2–7 |
+| **C.3** | **M-05h rewritten** — C.2 *claimed* cross-contract rejection that the schema could not enforce | `source_job_streams` referenced job and stream independently |
+| **C.3** | **M-05i rewritten, M-05j/k added** — one `etl_runs` row per stream; no rollup to over-report | Execution grain was contradictory (one run id, many streams, INV-01) |
+| **C.3** | **M-35d rewritten; M-35e–j added** — typed certification scope, interval exclusion, event ordering/versioning/idempotency, finalize-once, deployment `state` | C.2 sentinel was invalid DDL; replay and state were unrepresentable |
+| **C.3** | **M-11e–h added** — grant concurrency, all nine invalidation triggers, stream authorization, handle forgery | Grant authority was under-specified |
+| **C.3** | **M-33c–g added** — PreviewGrant single-use/purpose/tenancy, and the WP-5/WP-8 interim containment boundary | PreviewGrant was a name; T-19/T-20 could be reached before their WPs land |
+| **C.3** | **M-39f–h added** — quarantine store secrecy, rotation/retention, staged cutover | Quarantine had no physical home; immediate read-only would break the live writer |
+| **C.3** | **M-40 strengthened to a protected case manifest** | Proving one test per invariant leaves the rest deletable |
 
 ---
 
@@ -91,9 +98,11 @@ executed.
 | **M-05d** | A contract declaring two streams with the same `stream_key` | RED — `STREAM_KEY_DUPLICATE` |
 | **M-05e** | `connector_type: "rest"` (invented vocabulary) instead of `API_REST` | RED — `CONNECTOR_TYPE_UNKNOWN` |
 | **M-05f** | A `WEB_SCRAPE` contract (valid taxonomy, non-runtime) | Storable and permanently `execution_enabled = FALSE` |
-| **M-05g** *(C.2)* | Certify a `stream_key` the contract never declared | RED — the stream FK rejects it. Impossible to enforce under C.1's JSONB streams |
-| **M-05h** *(C.2)* | A job asserting a `stream_id` not belonging to its contract version | RED — FK |
-| **M-05i** *(C.2)* | Run a 4-stream contract where stream 1 lands and stream 3 returns zero rows | Per-stream outcomes recorded independently; `rollup_outcome` does **not** report `LANDED`. Unrepresentable under C.1's scalar outcome — INV-15, INV-19 |
+| **M-05g** *(C.2)* | Certify a stream the contract never declared | RED — the stream FK rejects it. Impossible to enforce under C.1's JSONB streams |
+| **M-05h** *(rewritten C.3)* | A stream execution for an acquisition of contract A referencing a stream of contract B | RED. **C.2 claimed this but could not enforce it** — `source_job_streams` referenced job and stream *independently*. Now both FKs pin the same `source_contract_version_id` (spec §3.6.1) |
+| **M-05i** *(rewritten C.3)* | Run a 4-stream contract where stream 1 lands and stream 3 returns zero rows | Four `etl_runs` rows, one per stream, each with its own outcome. **No rollup exists to over-report** — C.2's `rollup_outcome` is removed. INV-15, INV-19 |
+| **M-05j** *(C.3)* | An `etl_runs` row reachable from more than one stream execution, or a stream execution with no `etl_runs` row | RED — `etl_run_id UNIQUE` makes INV-01 hold by construction rather than by convention |
+| **M-05k** *(C.3)* | Insert an acquisition whose `deployment_id` belongs to a different contract version | RED — composite FK against the new `source_deployments (deployment_id, source_contract_version_id)` candidate key |
 
 ### 2.2 Immutability, drafts, canonical hash
 
@@ -118,6 +127,10 @@ executed.
 | **M-11b** | Grant valid at page 1; revoke mid-run; continue to page 2 | RED at the page boundary — INV-17 |
 | **M-11c** | Grant issued for tenant T1; fetch attempted under tenant T2 | RED — INV-18 |
 | **M-11d** | Exceed `max_requests` / `max_bytes` on a grant | RED, bounded, reported |
+| **M-11e — concurrency** *(C.3)* | Two workers spend the last unit of a grant's budget simultaneously | Exactly one succeeds. C.2's limits were unenforceable under concurrency; the conditional atomic update (spec §7.1) is the fix |
+| **M-11f — the nine invalidation triggers** *(C.3)* | For **each** of: revocation · expiry · credential rotation · certification revocation · **natural certification expiry** · deployment disable · **redeployment/supersession** · rights-policy supersession · principal disablement — hold a live grant and fire the trigger mid-run | RED at the next request boundary in all nine, each with a *distinct* diagnostic so "authority withdrawn" is never reported as "source down". C.2 claimed redeployment invalidates but omitted it from the trigger set, and `revocation_epoch` was never declared on `SourceInstance` |
+| **M-11g** *(C.3)* | Fetch a stream absent from the grant's `authorized_streams`, or one whose paired certification has lapsed | RED — a grant authorized only a *purpose* in C.2 |
+| **M-11h** *(C.3)* | Present a forged/guessed grant handle | RED — verification is a DB lookup on a stored hash of a 256-bit random handle; there is nothing offline to forge |
 | M-12 | Enable execution with no active certification for the requested purpose **and stream** | RED — `PURPOSE_NOT_CERTIFIED` |
 | M-13 | Enable execution with the safe-fetch boundary absent/disabled | RED — fail-closed |
 | M-14 | Enable execution with an unresolvable credential slot | RED — distinct from "source down" |
@@ -141,7 +154,7 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | M-15…M-19 | Each rejected with its typed code — **rejected, not stripped** |
 | M-20 | The persisted projection contains no value from the above at any depth — INV-05 |
 | M-22 | Add a **new** credential-shaped field to a config dataclass without updating the validator | RED — projection is allowlist-shaped, so it cannot reach storage. Proves the fix is structural, not a longer denylist |
-| **M-20a — secret canary, every sink** | Inject a unique canary token as a resolved credential, run a full fetch + failure + preview, then grep for the canary across: `etl_runs`, `source_jobs`, `control_plane_events.payload`, application logs, `ConnectorError` messages, every API response body, catalog payloads, and any exported spec file. **Zero occurrences.** |
+| **M-20a — secret canary, every sink** | Inject a unique canary token as a resolved credential, run a full fetch + failure + preview, then grep for the canary across: `etl_runs`, `source_acquisitions`, `source_stream_executions`, `fetch_grants`, `legacy_quarantine`, `control_plane_events.payload`, application logs, `ConnectorError` messages, every API response body, catalog payloads, and any exported spec file. **Zero occurrences.** |
 | **M-20b** *(rewritten C.2)* | Contract using query-placed auth. **(a)** Without an owner-approved exception → RED at admission (`CREDENTIAL_PLACEMENT_FORBIDDEN`). **(b)** With the exception → the persisted record contains the parameter *name* plus the literal `REDACTED:credential`, and **no value hash, length, or prefix**. C.1 permitted a value hash, which is still credential-derived material |
 | **M-20c** *(C.2)* | Feed a low-entropy credential and attempt offline recovery from every persisted artefact | No value-derived material exists to attack |
 | M-21 | `ConnectorError` on a userinfo URL contains no credential |
@@ -174,12 +187,17 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | **M-29** *(rewritten)* | Run preview; assert **zero** rows in `etl_runs`, entities, cursors, DLQ, embeddings — **and assert a `control_plane_events` row and rate-accounting row WERE written.** The Phase C case forbade the security write | INV-08 |
 | M-30 | Preview a payload where 2 of 50 records lack an external id | `records_dropped: 2` with reasons, **per stream** — INV-09 |
 | **M-30a** | Preview a multi-stream contract | Conservation reported independently per stream — INV-15 |
-| **M-30b** | Run a production job | `source_jobs` records `cursor_before`/`cursor_after`, grant id and terminal outcome |
+| **M-30b** *(updated C.3)* | Run a production acquisition | Each `source_stream_executions` row records `cursor_before`/`cursor_after` and its own terminal outcome; the acquisition records the grant id. Cursor *semantics* remain WP-9's |
 | M-31 | Preview a private-IP URL | Refused by the **same** primitive as production (threat model C-06) |
 | M-32 | Preview a response exceeding the byte cap | Bounded, refused, reported — not silently truncated |
 | **M-33** *(rewritten)* | Preview on a source with **no certification and `execution_enabled = FALSE`** | **GREEN** — a `PreviewGrant` authorizes it. The Phase C rule was circular. Separately: preview with **no grant** → RED; preview attempting a `decision`-purpose fetch → RED |
 | **M-33a** | Preview response for a `licensed` contract | Values redacted by classification; principal without source-object entitlement → RED |
 | **M-33b** | Cite a preview as the sole `certification_evidence` | RED — a preview is never certification evidence |
+| **M-33c** *(C.3)* | Reuse a spent `PreviewGrant` for a second page or a second preview | RED — single-use, non-replayable (spec §8.0.1) |
+| **M-33d** *(C.3)* | Issue a `PreviewGrant` with `purpose` other than `discovery` | RED — a preview grant bypasses certification, so it may never carry an evidence/decision purpose |
+| **M-33e** *(C.3)* | Preview across tenants, to a non-allowlisted origin, or after revocation | RED — a preview skips *certification and enablement only*; tenancy, origin, credential binding, revocation, limits and audit all still apply |
+| **M-33f — interim containment** *(C.3)* | Drive a contract-driven record toward `facts`, entity resolution, the graph, an embedding index, or LLM context while the WP-5/WP-8 interim flag is set | RED, **fail-closed with a counted and reasoned rejection** — not silently filtered. Plus a Lane-2 check that no `contract_driven` record has reached those sinks (spec §8.0.2). This is the mechanical boundary that makes WP-2 safely landable ahead of WP-5/WP-8 |
+| **M-33g** *(C.3)* | Clear the interim containment flag as a builder | RED — protected-surface change, owner-recorded only |
 
 ### 2.7 Promotion, tenancy, audit, catalog
 
@@ -193,7 +211,13 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | **M-35a** *(C.2)* | Drop `source_deployments` and `source_certifications` entirely, replay the event log | Both projections rebuild **byte-identical**. This is what makes "the event log is the authority" checkable rather than asserted — INV-20 |
 | **M-35b** *(C.2)* | Update a projection row without emitting its event in the same transaction | RED — projection and log must not diverge |
 | **M-35c** *(C.2)* | Apply the migration DDL to an empty database | Every composite FK is accepted. C.1's FK referenced a non-unique parent column list and would have failed here — INV-21 |
-| **M-35d** *(C.2)* | Insert two contract-wide certifications (`stream_key = '*'`) for one version, purpose and `effective_from` | RED. Under C.1's nullable `stream_key` both were admissible, because NULLs are distinct in a UNIQUE |
+| **M-35d** *(rewritten C.3)* | Insert two live contract-scoped certifications for one version and purpose | RED — the `scope_kind = 'contract'` partial unique index. **C.2's `'*'` sentinel is gone**: it carried an unconditional FK into real stream rows, so it either failed to insert or required a fake stream row that would enter the stream table and the canonical hash |
+| **M-35e** *(C.3)* | Two certifications for one scope+purpose with **overlapping finite** validity intervals | RED — the `EXCLUDE USING gist` constraint. C.2's partial uniqueness caught only open-ended rows |
+| **M-35f** *(C.3)* | A stream with both a stream-scoped and a contract-scoped certification | The stream-scoped decision wins (spec §3.4 resolution rule); assert the broader one does not silently widen the narrower |
+| **M-35g** *(C.3)* | Replay the event log with events deliberately out of `occurred_at` order but correct `aggregate_seq` | Projections rebuild correctly — ordering is by `aggregate_seq`, not wall clock |
+| **M-35h** *(C.3)* | Replay a log missing `event_schema_version`, or emit two events with one `idempotency_key` | RED — replay determinism requires typed, versioned, idempotent events (INV-20) |
+| **M-35i** *(C.3)* | Write to an acquisition or stream-execution row after finalization | RED — write-once-then-finalize-once, enforced by trigger. These rows are **not** immutable and are no longer described as such |
+| **M-35j** *(C.3)* | Set `execution_enabled = TRUE` on a deployment whose `state` is `paused` or `rolled_back` | RED — CHECK constraint. C.2's projection had no `state` column at all, so §5.2 condition 1 was unevaluable |
 | M-36 | Delete a certification instead of revoking | RED — supersede, don't delete |
 | **M-36a** | Assert certification history is queryable after revocation, with prior decisions intact | GREEN |
 | **M-37** *(rewritten)* | Effective deployment with **`cadence IS NOT NULL`** and no schedule → RED. Effective deployment with **`cadence IS NULL`** (manual/event-driven) and no schedule → **GREEN**. The Phase C rule failed legitimate manual sources | INV-11 |
@@ -201,7 +225,10 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | M-39 | Derive a certification from a numeric quality score | RED — INV-12 |
 | **M-39a — rights propagation** | Fetch identical bytes under two contracts with different licences/tenants; assert two distinct rights envelopes attached to the two acquisitions, and that the content-addressed blob carries none | RED against a blob-attached model — INV-16 |
 | **M-39b — legacy quarantine** *(rewritten C.2)* | Backfill an onboarding row containing a nested `headers.Authorization` value | **QUARANTINED — no contract version is created at all.** The original row is preserved verbatim and reported. C.1 said the row was *both* quarantined *and* admitted as `legacy_unverified`; only clean rows are admitted |
-| **M-39c** *(C.2)* | Backfill a clean legacy row | Admitted as `legacy_unverified`: disabled, uncertified, **no grant issuable** |
+| **M-39c** *(C.2)* | Backfill a clean legacy row | Admitted with `provenance = 'legacy_unverified'`: disabled, uncertified, **no grant issuable** (CHECK-enforced, spec §9.3.1) |
+| **M-39f** *(C.3)* | Read a `legacy_quarantine.captured_row` via any API, catalog, log or event payload | RED — only `detector_findings` (paths, not values) may surface. The quarantine store is itself a secret store |
+| **M-39g** *(C.3)* | Re-onboard a source whose quarantine row has `credential_rotation_status != 'rotated'`, or let `retention_expires_at` pass without purging the captured row | RED — preserving a secret verbatim moves the exposure; it must expire and the credential must rotate |
+| **M-39h** *(C.3)* | Apply the migration, then call the existing `set_onboarding_contract` writer | **GREEN at stage 1–3.** C.2 would have made the 099 columns read-only immediately, breaking the live writer. The staged dual-write/dual-read cutover (spec §9.3) is asserted stage by stage, with a divergence check |
 | **M-39d — tenancy at four boundaries** *(C.2)* | For each of route, service, repository and **worker/scheduler**: reach a WP-2 table with an unresolved or foreign tenant | RED at every one. Specifically: a scheduled job whose source instance has no resolvable tenant **fails closed** rather than running unscoped — the path that never passes through a route — INV-18, INV-22 |
 | **M-39e** *(C.2)* | Call a control-plane service with an ambient/default/`None` tenant | RED — no implicit "all tenants" |
 
@@ -211,7 +238,7 @@ Following `test_lane1_suite_is_not_vacuous()` in `tests/test_conservation_gates.
 
 | # | Case |
 |---|---|
-| M-40 | The suite asserts it is non-empty **and** that every INV-nn has ≥1 executing test — deleting a test turns the gate red |
+| **M-40** *(strengthened C.3)* | C.2's version proved only *one* executing test per invariant, so 74 of 79 cases could be deleted and the gate would stay green. Replaced with a **protected case manifest**: a file listing every case ID (M-nn, INV-nn, and the threat model's C-nn cases) that the suite asserts is *exactly* the set collected at runtime — no missing, no silently renamed. The manifest is added to `protected-surface.txt` in the same change that makes it hard, so a builder cannot delete a case by editing the manifest |
 | M-41 | The validator self-test proves it can still reject a known-bad fixture on every run, so a broken validator cannot read as "all contracts valid" |
 | M-42 | The catalog integrity gate asserts it examined >0 effective deployments |
 | **M-43** | The secret-canary sweep (M-20a) asserts it searched >0 sinks and that each named sink was reachable — an unreachable sink must fail, not pass |
@@ -293,7 +320,7 @@ entry is permitted strengthening; loosening a threshold to pass is not.
 
 Stated so this document cannot read as more coverage than it provides:
 
-- **Safe-fetch cases live in the threat model** (§7, rev C.2) — not restated, not counted here.
+- **Safe-fetch cases live in the threat model** (§7, rev C.3) — not restated, not counted here.
 - **T-19** (source poisoning) and **T-20** (fetched content as instructions) have **no cases** —
   WP-8 and WP-5.
 - **Cursor and lease mechanics have no cases** — **WP-9** owns them (spec §6.0). M-30b tests only
