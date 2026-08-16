@@ -17,9 +17,12 @@ on:
     # approval's commit_id no longer matches and the merge-gate returns to RED until re-approval.
     branches: [main, 'claude/handoff/**']
   pull_request_review:
-    # A submitted APPROVE can turn the merge-gate green; a dismissal returns it to red. Re-runs
-    # the reconciliation against the exact head the review targeted.
-    types: [submitted, dismissed]
+    # A submitted APPROVE can turn the merge-gate green; a dismissal returns it to red. 'edited'
+    # is REQUIRED too: the review BODY is the artifact of record, and GitHub lets a submitted
+    # review's body be edited afterwards — without re-reconciling, a valid payload could turn the
+    # check green and then be swapped for invalid/different content while the stale green persists.
+    # Every review-body mutation must re-run reconciliation against the exact head.
+    types: [submitted, edited, dismissed]
   workflow_dispatch:
     inputs:
       pr:
