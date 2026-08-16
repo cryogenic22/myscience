@@ -314,8 +314,12 @@ def run_merge_gate(args) -> int:
     if viols:
         _print_violations(f"PR-{args.pr} review body", viols)
         return 1
-    print(f"[assurance.check] PR-{args.pr} review-body payload: VALID against ratified criteria "
-          f"+ real check conclusions + independent APPROVE at head {head}.")
+    # Do NOT claim "ratified": the manifest status may still be owner-review-pending (the bar is
+    # not owner-ratified until the protected-surface change is approved). Report status honestly.
+    manifest_status = manifest.get("status", "unknown")
+    print(f"[assurance.check] PR-{args.pr} review-body payload: VALID against the acceptance "
+          f"criteria (manifest status: {manifest_status}) + real check conclusions + independent "
+          f"APPROVE at head {head}.")
     return 0
 
 

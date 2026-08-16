@@ -38,6 +38,9 @@ committed to the branch: the reviewed SHA is the review's own `commit_id` (exter
 head), so the payload's `reviewed_sha` is checked directly against the head with no artifact-commit
 parent. The `EVIDENCE_COMMIT_UNBOUND` / `CODE_CHANGED_AFTER_REVIEW` / `EVIDENCE_ONLY_UNVERIFIABLE`
 violations and the `--artifact` path are removed; the CLI parses the payload from the review body.
+The canonical model token is `review_model: github-review-body-payload` — the acceptance manifest,
+this spec, and `review_contract.json` must all agree on it (a parity test enforces no drift), so
+the manifest criterion text and the spec can never describe different review models.
 **Origin:** the PRIV-001 escaped defect (2026-08-13) — a live LLM-egress *bypass* was
 classified as a review "nit" and nearly landed under a non-canonical verdict
 ("LAND-WITH-NITS"), because **nothing machine-reconciled the review against the ratified
@@ -111,9 +114,11 @@ before the final commit or in the future, and — fail-closed — an `APPROVE` w
 
 `assurance/check.py` is the **executable seam**: `--self-test` proves the gate is non-vacuous
 on every CI run (a bundled fabricated `APPROVE` must be rejected AND a well-formed one
-accepted); the owner-dispatched merge gate reconciles a committed review artifact
-(`assurance/reviews/PR-<n>.json`) against the **live** PR head. Wired in
-`.github/workflows/assurance-gate.yml` + `tests/test_wp12_assurance_gate.py`.
+accepted); the merge gate parses the review of record — the typed JSON payload in the trusted
+bot's GitHub review **body** (Rev 4; NOT a committed `assurance/reviews/PR-<n>.json`, which was
+self-referential) — and reconciles it against the **live** PR head + real check conclusions.
+Wired in `.github/workflows/assurance-gate.yml` (incl. `pull_request_review`
+submitted/edited/dismissed) + `tests/test_wp12_assurance_gate.py`.
 
 ### WP-12C — Boundary inventory + mutation proof  *(this PR)*
 A redesigned, **mutation-proven** egress scanner (`assurance/egress_scan.py`), superseding
