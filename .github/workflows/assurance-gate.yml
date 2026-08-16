@@ -13,7 +13,13 @@ on:
   push:
     branches: [main, 'claude/handoff/**']
   pull_request:
+    # 'synchronize' (a push to the PR) is included by default — that moves the head, so a prior
+    # approval's commit_id no longer matches and the merge-gate returns to RED until re-approval.
     branches: [main, 'claude/handoff/**']
+  pull_request_review:
+    # A submitted APPROVE can turn the merge-gate green; a dismissal returns it to red. Re-runs
+    # the reconciliation against the exact head the review targeted.
+    types: [submitted, dismissed]
   workflow_dispatch:
     inputs:
       pr:
@@ -79,7 +85,7 @@ jobs:
     # of the jobs above. Runs even if they failed (always()) so it reports fail-closed truth,
     # never a skipped-as-passed. Not run on plain pushes (no PR context).
     needs: [assurance-kernel, conservation-lane1]
-    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     name: merge-gate
     permissions:
