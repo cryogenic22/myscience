@@ -11,11 +11,12 @@ head + test evidence include the H0.3 reconciliation).
 review artifact's own SHAs/criteria, and the egress scanner missed non-`.create` terminals,
 callable aliases, direct provider HTTP, and collapsed duplicate/same-named call sites.
 **Rev 2:** hardened again (2026-08-15) — gate results + reviewer identity now come from REAL
-GitHub check conclusions / `gh`, not the artifact; the review is an evidence-only commit whose
-parent is the reviewed code (a review committed in-branch cannot equal the head); the CLI fails
-closed on an unresolvable `--pr` (no local-HEAD fallback); the scanner covers call/subscript
-receiver bases and HTTP callable aliases; the CI workflow runs conservation + a fail-closed
-merge-gate on the exact PR head with least-privilege permissions and pinned actions. See §3.
+GitHub check conclusions / `gh`, not the artifact; (Rev-2 used an evidence-only commit whose
+parent was the reviewed code — **SUPERSEDED by Rev 4's review-body model below; do not use**);
+the CLI fails closed on an unresolvable `--pr` (no local-HEAD fallback); the scanner covers
+call/subscript receiver bases and HTTP callable aliases; the CI workflow runs conservation + a
+fail-closed merge-gate on the exact PR head with least-privilege permissions and pinned actions.
+See §3.
 **Rev 3:** owner independent-review calibration (2026-08-16). (a) The egress scanner now detects
 **urllib** provider egress (`urlopen(url)` / `urlopen(Request(url))` / `req=Request(url);
 urlopen(req)`, url as literal/constant/f-string/concat, across OpenAI/Anthropic/**Gemini** hosts,

@@ -108,15 +108,24 @@ _GOVERNING_SURFACES = [
     "assurance/contract/acceptance_manifest.json",
     ".github/workflows/assurance-gate.yml",
 ]
-# Phrases that only appear as an INSTRUCTION to use the removed committed-artifact model. The
-# negating mentions ("NOT a file committed", "removed the evidence-commit model") do not match
-# these prescriptive strings, so this stays true even though the docs explain the old model.
+# Phrases that only appear as an INSTRUCTION to use the removed committed-artifact model, or as a
+# present-tense description of the gate waiting on one. The negating/history mentions ("NOT a file
+# committed", "removed the evidence-commit model", "evidence-only commit whose parent WAS ...
+# SUPERSEDED") do not match these strings, so this stays true even where docs explain the old model.
 _PROHIBITED_LEGACY_INSTRUCTIONS = [
     "commit assurance/reviews/PR",
-    "evidence-only commit whose parent",
+    "evidence-only commit whose parent is",
     "reviewed_sha == parent",
     "copies this to PR-",
+    "independent-review evidence commit",   # the exact workflow-comment contradiction (finding 2)
+    "evidence commit exists",
+    "evidence-review commit",
 ]
+
+# The workflow is machine-operational and must describe ONLY the current model — it has no reason
+# to narrate the removed one, so any "evidence commit" wording there is a defect.
+_WORKFLOW = ".github/workflows/assurance-gate.yml"
+_WORKFLOW_ONLY_PROHIBITED = ["evidence commit", "evidence-only commit", "committed review artifact"]
 
 
 def test_no_prescriptive_legacy_evidence_commit_instructions():
@@ -126,7 +135,18 @@ def test_no_prescriptive_legacy_evidence_commit_instructions():
         for phrase in _PROHIBITED_LEGACY_INSTRUCTIONS:
             if phrase in text:
                 offenders.append(f"{rel}: {phrase!r}")
-    assert not offenders, "prescriptive legacy evidence-commit instructions remain:\n  " + "\n  ".join(offenders)
+    wf_text = (REPO_ROOT / _WORKFLOW).read_text(encoding="utf-8")
+    for phrase in _WORKFLOW_ONLY_PROHIBITED:
+        if phrase in wf_text:
+            offenders.append(f"{_WORKFLOW}: {phrase!r} (workflow must describe only the current model)")
+    assert not offenders, "prescriptive/contradictory legacy evidence-commit wording remains:\n  " + "\n  ".join(offenders)
+
+
+def test_workflow_describes_the_review_body_model():
+    """Positive assertion (not just a denylist): the merge-gate comment must describe the
+    review-BODY model so operators reading the governing workflow get correct instructions."""
+    wf = (REPO_ROOT / _WORKFLOW).read_text(encoding="utf-8").lower()
+    assert "review body" in wf, "workflow does not describe the review-body model"
 
 
 # ---- workflow must react to review-body EDITS, not only submit/dismiss (finding 1) ----

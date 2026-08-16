@@ -3,10 +3,12 @@ name: Assurance Gate (WP-12 — deterministic)
 # WP-12 closed-loop assurance kernel. Three jobs, all running against the EXACT PR head:
 #   - assurance-kernel   : WP-12B validator + WP-12C scanner + self-test + protected-surface sync
 #   - conservation-lane1 : the deterministic conservation invariants
-#   - merge-gate         : reconciles the independent-review artifact against the LIVE head + the
-#                          REAL results of the two jobs above; FAILS CLOSED until a valid
-#                          independent-review evidence commit exists (a skipped job is not a
-#                          passed merge gate). See assurance/reviews/README.md and
+#   - merge-gate         : parses the review of record — the typed JSON payload in the trusted
+#                          bot's GitHub review BODY (NOT a committed file) — and reconciles it
+#                          against the LIVE head + the REAL results of the two jobs above; FAILS
+#                          CLOSED until a valid independent APPROVE by the trusted bot, on the
+#                          exact head, with a reconciling body payload exists (a skipped job is
+#                          not a passed merge gate). See assurance/reviews/README.md and
 #                          specs/SPEC_WP12_assurance_kernel.md.
 
 on:
