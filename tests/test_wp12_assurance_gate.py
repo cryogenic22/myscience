@@ -11,7 +11,10 @@ Proves the enforcement seam is real and non-vacuous WITHOUT the network:
 from __future__ import annotations
 
 import json
+import types
 from pathlib import Path
+
+import pytest
 
 import assurance.check as chk
 from assurance.check import self_test, load_manifest
@@ -55,6 +58,88 @@ def test_manifest_status_is_not_overclaimed():
     """Blocker 7: the manifest must not claim owner-ratified while the spec is DRAFT."""
     assert MANIFEST.get("status") == "owner-review-pending"
     assert "owner-ratified" not in MANIFEST["description"].lower()
+
+
+# ---- semantic parity: manifest / spec / contract must agree on ONE review model (Rev 4) ----
+
+_SPEC_TEXT = (REPO_ROOT / "specs" / "SPEC_WP12_assurance_kernel.md").read_text(encoding="utf-8")
+_CONTRACT = json.loads((REPO_ROOT / "assurance" / "contract" / "review_contract.json").read_text(encoding="utf-8"))
+
+
+def test_review_model_token_is_consistent_across_protected_surfaces():
+    """One canonical structured source (manifest.review_model) — the spec and contract must agree,
+    so the manifest criterion text and the governing spec cannot drift to different review models
+    (the acceptance-bar-drift the independent review flagged)."""
+    token = MANIFEST.get("review_model")
+    assert token == "github-review-body-payload", token
+    assert _CONTRACT.get("review_model") == token, "contract disagrees on review_model"
+    assert token in _SPEC_TEXT, "spec does not declare the canonical review_model token"
+
+
+def test_wp12_6_criterion_describes_the_review_body_model_not_the_committed_artifact():
+    """The WP12#6 criterion text must describe the review-BODY model and must NOT prescribe the
+    removed committed-artifact model (semantic parity, not just ID/count)."""
+    wp6 = next(c["text"] for c in MANIFEST["prs"]["327"]["criteria"] if c["id"] == "WP12#6")
+    assert "review BODY" in wp6 or "review body" in wp6.lower()
+    assert "validates committed structured review artifacts" not in wp6  # the old prescription
+    # The spec's WP12#6 must likewise not prescribe the removed model.
+    assert "reconciles a committed review artifact" not in _SPEC_TEXT
+
+
+def test_parity_check_would_catch_a_divergent_model(tmp_path):
+    """Mutation proof: if the manifest's review_model diverged from the contract, parity fails."""
+    divergent = dict(MANIFEST, review_model="committed-artifact")
+    assert divergent["review_model"] != _CONTRACT.get("review_model")
+
+
+def test_cli_success_does_not_claim_ratified():
+    """A pending/unratified manifest must never be described as 'ratified' in CLI success output."""
+    src = (REPO_ROOT / "assurance" / "check.py").read_text(encoding="utf-8")
+    assert "VALID against ratified" not in src, "CLI success message overclaims 'ratified'"
+
+
+# ---- no PRESCRIPTIVE legacy evidence-commit instructions remain (finding 4) ----
+
+_GOVERNING_SURFACES = [
+    "specs/SPEC_WP12_assurance_kernel.md",
+    "assurance/reviews/README.md",
+    "assurance/reviews/TEMPLATE.json",
+    "assurance/contract/review_contract.json",
+    "assurance/contract/acceptance_manifest.json",
+    ".github/workflows/assurance-gate.yml",
+]
+# Phrases that only appear as an INSTRUCTION to use the removed committed-artifact model. The
+# negating mentions ("NOT a file committed", "removed the evidence-commit model") do not match
+# these prescriptive strings, so this stays true even though the docs explain the old model.
+_PROHIBITED_LEGACY_INSTRUCTIONS = [
+    "commit assurance/reviews/PR",
+    "evidence-only commit whose parent",
+    "reviewed_sha == parent",
+    "copies this to PR-",
+]
+
+
+def test_no_prescriptive_legacy_evidence_commit_instructions():
+    offenders = []
+    for rel in _GOVERNING_SURFACES:
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        for phrase in _PROHIBITED_LEGACY_INSTRUCTIONS:
+            if phrase in text:
+                offenders.append(f"{rel}: {phrase!r}")
+    assert not offenders, "prescriptive legacy evidence-commit instructions remain:\n  " + "\n  ".join(offenders)
+
+
+# ---- workflow must react to review-body EDITS, not only submit/dismiss (finding 1) ----
+
+def test_workflow_reacts_to_review_body_edits():
+    """A submitted review body can be edited afterwards; without 'edited' a stale green would
+    persist. The pull_request_review trigger must cover submitted + edited + dismissed."""
+    import re
+    wf = (REPO_ROOT / ".github" / "workflows" / "assurance-gate.yml").read_text(encoding="utf-8")
+    m = re.search(r"pull_request_review:\s*(?:#[^\n]*\n\s*)*types:\s*\[([^\]]+)\]", wf)
+    assert m, "pull_request_review types not found"
+    types = {t.strip() for t in m.group(1).split(",")}
+    assert types == {"submitted", "edited", "dismissed"}, types
 
 
 def test_review_body_template_validates_structurally():
@@ -169,3 +254,98 @@ def test_independent_review_fails_closed_without_repo(monkeypatch):
     """No repo → cannot address the reviews API deterministically → None (caller fails closed)."""
     monkeypatch.setattr(chk, "_run", lambda cmd: (_ for _ in ()).throw(AssertionError("must not call gh")))
     assert chk.independent_review("1", None, _BOT) is None
+
+
+# ---- END-TO-END merge-gate lifecycle through the CLI: submit→green→edit→red→dismiss→red ----
+
+_HEAD40 = "1234567890abcdef1234567890abcdef12345678"
+_FIXED_COMMIT_TS = "2026-08-16T00:00:00+00:00"
+
+
+def _valid_body_payload(head: str) -> dict:
+    """A fully-reconciling APPROVE payload built from the REAL PR-327 manifest criteria."""
+    entry = MANIFEST["prs"]["327"]
+    na = set(entry.get("na_allowed", []))
+    sc = [{"criterion_id": c["id"],
+           "verdict": ("n/a" if c["id"] in na else "met"),
+           "evidence_ref": ("-" if c["id"] in na else "ev-1")}
+          for c in entry["criteria"]]
+    return {
+        "pr": "#327", "verdict": "APPROVE", "reviewer": _BOT,
+        "reviewed_sha": head, "pr_head_sha": head,
+        "final_commit_committed_at": _FIXED_COMMIT_TS,
+        "spec_conformance": sc,
+        "findings": [],
+        "gates": [{"name": g, "status": "pass"} for g in entry["required_gates"]],
+        "evidence": [{"id": "ev-1", "ref": "pytest -q (pasted)", "produced_at": "2026-08-16T00:05:00+00:00"}],
+    }
+
+
+def _merge_gate_args(**over):
+    base = dict(pr="327", repo="owner/repo", head_sha=_HEAD40, manifest=None,
+                kernel_result="success", conservation_result="success",
+                run_id="run-1", require_verdict="APPROVE")
+    base.update(over)
+    return types.SimpleNamespace(**base)
+
+
+@pytest.fixture
+def _stub_gh(monkeypatch):
+    """Stub the external GitHub/git surface so run_merge_gate is driven by a crafted review.
+    The test controls only the review dict; everything else is the real validator + manifest."""
+    monkeypatch.setattr(chk, "pr_author", lambda pr, repo: "the-builder")
+    monkeypatch.setattr(chk, "commit_time", lambda sha: _FIXED_COMMIT_TS)
+    holder = {"review": None}
+    monkeypatch.setattr(chk, "independent_review", lambda pr, repo, rev: holder["review"])
+    return holder
+
+
+def test_merge_gate_lifecycle_submit_green_edit_red_dismiss_red(_stub_gh, capsys):
+    body = json.dumps(_valid_body_payload(_HEAD40))
+
+    # 1) SUBMIT a valid APPROVE review whose body carries the payload → GREEN (exit 0).
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": body}
+    assert chk.run_merge_gate(_merge_gate_args()) == 0
+
+    # 2) EDIT the review body to invalid content (verdict flipped, payload no longer reconciles)
+    #    → RED (exit 1). This is why the workflow must react to the 'edited' event.
+    bad = _valid_body_payload(_HEAD40); bad["verdict"] = "CHANGES-REQUIRED"
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": json.dumps(bad)}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+    # 2b) EDIT to an unparseable body → RED (fail closed).
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": "LGTM, no json"}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+    # 3) DISMISS the review → RED (exit 1).
+    _stub_gh["review"] = {"actor": _BOT, "state": "DISMISSED", "commit_id": _HEAD40,
+                          "dismissed": True, "body": body}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+
+def test_merge_gate_red_on_stale_sha_after_push(_stub_gh):
+    """An APPROVE left on an OLD commit does not cover a new head (synchronize/push) → RED."""
+    body = json.dumps(_valid_body_payload(_HEAD40))
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": "0" * 40,
+                          "dismissed": False, "body": body}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+
+def test_merge_gate_red_on_wrong_actor(_stub_gh):
+    body = json.dumps(_valid_body_payload(_HEAD40))
+    _stub_gh["review"] = {"actor": "attacker[bot]", "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": body}
+    # independent_review only ever returns the trusted actor's review; simulate none found:
+    _stub_gh["review"] = None
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+
+def test_merge_gate_red_when_real_gate_failed(_stub_gh):
+    """Even a perfect APPROVE body is RED if a required check's REAL conclusion is not success."""
+    body = json.dumps(_valid_body_payload(_HEAD40))
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": body}
+    assert chk.run_merge_gate(_merge_gate_args(conservation_result="failure")) == 1
