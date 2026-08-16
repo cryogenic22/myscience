@@ -1,6 +1,6 @@
 # WP-2 — Safe-fetch & secret-boundary threat model (Phase B)
 
-**Status:** Design activity, **revision C.3**. Spec-only — no runtime wiring, no executable tests
+**Status:** Design activity, **revision C.4**. Spec-only — no runtime wiring, no executable tests
 in this branch.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
 **Date:** 2026-08-15
@@ -17,6 +17,7 @@ in this branch.
 | **C.2** | **C-10 rewritten** — it still mandated `credential_ref` after C.1 replaced that model with `FetchGrant` + credential slots in the control-plane spec. | Independent review: the two documents contradicted each other |
 | **C.2** | **C-10a added** — query-placed credentials forbidden by default; under an owner-approved exception the value is **excluded, not hashed**, from every persisted artefact. | Independent review: "secrets never enter URLs" contradicted both `RestConfig.api_key_param` and the proposed value-hashing |
 | **C.3** | **"ships fixtures" corrected to fixture *designs*** (§7) | Contradicted the test spec, which correctly says none exist |
+| **C.4** | **Safe-fetch variants given stable IDs `SF-02a`…`SF-06a`** so the protected manifest enumerates variants | A control-keyed manifest would let 7 of 8 vanish while green |
 | **C.3** | **8 new C-02/C-06 mutation cases** — mixed DNS answers, IPv4-mapped IPv6, SNI/cert-hostname mismatch, peer verification, env proxy, same-size allowlist substitution, exception/grant expiry, alternate HTTP stacks (`http.client`, `Session`) | The C.2 set tested the happy path; several control clauses had no failing case |
 
 **Grounded in:** `WP-2_findings_reverification.md` (Phase A) — every "today" claim below is a
@@ -316,24 +317,28 @@ GREEN.
    gate is **not** a blanket grep of `connectors/`, which would be red against 23 of 30 modules at
    the baseline (C-06).
 
-**C-02 / C-06 mutation gaps closed in C.3.** The C.2 set tested the happy path of pinning and one
+**C-02 / C-06 mutation gaps closed in C.3; given stable IDs in C.4** so the protected case
+manifest (test spec M-40) can enumerate *variants* rather than controls — a manifest keyed on
+controls would let seven of these eight vanish while the gate stayed green.
+
+**Original wording:** The C.2 set tested the happy path of pinning and one
 bypass of the choke point. Each control clause now has a case that can fail:
 
-8.  **Mixed DNS answers** — a hostname resolving to one public and one private address. RED: *every*
+**SF-02a.** **Mixed DNS answers** — a hostname resolving to one public and one private address. RED: *every*
     answer is validated, not the first (C.2 asserted this in prose only).
-9.  **IPv4-mapped IPv6** — `::ffff:169.254.169.254` and `::ffff:10.0.0.1`. RED.
-10. **SNI / certificate-hostname mismatch under pinning** — connect to the pinned IP with TLS
+**SF-02b.** **IPv4-mapped IPv6** — `::ffff:169.254.169.254` and `::ffff:10.0.0.1`. RED.
+**SF-02c.** **SNI / certificate-hostname mismatch under pinning** — connect to the pinned IP with TLS
     verification still bound to the hostname; a certificate valid for the *IP* but not the host
     must fail. This is the clause most likely to be silently dropped when pinning is implemented.
-11. **Peer verification** — assert the connected peer *is* the validated IP, not merely that
+**SF-02d.** **Peer verification** — assert the connected peer *is* the validated IP, not merely that
     validation ran before connecting (the TOCTOU that pinning exists to close).
-12. **Environment proxy** — set `HTTPS_PROXY`; the pinned address must not be silently re-resolved
+**SF-02e.** **Environment proxy** — set `HTTPS_PROXY`; the pinned address must not be silently re-resolved
     by a proxy. RED unless the proxy is explicitly allowlisted.
-13. **Same-size allowlist substitution** — replace an allowlisted origin with a different one,
+**SF-07a.** **Same-size allowlist substitution** — replace an allowlisted origin with a different one,
     keeping the array length identical. RED — a length or count assertion is not a set assertion.
-14. **Allowlist / exception expiry** — a `query_credential_exception` past `effective_to`, and a
+**SF-07b.** **Allowlist / exception expiry** — a `query_credential_exception` past `effective_to`, and a
     grant past `expires_at`. RED at the request boundary.
-15. **Alternate HTTP stacks** — the same bypass attempted via `httpx`, `urllib.request.urlopen`,
+**SF-06a.** **Alternate HTTP stacks** — the same bypass attempted via `httpx`, `urllib.request.urlopen`,
     `http.client`, and a `requests.Session`. All RED for contract-driven connectors. C.2's gate
     named only `requests.`/`httpx`/`urlopen`, so `http.client` and Session-based calls would have
     passed.

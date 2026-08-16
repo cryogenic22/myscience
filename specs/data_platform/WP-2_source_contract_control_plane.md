@@ -1,12 +1,12 @@
-# WP-2 — Versioned source-contract control plane (Phase C.3 specification)
+# WP-2 — Versioned source-contract control plane (Phase C.4 specification)
 
-**Status:** Specification, **revision C.3**. **Spec-only** — no runtime wiring, no migration
+**Status:** Specification, **revision C.4**. **Spec-only** — no runtime wiring, no migration
 reserved, no executable tests, no identity slice.
 **Baseline:** `claude/handoff/h0-baseline` @ `da6887c`, read-only.
 **Date:** 2026-08-15 (rev C.2: 2026-08-16 · rev C.3: 2026-08-16)
 **Covers:** G-01, G-07, G-10 (part — see §6.0), G-12, G-14 (SPEC-003 §6).
 **Preceded by:** `WP-2_findings_reverification.md` (Phase A) · `WP-2_safe_fetch_threat_model.md`
-(Phase B, rev C.3). Every "today" claim is a verified file:line, not a restatement of the review.
+(Phase B, rev C.4). Every "today" claim is a verified file:line, not a restatement of the review.
 
 **Implementation gate (COORDINATION §13.3, unchanged):**
 
@@ -26,6 +26,23 @@ reserved, no executable tests, no identity slice.
 | 5 | **Cursors/leases handed to WP-9**; WP-2 keeps only run-identity | Verified: SPEC-003 §6 assigns "durable cursors, streaming batches, leases, cost controls" to **WP-9** |
 | 6 | **Keys, cardinalities, job and audit objects specified** | They were promised and absent |
 | 7 | **TIV2 seam marked provisional and pinned by content digest** | Verified: TIV2 is **untracked** (`??`) and labelled *"DRAFT … Implementation authority: none until the owner records ratification"* |
+
+### C.4 revision log — twelve findings
+
+| # | Change | Cause |
+|---|---|---|
+| 1 | `etl_run_id` gains an **FK to `etl_runs`**; reverse totality asserted by trigger + gate | `UNIQUE` forbids sharing but permits a dangling id and an unowned run row — not 1:1 |
+| 2 | Grant's parallel `UUID[]` columns replaced by **`fetch_grant_streams`** with composite FKs | Postgres cannot FK array elements, enforce equal length, or pair element *i* with element *i* |
+| 3 | Preview/fetch difference expressed **in the schema** (nullable `certification_id` + trigger) | C.3's `NOT NULL` certifications contradicted "preview has no certification" |
+| 4 | `query_credential_exceptions` linked to the grant and added as **validity condition 10** | An expiring, revocable object that was never checked at request time |
+| 5 | Partial UNIQUEs moved to **`CREATE UNIQUE INDEX … WHERE`** (certifications *and* deployments); `scope_kind` given a closed `CHECK IN` | Inline partial UNIQUE is a syntax error in `CREATE TABLE`; the pairing CHECK admitted unknown scope kinds |
+| 6 | Containment moved from the canonical write to **ingress** | Verified `pipeline.py:343/364/274` — resolve, embed and DLQ all run *before* store, so the gate was placed after the damage |
+| 7 | Cross-table CHECK replaced by **trigger + enable-path + grant-issue re-read** | A CHECK cannot reference another table; C.3's mechanism was unimplementable |
+| 8 | Event log: closed vocabularies, **no-gap `aggregate_seq`**, creation-first/terminal-last, schema retention; rights lineage tied grant → acquisition → execution | "Byte-identical replay" was still not derivable; policy versions were recorded but unlinked |
+| 9 | Byte limits become **reserve → stream-with-abort → settle** with a per-request cap | Response size is unknown before streaming; `Content-Length` is absent on chunked and lied about by a hostile source |
+| 10 | Safe-fetch variants get stable IDs (`SF-02a`…`SF-06a`); manifest enumerates **variants, not controls** | A control-keyed manifest let 7 of 8 variants vanish while green |
+| 11 | Normative contradictions cleared: `job_id`, `stream_key`, INV-19 rollup, INV-10 enforceability, rollup-dependency line | C.3 removed objects but left references describing them |
+| 12 | Ledger counts corrected (8 commits; 95 row labels / ≥99 semantic cases) | Recounted; C.3's figures were wrong again |
 
 ### C.3 revision log — six substantive blockers
 
@@ -288,7 +305,9 @@ source_certifications                 -- PROJECTION (see §3.3); events are the 
   -- inserting a FAKE stream row — which would then enter the stream table, the
   -- canonical hash, and potentially execution. Both outcomes are unacceptable, so
   -- the scope is TYPED instead of encoded in a magic string.
-  scope_kind                 TEXT NOT NULL   -- 'contract' | 'stream'
+  -- C.4: C.3's CHECK constrained the PAIRING but not the VOCABULARY, so
+  -- scope_kind='anything_else' with a NULL stream_id satisfied it. Closed set + pairing.
+  scope_kind                 TEXT NOT NULL CHECK (scope_kind IN ('contract','stream'))
   stream_id                  UUID NULL       -- NULL iff scope_kind = 'contract'
   CHECK ((scope_kind = 'stream') = (stream_id IS NOT NULL))
   purpose                    TEXT NOT NULL   -- discovery | evidence | decision | restricted_internal
@@ -314,21 +333,39 @@ source_certifications                 -- PROJECTION (see §3.3); events are the 
   FOREIGN KEY (stream_id, source_contract_version_id)
       REFERENCES source_contract_streams (stream_id, source_contract_version_id)
 
-  -- at most one LIVE certification per scope, for each scope kind separately
-  UNIQUE (source_contract_version_id, purpose)
-      WHERE scope_kind = 'contract' AND revoked_at IS NULL AND effective_to IS NULL
-  UNIQUE (source_contract_version_id, stream_id, purpose)
-      WHERE scope_kind = 'stream'   AND revoked_at IS NULL AND effective_to IS NULL
-
-  -- C.3: partial uniqueness only ever caught OPEN-ENDED rows, so two finite
-  -- certifications could overlap in time for one scope. An exclusion constraint
-  -- (btree_gist) forbids overlapping validity for the same scope and purpose.
+  -- C.3's exclusion constraint stands (a table constraint may carry WHERE):
   EXCLUDE USING gist (
       source_contract_version_id WITH =, purpose WITH =, scope_kind WITH =,
       coalesce(stream_id, '00000000-0000-0000-0000-000000000000'::uuid) WITH =,
       tstzrange(effective_from, effective_to, '[)') WITH &&
   ) WHERE (revoked_at IS NULL)
+);
+
+-- C.4: PARTIAL UNIQUE IS NOT A TABLE CONSTRAINT IN POSTGRESQL. C.3 wrote
+--   UNIQUE (cols) WHERE predicate
+-- inside CREATE TABLE, which is a syntax error — the same class of defect as C.1's
+-- unbacked composite FK. Partial uniqueness must be a separate index:
+CREATE UNIQUE INDEX cert_live_contract_scope
+    ON source_certifications (source_contract_version_id, purpose)
+    WHERE scope_kind = 'contract' AND revoked_at IS NULL AND effective_to IS NULL;
+CREATE UNIQUE INDEX cert_live_stream_scope
+    ON source_certifications (source_contract_version_id, stream_id, purpose)
+    WHERE scope_kind = 'stream'   AND revoked_at IS NULL AND effective_to IS NULL;
 ```
+
+**The same error exists on `source_deployments` (C.4)** — its
+`UNIQUE (source_instance_id, environment) WHERE superseded_by IS NULL` was inherited from C.2 and
+is equally invalid inline. It becomes:
+
+```sql
+CREATE UNIQUE INDEX deployment_effective_per_scope
+    ON source_deployments (source_instance_id, environment) WHERE superseded_by IS NULL;
+```
+
+**M-35c is the case that should have caught both** — "apply the DDL to an empty database". It was
+specified in C.2 and has never been *run*, because this branch has no executable tests. That is
+precisely the limit of a specification-only phase, and it is why the DDL claims in this document
+are marked unverified in the ledger rather than asserted as correct.
 
 **Resolution rule.** A stream-scoped certification takes precedence over a contract-scoped one for
 that stream; a contract-scoped certification applies to streams with no stream-scoped decision.
@@ -446,6 +483,26 @@ normative in the WP-2 acceptance package — an untyped JSONB blob cannot be rep
 into a projection. `occurred_at` is descriptive; **`aggregate_seq` is the replay order**, because
 wall-clock ties and skew are not a total order.
 
+**Remaining replay constraints (C.4).** C.3 added the fields but left the log internally
+unconstrained, so "byte-identical replay" still was not derivable:
+
+- `CHECK (event_type IN (…closed set…))` and
+  `CHECK (aggregate_kind IN ('instance','contract','deployment','certification','grant'))` — an
+  unknown event type is unreplayable by definition;
+- **no gaps**: `aggregate_seq` starts at 1 per aggregate and increments by exactly 1, enforced by a
+  trigger. A gap means an event was lost, and replay must fail loudly rather than skip it;
+- **the first event for an aggregate must be a creation event**, and no event may follow a terminal
+  one — otherwise a projection can be rebuilt from a suffix and look complete;
+- a projection's `last_event_id` must reference an event of **that same aggregate**;
+- `event_schema_version` is monotonic per `event_type`, and every historical version's typed schema
+  is retained — dropping an old schema makes old events unreplayable, which is silent history loss.
+
+**Rights lineage completion (C.4).** The policy version is recorded at grant, acquisition and
+rights record (§3.5.1), but nothing tied them together. Added: the acquisition's
+`rights_policy_version_id` **must equal** the issuing grant's (FK-checked via the grant row), and a
+stream execution inherits its acquisition's — so a single lineage query answers "under which policy
+were these bytes acquired, and under which was this fact derived" without inference.
+
 ### 3.6.1 Execution grain — one ETL run per stream (decided in C.3)
 
 C.2 left this **contradictory**, and the reviewer was right to block on it: `source_jobs` carried a
@@ -485,7 +542,10 @@ source_stream_executions            -- ONE per stream per acquisition; owns its 
   acquisition_id  UUID NOT NULL
   stream_id       UUID NOT NULL
   source_contract_version_id UUID NOT NULL   -- carried so BOTH parents can be constrained
-  etl_run_id      UUID NOT NULL UNIQUE       -- 1:1 with etl_runs => INV-01 holds by construction
+  -- C.4: UNIQUE alone is NOT 1:1 ownership. It forbids two executions sharing a run,
+  -- but permits (a) a run_id that references no etl_runs row, and (b) an etl_runs row
+  -- with no execution. Both directions are now constrained.
+  etl_run_id      UUID NOT NULL UNIQUE REFERENCES etl_runs (id)
   certification_id UUID NULL                 -- the decision under which this stream executed
   cursor_before / cursor_after  JSONB        -- WP-9 owns semantics; recorded here (§6.0)
   records_in / records_mapped / records_dropped INTEGER NOT NULL
@@ -523,7 +583,7 @@ two silently diverge.
 |---|---|---|
 | `ConnectorSpec.to_config()` | sets `config.source_id`, logs only (`connectors/spec.py:172`) | carries `source_instance_id` + `source_contract_version_id` |
 | `Provenance` (`connectors/base.py:143-162`) | 6 fields, no source identity | **+ `source_instance_id`, `source_contract_version_id`, `stream_key`** |
-| `_create_etl_run` (`integration/pipeline.py:491-504`) | `source_type.value`, `""`, `"{}"` | **+ instance id, contract version id, `job_id`, `code_git_sha`, and a *redacted* resolved endpoint** |
+| `_create_etl_run` (`integration/pipeline.py:491-504`) | `source_type.value`, `""`, `"{}"` | **+ instance id, contract version id, `stream_id`, `acquisition_id`, `code_git_sha`, and a *redacted* resolved endpoint** *(C.4: said `job_id`, an object removed in C.3)* |
 | `_finalize_etl_run` (`:549-580`) | counts + `outcome` | **+ per-stream counts, truncation, per-stage outcomes** |
 | Catalog | static `DATASET_DEFINITIONS` | integrity gate (§9.4) |
 
@@ -572,7 +632,7 @@ registered ──approve──▶ approved ──enable──▶ live ──disa
 2. the contract version revalidates under a **current** `validator_version`;
 3. `canonical_hash` still matches the stored body;
 4. an active, unrevoked `SourceCertification` exists for the requested purpose **and stream**;
-5. the safe-fetch boundary is present and enabled (Phase B, rev C.3);
+5. the safe-fetch boundary is present and enabled (Phase B, rev C.4);
 6. every `credential_slot` resolves to a live credential version.
 
 Failing any is a **fail-closed refusal**. Critically, this is checked when issuing a **FetchGrant**
@@ -663,11 +723,12 @@ fetch_grants                          -- server-issued; never constructed by a c
   source_instance_id  UUID NOT NULL
   source_contract_version_id UUID NOT NULL
   contract_canonical_hash TEXT NOT NULL
-  -- C.3: a grant authorized a PURPOSE but named neither the streams it covers nor
-  -- the certification decisions behind them, so nothing tied execution to a decision.
-  authorized_streams  UUID[] NOT NULL          -- stream_ids; must be non-empty
-  authorizing_certifications UUID[] NOT NULL   -- 1:1 with authorized_streams
+  -- C.4: C.3 used two parallel UUID[] columns. Postgres cannot foreign-key array
+  -- elements, cannot enforce equal length, and cannot pair element i with element i,
+  -- so "authorized stream -> authorizing certification" was unenforced. Moved to a
+  -- child table (below) where every pair is a real constrained row.
   rights_policy_version_id UUID NOT NULL       -- the policy in force at issue (§3.5.1)
+  exception_id        UUID NULL REFERENCES query_credential_exceptions  -- C.4, §7.6
   purpose             TEXT NOT NULL
   allowed_origins     TEXT[] NOT NULL          -- exact normalized (scheme, host, port)
   credential_slot_bindings JSONB NOT NULL      -- slot -> credential VERSION + placement
@@ -678,7 +739,34 @@ fetch_grants                          -- server-issued; never constructed by a c
   issued_at, expires_at TIMESTAMPTZ NOT NULL
   revoked_at          TIMESTAMPTZ NULL
   instance_epoch_at_issue BIGINT NOT NULL      -- §7.4
+  UNIQUE (grant_id, source_contract_version_id)   -- parent key for the child below
+
+fetch_grant_streams                   -- C.4: one row per authorized (stream, decision)
+  grant_id        UUID NOT NULL
+  stream_id       UUID NOT NULL
+  source_contract_version_id UUID NOT NULL
+  -- NULL only for grant_kind='preview', which carries no certification by design (§8.0.1)
+  certification_id UUID NULL
+  PRIMARY KEY (grant_id, stream_id)
+  FOREIGN KEY (grant_id, source_contract_version_id)
+      REFERENCES fetch_grants (grant_id, source_contract_version_id)
+  FOREIGN KEY (stream_id, source_contract_version_id)
+      REFERENCES source_contract_streams (stream_id, source_contract_version_id)
+  FOREIGN KEY (certification_id) REFERENCES source_certifications
 ```
+
+**Preview vs fetch, expressed in the schema rather than in prose (C.4).** C.3 declared
+`authorizing_certifications … NOT NULL` on every grant while stating that a preview grant has no
+certification — the schema contradicted the text. The child table makes both legal and the
+difference explicit, enforced by a trigger (a CHECK cannot see another table):
+
+| `grant_kind` | `fetch_grant_streams.certification_id` | `purpose` |
+|---|---|---|
+| `fetch` | **must be non-NULL**, live at request time | from the certification |
+| `preview` | **must be NULL** | must be `discovery` |
+
+A grant with zero child rows authorizes nothing and is refused at the fetch primitive — there is no
+"empty means all" reading.
 
 **Opaque handle, not a bearer blob (C.3).** C.2 never said how a grant is presented or why it is
 unforgeable. The grant is a **random 256-bit handle** returned once at issue; only its **hash** is
@@ -691,13 +779,32 @@ immediate, which contradicts §7.4.
 concurrency. Each request performs a conditional atomic update in the same transaction that
 authorizes it:
 
+C.3's version used `bytes_used + $n <= max_bytes`, which assumes `$n` is known **before** the
+request. **It is not** — response size is unknown until the body has been read, and
+`Content-Length` is absent on chunked responses and trivially lied about by a hostile source. So
+byte enforcement is *reserve → stream-with-abort → settle*, and the cap is enforced by the reader,
+not by arithmetic:
+
 ```sql
+-- 1. RESERVE before the request: one request slot + the worst-case byte budget.
 UPDATE fetch_grants
-   SET requests_used = requests_used + 1, bytes_used = bytes_used + $n
+   SET requests_used = requests_used + 1,
+       bytes_reserved = bytes_reserved + LEAST(max_bytes - bytes_used - bytes_reserved,
+                                               per_request_byte_cap)
  WHERE grant_id = $g AND revoked_at IS NULL AND expires_at > now()
-   AND requests_used < max_requests AND bytes_used + $n <= max_bytes
-RETURNING grant_id;   -- zero rows => refuse the request, fail closed
+   AND requests_used < max_requests
+   AND bytes_used + bytes_reserved + per_request_byte_cap <= max_bytes
+RETURNING bytes_reserved;   -- zero rows => refuse, fail closed
 ```
+
+2. **Stream with a hard abort.** The body is read in bounded chunks against the reserved budget;
+   crossing it **aborts the connection mid-read** and fails the request with `egress_refused`. A
+   declared `Content-Length` may be used to refuse *early*, never to trust a size.
+3. **Settle** in the same transaction that records the outcome: move actual bytes from
+   `bytes_reserved` to `bytes_used` and release the remainder.
+
+This is why `max_bytes` alone was insufficient: without a per-request cap and a streaming abort, a
+single response could exhaust or exceed the whole grant budget before any accounting ran.
 
 ### 7.2 Rules
 
@@ -753,7 +860,14 @@ withdrawn":
 | 6 | every paired certification live **and not past `effective_to`** | natural certification expiry (C.3 — expiry, not only revocation) |
 | 7 | `rights_policy_version_id` still current for the contract | rights-policy change |
 | 8 | principal still enabled and still holds the tenant | principal disablement |
-| 9 | accounting update returns a row (§7.1) | budget exhaustion |
+| 9 | accounting reservation succeeds (§7.1) | budget exhaustion |
+| 10 | **if `exception_id` is set: that exception is unrevoked, within `effective_from`/`effective_to`, and still matches the slot, parameter and origin in use (C.4)** | query-credential exception expiry or revocation |
+
+**C.4 — condition 10 was missing entirely.** C.3 created `query_credential_exceptions` as an
+expiring, revocable object and then never checked it at request time, so an expired exception kept
+authorizing query-placed credentials indefinitely. The grant now *references* the exception
+(`fetch_grants.exception_id`), and its validity is evaluated on every request alongside the other
+nine conditions.
 
 **Rollback** bumps the epoch, so grants issued against the rolled-back version die immediately
 rather than continuing to fetch under a superseded contract.
@@ -847,15 +961,36 @@ not a note:
 > projections. It MUST NOT reach canonical facts, entity resolution, the graph, embeddings, LLM
 > context, synthesis, or any production promotion path.**
 
-Enforcement, so it is not discipline:
+**Enforcement point — corrected in C.4. C.3 put the boundary in the wrong place.** It rejected at
+the *canonical write*, but the live pipeline does this (`integration/pipeline.py:337-373`):
 
-1. Records produced under a contract-driven acquisition carry `provenance_class = 'contract_driven'`.
-2. The canonical write path **rejects** `contract_driven` records while the interim flag is set —
-   fail-closed, not filtered-silently, with a counted and reasoned rejection (conservation).
-3. A Lane-1 test asserts the rejection holds; a Lane-2 check asserts no `contract_driven` record
-   has reached `facts`, the graph, or an embedding index.
-4. The flag is cleared only by an owner-recorded decision once WP-5 and WP-8 land — it is a
-   protected-surface change, not a builder toggle.
+```
+Step 1 normalize → Step 2 RESOLVE (:343) → Step 3 EMBED (:364) → Step 4 store
+```
+
+Entity resolution runs at `:343` and can **auto-create entities**; embedding runs at `:364` and
+writes vectors; and a raised exception writes the mapped record to the **DLQ** (`:274`). All three
+happen **before** the canonical store. A gate at the store would therefore have let poisoned
+content create entities, produce embeddings, and land in the DLQ — while the spec claimed
+containment.
+
+The boundary moves to **ingress**, before `_process_record` is entered at all:
+
+1. Records produced under a contract-driven acquisition carry `provenance_class = 'contract_driven'`
+   set at the acquisition boundary, not inferred later.
+2. While the interim flag is set, a `contract_driven` record is **routed to the bronze/quarantine
+   path instead of the pipeline** — it never reaches normalize, resolve, embed, store, cross-link,
+   or the DLQ. Routing is a branch at ingress, not a rejection at the end.
+3. **The DLQ is inside the boundary, not outside it.** A failed contract-driven record goes to a
+   *separate* contract-driven quarantine queue; it must not enter the shared DLQ, whose entries are
+   replayed into the canonical path.
+4. Diversions are **counted and reasoned** (conservation), never silently dropped.
+5. Lane-1 asserts the ingress branch holds for every stage listed above — resolve, embed, DLQ and
+   store, each tested separately, because C.3's single store-level assertion is exactly what missed
+   the other three. Lane-2 asserts no `contract_driven` record has reached `entities`, `facts`, the
+   graph, an embedding index, or the shared DLQ.
+6. The flag is cleared only by an owner-recorded decision once WP-5 and WP-8 land — protected
+   surface, not a builder toggle.
 
 This makes WP-2 *safely* landable ahead of its dependencies instead of requiring a resequence.
 
@@ -948,7 +1083,7 @@ COORDINATION §7.4; the highest existing is `099`. Reserving now would collide w
 | deployment → (instance, version) | n..1 | composite FK, now satisfiable (§3.3) |
 | instance+environment → effective deployment | 1 | partial `UNIQUE … WHERE superseded_by IS NULL` |
 | certification → (version, stream) | n..1 | composite FK; `stream_key NOT NULL DEFAULT '*'` — *C.2: a nullable key made duplicates admissible, since NULLs are distinct in a UNIQUE* |
-| certification liveness | ≤1 per scope | partial `UNIQUE (version, stream_key, purpose) WHERE revoked_at IS NULL AND effective_to IS NULL` |
+| certification liveness | ≤1 per scope | **two partial UNIQUE INDEXes** (not table constraints — C.4) keyed on `(version, purpose)` for contract scope and `(version, stream_id, purpose)` for stream scope |
 | contract version → rights policy | n..1 | FK `NOT NULL` |
 | acquisition → deployment | n..1 | composite FK against `source_deployments (deployment_id, source_contract_version_id)` — **C.3: that candidate key was missing, so the FK was invalid SQL** |
 | acquisition → stream executions | 1..n | `PRIMARY KEY (acquisition_id, stream_id)` |
@@ -1027,8 +1162,15 @@ C.2 described the state machine but gave `legacy_unverified` and `QUARANTINED` n
 ALTER TABLE source_contract_versions
   ADD COLUMN provenance TEXT NOT NULL DEFAULT 'authored'
       CHECK (provenance IN ('authored','legacy_unverified'));
--- legacy_unverified can never be granted: enforced in §5.2 condition 2 and by
---   CHECK: a deployment of a legacy_unverified version cannot set execution_enabled
+-- C.4: C.3 wrote "enforced by CHECK: a deployment of a legacy_unverified version
+-- cannot set execution_enabled". A CHECK constraint CANNOT reference another table,
+-- so that was unimplementable. Three real mechanisms replace it:
+--   (a) §5.2 condition 2 — the enable path refuses a legacy_unverified version;
+--   (b) a BEFORE INSERT/UPDATE TRIGGER on source_deployments that joins to
+--       source_contract_versions and raises when provenance='legacy_unverified'
+--       AND execution_enabled — a trigger may do the cross-table read a CHECK may not;
+--   (c) grant issue (§7) re-reads provenance, so even a bypassed projection write
+--       cannot produce a grant. Defence in depth, with the trigger as the floor.
 
 -- QUARANTINED (secret-bearing): NOT a contract version. A restricted store.
 legacy_quarantine
@@ -1183,5 +1325,5 @@ No commitment to PR #327's artifact design (COORDINATION §13.4). Acceptance cri
 `V2_REVIEW_REQUEST` successor protocol is noted and **not adopted** — it is untracked and
 unratified, the same status that produced C.1 finding 7.
 
-Test specifications: `WP-2_test_specifications.md` (rev C.3). Executable tests are introduced
+Test specifications: `WP-2_test_specifications.md` (rev C.4). Executable tests are introduced
 inside the implementation PR that turns them GREEN.

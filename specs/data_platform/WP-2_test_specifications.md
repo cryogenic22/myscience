@@ -1,6 +1,6 @@
-# WP-2 — Test specifications, invariants and fixture designs (rev C.3)
+# WP-2 — Test specifications, invariants and fixture designs (rev C.4)
 
-**Status:** Specifications only, **revision C.3**. **No executable tests and no fixture files exist
+**Status:** Specifications only, **revision C.4**. **No executable tests and no fixture files exist
 in this branch** — a spec-only branch that merged intentionally-red tests would be a standing
 *vacuous red*, the mirror of a vacuous green (COORDINATION §13.3). Each case becomes an executable
 RED test **inside the implementation PR that turns it GREEN**.
@@ -15,8 +15,8 @@ RED test **inside the implementation PR that turns it GREEN**.
 > §3 below is a fixture *design*, not an inventory. Describing an artefact as existing when it does
 > not is the ungrounded-claim failure this harness exists to catch.
 
-**Companions:** `WP-2_source_contract_control_plane.md` (rev C.3) ·
-`WP-2_safe_fetch_threat_model.md` (rev C.3, §7 owns the 11 safe-fetch cases — **not duplicated or
+**Companions:** `WP-2_source_contract_control_plane.md` (rev C.4) ·
+`WP-2_safe_fetch_threat_model.md` (rev C.4, §7 owns the 11 safe-fetch cases — **not duplicated or
 counted here**) · `WP-2_findings_reverification.md`.
 
 **Lane:** every case is **Lane 1** (deterministic, DB-free or seeded, PR-blocking) unless marked
@@ -62,7 +62,7 @@ Lane 2. No live-source dependency may enter a PR gate.
 | **INV-07** | A deployment may only reference a contract version belonging to its own source instance | Composite FK |
 | **INV-08** | Preview writes security/audit records and **no** domain, pipeline, cursor or DLQ rows | Egress must be audited; data must not leak |
 | **INV-09** | Every dropped row in a preview is counted and reasoned, per stream | Conservation before correctness |
-| **INV-10** | An approval is recorded by a `human` actor kind whose principal differs from the author's | Separation of authorship (visible, not enforceable — §6) |
+| **INV-10** *(corrected C.4)* | An approval is recorded by an authenticated `human` principal distinct from the author — **structurally enforced at runtime** | Spec §12: runtime approval IS enforceable server-side; only *git-reviewer* separation is not |
 | **INV-11** | Every effective deployment resolves to a registry entry, an active certification, and — **only if `cadence IS NOT NULL`** — a schedule | G-12 |
 | **INV-12** | No code path derives a certification from a numeric score | Corrects the QUAL-001 `0.5`-filler class |
 | **INV-13** | WP-2 emits no outcome outside the ratified WP-0 vocabulary, and every proposed input has a ratified mapping | Rejecting unknown strings ≠ semantic agreement |
@@ -71,7 +71,7 @@ Lane 2. No live-source dependency may enter a PR gate.
 | **INV-16** | Rights attach to the acquisition, not the content blob: identical bytes under two contracts carry two envelopes | Spec §3.5 |
 | **INV-17** | Revocation takes effect at the next request boundary, not the next run | `revocation_epoch`, spec §7.4 |
 | **INV-18** | A grant is scoped to a tenant; no grant authorizes a cross-tenant fetch or read | Spec §12 |
-| **INV-19** *(C.2)* | Every stream of a run carries its own outcome and counts; the run-level outcome is a deterministic rollup that never over-reports success | A scalar per-run outcome cannot describe a multi-output connector |
+| **INV-19** *(rewritten C.4)* | Every stream has its **own `etl_runs` row** and terminal outcome; **no run-level rollup outcome is stored at all** | C.3 removed the rollup but this invariant still described one |
 | **INV-20** *(C.2)* | `source_deployments` and `source_certifications` are rebuildable byte-identically by replaying `control_plane_events` | Makes "the event log is the authority" checkable |
 | **INV-21** *(C.2)* | Every composite FK names a parent column list backed by a `UNIQUE`/`PK`, and the DDL applies cleanly to an empty database | C.1's composite FK was invalid SQL |
 | **INV-22** *(C.2)* | Tenancy is enforced at route, service, repository **and** worker boundaries; an unresolvable tenant fails closed | Route-only enforcement leaves schedulers unscoped |
@@ -103,6 +103,8 @@ executed.
 | **M-05i** *(rewritten C.3)* | Run a 4-stream contract where stream 1 lands and stream 3 returns zero rows | Four `etl_runs` rows, one per stream, each with its own outcome. **No rollup exists to over-report** — C.2's `rollup_outcome` is removed. INV-15, INV-19 |
 | **M-05j** *(C.3)* | An `etl_runs` row reachable from more than one stream execution, or a stream execution with no `etl_runs` row | RED — `etl_run_id UNIQUE` makes INV-01 hold by construction rather than by convention |
 | **M-05k** *(C.3)* | Insert an acquisition whose `deployment_id` belongs to a different contract version | RED — composite FK against the new `source_deployments (deployment_id, source_contract_version_id)` candidate key |
+| **M-05l** *(C.4)* | A stream execution whose `etl_run_id` references no `etl_runs` row; and an `etl_runs` row (post-cutover, contract-driven) with **no** stream execution | RED both ways. C.3's `UNIQUE` gave neither direction — it forbade sharing only |
+| **M-05m** *(C.4)* | Apply the full DDL to an **empty database** | Accepted. This is M-35c re-emphasised: it has never been executed, and both C.1's unbacked composite FK and C.3's inline partial UNIQUE would have failed here |
 
 ### 2.2 Immutability, drafts, canonical hash
 
@@ -131,6 +133,10 @@ executed.
 | **M-11f — the nine invalidation triggers** *(C.3)* | For **each** of: revocation · expiry · credential rotation · certification revocation · **natural certification expiry** · deployment disable · **redeployment/supersession** · rights-policy supersession · principal disablement — hold a live grant and fire the trigger mid-run | RED at the next request boundary in all nine, each with a *distinct* diagnostic so "authority withdrawn" is never reported as "source down". C.2 claimed redeployment invalidates but omitted it from the trigger set, and `revocation_epoch` was never declared on `SourceInstance` |
 | **M-11g** *(C.3)* | Fetch a stream absent from the grant's `authorized_streams`, or one whose paired certification has lapsed | RED — a grant authorized only a *purpose* in C.2 |
 | **M-11h** *(C.3)* | Present a forged/guessed grant handle | RED — verification is a DB lookup on a stored hash of a 256-bit random handle; there is nothing offline to forge |
+| **M-11i** *(C.4)* | A grant row whose authorized stream belongs to another contract version; a `fetch` grant with a NULL `certification_id`; a `preview` grant with a non-NULL one; a grant with **zero** child rows | RED in all four. C.3's parallel `UUID[]` columns could express every one of these |
+| **M-11j** *(C.4)* | Fetch under a grant whose `query_credential_exception` has expired or been revoked mid-run | RED — validity condition 10. C.3 created the exception object and never checked it |
+| **M-11k — byte cap** *(C.4)* | A response with no `Content-Length`, then one declaring a false small `Content-Length` but streaming far more | The read **aborts mid-stream** at the reserved cap and fails `egress_refused`. C.3's `bytes_used + $n <= max_bytes` presumed a size known before the request |
+| **M-11l** *(C.4)* | Crash between reserve and settle | Reservation is released or expires; a grant cannot be permanently starved by a dead worker |
 | M-12 | Enable execution with no active certification for the requested purpose **and stream** | RED — `PURPOSE_NOT_CERTIFIED` |
 | M-13 | Enable execution with the safe-fetch boundary absent/disabled | RED — fail-closed |
 | M-14 | Enable execution with an unresolvable credential slot | RED — distinct from "source down" |
@@ -198,6 +204,8 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | **M-33e** *(C.3)* | Preview across tenants, to a non-allowlisted origin, or after revocation | RED — a preview skips *certification and enablement only*; tenancy, origin, credential binding, revocation, limits and audit all still apply |
 | **M-33f — interim containment** *(C.3)* | Drive a contract-driven record toward `facts`, entity resolution, the graph, an embedding index, or LLM context while the WP-5/WP-8 interim flag is set | RED, **fail-closed with a counted and reasoned rejection** — not silently filtered. Plus a Lane-2 check that no `contract_driven` record has reached those sinks (spec §8.0.2). This is the mechanical boundary that makes WP-2 safely landable ahead of WP-5/WP-8 |
 | **M-33g** *(C.3)* | Clear the interim containment flag as a builder | RED — protected-surface change, owner-recorded only |
+| **M-33h — containment at ingress** *(C.4)* | With the flag set, drive a contract-driven record and assert **at each stage separately**: no entity created by `resolve` (`pipeline.py:343`), no vector by `embed` (`:364`), no row in the **shared** DLQ (`:274`), no canonical store | RED at all four. C.3 asserted only the store, so the first three could have run — resolve can auto-create entities and the DLQ is replayed into the canonical path |
+| **M-33i** *(C.4)* | A failed contract-driven record | Lands in the **separate** contract-driven quarantine queue, never the shared DLQ; the diversion is counted and reasoned |
 
 ### 2.7 Promotion, tenancy, audit, catalog
 
@@ -218,6 +226,11 @@ The exact config that survived stripping at `da6887c` must now be **rejected at 
 | **M-35h** *(C.3)* | Replay a log missing `event_schema_version`, or emit two events with one `idempotency_key` | RED — replay determinism requires typed, versioned, idempotent events (INV-20) |
 | **M-35i** *(C.3)* | Write to an acquisition or stream-execution row after finalization | RED — write-once-then-finalize-once, enforced by trigger. These rows are **not** immutable and are no longer described as such |
 | **M-35j** *(C.3)* | Set `execution_enabled = TRUE` on a deployment whose `state` is `paused` or `rolled_back` | RED — CHECK constraint. C.2's projection had no `state` column at all, so §5.2 condition 1 was unevaluable |
+| **M-35k** *(C.4)* | Enable execution for a `legacy_unverified` contract version — via the API, **and** by writing the projection row directly | RED both ways: the trigger is the floor, the enable path and grant-issue re-read are defence in depth. C.3 specified a cross-table CHECK, which PostgreSQL cannot express |
+| **M-35l** *(C.4)* | Emit `aggregate_seq` with a gap; an unknown `event_type` or `aggregate_kind`; an event after a terminal one; a projection `last_event_id` pointing at another aggregate's event | RED in all four — replay must fail loudly on a gap rather than skip it |
+| **M-35m** *(C.4)* | Drop a historical `event_schema_version`'s typed schema, then replay | RED — old events become unreplayable, which is silent history loss |
+| **M-35n** *(C.4)* | An acquisition whose `rights_policy_version_id` differs from its issuing grant's | RED — lineage must answer "under which policy" without inference |
+| **M-35o** *(C.4)* | Insert a certification with `scope_kind = 'archived'` (an unknown kind) and a NULL `stream_id` | RED — C.3's CHECK constrained the pairing but not the vocabulary |
 | M-36 | Delete a certification instead of revoking | RED — supersede, don't delete |
 | **M-36a** | Assert certification history is queryable after revocation, with prior decisions intact | GREEN |
 | **M-37** *(rewritten)* | Effective deployment with **`cadence IS NOT NULL`** and no schedule → RED. Effective deployment with **`cadence IS NULL`** (manual/event-driven) and no schedule → **GREEN**. The Phase C rule failed legitimate manual sources | INV-11 |
@@ -238,7 +251,7 @@ Following `test_lane1_suite_is_not_vacuous()` in `tests/test_conservation_gates.
 
 | # | Case |
 |---|---|
-| **M-40** *(strengthened C.3)* | C.2's version proved only *one* executing test per invariant, so 74 of 79 cases could be deleted and the gate would stay green. Replaced with a **protected case manifest**: a file listing every case ID (M-nn, INV-nn, and the threat model's C-nn cases) that the suite asserts is *exactly* the set collected at runtime — no missing, no silently renamed. The manifest is added to `protected-surface.txt` in the same change that makes it hard, so a builder cannot delete a case by editing the manifest |
+| **M-40** *(strengthened again C.4)* | C.3's manifest enumerated *case IDs*, but the threat model's §7 items 8–15 are **numbered variants inside one control** (mixed DNS answers, IPv4-mapped IPv6, SNI mismatch, peer verification, env proxy, allowlist substitution, expiry, alternate HTTP stacks). A manifest keyed on controls would let 7 of 8 variants vanish while staying green. **Every safe-fetch variant gets its own stable ID** (`SF-02a`…`SF-06d`), and the manifest enumerates variants, not controls. The suite asserts the collected variant set is *exactly* the manifest; the manifest is protected surface, so a builder cannot delete a variant by editing it |
 | M-41 | The validator self-test proves it can still reject a known-bad fixture on every run, so a broken validator cannot read as "all contracts valid" |
 | M-42 | The catalog integrity gate asserts it examined >0 effective deployments |
 | **M-43** | The secret-canary sweep (M-20a) asserts it searched >0 sinks and that each named sink was reachable — an unreachable sink must fail, not pass |
@@ -320,7 +333,11 @@ entry is permitted strengthening; loosening a threshold to pass is not.
 
 Stated so this document cannot read as more coverage than it provides:
 
-- **Safe-fetch cases live in the threat model** (§7, rev C.3) — not restated, not counted here.
+- **Safe-fetch cases live in the threat model** (§7, rev C.4) — not restated, not counted here.
+- **No DDL in this package has been executed.** M-35c ("apply the DDL to an empty database") was
+  specified in C.2 and has never run, which is why C.3 shipped an invalid inline partial-UNIQUE and
+  an unbacked composite FK. Every DDL claim here is **unverified by execution**, and the ledger
+  records it as such rather than as correct.
 - **T-19** (source poisoning) and **T-20** (fetched content as instructions) have **no cases** —
   WP-8 and WP-5.
 - **Cursor and lease mechanics have no cases** — **WP-9** owns them (spec §6.0). M-30b tests only
@@ -328,12 +345,15 @@ Stated so this document cannot read as more coverage than it provides:
 - **Streaming / memory pressure**: no cases — WP-9. M-32 bounds a preview only.
 - **Tenancy enforcement in routes**: no cases — Product-Platform (COORDINATION §10.1 A4). M-11c
   covers grant-level scoping only.
-- **INV-10 is asserted but not enforceable today** — worktree agents run under the owner's git
-  identity, so M-34 makes a violation *visible*, not impossible.
+- **INV-10 is enforceable at runtime and is specified as hard** (spec §12). What remains
+  unenforceable is *git-reviewer* separation — a different problem, and WP-12's, not a reason to
+  weaken the runtime check. C.3 corrected the spec; C.4 corrects this line, which still carried the
+  old conflation.
 - **M-28a is an UNMET DESIGN CRITERION, not RED evidence** (C.2) — it gates ASK-WP2-1 and must not
   be marked pending or removed to make a suite green, but it has never been executed.
 - **Rights/retention attachment has no cases that can pass today** — ASK-WP2-3 must resolve the
   WP-1 conflict first (spec §3.5.1). M-39a is specified against the *target* interface, and would
   fail against WP-1's current content-addressed `retention_class` for the correct reason.
-- **Per-stream outcome rollup (M-05c/M-30a) depends on ASK-WP2-1** — the rollup rule for a run
-  whose streams disagree is WP-0's to ratify.
+- **Per-stream outcome *vocabulary* (M-05c/M-30a) depends on ASK-WP2-1** — the mapping of each
+  proposed input to a terminal outcome is WP-0's to ratify. There is no rollup rule to agree,
+  because C.3 removed the rollup.
