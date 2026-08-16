@@ -63,9 +63,18 @@ unification** — `cls.create = client...create` set in a classmethod and read a
 aliases the same slot through Python's class/instance attribute semantics, which static
 name-resolution does not unify (same-receiver forms `self.x = ...; self.x(...)` ARE closed).
 These are boundaries of the technique, not bugs to patch in the scanner; each is pinned by a
-`strict=True` xfail so it can never be silently claimed as covered. The backstop for all of them
-is the **runtime** egress guard (PRIV-001b), which intercepts at the gateway regardless of how
-the call site was written.
+`strict=True` xfail so it can never be silently claimed as covered.
+
+**⚠️ Correction on the "runtime backstop" (an earlier overclaim):** the PRIV-001b runtime guard
+(`services/llm_gateway.py::guard_*`) wraps the **provider SDK client** `.create(...)` calls — it
+only sanitizes egress that goes THROUGH those adapters. It does **NOT** intercept arbitrary
+direct HTTP: a hand-rolled `requests.post(provider_url, ...)`, `httpx`, or
+`urllib.request.urlopen(...)` bypasses the SDK client and therefore the wrapper entirely. So the
+backstop for the SDK-client residuals above (runtime-computed method name, subscript indirection,
+cross-receiver cache) is the runtime guard **only because those forms still terminate in an SDK
+`.create`**. For NON-SDK direct HTTP there is no runtime backstop — the **static scanner is the
+sole control**, which is why `urlopen(...)`/requests/httpx provider egress is now detected
+statically (WP-12C), not deferred to a runtime guard that would never see it.
 
 ## Regression tests
 

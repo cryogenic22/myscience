@@ -16,6 +16,21 @@ parent is the reviewed code (a review committed in-branch cannot equal the head)
 closed on an unresolvable `--pr` (no local-HEAD fallback); the scanner covers call/subscript
 receiver bases and HTTP callable aliases; the CI workflow runs conservation + a fail-closed
 merge-gate on the exact PR head with least-privilege permissions and pinned actions. See §3.
+**Rev 3:** owner independent-review calibration (2026-08-16). (a) The egress scanner now detects
+**urllib** provider egress (`urlopen(url)` / `urlopen(Request(url))` / `req=Request(url);
+urlopen(req)`, url as literal/constant/f-string/concat, across OpenAI/Anthropic/**Gemini** hosts,
+through any qualified/imported alias) — the 13 previously-invisible `urlopen` calls across five
+`ctxpack/benchmarks` provider files are reconciled, each individually classified `fixture-only`
+(offline eval on fixture corpora, not production, not imported by `api`/`services` — proven per
+entry; no broad directory allowlist). (b) The independent-review reconciliation is bound to the
+owner-calibrated **`codexindependentreviewer[bot]`**: an APPROVE is believed ONLY when the
+GitHub review is by that actor, `state == APPROVED`, not dismissed, targets the exact live head
+(`commit_id == pr_head_sha`), and actor ≠ author — COMMENTED/CHANGES_REQUESTED/wrong-actor/
+stale-SHA/dismissed/missing all fail closed; a later push returns the gate to red until the new
+head is re-approved. The workflow also triggers on `pull_request_review` (submitted/dismissed).
+(c) Corrected the earlier overclaim: the PRIV-001b **runtime** guard wraps the SDK client, so it
+does NOT intercept hand-rolled `urllib`/`requests`/`httpx` HTTP — for those the STATIC scanner
+is the sole control. This custom review gate does NOT replace GitHub-native branch approval.
 **Origin:** the PRIV-001 escaped defect (2026-08-13) — a live LLM-egress *bypass* was
 classified as a review "nit" and nearly landed under a non-canonical verdict
 ("LAND-WITH-NITS"), because **nothing machine-reconciled the review against the ratified

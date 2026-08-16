@@ -28,9 +28,31 @@ the branch and passed to the CLI with `--head-sha`; then `reviewed_sha == head`.
   the CLI as `--kernel-result` / `--conservation-result`. A self-declared `pass` that contradicts
   the real conclusion is rejected (`GATE_CONCLUSION_MISMATCH`); an APPROVE requires every
   required gate to have a real `success`.
-- **Reviewer identity** — from `gh pr view --json reviews,author`. An APPROVE requires a
-  reviewer (`MISSING_REVIEWER`) who is **not** the PR author (`REVIEWER_NOT_INDEPENDENT`); the
-  artifact's declared `reviewer` must match (`REVIEWER_MISMATCH`).
+- **Independent review** — from GitHub's review API (`gh api repos/<repo>/pulls/<n>/reviews`),
+  NOT the artifact. An APPROVE is believed ONLY when the review by the ONE trusted reviewer
+  (`trusted_independent_reviewer` in `review_contract.json` = `codexindependentreviewer[bot]`)
+  is `state == APPROVED`, not dismissed, targets the **exact live head** (`commit_id ==
+  pr_head_sha`), and its actor `!=` the PR author. Failures fail closed:
+  `REVIEW_MISSING` · `REVIEWER_NOT_TRUSTED` · `REVIEW_NOT_APPROVED` (COMMENTED /
+  CHANGES_REQUESTED) · `REVIEW_DISMISSED` · `REVIEW_STALE_SHA` (approval left on a previous SHA)
+  · `REVIEWER_NOT_INDEPENDENT`. The artifact's declared `reviewer` must match the observed actor
+  (`REVIEWER_MISMATCH`).
+
+## The evidence flow (end to end)
+
+1. **Builder** commits evidence artifact **E** (`assurance/reviews/PR-<n>.json`, verdict per the
+   reviewer) whose **parent is the reviewed code SHA H**, changing nothing outside
+   `assurance/reviews/`. (The builder does NOT self-approve — the artifact is the machine record.)
+2. The **Codex independent reviewer** validates E and H (this WP-12B contract, dogfooded).
+3. **`codexindependentreviewer[bot]`** submits a GitHub **APPROVED** review on the **exact live
+   head E**. This bot approval is what the merge-gate reconciles against.
+4. **Any later push** moves the head; the prior approval's `commit_id` no longer matches
+   (`REVIEW_STALE_SHA`) and the merge-gate returns to RED until the **new** head is
+   independently re-approved. A dismissal (`pull_request_review` dismissed event) does the same.
+
+> **Not a substitute for native approval.** This custom gate does NOT count as, and never
+> replaces, GitHub-native branch-protection approval by a human/machine user (WP-12E). It is an
+> additional, machine-checkable reconciliation, not the merge authority.
 
 ## Verdicts
 
@@ -38,15 +60,16 @@ the branch and passed to the CLI with `--head-sha`; then `reviewed_sha == head`.
 `.claude/commands/review-gate.md`). Interim dispositions like `LAND-WITH-NITS` are rejected —
 that non-verdict is the exact PRIV-001 escaped defect (see `assurance/incidents/`). An `APPROVE`
 requires: zero open MUSTs, zero unmet ratified criteria, the full criterion set enumerated,
-every required gate real-`success`, every `met` criterion citing a resolvable evidence id, an
-independent reviewer, and the evidence-commit binding above. An `APPROVE` with no external truth
-fails closed (`UNVERIFIABLE_APPROVE`).
+every required gate real-`success`, every `met` criterion citing a resolvable evidence id, a
+fully-reconciled independent review (above), and the evidence-commit binding. An `APPROVE` with
+no external truth fails closed (`UNVERIFIABLE_APPROVE`).
 
 ## How it is checked
 
-- Push / PR (`assurance-gate.yml` → `assurance-kernel` + `conservation-lane1` jobs): run on the
-  **exact PR head**. The `merge-gate` job then reconciles the review artifact against the live
-  head + those jobs' real results — and **fails closed until a valid independent-review artifact
-  exists** (a skipped job is not a passed merge gate).
+- Push / PR / **review** (`assurance-gate.yml` → `assurance-kernel` + `conservation-lane1`
+  jobs): run on the **exact PR head**. The workflow also triggers on `pull_request_review`
+  (submitted / dismissed). The `merge-gate` job reconciles the review artifact + the **live
+  GitHub review** against the live head + those jobs' real results — and **fails closed until a
+  valid independent APPROVE on the exact head exists** (a skipped job is not a passed merge gate).
 - Manual: `python -m assurance.check --merge-gate --pr <n> --repo <owner/repo>
   --kernel-result <r> --conservation-result <r> [--require-verdict APPROVE]`.
