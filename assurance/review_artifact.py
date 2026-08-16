@@ -178,7 +178,13 @@ def validate_review(
     f_item = schema["finding_item"]
     allowed_sev = set(f_item.get("allowed_severities", []))
     open_musts = 0
-    if isinstance(findings, list):
+    if "findings" in artifact and not isinstance(findings, list):
+        # A required collection that is present but NOT a list (e.g. {}, null, a string) must be
+        # rejected — otherwise the isinstance(list) guard skips open-MUST accounting silently
+        # (a malformed payload would validate clean). Fail closed.
+        out.append(Violation("MALFORMED_FINDING",
+                             f"'findings' must be a list, got {type(findings).__name__}"))
+    elif isinstance(findings, list):
         for i, item in enumerate(findings):
             if not isinstance(item, dict) or any(k not in item for k in f_item["required_fields"]):
                 out.append(Violation("MALFORMED_FINDING",
@@ -196,7 +202,12 @@ def validate_review(
     allowed_status = set(g_item.get("allowed_status", []))
     gate_status: dict[str, str] = {}
     failing_gates = 0
-    if isinstance(gates, list):
+    if "gates" in artifact and not isinstance(gates, list):
+        # Same fail-closed rule as findings: a present-but-non-list 'gates' bypasses the declared
+        # gate structural checks, so reject it explicitly.
+        out.append(Violation("MALFORMED_GATE",
+                             f"'gates' must be a list, got {type(gates).__name__}"))
+    elif isinstance(gates, list):
         for i, item in enumerate(gates):
             if not isinstance(item, dict) or any(k not in item for k in g_item["required_fields"]):
                 out.append(Violation("MALFORMED_GATE",

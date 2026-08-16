@@ -349,6 +349,22 @@ def test_malformed_finding_severity_rejected():
     assert "MALFORMED_FINDING" in _codes(art)
 
 
+import pytest
+
+
+@pytest.mark.parametrize("badval", [{}, None, "x", 5, 3.14, True])
+def test_non_list_findings_rejected(badval):
+    """A present-but-non-list 'findings' must fail closed — else the isinstance(list) guard
+    silently skips open-MUST accounting (the review's malformed-collection false-green)."""
+    assert "MALFORMED_FINDING" in _codes(_mut(findings=badval)), badval
+
+
+@pytest.mark.parametrize("badval", [{}, None, "x", 5, 3.14, True])
+def test_non_list_gates_rejected(badval):
+    """Same fail-closed rule for 'gates' — a non-list bypasses the declared-gate structural checks."""
+    assert "MALFORMED_GATE" in _codes(_mut(gates=badval)), badval
+
+
 def test_unknown_verdict_rejected():
     assert "UNKNOWN_VERDICT" in _codes(_mut(verdict="APPROVE-WITH-NITS"))
 
