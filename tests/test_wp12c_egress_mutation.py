@@ -677,3 +677,59 @@ def test_fixture_only_sites_are_confined_to_benchmark_eval_trees():
             assert relpath.startswith(("ctxpack/benchmarks/", "benchmark/")), (
                 f"fixture-only must live under a benchmark/eval tree, not production: {key}"
             )
+
+
+# --- co-review round (2026-08-17): forms that returned zero hits before the fix ---
+
+# FINDING #4a: an annotated callable alias. The type hint makes it an AnnAssign, not an Assign,
+# so without visit_AnnAssign the alias was invisible and f(...) slipped past.
+_ANNOTATED_CALLABLE_ALIAS = """
+from typing import Callable
+def synth(client, prompt):
+    f: Callable = client.chat.completions.create
+    return f(model="gpt", messages=prompt)
+"""
+
+# FINDING #4a (str variant): an annotated provider-URL alias used in a later HTTP verb.
+_ANNOTATED_URL_ALIAS = """
+import requests
+def synth(prompt):
+    url: str = "https://api.openai.com/v1/chat/completions"
+    return requests.post(url, json=prompt)
+"""
+
+# FINDING #4b: a fixed provider base concatenated with a runtime path, INLINE in the call.
+_HTTP_CONCAT_INLINE = """
+import requests
+OPENAI_BASE = "https://api.openai.com/v1"
+def synth(path, body):
+    return requests.post(OPENAI_BASE + path, json=body)
+"""
+
+# FINDING #4b (kwarg + concat): url=<provider base> + runtime segment as a keyword arg.
+_HTTP_CONCAT_KWARG = """
+import httpx
+def synth(client, seg, body):
+    base = "https://api.anthropic.com"
+    return client.post(url=base + "/v1/messages" + seg, json=body)
+"""
+
+
+def test_scanner_catches_annotated_callable_alias():
+    hits = scan_source(_ANNOTATED_CALLABLE_ALIAS)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_scanner_catches_annotated_url_alias():
+    hits = scan_source(_ANNOTATED_URL_ALIAS)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_inline_provider_base_plus_path():
+    hits = scan_source(_HTTP_CONCAT_INLINE)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_inline_concat_kwarg_url():
+    hits = scan_source(_HTTP_CONCAT_KWARG)
+    assert len(hits) == 1 and hits[0].kind == "http", hits

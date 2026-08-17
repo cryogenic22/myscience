@@ -179,9 +179,13 @@ def test_review_body_template_validates_structurally():
         gate_conclusions={gate: "success"},
         pr_author_login="the-builder",
         trusted_reviewer_login="codexindependentreviewer[bot]",
+        trusted_reviewer_id=317626643,
         review_actor="codexindependentreviewer[bot]",
+        review_actor_id=317626643,
+        review_actor_type="Bot",
         review_state="APPROVED",
         review_commit_id=head,
+        run_id="template-run-1",
         now=_FAR_FUTURE,
     )
     violations = validate_review(tpl, CONTRACT, trusted)
@@ -247,8 +251,8 @@ def test_independent_review_extracts_trusted_reviewers_latest(monkeypatch):
     )
     monkeypatch.setattr(chk, "_run", lambda cmd: payload)
     r = chk.independent_review("1", "owner/repo", _BOT)
-    assert r == {"actor": _BOT, "state": "APPROVED", "commit_id": "headsha", "dismissed": False,
-                 "body": '{"verdict":"APPROVE"}'}
+    assert r == {"actor": _BOT, "actor_id": None, "actor_type": None, "state": "APPROVED",
+                 "commit_id": "headsha", "dismissed": False, "body": '{"verdict":"APPROVE"}'}
 
 
 def test_independent_review_flags_dismissed(monkeypatch):
@@ -309,6 +313,9 @@ def _merge_gate_args(**over):
     return types.SimpleNamespace(**base)
 
 
+_BOT_ID = 317626643
+
+
 @pytest.fixture
 def _stub_gh(monkeypatch):
     """Stub the external GitHub/git surface so run_merge_gate is driven by a crafted review.
@@ -316,7 +323,17 @@ def _stub_gh(monkeypatch):
     monkeypatch.setattr(chk, "pr_author", lambda pr, repo: "the-builder")
     monkeypatch.setattr(chk, "commit_time", lambda sha: _FIXED_COMMIT_TS)
     holder = {"review": None}
-    monkeypatch.setattr(chk, "independent_review", lambda pr, repo, rev: holder["review"])
+
+    def _review(pr, repo, rev):
+        # Real independent_review now returns the reviewer's numeric id + account type. A trusted-bot
+        # review carries the pinned id + Bot type by default; a test can override either to exercise
+        # the id/type binding (explicit keys win over these defaults).
+        r = holder["review"]
+        if r and r.get("actor") == _BOT:
+            r = {"actor_id": _BOT_ID, "actor_type": "Bot", **r}
+        return r
+
+    monkeypatch.setattr(chk, "independent_review", _review)
     return holder
 
 
@@ -369,3 +386,57 @@ def test_merge_gate_red_when_real_gate_failed(_stub_gh):
     _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
                           "dismissed": False, "body": body}
     assert chk.run_merge_gate(_merge_gate_args(conservation_result="failure")) == 1
+
+
+# =========================================================================
+# Co-review round (2026-08-17): payload ambiguity + fail-open authority resolution.
+# =========================================================================
+
+def test_parse_payload_rejects_duplicate_keys():
+    """FINDING #5: json's last-wins on duplicate keys silently turned a contradiction into APPROVE."""
+    assert chk.parse_review_payload('{"verdict": "CHANGES-REQUIRED", "verdict": "APPROVE"}') is None
+
+
+def test_parse_payload_rejects_ambiguous_multiple_objects():
+    """FINDING #5: two distinct JSON objects in one body — taking the first is arbitrary; fail closed."""
+    body = '```json\n{"verdict":"CHANGES-REQUIRED"}\n```\n```json\n{"verdict":"APPROVE"}\n```'
+    assert chk.parse_review_payload(body) is None
+
+
+def test_parse_payload_accepts_single_valid_object():
+    p = chk.parse_review_payload('```json\n{"verdict":"APPROVE","reviewed_sha":"x"}\n```')
+    assert p and p["verdict"] == "APPROVE"
+
+
+def test_parse_payload_accepts_pure_json_body():
+    assert chk.parse_review_payload('{"verdict":"APPROVE"}')["verdict"] == "APPROVE"
+
+
+def test_merge_gate_red_on_ambiguous_review_body(_stub_gh):
+    """End-to-end: a review body carrying two payloads (one CHANGES-REQUIRED, one APPROVE) is
+    ambiguous and must not merge."""
+    two = ('```json\n{"verdict":"CHANGES-REQUIRED"}\n```\n```json\n'
+           + json.dumps(_valid_body_payload(_HEAD40)) + '\n```')
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": two}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+
+
+def test_merge_gate_fails_closed_when_author_unresolvable(_stub_gh, monkeypatch, capsys):
+    """FINDING #2: if the PR author cannot be resolved, reviewer-independence is uncheckable — the
+    gate must fail closed, not skip the check (fail open)."""
+    monkeypatch.setattr(chk, "pr_author", lambda pr, repo: None)
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": json.dumps(_valid_body_payload(_HEAD40))}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+    assert "author" in capsys.readouterr().out.lower()
+
+
+def test_merge_gate_fails_closed_when_commit_time_unresolvable(_stub_gh, monkeypatch, capsys):
+    """FINDING #2: if the reviewed commit's time cannot be resolved, evidence freshness is
+    uncheckable — fail closed."""
+    monkeypatch.setattr(chk, "commit_time", lambda sha: None)
+    _stub_gh["review"] = {"actor": _BOT, "state": "APPROVED", "commit_id": _HEAD40,
+                          "dismissed": False, "body": json.dumps(_valid_body_payload(_HEAD40))}
+    assert chk.run_merge_gate(_merge_gate_args()) == 1
+    assert "freshness" in capsys.readouterr().out.lower()

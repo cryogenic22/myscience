@@ -116,8 +116,13 @@ def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dic
         return None
     r = mine[-1]  # latest review by the trusted reviewer
     state = r.get("state")
+    user = r.get("user") or {}
     return {
-        "actor": (r.get("user") or {}).get("login"),
+        "actor": user.get("login"),
+        # Numeric id + account type bind the reviewer to the pinned App bot, not just a login
+        # string (a login is weaker; the id cannot be reassigned). Verified in the validator.
+        "actor_id": user.get("id"),
+        "actor_type": user.get("type"),
         "state": state,
         "commit_id": r.get("commit_id"),
         "dismissed": state == "DISMISSED",
@@ -125,27 +130,42 @@ def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dic
     }
 
 
+def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    """object_pairs_hook that REJECTS duplicate keys. Default json.loads is last-wins, so
+    {"verdict":"CHANGES-REQUIRED", ..., "verdict":"APPROVE"} silently becomes APPROVE — a
+    contradictory payload must never parse to a single believed value."""
+    seen: dict = {}
+    for k, v in pairs:
+        if k in seen:
+            raise ValueError(f"duplicate key {k!r} in review payload (contradictory)")
+        seen[k] = v
+    return seen
+
+
 def parse_review_payload(body: str) -> dict | None:
-    """Extract the typed JSON review payload from a GitHub review body. Accepts either a body
-    that is pure JSON, or JSON inside a ```json … ``` (or bare ``` … ```) fenced block. Returns
-    None if no JSON object can be parsed (caller fails closed). No self-reference: the payload
-    is authored in the review body attached to the already-existing head, never committed."""
+    """Extract the typed JSON review payload from a GitHub review body. Accepts a body that is
+    pure JSON, or JSON inside a ```json … ``` (or bare ``` … ```) fenced block. Fails CLOSED
+    (returns None) on: no parseable object, a payload with DUPLICATE KEYS, or AMBIGUITY — two or
+    more DISTINCT JSON objects in the body (e.g. one CHANGES-REQUIRED block and one APPROVE
+    block). Silently taking the first/last of contradictory payloads is exactly the bypass an
+    edited review body could exploit; ambiguity is never resolved in the author's favour."""
     if not body:
         return None
-    candidates = []
-    stripped = body.strip()
-    candidates.append(stripped)
     import re
+    candidates = [body.strip()]
     for m in re.finditer(r"```(?:json)?\s*(.+?)```", body, re.DOTALL | re.IGNORECASE):
         candidates.append(m.group(1).strip())
+    distinct: list[dict] = []
     for cand in candidates:
         try:
-            obj = json.loads(cand)
+            obj = json.loads(cand, object_pairs_hook=_no_duplicate_keys)
         except (json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(obj, dict):
-            return obj
-    return None
+            continue  # unparseable OR duplicate-key: not a believable payload
+        if isinstance(obj, dict) and not any(obj == d for d in distinct):
+            distinct.append(obj)
+    if len(distinct) != 1:
+        return None  # 0 = no payload; >1 = ambiguous — both fail closed
+    return distinct[0]
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -154,13 +174,16 @@ def load_manifest(path: Path | None = None) -> dict:
 
 def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
                   gate_conclusions: dict[str, str], pr_author_login: str | None,
-                  review: dict | None, run_id: str | None, now: str | None = None) -> TrustedInputs:
+                  review: dict | None, run_id: str | None, committed_at: str | None = None,
+                  now: str | None = None) -> TrustedInputs:
     entry = manifest["prs"][str(pr)]
     review = review or {}
     return TrustedInputs(
         pr_head_sha=head_sha,
-        # committed-at of the head itself (the review targets the live head directly).
-        final_commit_committed_at=commit_time(head_sha),
+        # committed-at of the head itself (the review targets the live head directly). Resolved
+        # by the caller and passed in — the caller fails closed if it cannot be resolved, so this
+        # is never a silent None that would skip the freshness check.
+        final_commit_committed_at=committed_at if committed_at is not None else commit_time(head_sha),
         required_criteria=tuple(c["id"] for c in entry["criteria"]),
         required_gates=tuple(entry.get("required_gates", ())),
         na_allowed_criteria=tuple(entry.get("na_allowed", ())),
@@ -168,7 +191,10 @@ def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
         gate_conclusions=gate_conclusions,
         pr_author_login=pr_author_login,
         trusted_reviewer_login=contract.get("trusted_independent_reviewer"),
+        trusted_reviewer_id=contract.get("trusted_independent_reviewer_id"),
         review_actor=review.get("actor"),
+        review_actor_id=review.get("actor_id"),
+        review_actor_type=review.get("actor_type"),
         review_state=review.get("state"),
         review_commit_id=review.get("commit_id"),
         review_dismissed=bool(review.get("dismissed")),
@@ -179,6 +205,7 @@ def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
 # --------------------------------------------------------------------------- self-test (non-vacuous)
 _SELFTEST_HEAD = "1234567890abcdef1234567890abcdef12345678"
 _SELFTEST_BOT = "codexindependentreviewer[bot]"
+_SELFTEST_BOT_ID = 317626643
 _SELFTEST_TRUSTED = TrustedInputs(
     pr_head_sha=_SELFTEST_HEAD,
     final_commit_committed_at="2026-08-14T10:00:00+00:00",
@@ -189,10 +216,14 @@ _SELFTEST_TRUSTED = TrustedInputs(
     gate_conclusions={"gate-a": "success"},
     pr_author_login="the-builder",
     trusted_reviewer_login=_SELFTEST_BOT,
+    trusted_reviewer_id=_SELFTEST_BOT_ID,
     review_actor=_SELFTEST_BOT,                 # trusted reviewer
+    review_actor_id=_SELFTEST_BOT_ID,           # pinned numeric id (not just the login)
+    review_actor_type="Bot",                    # a GitHub App bot
     review_state="APPROVED",                    # APPROVED
     review_commit_id=_SELFTEST_HEAD,            # targets the exact head
     review_dismissed=False,
+    run_id="selftest-run-1",                    # conclusions bound to a concrete run
 )
 _SELFTEST_GOOD = {
     "verdict": "APPROVE",
@@ -272,7 +303,20 @@ def run_merge_gate(args) -> int:
         return 1
     print(f"[assurance.check] trusted PR head = {head} (source: {source})")
 
+    # Author + commit time are authority facts (reviewer-independence and evidence freshness
+    # depend on them). If GitHub/git cannot resolve them, FAIL CLOSED — passing None here would
+    # make the validator SKIP those checks (§9c / REVIEWER_NOT_INDEPENDENT), a silent fail-open.
     author = pr_author(args.pr, args.repo)
+    if not author:
+        print(f"[assurance.check] MERGE BLOCKED: could not resolve the author of PR {args.pr} "
+              f"externally (gh pr view) — reviewer independence cannot be verified (fail closed).")
+        return 1
+    committed_at = commit_time(head)
+    if not committed_at:
+        print(f"[assurance.check] MERGE BLOCKED: could not resolve the committed-at time of head "
+              f"{head} externally (git show) — evidence freshness cannot be verified (fail closed).")
+        return 1
+
     expected_reviewer = contract.get("trusted_independent_reviewer")
     if not expected_reviewer:
         print("[assurance.check] FAIL CLOSED: contract has no trusted_independent_reviewer.")
@@ -301,9 +345,9 @@ def run_merge_gate(args) -> int:
     trusted = build_trusted(
         args.pr, manifest, contract, head_sha=head,
         gate_conclusions=gate_conclusions, pr_author_login=author,
-        review=review, run_id=args.run_id,
+        review=review, run_id=args.run_id, committed_at=committed_at,
     )
-    review_meta = {k: review.get(k) for k in ("actor", "state", "commit_id", "dismissed")}
+    review_meta = {k: review.get(k) for k in ("actor", "actor_id", "actor_type", "state", "commit_id", "dismissed")}
     print(f"[assurance.check] author={author!r} expected_reviewer={expected_reviewer!r} "
           f"review={review_meta} gate_conclusions={gate_conclusions}")
 

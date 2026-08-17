@@ -82,7 +82,10 @@ class TrustedInputs:
     pr_author_login: str | None = None
     # Independent-review binding (external truth from the GitHub review API):
     trusted_reviewer_login: str | None = None
+    trusted_reviewer_id: int | None = None   # pinned numeric id of the App bot (contract)
     review_actor: str | None = None
+    review_actor_id: int | None = None        # the reviewing account's numeric id (review API)
+    review_actor_type: str | None = None      # "Bot" for an App-authored review (review API)
     review_state: str | None = None
     review_commit_id: str | None = None
     review_dismissed: bool = False
@@ -177,6 +180,7 @@ def validate_review(
     findings = artifact.get("findings")
     f_item = schema["finding_item"]
     allowed_sev = set(f_item.get("allowed_severities", []))
+    blocking_sev = set(f_item.get("blocking_severities", []))
     open_musts = 0
     if "findings" in artifact and not isinstance(findings, list):
         # A required collection that is present but NOT a list (e.g. {}, null, a string) must be
@@ -190,10 +194,30 @@ def validate_review(
                 out.append(Violation("MALFORMED_FINDING",
                                      f"findings[{i}] missing required fields {f_item['required_fields']}"))
                 continue
-            if allowed_sev and item.get("severity") not in allowed_sev:
+            sev = item.get("severity")
+            if allowed_sev and sev not in allowed_sev:
                 out.append(Violation("MALFORMED_FINDING",
-                                     f"findings[{i}].severity {item.get('severity')!r} not in {sorted(allowed_sev)}"))
-            if item.get("must_fix") and not item.get("resolved"):
+                                     f"findings[{i}].severity {sev!r} not in {sorted(allowed_sev)}"))
+            mf, rs = item.get("must_fix"), item.get("resolved")
+            # must_fix / resolved must be BOOLEANS. A truthy string ("no", "false") would corrupt
+            # the open-MUST count and let a blocker masquerade as handled — reject it, fail closed.
+            if mf is not None and not isinstance(mf, bool):
+                out.append(Violation("MALFORMED_FINDING",
+                                     f"findings[{i}].must_fix must be a boolean, got {type(mf).__name__}"))
+            if rs is not None and not isinstance(rs, bool):
+                out.append(Violation("MALFORMED_FINDING",
+                                     f"findings[{i}].resolved must be a boolean, got {type(rs).__name__}"))
+            # A blocking-severity finding declared not-must-fix is contradictory — that is the exact
+            # move that would zero the open-MUST count while leaving a blocker open.
+            if sev in blocking_sev and mf is False:
+                out.append(Violation("CONTRADICTORY_FINDING",
+                                     f"findings[{i}] severity {sev!r} is blocking but must_fix is false "
+                                     f"(a blocker cannot be non-must-fix)"))
+            # OPEN MUST = unresolved AND (flagged must_fix OR a blocking severity). Severity ALONE
+            # gates: an unresolved blocker counts even if must_fix was omitted/false. Only a literal
+            # resolved==True counts as resolved (a non-bool 'resolved' does not clear it).
+            is_blocking = (sev in blocking_sev) or (mf is True)
+            if is_blocking and rs is not True:
                 open_musts += 1
 
     # 6. gates well-formed (incl. status); count failing; index by name.
@@ -342,6 +366,12 @@ def validate_review(
                                  f"APPROVE with {unmet_criteria} unmet ratified criterion/criteria; "
                                  f"contract requires {req['unmet_spec_criteria']} (the PRIV-001 escaped-defect class)"))
         if trusted is not None:
+            # 10a0. The real check conclusions must be bound to a concrete CI run. An APPROVE with
+            #       no run_id is not tied to any auditable execution of the gates — fail closed.
+            if not trusted.run_id:
+                out.append(Violation("MISSING_RUN_BINDING",
+                                     "APPROVE requires a run_id binding the real check conclusions to a "
+                                     "concrete CI run (github.run_id); none supplied — fail closed"))
             # 10a. An empty ratified set means completeness/gate reconciliation was SKIPPED
             #      (§9d/§10b guard on non-empty). An APPROVE that reconciled against nothing is
             #      not verified — fail closed rather than silently pass.
@@ -395,6 +425,22 @@ def _reconcile_independent_review(trusted: TrustedInputs) -> list[Violation]:
         out.append(Violation("REVIEWER_NOT_TRUSTED",
                              f"review actor {trusted.review_actor!r} is not the trusted reviewer "
                              f"{trusted.trusted_reviewer_login!r}"))
+    # Bind to the pinned App bot by NUMERIC id + account type, not just the login string. A login is
+    # the weakest handle (the configured GitHub App id/bot id is the reliable one); when the contract
+    # pins an id, the review must carry it and be a Bot — fail closed if the id cannot be verified.
+    if trusted.trusted_reviewer_id is not None:
+        if trusted.review_actor_id is None:
+            out.append(Violation("REVIEWER_ID_UNVERIFIED",
+                                 "no numeric reviewer id from the GitHub review API — cannot bind the "
+                                 "approval to the pinned App bot (fail closed)"))
+        elif trusted.review_actor_id != trusted.trusted_reviewer_id:
+            out.append(Violation("REVIEWER_ID_MISMATCH",
+                                 f"review actor id {trusted.review_actor_id} != pinned trusted reviewer id "
+                                 f"{trusted.trusted_reviewer_id} (a login can be spoofed; the id cannot)"))
+        if trusted.review_actor_type is not None and trusted.review_actor_type != "Bot":
+            out.append(Violation("REVIEWER_NOT_BOT",
+                                 f"review actor type {trusted.review_actor_type!r} is not 'Bot' — the "
+                                 f"trusted independent reviewer is a GitHub App bot"))
     if trusted.review_dismissed or trusted.review_state == "DISMISSED":
         out.append(Violation("REVIEW_DISMISSED",
                              "the independent review was dismissed — it no longer approves this head"))

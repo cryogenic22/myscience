@@ -336,6 +336,14 @@ class _Scanner(ast.NodeVisitor):
         self._store_alias(n.target, n.value)
         self.generic_visit(n)
 
+    def visit_AnnAssign(self, n: ast.AnnAssign) -> None:
+        # Annotated assignment: `f: Callable = client...create` / `url: str = "https://api.openai.com/..."`.
+        # An AnnAssign is NOT an Assign, so without this the type hint made the alias invisible and
+        # `f(...)` / `post(url)` slipped past the scanner (a callable-alias bypass).
+        if n.value is not None:
+            self._store_alias(n.target, n.value)
+        self.generic_visit(n)
+
     def _record_callable(self, chain: str | None, node: ast.Call) -> bool:
         """Record a hit if `chain` is a provider SDK terminal or an HTTP verb hitting a provider
         URL in `node`'s args. Returns True if recorded."""
@@ -354,20 +362,17 @@ class _Scanner(ast.NodeVisitor):
         self.raw.append((self._qualscope(), kind, node.lineno, node.col_offset))
 
     def _arg_urls(self, call: ast.Call) -> list[str]:
-        """String literals (resolved through str-const aliases) among a call's arguments."""
+        """The URL strings a call's arguments statically resolve to. Uses _resolve_url_expr so a
+        literal, a str-const Name, an f-string AND '+'-concatenation of the above all resolve —
+        e.g. requests.post(OPENAI_BASE + path, ...) where OPENAI_BASE is a provider host. A fixed
+        provider base plus a runtime path is still provider egress (the static prefix is decisive);
+        without concat-resolution here it was a bypass."""
         out: list[str] = []
         parts: list[ast.AST] = list(call.args) + [kw.value for kw in call.keywords]
         for a in parts:
-            if isinstance(a, ast.Constant) and isinstance(a.value, str):
-                out.append(a.value)
-            elif isinstance(a, ast.Name):
-                s = self._resolve_str(a.id)
-                if s is not None:
-                    out.append(s)
-            elif isinstance(a, ast.JoinedStr):  # f-string: check its literal parts
-                for v in a.values:
-                    if isinstance(v, ast.Constant) and isinstance(v.value, str):
-                        out.append(v.value)
+            s = self._resolve_url_expr(a)
+            if s:
+                out.append(s)
         return out
 
     def _maybe_urlopen(self, n: ast.Call) -> bool:

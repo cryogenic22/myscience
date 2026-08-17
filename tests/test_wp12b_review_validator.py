@@ -24,6 +24,7 @@ _OTHER = "ffffffffffffffffffffffffffffffffffffffff"
 _FINAL_AT = "2026-08-14T10:00:00+00:00"
 _NOW = "2026-08-14T12:00:00+00:00"
 _BOT = "codexindependentreviewer[bot]"
+_BOT_ID = 317626643
 _AUTHOR = "the-builder"
 
 
@@ -40,10 +41,14 @@ def _ti(**over) -> TrustedInputs:
         gate_conclusions={"conservation-lane1": "success"},
         pr_author_login=_AUTHOR,
         trusted_reviewer_login=_BOT,
+        trusted_reviewer_id=_BOT_ID,
         review_actor=_BOT,
+        review_actor_id=_BOT_ID,
+        review_actor_type="Bot",
         review_state="APPROVED",
         review_commit_id=_HEAD,
         review_dismissed=False,
+        run_id="run-1234",
     )
     base.update(over)
     return TrustedInputs(**base)
@@ -414,3 +419,56 @@ def test_valid_verdicts_match_review_gate_command():
 
 def test_contract_pins_the_trusted_independent_reviewer():
     assert CONTRACT.get("trusted_independent_reviewer") == "codexindependentreviewer[bot]"
+
+
+# =========================================================================
+# Co-review round (2026-08-17) — blocker/MUST accounting and reviewer/run binding.
+# Each reproduces a confirmed finding that validated clean before the fix.
+# =========================================================================
+
+def test_approve_with_unresolved_blocker_regardless_of_must_fix_flag():
+    """FINDING #1: an unresolved 'blocker' severity finding must count as an open MUST even when
+    must_fix is false/omitted. Before the fix this APPROVE validated clean."""
+    art = _mut(findings=[{"id": "B1", "severity": "blocker", "must_fix": False, "resolved": False}])
+    codes = _codes(art)
+    assert "APPROVE_WITH_OPEN_MUST" in codes, codes
+    assert "CONTRADICTORY_FINDING" in codes, codes  # blocker + must_fix:false is itself contradictory
+
+
+def test_unresolved_must_severity_counts_as_open_must():
+    art = _mut(findings=[{"id": "M1", "severity": "must", "must_fix": False, "resolved": False}])
+    assert "APPROVE_WITH_OPEN_MUST" in _codes(art)
+
+
+def test_non_boolean_must_fix_is_malformed():
+    art = _mut(findings=[{"id": "F1", "severity": "should", "must_fix": "no", "resolved": False}])
+    assert "MALFORMED_FINDING" in _codes(art)
+
+
+def test_non_boolean_resolved_does_not_clear_a_blocker():
+    """A truthy non-bool 'resolved' must not silently clear a blocker (it is malformed AND still open)."""
+    art = _mut(findings=[{"id": "B1", "severity": "blocker", "must_fix": True, "resolved": "yes"}])
+    codes = _codes(art)
+    assert "MALFORMED_FINDING" in codes and "APPROVE_WITH_OPEN_MUST" in codes
+
+
+def test_reviewer_id_mismatch_rejected():
+    """FINDING #3: the right login with the WRONG numeric id must fail (a login can be spoofed)."""
+    assert "REVIEWER_ID_MISMATCH" in _codes(_GOOD_APPROVE, _ti(review_actor_id=999999))
+
+
+def test_reviewer_id_unverified_fails_closed():
+    assert "REVIEWER_ID_UNVERIFIED" in _codes(_GOOD_APPROVE, _ti(review_actor_id=None))
+
+
+def test_reviewer_not_bot_rejected():
+    assert "REVIEWER_NOT_BOT" in _codes(_GOOD_APPROVE, _ti(review_actor_type="User"))
+
+
+def test_approve_without_run_binding_fails_closed():
+    """FINDING #3: an APPROVE not bound to a concrete CI run has no auditable conclusions."""
+    assert "MISSING_RUN_BINDING" in _codes(_GOOD_APPROVE, _ti(run_id=None))
+
+
+def test_contract_pins_the_reviewer_numeric_id():
+    assert CONTRACT.get("trusted_independent_reviewer_id") == 317626643
