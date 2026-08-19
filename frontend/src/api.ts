@@ -2130,18 +2130,12 @@ export type DecisionBriefOptionInput = Pick<
  */
 async function expectJson<T>(r: Response): Promise<T> {
   if (!r.ok) {
-    if (r.status === 401 && typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('mz_auth_token');
-        window.localStorage.removeItem('mz_auth_role');
-      } catch {
-        /* localStorage may be locked; ignore */
-      }
-      window.dispatchEvent(new CustomEvent('mz:auth-expired'));
-      const err = new Error('Session expired — please sign in again');
-      (err as Error & { code?: string }).code = 'AUTH_EXPIRED';
-      throw err;
-    }
+    // Hard session-expiry on 401 is DISABLED for now (owner request, 2026-08-19). A 401 no
+    // longer clears the stored token, dispatches `mz:auth-expired`, or forces a redirect to the
+    // landing page. It is surfaced as an ordinary error so each surface degrades locally (empty
+    // state / its own auth-prompt) instead of bouncing the whole app — anonymous visitors and
+    // demo-token sessions browse smoothly, with no redirect loop. App.tsx still listens for
+    // `mz:auth-expired`, so restoring the old 401 branch here re-enables the behavior.
     const text = await r.text().catch(() => r.statusText);
     throw new Error(`${r.status}: ${text}`);
   }
