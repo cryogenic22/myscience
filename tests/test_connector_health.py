@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from scripts.connector_health import (
     evaluate_source_health,
+    gather_ledger_health,
     roll_up,
     score_e2e,
     score_flow,
@@ -103,3 +104,81 @@ def test_roll_up_is_worst_of_four_with_deferred_override():
     assert roll_up("GREEN", "AMBER", "GREEN", "GREEN", deferred=False) == "AMBER"
     # a documented dead source is DEFERRED, not a RED regression
     assert roll_up("RED", "RED", "GREEN", "RED", deferred=True) == "DEFERRED"
+
+
+# ── Ledger-freshness Lane-2 wiring (gather_ledger_health) ──
+#
+# The pure verdict is already pinned in test_ledger_convergence_scheduling.py; these
+# exercise the LIVE gather that reads facts/evidence_records and the graceful-degrade
+# path, using a minimal RealDictCursor stand-in so they stay DB-free.
+
+
+class _FakeLedgerCursor:
+    """Answers gather_ledger_health's `SELECT count(*), max(<col>) FROM <table>` per
+    ledger table from a fixture; a table mapped to ``None`` raises (missing table)."""
+
+    def __init__(self, table_rows):
+        self._table_rows = table_rows      # {table: (count, newest_dt) | None}
+        self._hit = None
+
+    def execute(self, sql, params=None):
+        self._hit = None
+        for table, val in self._table_rows.items():
+            if f"FROM {table}" in sql:
+                if val is None:
+                    raise RuntimeError(f"relation {table} does not exist")
+                self._hit = table
+                return
+
+    def fetchone(self):
+        n, newest = self._table_rows[self._hit]
+        return {"n": n, "newest": newest}
+
+
+class _FakeLedgerConn:
+    def __init__(self, table_rows):
+        self._table_rows = table_rows
+        self.rollbacks = 0
+
+    def cursor(self, cursor_factory=None):
+        return _FakeLedgerCursor(self._table_rows)
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+def test_gather_ledger_health_flags_frozen_facts_ledger():
+    """The 27-Jun freeze: facts 12 days stale (>3d SLA) must read unhealthy even
+    while evidence is fresh — a re-freeze can no longer hide behind green ingest."""
+    now = datetime.now(timezone.utc)
+    conn = _FakeLedgerConn({
+        "facts": (15051, now - timedelta(days=12)),
+        "evidence_records": (14980, now - timedelta(hours=6)),
+    })
+    out = {h.source: h for h in gather_ledger_health(conn)}
+    assert set(out) == {"facts_ledger", "evidence_ledger"}
+    assert out["facts_ledger"].over_sla and not out["facts_ledger"].healthy
+    assert out["evidence_ledger"].healthy and not out["evidence_ledger"].over_sla
+
+
+def test_gather_ledger_health_all_fresh_is_healthy():
+    now = datetime.now(timezone.utc)
+    conn = _FakeLedgerConn({
+        "facts": (15051, now - timedelta(hours=3)),
+        "evidence_records": (14980, now - timedelta(hours=3)),
+    })
+    assert all(h.healthy for h in gather_ledger_health(conn))
+
+
+def test_gather_ledger_health_empty_ledger_is_unhealthy():
+    conn = _FakeLedgerConn({"facts": (0, None), "evidence_records": (0, None)})
+    assert all(not h.healthy for h in gather_ledger_health(conn))
+
+
+def test_gather_ledger_health_degrades_gracefully_on_missing_table():
+    """A missing table/column (fresh DB) rolls back and reports empty→unhealthy —
+    it must never crash the scorecard."""
+    conn = _FakeLedgerConn({"facts": None, "evidence_records": None})
+    out = gather_ledger_health(conn)
+    assert len(out) == 2 and all(not h.healthy for h in out)
+    assert conn.rollbacks == 2
