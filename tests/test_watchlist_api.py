@@ -1,7 +1,9 @@
 """SPEC-020 — Watchlist API tests.
 
 Endpoints:
-  GET     /watchlist          viewer+   list current user's entries
+  GET     /watchlist          anon → empty; viewer+ → own entries (anon read must not 401,
+                              or the CI cockpit's load-time call trips the frontend's global
+                              session-expired handler and breaks multiple pages)
   POST    /watchlist          viewer+   add (idempotent on user/type/id)
   DELETE  /watchlist/{id}     viewer+   remove (404 if not yours)
 """
@@ -155,10 +157,14 @@ def test_watchlist_routes_registered():
 # GET /watchlist
 # ────────────────────────────────────────────────────────────────────
 
-def test_list_endpoint_401_anonymous():
+def test_list_endpoint_returns_empty_for_anonymous():
+    """Anonymous GET must be 200 with an empty list — NOT 401. A 401 here trips the frontend's
+    session-expired handler (clears the token, fires mz:auth-expired) on every CI-cockpit load,
+    which broke multiple pages for logged-out visitors. Writes stay auth-gated (below)."""
     db, _ = _make_db()
     r = _client(db).get("/watchlist")
-    assert r.status_code == 401
+    assert r.status_code == 200, r.text
+    assert r.json() == {"entries": []}
 
 
 def test_list_endpoint_returns_200_for_viewer():

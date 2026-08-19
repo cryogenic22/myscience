@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
-from api.deps import get_db, require_role
+from api.deps import get_db, require_role, get_current_user
 from db import Database
 
 logger = logging.getLogger(__name__)
@@ -39,9 +39,16 @@ def _row_to_dict(row: dict) -> dict:
 
 @router.get("")
 def list_watchlist(
-    user: dict = Depends(require_role("viewer")),
+    user: Optional[dict] = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
+    # Anonymous visitors have no personal watchlist — return an empty list (200) rather than
+    # 401. The CI cockpit loads /watchlist on open; a 401 there trips the frontend's global
+    # session-expired handler (any 401 clears the auth token and fires `mz:auth-expired`),
+    # which was breaking multiple CI pages for logged-out visitors. Mutations (POST/DELETE)
+    # still require a real viewer, so nothing can be written without authentication.
+    if not user:
+        return {"entries": []}
     try:
         rows = db.fetch_all(
             """SELECT id, user_id, entity_type, entity_id, label, created_at
