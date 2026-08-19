@@ -2118,15 +2118,13 @@ export type DecisionBriefOptionInput = Pick<
 >;
 
 /**
- * SPEC_030 Stage 6 fix #11 — when an authenticated request returns 401,
- * we treat the session as expired: clear the stored token+role, dispatch
- * a custom event so the app can redirect, and throw an Error whose
- * `.code` field downstream code can branch on. Per AGENTS.md §7
- * "401 → redirect to login".
+ * Unwrap a JSON response, throwing on any non-2xx status.
  *
- * Tests can register a `mz:auth-expired` listener to assert the dispatch
- * fires; the redirect itself is the responsibility of a router-level
- * listener (filed as a follow-up — see BACKLOG #spec-030-401-redirect).
+ * NOTE (2026-08-19): the former "hard session-expiry on 401" behaviour (clear token + role,
+ * dispatch `mz:auth-expired`, redirect to login) was REMOVED at the owner's request — it bounced
+ * anonymous/demo-token visitors across the whole app on a single protected 401. A 401 is now an
+ * ordinary error handled locally by each surface. `App.tsx` still listens for `mz:auth-expired`,
+ * so restoring the 401 branch below re-enables the old flow if it is ever wanted again.
  */
 async function expectJson<T>(r: Response): Promise<T> {
   if (!r.ok) {

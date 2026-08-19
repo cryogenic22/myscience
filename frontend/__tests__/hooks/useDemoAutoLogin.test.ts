@@ -2,6 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useDemoAutoLogin } from '../../src/hooks/useDemoAutoLogin';
 
+/** Build a JWT-shaped token with a given `exp` (seconds). Signature is irrelevant to the hook,
+ *  which only decodes the payload to check expiry. */
+function makeJwt(expSeconds: number): string {
+  const enc = (o: object) =>
+    btoa(JSON.stringify(o)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc({ sub: 'u', role: 'enterprise', exp: expSeconds })}.sig`;
+}
+const nowS = () => Math.floor(Date.now() / 1000);
+
 // Reload after a successful auto-login is intentional; tests stub it.
 const reloadSpy = vi.fn();
 beforeEach(() => {
@@ -19,15 +28,45 @@ afterEach(() => {
 });
 
 describe('useDemoAutoLogin', () => {
-  it('does nothing when a non-legacy token is already stored', async () => {
-    window.localStorage.setItem('mz_auth_token', 'eyJ-real-jwt');
+  it('does nothing when a valid, unexpired JWT is already stored', async () => {
+    const good = makeJwt(nowS() + 3600); // expires in 1h
+    window.localStorage.setItem('mz_auth_token', good);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
     renderHook(() => useDemoAutoLogin());
     // give the effect a tick
     await new Promise((r) => setTimeout(r, 10));
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem('mz_auth_token')).toBe('eyJ-real-jwt');
+    expect(window.localStorage.getItem('mz_auth_token')).toBe(good);
+  });
+
+  it('re-logs-in when the stored token is EXPIRED (self-heals instead of wedging on 401)', async () => {
+    window.localStorage.setItem('mz_auth_token', makeJwt(nowS() - 3600)); // expired 1h ago
+    window.localStorage.setItem('mz_auth_role', 'enterprise');
+    const fresh = makeJwt(nowS() + 3600);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ access_token: fresh, role: 'enterprise', email: 'e@d' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    renderHook(() => useDemoAutoLogin({ reloadOnSuccess: false }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    expect(String(fetchSpy.mock.calls[0]?.[0] ?? '')).toMatch(/\/auth\/login$/);
+    await waitFor(() => expect(window.localStorage.getItem('mz_auth_token')).toBe(fresh));
+  });
+
+  it('re-logs-in when the stored token is malformed (not a JWT)', async () => {
+    window.localStorage.setItem('mz_auth_token', 'not-a-jwt');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ access_token: makeJwt(nowS() + 3600), role: 'viewer', email: 'e@d' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    renderHook(() => useDemoAutoLogin({ reloadOnSuccess: false }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
   });
 
   it('wipes the legacy `demo-token` literal so the auto-login can replace it', async () => {
@@ -87,9 +126,8 @@ describe('useDemoAutoLogin', () => {
 
     renderHook(() => useDemoAutoLogin());
     await new Promise((r) => setTimeout(r, 20));
-    // Token must remain absent — anonymous user is OK, but a bogus
-    // value is worse than no value because it triggers AUTH_EXPIRED
-    // cycles on every protected fetch.
+    // Token must remain absent — anonymous is OK; a bogus value is worse than none because every
+    // protected fetch would 401. (isTokenUsable also rejects a bad value on the next load.)
     expect(window.localStorage.getItem('mz_auth_token')).toBeNull();
   });
 

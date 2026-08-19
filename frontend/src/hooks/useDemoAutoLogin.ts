@@ -30,6 +30,30 @@ const DEMO_EMAIL = 'enterprise@demo.market-zero.io';
 const DEMO_PASSWORD = 'demo';
 const LEGACY_TOKEN = 'demo-token';
 
+/**
+ * A stored token is usable only if it is a well-formed JWT whose `exp` is still in the future.
+ * A legacy literal, a malformed value, OR AN EXPIRED token must trigger a fresh login. This
+ * matters because demo JWTs expire in 24h: the hook used to keep any present token and rely on
+ * the global 401 handler to wipe an expired one — but that hard-expiry behaviour was removed, so
+ * without this check an expired demo token would stick forever and every protected call would
+ * 401 with no path back to a good token. Signature is NOT verified here (that is the server's
+ * job); we only read the exp claim to decide whether to re-login.
+ */
+export function isTokenUsable(token: string | null): boolean {
+  if (!token || token === LEGACY_TOKEN) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false; // not a JWT — re-login
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    if (typeof payload.exp === 'number') return payload.exp * 1000 > Date.now();
+    return true; // a JWT with no exp claim — keep it
+  } catch {
+    return false; // unparseable payload — re-login
+  }
+}
+
 interface Options {
   /** Reload the page after a successful login so the rest of the
    *  app picks up the new token from localStorage. Default true in
@@ -44,15 +68,14 @@ export function useDemoAutoLogin(options: Options = {}): void {
     if (typeof window === 'undefined') return;
 
     const stored = window.localStorage.getItem('mz_auth_token');
-    if (stored === LEGACY_TOKEN) {
-      // One-time migration: nuke the broken literal so this hook
-      // can re-acquire a real token.
-      window.localStorage.removeItem('mz_auth_token');
-      window.localStorage.removeItem('mz_auth_role');
-    } else if (stored) {
-      // A non-legacy token is already in place — leave it alone.
+    if (isTokenUsable(stored)) {
+      // A valid, unexpired token is already in place — leave it alone.
       return;
     }
+    // Legacy literal / malformed / EXPIRED / absent → clear any stale value and log in fresh, so
+    // an expired demo token self-heals instead of wedging every protected call on 401.
+    window.localStorage.removeItem('mz_auth_token');
+    window.localStorage.removeItem('mz_auth_role');
 
     fetch(`${BASE}/auth/login`, {
       method: 'POST',
