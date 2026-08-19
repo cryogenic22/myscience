@@ -108,8 +108,8 @@ describe('Stage 6 fix #10 — ReasoningTraceDrawer takes initial focus on open',
   });
 });
 
-describe('Stage 6 fix #11 — expectJson 401 dispatches mz:auth-expired and clears token', () => {
-  it('dispatches mz:auth-expired and removes mz_auth_token on 401', async () => {
+describe('Hard session-expiry DISABLED — a 401 no longer clears the token or redirects', () => {
+  it('does not dispatch mz:auth-expired, keeps the stored token, and surfaces a plain 401 error', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response('unauthorized', { status: 401 }),
     );
@@ -121,14 +121,14 @@ describe('Stage 6 fix #11 — expectJson 401 dispatches mz:auth-expired and clea
     window.addEventListener('mz:auth-expired', handler);
 
     const { decisionBriefsApi } = await import('../../../src/api');
-    await expect(decisionBriefsApi.get('b-1')).rejects.toMatchObject({
-      message: expect.stringContaining('Session expired'),
-      code: 'AUTH_EXPIRED',
-    });
+    // A 401 is now an ordinary error — not the special AUTH_EXPIRED / "Session expired" throw.
+    await expect(decisionBriefsApi.get('b-1')).rejects.toThrow(/401/);
 
-    expect(handler).toHaveBeenCalled();
-    expect(window.localStorage.getItem('mz_auth_token')).toBeNull();
-    expect(window.localStorage.getItem('mz_auth_role')).toBeNull();
+    // The hard side-effects are gone: no global event, and the token is left in place so surfaces
+    // degrade locally instead of the whole app bouncing to the landing page.
+    expect(handler).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('mz_auth_token')).toBe('stale-token');
+    expect(window.localStorage.getItem('mz_auth_role')).toBe('enterprise');
     window.removeEventListener('mz:auth-expired', handler);
   });
 });
