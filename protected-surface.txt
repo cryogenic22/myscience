@@ -43,12 +43,30 @@ frontend/__tests__/harness/
 .claude/rules/
 CLAUDE.md
 
+# ── Review verdict source of truth (the WP-12A contract mirrors this closed set) ──
+.claude/commands/review-gate.md
+
 # ── Dependency / build config that affects verdicts ──
 requirements.txt
 frontend/package.json
+
+# ── WP-12 assurance kernel: contracts = the bar; validator/scanner/CLI = gate logic ──
+# (SPEC_WP12) A builder must not weaken the review contract, the acceptance manifest, the
+# egress inventory, the validator, the scanner, the executable check, the spec, or the
+# escaped-defect registry to make its own work pass. Editing these routes through the owner.
+assurance/contract/
+assurance/review_artifact.py
+assurance/egress_scan.py
+assurance/check.py
+assurance/incidents/
+specs/SPEC_WP12_assurance_kernel.md
+tests/test_wp12b_review_validator.py
+tests/test_wp12c_egress_mutation.py
+tests/test_wp12_assurance_gate.py
 
 # ── The boundary apparatus itself (fail-closed if any of these go missing) ──
 protected-surface.txt
 .github/CODEOWNERS
 .githooks/
 scripts/gen_codeowners.py
+tests/test_protected_surface_sync.py

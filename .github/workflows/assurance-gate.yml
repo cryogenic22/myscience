@@ -1,0 +1,130 @@
+name: Assurance Gate (WP-12 — deterministic)
+
+# WP-12 closed-loop assurance kernel. Three jobs, all running against the EXACT PR head:
+#   - assurance-kernel   : WP-12B validator + WP-12C scanner + self-test + protected-surface sync
+#   - conservation-lane1 : the deterministic conservation invariants
+#   - merge-gate         : parses the review of record — the typed JSON payload in the trusted
+#                          bot's GitHub review BODY (NOT a committed file) — and reconciles it
+#                          against the LIVE head + the REAL results of the two jobs above; FAILS
+#                          CLOSED until a valid independent APPROVE by the trusted bot, on the
+#                          exact head, with a reconciling body payload exists (a skipped job is
+#                          not a passed merge gate). See assurance/reviews/README.md and
+#                          specs/SPEC_WP12_assurance_kernel.md.
+
+on:
+  push:
+    branches: [main, 'claude/handoff/**']
+  pull_request:
+    # 'synchronize' (a push to the PR) is included by default — that moves the head, so a prior
+    # approval's commit_id no longer matches and the merge-gate returns to RED until re-approval.
+    branches: [main, 'claude/handoff/**']
+  pull_request_review:
+    # A submitted APPROVE can turn the merge-gate green; a dismissal returns it to red. 'edited'
+    # is REQUIRED too: the review BODY is the artifact of record, and GitHub lets a submitted
+    # review's body be edited afterwards — without re-reconciling, a valid payload could turn the
+    # check green and then be swapped for invalid/different content while the stale green persists.
+    # Every review-body mutation must re-run reconciliation against the exact head.
+    types: [submitted, edited, dismissed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to reconcile (digits only)"
+        required: true
+
+# Least privilege for the whole workflow; the merge-gate job widens read scope only.
+permissions:
+  contents: read
+
+jobs:
+  assurance-kernel:
+    runs-on: ubuntu-latest
+    name: assurance-kernel
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+      - name: WP-12B validator + WP-12C scanner + assurance-gate suites (HARD)
+        run: |
+          python -m pytest \
+            tests/test_wp12b_review_validator.py \
+            tests/test_wp12c_egress_mutation.py \
+            tests/test_wp12_assurance_gate.py \
+            -q --no-header
+      - name: Executable review gate is non-vacuous (self-test)
+        run: python -m assurance.check --self-test
+      - name: Protected-surface <-> CODEOWNERS in sync (HARD)
+        run: python -m pytest tests/test_protected_surface_sync.py -q --no-header
+
+  conservation-lane1:
+    runs-on: ubuntu-latest
+    name: conservation-lane1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+      - name: Conservation Lane-1 invariants (DB-free; live-DB tests auto-skip)
+        run: |
+          python -m pytest \
+            tests/test_conservation_gates.py \
+            tests/test_schema_completeness.py \
+            tests/test_dossier_kb.py \
+            tests/test_migration_integrity.py \
+            -q --no-header
+
+  merge-gate:
+    # Reconcile the independent-review artifact against the exact live head + the REAL results
+    # of the jobs above. Runs even if they failed (always()) so it reports fail-closed truth,
+    # never a skipped-as-passed. Not run on plain pushes (no PR context).
+    needs: [assurance-kernel, conservation-lane1]
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    name: merge-gate
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-test.txt
+      - name: Reconcile review artifact against live head + real job results
+        # The merge-gate ALWAYS requires APPROVE — it is the "is this mergeable" gate. A valid
+        # CHANGES-REQUIRED artifact must NOT read green here (that is the assurance-kernel job's
+        # structural check, not a merge signal). Red until an independent APPROVE reconciles.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ github.event.inputs.pr }}
+          KERNEL_RESULT: ${{ needs.assurance-kernel.result }}
+          CONSERVATION_RESULT: ${{ needs.conservation-lane1.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          PR="${EVENT_PR:-${INPUT_PR:-}}"
+          case "$PR" in ''|*[!0-9]*) echo "invalid or missing PR number: '$PR'"; exit 2;; esac
+          python -m assurance.check --merge-gate \
+            --pr "$PR" --repo "$GH_REPO" \
+            --kernel-result "$KERNEL_RESULT" \
+            --conservation-result "$CONSERVATION_RESULT" \
+            --run-id "$RUN_ID" --require-verdict APPROVE

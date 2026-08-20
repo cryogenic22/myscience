@@ -1,0 +1,22 @@
+{
+  "_comment": "FORMAT TEMPLATE — not a review of any PR, and NOT committed as a verdict. Rev 4: the review of record is this typed JSON payload placed in the TRUSTED BOT'S GitHub REVIEW BODY (pure JSON, or inside a ```json fenced block), never a file on the branch — that removes the self-reference of the old evidence-commit model. The bot submits the review on the exact live head, so reviewed_sha == pr_head_sha == that head (GitHub records the review's commit_id == head independently). The example below is a VALID APPROVE payload shape (all criteria met/n-a, no open MUST) so the format test can reconcile it; a real review may of course be CHANGES-REQUIRED. Placeholders are 40-hex/login stand-ins. See README.md.",
+  "pr": "#<number>",
+  "verdict": "APPROVE",
+  "reviewer": "codexindependentreviewer[bot]",
+  "reviewed_sha": "1111111111111111111111111111111111111111",
+  "pr_head_sha": "1111111111111111111111111111111111111111",
+  "final_commit_committed_at": "2026-01-01T00:00:00+00:00",
+  "spec_conformance": [
+    {"criterion_id": "<CRIT#1>", "verdict": "met", "evidence_ref": "ev-1"},
+    {"criterion_id": "<CRIT#2>", "verdict": "n/a", "evidence_ref": "not applicable"}
+  ],
+  "findings": [
+    {"id": "F1", "severity": "nit", "must_fix": false, "resolved": false}
+  ],
+  "gates": [
+    {"name": "conservation-lane1", "status": "pass"}
+  ],
+  "evidence": [
+    {"id": "ev-1", "ref": "pytest tests/... (pasted output)", "produced_at": "2026-01-01T00:05:00+00:00"}
+  ]
+}

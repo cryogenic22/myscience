@@ -1,0 +1,23 @@
+{
+  "schema_version": "wp12.manifest.v3",
+  "status": "owner-review-pending",
+  "review_model": "github-review-body-payload",
+  "note_on_review_model": "CANONICAL model token (Rev 4). The review of record is the typed JSON payload in the trusted bot's GitHub review BODY — NOT a file committed to the branch. test_wp12_assurance_gate.py asserts the manifest, spec, and contract all agree on this token, so the manifest criterion text and the governing spec cannot drift to different models (the acceptance-bar-drift the independent review flagged).",
+  "description": "Acceptance manifest: the CANONICAL requirement set per PR — the source of the criteria + required-gates the WP-12B validator reconciles a review against, supplied as TrustedInputs, NOT taken from the review artifact. A reviewer cannot invent, drop, or renumber criteria: the set here must be enumerated completely. Criterion text is mirrored from the governing (owner-review-pending, not-yet-ratified) spec section named in `spec`, and both must agree on `review_model`. STATUS is owner-review-pending: this is the builder's PROPOSED bar; it becomes the ratified bar when the owner approves this PR's protected-surface change (it lives under assurance/contract/ in protected-surface.txt, so a builder cannot later edit it without owner review). `required_gates` are logical keys the CI merge-gate binds to REAL check conclusions (github needs.*.result); the validator requires each to be a real 'success' for APPROVE.",
+  "prs": {
+    "327": {
+      "spec": "specs/SPEC_WP12_assurance_kernel.md#5-acceptance-criteria-this-pr",
+      "required_gates": ["assurance-kernel", "conservation-lane1"],
+      "na_allowed": [],
+      "criteria": [
+        {"id": "WP12#1", "text": "review_contract.json exists and is loadable; valid_verdicts matches review-gate.md exactly (a test asserts no drift)."},
+        {"id": "WP12#2", "text": "WP-12B rejects the real PRIV-001 LAND-WITH-NITS fixture AND a synthetic APPROVE-with-unmet-criterion; accepts a well-formed CHANGES-REQUIRED and APPROVE. Hardened: fabricated self-attested APPROVE (equal fake SHAs, invented criterion, empty evidence, required-gate skip) is rejected; APPROVE without external truth fails closed."},
+        {"id": "WP12#3", "text": "WP-12C scanner is RED on injected raw egress across every bypass class (direct, callable-alias, intermediate-variable, .stream/.parse terminals, direct provider HTTP); GREEN on the clean tree; identity is unique per call site (duplicate calls and same-named methods in different classes do not collapse)."},
+        {"id": "WP12#4", "text": "Incident ESC-2026-08-13-priv001-spec-conformance links the WP-12B replay test and records correct #326 provenance; status is not CLOSED while the gate is unmerged/unenforced."},
+        {"id": "WP12#5", "text": "New gate files present in protected-surface.txt (incl. the WP-12 spec, incident registry, review-gate.md, and test_protected_surface_sync.py); CODEOWNERS regenerated in the same commit; protected-surface sync test green."},
+        {"id": "WP12#6", "text": "An executable CI check runs the validator (self-test proves it is non-vacuous every run) and reconciles the review of record — the typed JSON payload in the trusted bot's GitHub review BODY (Rev 4; NOT a file committed to the branch, which was self-referential) — against the live head + real check conclusions. A review-body edit re-runs reconciliation. The Markdown PR table is not the artifact of record."},
+        {"id": "WP12#7", "text": "Independent review against this section's criteria (dogfooded via the WP-12B contract), with reviewer identity + state + commit_id from GitHub's review API (reviewer == codexindependentreviewer[bot], not the author, on the exact live head). MERGE-BLOCKING and owner/independent-only — the builder cannot mark this met."}
+      ]
+    }
+  }
+}

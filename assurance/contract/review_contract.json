@@ -1,0 +1,58 @@
+{
+  "schema_version": "wp12a.v2",
+  "description": "WP-12A machine-readable acceptance contract. The WP-12B review-artifact validator consumes this file as its structural source of truth. The BINDING facts a review must reconcile against — the real PR head SHA, the final commit's committed-at, the canonical ratified criterion set, and the set of gates that must pass — are NOT taken from the review artifact; they are supplied to the validator as TrustedInputs sourced externally (git/GitHub for SHAs+timestamps; the owner-ratified acceptance manifest for criteria+gates). Editing this file changes the success bar for merges; it is a protected surface (see protected-surface.txt) and may only change under owner review. See specs/SPEC_WP12_assurance_kernel.md.",
+  "verdict_source_of_truth": ".claude/commands/review-gate.md",
+  "valid_verdicts": ["APPROVE", "CHANGES-REQUIRED", "BLOCK"],
+  "trusted_independent_reviewer": "codexindependentreviewer[bot]",
+  "trusted_independent_reviewer_id": 317626643,
+  "note_on_reviewer_id": "The numeric account id of the trusted App bot (GitHub /users/codexindependentreviewer[bot]). The validator binds an APPROVE to this id AND account type 'Bot' — a login string is the weakest handle and was never actually verified; the id cannot be reassigned. Sourced from the review API's user.id, never the payload. (An earlier trusted_independent_reviewer_app_id pin was REMOVED under owner ruling 2026-08-20: GitHub's documented pull-review response does not expose performed_via_github_app, so an App-id claim was not an enforceable control; the immutable bot-user id above is the authority.)",
+  "review_model": "github-review-body-payload",
+  "note_on_independent_review": "The review of record is the typed JSON payload in the trusted reviewer's GitHub review BODY (pure JSON or a ```json fenced block) — NOT a file committed to the branch (that was self-referential: a committed artifact must name the SHA of the commit that contains it). An APPROVE is believed ONLY when GitHub's review API shows a review whose actor == trusted_independent_reviewer, state == APPROVED, is not dismissed, targets the EXACT live head SHA (commit_id == pr_head_sha), whose actor != the PR author, and whose body payload reconciles (reviewed_sha == pr_head_sha == the live head). COMMENTED, CHANGES_REQUESTED, DISMISSED, a wrong actor, a missing review, an unparseable body, or an approval left on a previous (stale) SHA all fail closed. A synchronize/push moves the head, so a prior approval's commit_id no longer matches — the new head must be independently RE-approved. This custom gate does NOT count as, or replace, GitHub-native branch-protection approval (that remains a separate WP-12E owner requirement).",
+  "note_on_nits": "Interim, per-slice dispositions such as 'APPROVE-WITH-NITS' or 'LAND-WITH-NITS' are NOT valid final merge verdicts. A slice that leaves any ratified acceptance criterion unmet is CHANGES-REQUIRED, regardless of how small the residual looks. This is the exact PRIV-001 escaped-defect class (ESC-2026-08-13-priv001-spec-conformance).",
+  "note_on_trust": "reviewed_sha / pr_head_sha / final_commit_committed_at / the criterion set / gate results / reviewer in the artifact are SELF-ATTESTED and are only believed insofar as they equal TrustedInputs. An APPROVE that cannot be reconciled against TrustedInputs fails closed (UNVERIFIABLE_APPROVE). A 40-hex lowercase SHA format is required; short or non-hex SHAs are rejected.",
+  "note_on_external_binding": "Gate results come from REAL check conclusions (GitHub check-runs / same-workflow needs.*.result), not the payload's gates[].status — a self-declared 'pass' that contradicts the real conclusion is rejected (GATE_CONCLUSION_MISMATCH), and an APPROVE requires every required gate to have a real 'success'. Reviewer identity + review state + commit_id come from GitHub's review API (gh api repos/<repo>/pulls/<n>/reviews) and the PR author from gh; none are read from the payload. Because the review of record is the bot's review BODY (not a branch commit), the reviewed SHA is the review's commit_id (== the live head) and the payload's reviewed_sha is checked directly against the live head — there is no evidence-commit parent and no self-reference.",
+  "approve_requires": {
+    "open_must_items": 0,
+    "failing_gates": 0,
+    "unmet_spec_criteria": 0
+  },
+  "rules": {
+    "reviewed_sha_must_equal_trusted_head": true,
+    "criterion_set_must_equal_ratified": true,
+    "required_gates_must_pass": true,
+    "na_only_if_manifest_permits": true,
+    "evidence_required_nonempty": true,
+    "evidence_ref_must_resolve": true,
+    "evidence_not_before": "final_commit_committed_at",
+    "reject_future_timestamps": true,
+    "require_spec_conformance_matrix": true
+  },
+  "review_artifact_schema": {
+    "required_fields": [
+      "verdict",
+      "reviewed_sha",
+      "pr_head_sha",
+      "final_commit_committed_at",
+      "spec_conformance",
+      "findings",
+      "gates",
+      "evidence"
+    ],
+    "spec_conformance_item": {
+      "required_fields": ["criterion_id", "verdict", "evidence_ref"],
+      "allowed_verdicts": ["met", "unmet", "n/a"]
+    },
+    "finding_item": {
+      "required_fields": ["id", "severity", "must_fix", "resolved"],
+      "allowed_severities": ["blocker", "must", "should", "nit"],
+      "blocking_severities": ["blocker", "must"]
+    },
+    "gate_item": {
+      "required_fields": ["name", "status"],
+      "allowed_status": ["pass", "fail", "skip"]
+    },
+    "evidence_item": {
+      "required_fields": ["id", "ref", "produced_at"]
+    }
+  }
+}

@@ -1,0 +1,587 @@
+"""WP-12C — LLM/provider egress scanner (alias-resolving, fail-closed static analysis).
+
+Supersedes the first-pass scanner in tests/test_priv001b_egress_inventory.py, which
+substring-matched provider call chains and could be defeated by an intermediate variable.
+This scanner closes every STATICALLY-RESOLVABLE egress form that three independent review
+rounds demonstrated the earlier passes missed:
+
+  1. **Callable alias.**   f = client.chat.completions.create ; f(...)
+  2. **Non-.create terminals.**  client.chat.completions.stream(...) / .parse(...)
+  3. **Direct provider HTTP.**   requests.post("https://api.openai.com/v1/chat/completions", ...)
+  4. **Intermediate-variable receiver.**  c = client.chat.completions ; c.create(...)
+  5. **Non-Name receiver bases.**  get_client().chat...create ; clients["openai"].messages.create
+  6. **Reflection / partial.**  getattr(chain, "create")(...) ; functools.partial(chain.create)(...)
+  7. **Attribute-target cache.**  self._go = client...create (any method order, incl. the attr
+     named like a terminal `self.create = ...create`, and transitively `self._go = self._raw`) ; self._go(...)
+  8. **Tuple-unpack + walrus alias.**  go, _ = client...create, 1 ; go(...)  /  (go := client...create)(...)
+  9. **Collapsed identity.** two egress calls in one scope, or a same-named method in two classes,
+     no longer collapse to one inventory key — identity is (relpath, qualified-scope, kind,
+     source-ordinal): unique per call site AND stable across line edits (line/col are reporting
+     metadata, not the pinned key — a line-number key would churn on every refactor).
+
+Direct HTTP is covered too — provider egress via requests/httpx verbs AND via urllib
+(`urlopen(url)` / `urlopen(Request(url))` / `req=Request(url); urlopen(req)`, with url a literal,
+constant, f-string, or '+'-concat, across OpenAI/Anthropic/Gemini hosts, through any
+qualified/imported alias). This matters because the PRIV-001b **runtime** guard wraps the SDK
+client's `.create(...)` — it does NOT see hand-rolled HTTP, so for those forms the STATIC scanner
+is the SOLE control, not a runtime backstop.
+
+**Boundary (honest scope, not an overclaim):** this is *static* analysis. It cannot see forms
+that are only decidable at runtime — a method/attr name computed at runtime (`getattr(o, name)`
+where `name` is a variable), `exec`/`eval`, or a provider client injected via reflection/plugin.
+It also does NOT model container/subscript indirection, even with a literal key
+(`{"create": chain}["create"]()`), which would open an unbounded dict/`.get`/list surface. Those
+are OUT of static reach BY CONSTRUCTION, tracked as ESC-2026-08-15-egress-static-limit, each
+pinned by a strict=True xfail so it can never be silently claimed as covered. Those residuals are
+backstopped by the runtime guard ONLY because they still terminate in an SDK `.create`; a gate
+that cannot fail on a real *statically-visible* bypass would be vacuous (principle #3);
+tests/test_wp12c_egress_mutation.py proves each class turns the scanner RED.
+
+Importable so both the assurance gate and PRIV-001b consume ONE scanner, not two.
+"""
+from __future__ import annotations
+
+import ast
+import os
+import warnings
+from dataclasses import dataclass
+from pathlib import Path
+
+# Provider egress chains we treat as raw SDK calls when they terminate in a provider method.
+# chat.completions/responses/embeddings = OpenAI; messages = Anthropic.
+PROVIDER_CHAINS = ("chat.completions", "responses", "embeddings", "messages")
+
+# Terminal SDK methods that actually send a request. .create WAS the only one detected; the
+# review showed .stream / .parse (and their async twins) are equally live egress.
+TERMINAL_METHODS = frozenset({
+    "create", "acreate", "stream", "astream", "parse", "aparse",
+})
+
+# Direct-HTTP egress: a provider endpoint literal passed to an HTTP verb (requests/httpx) OR
+# to urllib defeats SDK-chain detection entirely. Match the host / path markers, resolved
+# through str constants, f-strings, and constant concatenation. Gemini
+# (generativelanguage.googleapis.com) is a provider host too.
+PROVIDER_URL_MARKERS = (
+    "api.openai.com", "api.anthropic.com", "openai.azure.com",
+    "generativelanguage.googleapis.com",
+    "/v1/chat/completions", "/v1/messages", "/v1/embeddings", "/v1/responses",
+    ":generateContent",
+)
+HTTP_VERBS = frozenset({"post", "put", "patch", "request", "send", "stream"})
+# urllib egress: urlopen(url) / urlopen(Request(url)) / req=Request(url); urlopen(req).
+# Matched by TERMINAL NAME so qualified/imported aliases all resolve:
+#   urllib.request.urlopen · request.urlopen · from urllib.request import urlopen · urlopen
+URLOPEN_NAMES = frozenset({"urlopen"})
+REQUEST_CTORS = frozenset({"Request"})
+
+# Only genuinely non-production trees are skipped. apps/ and packages/ are NOT skipped so a
+# future .py egress there is caught (fail-closed). tests/ and assurance/ are skipped because
+# they carry SYNTHETIC provider calls as fixtures/tooling, not runtime egress; the production
+# -directory mutation test guards that this list can never grow to hide a real runtime dir.
+DEFAULT_SKIP_DIRS = {
+    ".git", "node_modules", "frontend", ".claude", "venv", ".venv", "dist", "build",
+    "__pycache__", ".pytest_cache", "tests", "assurance", ".mypy_cache", ".ruff_cache",
+    "site-packages", ".egg-info",
+}
+
+
+@dataclass(frozen=True)
+class Hit:
+    relpath: str
+    scope: str        # qualified enclosing scope, e.g. "ExtractionLLM.call" or "<module>"
+    kind: str         # chat | responses | embeddings | messages | http
+    ordinal: int      # 0-based index among (relpath, scope, kind) in source order
+    lineno: int       # reporting metadata (NOT part of the identity key — see module docstring)
+    col: int          # reporting metadata
+
+    def key(self) -> str:
+        # Identity = scope + kind + ordinal. Unique per call site; stable across line edits.
+        return f"{self.relpath}::{self.scope}::{self.kind}#{self.ordinal}"
+
+    def location(self) -> str:
+        return f"{self.relpath}:{self.lineno}:{self.col}"
+
+
+def _kind(chain: str) -> str:
+    if "chat.completions" in chain:
+        return "chat"
+    if "embeddings" in chain:
+        return "embeddings"
+    if "responses" in chain:
+        return "responses"
+    if "messages" in chain:
+        return "messages"
+    return "other"
+
+
+class _Scanner(ast.NodeVisitor):
+    """Detect provider egress: SDK-chain terminal calls (incl. callable aliases) and direct
+    provider-HTTP calls. Resolves per-scope local aliases (attribute chains AND str consts)."""
+
+    def __init__(self) -> None:
+        self.scope_stack: list[str] = ["<module>"]
+        self.alias_stack: list[dict[str, str]] = [{}]       # name -> resolved dotted chain
+        self.str_alias_stack: list[dict[str, str]] = [{}]   # name -> str constant value
+        # Attribute-target callable aliases (e.g. `self._go = client...create`), keyed by the
+        # ENCLOSING-CLASS scope + dotted target ("<class-loc>::self._go"). NOT method-scope-stacked
+        # (an instance attr set in __init__ is called from another method — a different method scope),
+        # but class-qualified: a harmless `self._go` in one class must never overwrite a provider
+        # `self._go` in another (a cross-class collision would blind the scanner — a vacuous-green
+        # false negative). Keyed by the class's source location so even two same-NAMED classes differ.
+        self.attr_alias: dict[str, str] = {}
+        # Nearest-enclosing-ClassDef scope ("<lineno>:<col>"), maintained in BOTH the pre-pass and
+        # the main visit so attr-alias write/read keys match. Empty ("") at module level.
+        self.class_loc_stack: list[str] = []
+        # Names bound to a urllib.request.Request(<provider-url>, ...) — so `req = Request(URL)`
+        # then `urlopen(req)` resolves. Scope-stacked (Request objects are locals).
+        self.req_alias_stack: list[dict[str, str]] = [{}]   # name -> resolved provider URL
+        # ImportFrom callable aliases (module-level, so plain sets — an imported name is visible in
+        # every nested scope). Without these a bare/renamed `from requests import post as p ; p(URL)`
+        # (a Name call, not an Attribute) and `from urllib.request import urlopen as uo` slipped past.
+        self.http_verb_aliases: set[str] = set()       # local name -> an HTTP verb from requests/httpx
+        self.urlopen_aliases: set[str] = set()          # local name -> urllib.request.urlopen
+        self.request_ctor_aliases: set[str] = set()     # local name -> urllib.request.Request
+        self.raw: list[tuple[str, str, int, int]] = []      # (scope, kind, lineno, col)
+
+    # --- scope handling: inner scopes inherit outer aliases (module-level client, etc.) ---
+    def _push(self, name: str) -> None:
+        self.scope_stack.append(name)
+        self.alias_stack.append(dict(self.alias_stack[-1]))
+        self.str_alias_stack.append(dict(self.str_alias_stack[-1]))
+        self.req_alias_stack.append(dict(self.req_alias_stack[-1]))
+
+    def _pop(self) -> None:
+        self.scope_stack.pop()
+        self.alias_stack.pop()
+        self.str_alias_stack.pop()
+        self.req_alias_stack.pop()
+
+    def visit_FunctionDef(self, n: ast.AST) -> None:
+        self._push(n.name)
+        self.generic_visit(n)
+        self._pop()
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_ClassDef(self, n: ast.ClassDef) -> None:
+        self._push(n.name)
+        self.class_loc_stack.append(f"{n.lineno}:{n.col_offset}")
+        self.generic_visit(n)
+        self.class_loc_stack.pop()
+        self._pop()
+
+    def _class_scope(self) -> str:
+        """Source location of the nearest enclosing ClassDef ("<lineno>:<col>"), or "" at module
+        level. Used to qualify attribute-alias keys so cross-class `self.x` never collide."""
+        return self.class_loc_stack[-1] if self.class_loc_stack else ""
+
+    @staticmethod
+    def _attr_key(scope: str, target: str) -> str:
+        return f"{scope}::{target}"
+
+    def _qualscope(self) -> str:
+        inner = ".".join(self.scope_stack[1:])
+        return inner or "<module>"
+
+    def _resolve(self, name: str) -> str:
+        for scope in reversed(self.alias_stack):
+            if name in scope:
+                return scope[name]
+        return name
+
+    def _resolve_str(self, name: str) -> str | None:
+        for scope in reversed(self.str_alias_stack):
+            if name in scope:
+                return scope[name]
+        return None
+
+    def _resolve_req(self, name: str) -> str | None:
+        for scope in reversed(self.req_alias_stack):
+            if name in scope:
+                return scope[name]
+        return None
+
+    def _collect_import(self, n: ast.ImportFrom) -> None:
+        """Model `from <mod> import <name> [as <alias>]` so a bare or RENAMED HTTP callable resolves
+        by its local name: an HTTP verb from requests/httpx, or urlopen/Request from urllib.request.
+        Collected in the pre-pass (before calls are visited) so order never matters."""
+        mod = n.module or ""
+        for a in n.names:
+            local = a.asname or a.name
+            if mod in ("requests", "httpx") and a.name in HTTP_VERBS:
+                self.http_verb_aliases.add(local)
+            elif mod == "urllib.request":
+                if a.name in URLOPEN_NAMES:
+                    self.urlopen_aliases.add(local)
+                elif a.name in REQUEST_CTORS:
+                    self.request_ctor_aliases.add(local)
+
+    def _resolve_url_expr(self, node: ast.AST) -> str:
+        """Best-effort string a URL expression resolves to (for provider-host matching):
+        a str literal, a str-constant Name, an f-string (with {CONST} names expanded), or
+        '+'-concatenation of the above. Unknown parts contribute ''. This lets a URL built
+        as f"{GEMINI_API_BASE}/{model}:generateContent" resolve to the host marker."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return self._resolve_str(node.id) or ""
+        if isinstance(node, ast.JoinedStr):
+            out = []
+            for v in node.values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    out.append(v.value)
+                elif isinstance(v, ast.FormattedValue):
+                    out.append(self._resolve_url_expr(v.value))
+            return "".join(out)
+        if isinstance(node, ast.BinOp):
+            if isinstance(node.op, ast.Add):
+                return self._resolve_url_expr(node.left) + self._resolve_url_expr(node.right)
+            if isinstance(node.op, ast.Mod):
+                # "https://api.openai.com/v1/%s" % path — the provider host is in the template (left).
+                return self._resolve_url_expr(node.left)
+            return ""
+        if isinstance(node, ast.Call):
+            fn = node.func
+            # "https://api.openai.com/v1/{}".format(...) — the host is in the receiver template.
+            if isinstance(fn, ast.Attribute) and fn.attr == "format":
+                return self._resolve_url_expr(fn.value)
+            return ""
+        return ""
+
+    @staticmethod
+    def _is_provider_url(s: str) -> bool:
+        return bool(s) and any(m in s for m in PROVIDER_URL_MARKERS)
+
+    @staticmethod
+    def _terminal_name(func: ast.AST) -> str | None:
+        """Last name of a call target: 'urlopen' for urlopen / urllib.request.urlopen / a bare
+        imported urlopen / U.urlopen; 'Request' for Request / urllib.request.Request."""
+        if isinstance(func, ast.Attribute):
+            return func.attr
+        if isinstance(func, ast.Name):
+            return func.id
+        return None
+
+    def _url_arg(self, call: ast.Call) -> ast.AST | None:
+        """The URL argument of a Request(...)/urlopen(...) call: first positional, else url=."""
+        if call.args:
+            return call.args[0]
+        for kw in call.keywords:
+            if kw.arg == "url":
+                return kw.value
+        return None
+
+    def _request_provider_url(self, call: ast.Call) -> str | None:
+        """If `call` is a Request(<url>, ...) whose url resolves to a provider host, return it."""
+        name = self._terminal_name(call.func)
+        if name in REQUEST_CTORS or name in self.request_ctor_aliases:
+            arg = self._url_arg(call)
+            if arg is not None:
+                url = self._resolve_url_expr(arg)
+                if self._is_provider_url(url):
+                    return url
+        return None
+
+    def _chain_of(self, node: ast.AST) -> str | None:
+        """Resolved dotted chain for an attribute/name expr.
+
+        Name base -> alias-resolved full chain (e.g. ``client.chat.completions``). Non-Name
+        base (a Call like ``get_client()`` or a Subscript like ``clients["openai"]``) -> the
+        attribute SUFFIX alone (e.g. ``chat.completions``), so a provider chain hanging off a
+        factory call or a dict lookup is still detected. None only if there is no attribute
+        suffix and no Name base to resolve."""
+        attrs: list[str] = []
+        while isinstance(node, ast.Attribute):
+            attrs.append(node.attr)
+            node = node.value
+        tail = ".".join(reversed(attrs))
+        if isinstance(node, ast.Name):
+            base = self._resolve(node.id)
+            return base + ("." + tail if tail else "")
+        # base is a Call/Subscript/etc: the receiver is not a stable name, but the attribute
+        # path off it can still carry a provider chain (get_client().chat.completions.create).
+        return tail or None
+
+    def _getattr_chain(self, call: ast.Call) -> str | None:
+        """getattr(<expr>, "<method>") -> resolved '<chain>.<method>' (string-literal method)."""
+        fn = call.func
+        is_getattr = (isinstance(fn, ast.Name) and fn.id == "getattr") or \
+                     (isinstance(fn, ast.Attribute) and fn.attr == "getattr")
+        if is_getattr and len(call.args) >= 2:
+            obj, meth = call.args[0], call.args[1]
+            if isinstance(meth, ast.Constant) and isinstance(meth.value, str) \
+                    and isinstance(obj, (ast.Attribute, ast.Name)):
+                base = self._chain_of(obj)
+                if base is not None:
+                    return f"{base}.{meth.value}"
+        return None
+
+    def _partial_inner_chain(self, call: ast.Call) -> str | None:
+        """(functools.)partial(<callable>, ...) -> the resolved chain of its first arg."""
+        fn = call.func
+        is_partial = (isinstance(fn, ast.Name) and fn.id == "partial") or \
+                     (isinstance(fn, ast.Attribute) and fn.attr == "partial")
+        if is_partial and call.args:
+            return self._callable_chain_of(call.args[0])
+        return None
+
+    def _callable_chain_of(self, value: ast.AST) -> str | None:
+        """The dotted chain a value resolves to WHEN USED AS A CALLABLE: a plain attribute/name
+        chain, or the callable hidden inside getattr(...) / partial(...)."""
+        if isinstance(value, (ast.Attribute, ast.Name)):
+            return self._chain_of(value)
+        if isinstance(value, ast.Call):
+            return self._getattr_chain(value) or self._partial_inner_chain(value)
+        return None
+
+    def _store_alias(self, target: ast.AST, value: ast.AST) -> None:
+        """Record target <- value for later callable resolution (Name in scope; self.x module-wide)."""
+        if isinstance(target, ast.Name):
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                self.str_alias_stack[-1][target.id] = value.value
+                return
+            # `req = Request(<provider-url>, ...)` — remember so a later urlopen(req) resolves.
+            if isinstance(value, ast.Call):
+                req_url = self._request_provider_url(value)
+                if req_url is not None:
+                    self.req_alias_stack[-1][target.id] = req_url
+                    return
+            # A URL built into a local var (`url = f"{GEMINI_API_BASE}/..."`) — remember as a
+            # string so Request(url)/urlopen(url) resolves it.
+            built = self._resolve_url_expr(value)
+            if built:
+                self.str_alias_stack[-1][target.id] = built
+                return
+            chain = self._callable_chain_of(value)
+            if chain is not None:
+                self.alias_stack[-1][target.id] = chain
+        elif isinstance(target, ast.Attribute):
+            key = self._chain_of(target)           # e.g. "self._go"
+            chain = self._callable_chain_of(value)
+            if key is not None and chain is not None:
+                self.attr_alias[self._attr_key(self._class_scope(), key)] = chain
+
+    def _resolve_attr(self, target: str) -> str | None:
+        """Transitively resolve an attribute-target alias WITHIN the current class scope
+        (self._go -> self._raw -> client...create). Cycle-safe. Class-qualified so a same-named
+        attribute in another class cannot be mistaken for this one."""
+        scope = self._class_scope()
+        v = self.attr_alias.get(self._attr_key(scope, target))
+        seen: set[str] = set()
+        while v is not None and self._attr_key(scope, v) in self.attr_alias and v not in seen:
+            seen.add(v)
+            v = self.attr_alias[self._attr_key(scope, v)]
+        return v
+
+    def visit_Assign(self, n: ast.Assign) -> None:
+        for tgt in n.targets:
+            if isinstance(tgt, (ast.Tuple, ast.List)) and isinstance(n.value, (ast.Tuple, ast.List)) \
+                    and len(tgt.elts) == len(n.value.elts):
+                for t, v in zip(tgt.elts, n.value.elts):   # go, _ = client...create, 1
+                    self._store_alias(t, v)
+            else:
+                self._store_alias(tgt, n.value)
+        self.generic_visit(n)
+
+    def visit_NamedExpr(self, n: ast.NamedExpr) -> None:
+        # walrus: (go := client...create) — record the alias for later `go(...)` uses.
+        self._store_alias(n.target, n.value)
+        self.generic_visit(n)
+
+    def visit_AnnAssign(self, n: ast.AnnAssign) -> None:
+        # Annotated assignment: `f: Callable = client...create` / `url: str = "https://api.openai.com/..."`.
+        # An AnnAssign is NOT an Assign, so without this the type hint made the alias invisible and
+        # `f(...)` / `post(url)` slipped past the scanner (a callable-alias bypass).
+        if n.value is not None:
+            self._store_alias(n.target, n.value)
+        self.generic_visit(n)
+
+    def _record_callable(self, chain: str | None, node: ast.Call) -> bool:
+        """Record a hit if `chain` is a provider SDK terminal or an HTTP verb hitting a provider
+        URL in `node`'s args. Returns True if recorded."""
+        if not chain:
+            return False
+        last = chain.rsplit(".", 1)[-1]
+        if last in TERMINAL_METHODS and any(c in chain for c in PROVIDER_CHAINS):
+            self._record(_kind(chain), node)
+            return True
+        if last in HTTP_VERBS and any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(node)):
+            self._record("http", node)
+            return True
+        return False
+
+    def _record(self, kind: str, node: ast.AST) -> None:
+        self.raw.append((self._qualscope(), kind, node.lineno, node.col_offset))
+
+    def _arg_urls(self, call: ast.Call) -> list[str]:
+        """The URL strings a call's arguments statically resolve to. Uses _resolve_url_expr so a
+        literal, a str-const Name, an f-string AND '+'-concatenation of the above all resolve —
+        e.g. requests.post(OPENAI_BASE + path, ...) where OPENAI_BASE is a provider host. A fixed
+        provider base plus a runtime path is still provider egress (the static prefix is decisive);
+        without concat-resolution here it was a bypass."""
+        out: list[str] = []
+        parts: list[ast.AST] = list(call.args) + [kw.value for kw in call.keywords]
+        for a in parts:
+            s = self._resolve_url_expr(a)
+            if s:
+                out.append(s)
+        return out
+
+    def _maybe_urlopen(self, n: ast.Call) -> bool:
+        """(h) urllib egress: urlopen(<provider-url>) / urlopen(Request(<provider-url>)) /
+        req=Request(<provider-url>); urlopen(req). Matches urlopen by TERMINAL NAME so
+        qualified/imported aliases (urllib.request.urlopen, request.urlopen, bare urlopen,
+        U.urlopen) all resolve. URL may be a literal, a constant, an f-string, or '+'-concat.
+        A RENAMED import (`from urllib.request import urlopen as uo`) resolves via urlopen_aliases."""
+        name = self._terminal_name(n.func)
+        if name not in URLOPEN_NAMES and name not in self.urlopen_aliases:
+            return False
+        arg = self._url_arg(n)
+        if arg is None:
+            return False
+        hit = False
+        if isinstance(arg, ast.Call):                       # urlopen(Request(URL, ...))
+            hit = self._request_provider_url(arg) is not None
+        elif isinstance(arg, ast.Name):                     # req=Request(URL); urlopen(req)  OR  url=str; urlopen(url)
+            hit = (self._resolve_req(arg.id) is not None) or self._is_provider_url(self._resolve_str(arg.id) or "")
+        else:                                               # urlopen("https://api.openai.com/...") / f-string / concat
+            hit = self._is_provider_url(self._resolve_url_expr(arg))
+        if hit:
+            self._record("http", n)
+        return hit
+
+    def visit_Call(self, n: ast.Call) -> None:
+        f = n.func
+
+        if self._maybe_urlopen(n):
+            self.generic_visit(n)
+            return
+
+        if isinstance(f, ast.Attribute):
+            recorded = False
+            # (a) SDK terminal call: <chain>.create/.stream/.parse(...)
+            if f.attr in TERMINAL_METHODS:
+                chain = self._chain_of(f)
+                if chain and any(c in chain for c in PROVIDER_CHAINS):
+                    self._record(_kind(chain), n)
+                    recorded = True
+            # (b) direct provider HTTP: session.post("https://api.openai.com/...", ...)
+            elif f.attr in HTTP_VERBS:
+                if any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)):
+                    self._record("http", n)
+                    recorded = True
+            # (e) attribute-target callable alias — ALWAYS also consult attr_alias, even when the
+            #     attr name IS a terminal/http word (self.create = client...create ; self.create(...)):
+            #     the direct-chain check above misses it because 'self.create' has no provider substring.
+            if not recorded:
+                self._record_callable(self._resolve_attr(self._chain_of(f) or ""), n)
+
+        elif isinstance(f, ast.Name):
+            # (c)/(d) callable alias (incl. getattr/partial assigned to a name): f(...)
+            resolved = self._resolve(f.id)
+            if resolved != f.id:
+                self._record_callable(resolved, n)
+            # (i) bare/renamed imported HTTP verb: `from requests import post [as p] ; post(URL)`.
+            #     The Attribute branch catches `requests.post(...)`; a Name-target verb needs the
+            #     ImportFrom alias set. Only when a provider URL is among the args (fail-closed on host).
+            elif f.id in self.http_verb_aliases and \
+                    any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)):
+                self._record("http", n)
+
+        elif isinstance(f, ast.NamedExpr):
+            # (g) walrus as callable: (go := client...create)(...)
+            self._record_callable(self._callable_chain_of(f.value), n)
+
+        elif isinstance(f, ast.Call):
+            # (f) immediate reflection/partial: getattr(chain,"create")(...) / partial(chain.create)(...)
+            self._record_callable(self._getattr_chain(f) or self._partial_inner_chain(f), n)
+
+        self.generic_visit(n)
+
+
+def _prepass_attr_aliases(s: _Scanner, node: ast.AST) -> None:
+    """Scope-aware collection of instance-attribute callable aliases, maintaining s.class_loc_stack
+    so each alias is keyed by its ENCLOSING CLASS (see _Scanner.attr_alias). Recurses into class /
+    function bodies AND nested statement bodies (if/with/for) inside a method. Only ATTRIBUTE
+    targets are collected here (Name-target str/req/chain aliases are collected in source order by
+    the main visit); this pre-pass exists solely for the set-in-__init__/read-in-another-method
+    pattern that is not source-ordered."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.ClassDef):
+            s.class_loc_stack.append(f"{child.lineno}:{child.col_offset}")
+            _prepass_attr_aliases(s, child)
+            s.class_loc_stack.pop()
+        elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _prepass_attr_aliases(s, child)   # a method keeps its enclosing class scope
+        else:
+            if isinstance(child, ast.Assign):
+                for tgt in child.targets:
+                    if isinstance(tgt, ast.Attribute):
+                        s._store_alias(tgt, child.value)
+            elif isinstance(child, ast.AnnAssign):
+                if child.value is not None and isinstance(child.target, ast.Attribute):
+                    s._store_alias(child.target, child.value)
+            _prepass_attr_aliases(s, child)   # descend into if/with/for bodies within a method
+
+
+def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
+    """Scan one Python source string. Raises SyntaxError on unparseable input.
+
+    We are parsing OTHER files to find egress, not linting them; suppress their benign
+    SyntaxWarnings (e.g. an unescaped '\\s' in a non-raw string) so they don't pollute the
+    gate's output. A real SyntaxError still propagates and is reported as unparseable upstream.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        tree = ast.parse(src)
+    s = _Scanner()
+    # Pre-pass (before calls are visited):
+    #   (1) ImportFrom callable aliases — module scope, order-independent (a flat walk is fine).
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            s._collect_import(node)
+    #   (2) instance-attribute callable aliases (self.x = / self.x: T = ...create) — collected
+    #       CLASS-QUALIFIED and scope-aware so (a) a `self.x(...)` call in a method defined ABOVE
+    #       __init__ still resolves and (b) a same-named attribute in ANOTHER class cannot overwrite
+    #       it (the cross-class collision that blinded the scanner). AnnAssign needs its own arm.
+    _prepass_attr_aliases(s, tree)
+    s.visit(tree)
+    # Assign a stable source-order ordinal per (scope, kind) so duplicate calls in one scope
+    # and same-named methods across classes each get a distinct identity key.
+    counters: dict[tuple[str, str], int] = {}
+    hits: list[Hit] = []
+    for scope, kind, lineno, col in sorted(s.raw, key=lambda r: (r[2], r[3])):
+        idx = counters.get((scope, kind), 0)
+        counters[(scope, kind)] = idx + 1
+        hits.append(Hit(relpath, scope, kind, idx, lineno, col))
+    return hits
+
+
+def scan_tree(root: str | Path, skip_dirs: set[str] | None = None) -> tuple[list[Hit], list[str]]:
+    """Walk `root`, return (hits, unparseable_relpaths).
+
+    Unparseable files are RETURNED, never silently skipped — a syntax-error file could
+    otherwise hide an egress call from the gate (fail-closed).
+    """
+    root = Path(root)
+    skip = DEFAULT_SKIP_DIRS if skip_dirs is None else skip_dirs
+    hits: list[Hit] = []
+    unparseable: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            p = Path(dirpath) / fn
+            rel = p.relative_to(root).as_posix()
+            try:
+                src = p.read_text(encoding="utf-8")
+                hits.extend(scan_source(src, rel))
+            except (SyntaxError, UnicodeDecodeError):
+                unparseable.append(rel)
+    return hits, unparseable
+
+
+def scan_keys(root: str | Path, skip_dirs: set[str] | None = None) -> tuple[set[str], list[str]]:
+    hits, unparseable = scan_tree(root, skip_dirs)
+    return {h.key() for h in hits}, unparseable
