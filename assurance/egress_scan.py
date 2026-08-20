@@ -129,6 +129,12 @@ class _Scanner(ast.NodeVisitor):
         # Names bound to a urllib.request.Request(<provider-url>, ...) — so `req = Request(URL)`
         # then `urlopen(req)` resolves. Scope-stacked (Request objects are locals).
         self.req_alias_stack: list[dict[str, str]] = [{}]   # name -> resolved provider URL
+        # ImportFrom callable aliases (module-level, so plain sets — an imported name is visible in
+        # every nested scope). Without these a bare/renamed `from requests import post as p ; p(URL)`
+        # (a Name call, not an Attribute) and `from urllib.request import urlopen as uo` slipped past.
+        self.http_verb_aliases: set[str] = set()       # local name -> an HTTP verb from requests/httpx
+        self.urlopen_aliases: set[str] = set()          # local name -> urllib.request.urlopen
+        self.request_ctor_aliases: set[str] = set()     # local name -> urllib.request.Request
         self.raw: list[tuple[str, str, int, int]] = []      # (scope, kind, lineno, col)
 
     # --- scope handling: inner scopes inherit outer aliases (module-level client, etc.) ---
@@ -178,6 +184,21 @@ class _Scanner(ast.NodeVisitor):
                 return scope[name]
         return None
 
+    def _collect_import(self, n: ast.ImportFrom) -> None:
+        """Model `from <mod> import <name> [as <alias>]` so a bare or RENAMED HTTP callable resolves
+        by its local name: an HTTP verb from requests/httpx, or urlopen/Request from urllib.request.
+        Collected in the pre-pass (before calls are visited) so order never matters."""
+        mod = n.module or ""
+        for a in n.names:
+            local = a.asname or a.name
+            if mod in ("requests", "httpx") and a.name in HTTP_VERBS:
+                self.http_verb_aliases.add(local)
+            elif mod == "urllib.request":
+                if a.name in URLOPEN_NAMES:
+                    self.urlopen_aliases.add(local)
+                elif a.name in REQUEST_CTORS:
+                    self.request_ctor_aliases.add(local)
+
     def _resolve_url_expr(self, node: ast.AST) -> str:
         """Best-effort string a URL expression resolves to (for provider-host matching):
         a str literal, a str-constant Name, an f-string (with {CONST} names expanded), or
@@ -195,8 +216,19 @@ class _Scanner(ast.NodeVisitor):
                 elif isinstance(v, ast.FormattedValue):
                     out.append(self._resolve_url_expr(v.value))
             return "".join(out)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            return self._resolve_url_expr(node.left) + self._resolve_url_expr(node.right)
+        if isinstance(node, ast.BinOp):
+            if isinstance(node.op, ast.Add):
+                return self._resolve_url_expr(node.left) + self._resolve_url_expr(node.right)
+            if isinstance(node.op, ast.Mod):
+                # "https://api.openai.com/v1/%s" % path — the provider host is in the template (left).
+                return self._resolve_url_expr(node.left)
+            return ""
+        if isinstance(node, ast.Call):
+            fn = node.func
+            # "https://api.openai.com/v1/{}".format(...) — the host is in the receiver template.
+            if isinstance(fn, ast.Attribute) and fn.attr == "format":
+                return self._resolve_url_expr(fn.value)
+            return ""
         return ""
 
     @staticmethod
@@ -224,7 +256,8 @@ class _Scanner(ast.NodeVisitor):
 
     def _request_provider_url(self, call: ast.Call) -> str | None:
         """If `call` is a Request(<url>, ...) whose url resolves to a provider host, return it."""
-        if self._terminal_name(call.func) in REQUEST_CTORS:
+        name = self._terminal_name(call.func)
+        if name in REQUEST_CTORS or name in self.request_ctor_aliases:
             arg = self._url_arg(call)
             if arg is not None:
                 url = self._resolve_url_expr(arg)
@@ -379,8 +412,10 @@ class _Scanner(ast.NodeVisitor):
         """(h) urllib egress: urlopen(<provider-url>) / urlopen(Request(<provider-url>)) /
         req=Request(<provider-url>); urlopen(req). Matches urlopen by TERMINAL NAME so
         qualified/imported aliases (urllib.request.urlopen, request.urlopen, bare urlopen,
-        U.urlopen) all resolve. URL may be a literal, a constant, an f-string, or '+'-concat."""
-        if self._terminal_name(n.func) not in URLOPEN_NAMES:
+        U.urlopen) all resolve. URL may be a literal, a constant, an f-string, or '+'-concat.
+        A RENAMED import (`from urllib.request import urlopen as uo`) resolves via urlopen_aliases."""
+        name = self._terminal_name(n.func)
+        if name not in URLOPEN_NAMES and name not in self.urlopen_aliases:
             return False
         arg = self._url_arg(n)
         if arg is None:
@@ -427,6 +462,12 @@ class _Scanner(ast.NodeVisitor):
             resolved = self._resolve(f.id)
             if resolved != f.id:
                 self._record_callable(resolved, n)
+            # (i) bare/renamed imported HTTP verb: `from requests import post [as p] ; post(URL)`.
+            #     The Attribute branch catches `requests.post(...)`; a Name-target verb needs the
+            #     ImportFrom alias set. Only when a provider URL is among the args (fail-closed on host).
+            elif f.id in self.http_verb_aliases and \
+                    any(any(m in u for m in PROVIDER_URL_MARKERS) for u in self._arg_urls(n)):
+                self._record("http", n)
 
         elif isinstance(f, ast.NamedExpr):
             # (g) walrus as callable: (go := client...create)(...)
@@ -450,14 +491,21 @@ def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
         warnings.simplefilter("ignore", SyntaxWarning)
         tree = ast.parse(src)
     s = _Scanner()
-    # Pre-pass: collect instance-attribute callable aliases (self.x = client...create) BEFORE
-    # visiting calls, so a `self.x(...)` call in a method defined ABOVE __init__ still resolves
-    # (instance attributes are not source-ordered like locals).
+    # Pre-pass: collect (1) ImportFrom callable aliases and (2) instance-attribute callable aliases
+    # (self.x = client...create, INCLUDING the annotated `self.x: Callable = ...create` form) BEFORE
+    # visiting calls — so a bare/renamed imported verb resolves regardless of source order, and a
+    # `self.x(...)` call in a method defined ABOVE __init__ still resolves (instance attributes are
+    # not source-ordered like locals; an AnnAssign is NOT an ast.Assign, so it needs its own arm).
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
+        if isinstance(node, ast.ImportFrom):
+            s._collect_import(node)
+        elif isinstance(node, ast.Assign):
             for tgt in node.targets:
                 if isinstance(tgt, ast.Attribute):
                     s._store_alias(tgt, node.value)
+        elif isinstance(node, ast.AnnAssign):
+            if node.value is not None and isinstance(node.target, ast.Attribute):
+                s._store_alias(node.target, node.value)
     s.visit(tree)
     # Assign a stable source-order ordinal per (scope, kind) so duplicate calls in one scope
     # and same-named methods across classes each get a distinct identity key.

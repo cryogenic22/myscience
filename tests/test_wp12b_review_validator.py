@@ -472,3 +472,71 @@ def test_approve_without_run_binding_fails_closed():
 
 def test_contract_pins_the_reviewer_numeric_id():
     assert CONTRACT.get("trusted_independent_reviewer_id") == 317626643
+
+
+# =========================================================================
+# 2026-08-20 correction round — two independent reviews found adjacent fail-open
+# cases: the payload gate set was decorative, and reviewer identity was still
+# partially fail-open. Each mutation validated CLEAN before these fixes.
+# =========================================================================
+
+# WP12#2 — the review-of-record payload must HONESTLY enumerate every required gate exactly once
+# with status 'pass'. Understating a required gate (omit / skip / fail / duplicate / unknown) is a
+# vacuous-green signal even though trusted.gate_conclusions remains the real authority.
+
+def test_approve_payload_omitting_required_gate_rejected():
+    assert "REQUIRED_GATE_ABSENT_IN_PAYLOAD" in _codes(_mut(gates=[]))
+
+
+def test_approve_payload_required_gate_marked_skip_rejected():
+    art = _mut(gates=[{"name": "conservation-lane1", "status": "skip"}])
+    assert "REQUIRED_GATE_NOT_PASS_IN_PAYLOAD" in _codes(art)
+
+
+def test_approve_payload_duplicate_required_gate_rejected():
+    art = _mut(gates=[{"name": "conservation-lane1", "status": "pass"},
+                      {"name": "conservation-lane1", "status": "pass"}])
+    assert "DUPLICATE_GATE_IN_PAYLOAD" in _codes(art)
+
+
+def test_approve_payload_unknown_gate_rejected():
+    art = _mut(gates=[{"name": "conservation-lane1", "status": "pass"},
+                      {"name": "not-a-required-gate", "status": "pass"}])
+    assert "UNKNOWN_GATE_IN_PAYLOAD" in _codes(art)
+
+
+def test_good_approve_with_exact_required_gate_set_still_valid():
+    """The honest payload (every required gate exactly once, all pass) must stay clean."""
+    assert validate_review(_GOOD_APPROVE, CONTRACT, _TRUSTED) == []
+
+
+# WP12#7 — reviewer / App identity must fail closed on a MISSING account type, and the contract's
+# pinned App id (previously unenforced) must reject a review that carries a mismatched one.
+
+def test_reviewer_type_missing_fails_closed():
+    """A pinned reviewer id with NO account type from the review API must fail closed — a None
+    actor_type slipped past the `is not None` guard before (fail-open)."""
+    assert "REVIEWER_TYPE_UNVERIFIED" in _codes(_GOOD_APPROVE, _ti(review_actor_type=None))
+
+
+def test_reviewer_app_id_mismatch_rejected():
+    """A review carrying a `performed_via_github_app.id` != the contract's pinned App id fails
+    closed — the pinned App-id claim, previously decorative, now has teeth when it is observable."""
+    codes = _codes(_GOOD_APPROVE, _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=999999))
+    assert "REVIEWER_APP_ID_MISMATCH" in codes, codes
+
+
+def test_reviewer_app_id_absent_is_tolerated_because_account_id_binds():
+    """App id ABSENT from the reviews API is tolerated by design: the bot-account id (317626643) is
+    already enforced and non-reassignable, and GitHub's /pulls/{n}/reviews response does not carry
+    performed_via_github_app — so requiring it would make a legit APPROVE unreachable. Whether to
+    make app-id MANDATORY is an owner contract decision (finding #4 option b), not a builder edit."""
+    codes = _codes(_GOOD_APPROVE, _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=None))
+    assert not any(c.startswith("REVIEWER_APP_ID") for c in codes), codes
+
+
+def test_reviewer_app_id_match_is_valid():
+    """When the review DOES carry a matching App id, the APPROVE stays clean."""
+    assert validate_review(
+        _GOOD_APPROVE, CONTRACT,
+        _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=4614805)) == []

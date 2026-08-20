@@ -484,6 +484,98 @@ def test_prior_scanner_was_blind_to_urllib():
         assert len(scan_source(src)) == 1       # fixed: caught
 
 
+# =========================================================================
+# 2026-08-20 correction round — six STATICALLY-RESOLVABLE forms two independent
+# reviews reproduced as scanning to ZERO. Each is fixable by construction (NOT a
+# runtime residual), so each MUST turn the scanner RED — an xfail here would be a
+# vacuous-green mislabel (principle #3).
+# =========================================================================
+
+_IMPORTED_REQUESTS_POST = """
+from requests import post
+def synth(prompt):
+    return post("https://api.openai.com/v1/chat/completions", json=prompt)
+"""
+
+_RENAMED_REQUESTS_POST = """
+from requests import post as xpost
+def synth(prompt):
+    return xpost("https://api.openai.com/v1/chat/completions", json=prompt)
+"""
+
+_RENAMED_URLLIB_URLOPEN = """
+from urllib.request import urlopen as uo, Request
+def s(payload):
+    return uo(Request("https://api.anthropic.com/v1/messages", data=payload))
+"""
+
+_FORMAT_URL = """
+import requests
+def synth(prompt):
+    return requests.post("https://api.openai.com/v1/{}".format("chat/completions"), json=prompt)
+"""
+
+_PERCENT_URL = """
+import requests
+def synth(prompt, path):
+    return requests.post("https://api.openai.com/v1/%s" % path, json=prompt)
+"""
+
+_ANNOTATED_SELF_ATTR_CALL_BEFORE_INIT = """
+class Worker:
+    def run(self, prompt):
+        return self._go(model="gpt", messages=prompt)
+    def __init__(self, client):
+        self._go: Callable = client.chat.completions.create
+"""
+
+
+def test_scanner_catches_imported_requests_post():
+    """`from requests import post ; post(URL)` — a bare-Name HTTP verb, never modeled before."""
+    hits = scan_source(_IMPORTED_REQUESTS_POST)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_renamed_requests_post():
+    """`from requests import post as xpost ; xpost(URL)` — the ImportFrom alias must be resolved."""
+    hits = scan_source(_RENAMED_REQUESTS_POST)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_renamed_urllib_urlopen():
+    """`from urllib.request import urlopen as uo ; uo(Request(URL))` — a renamed urlopen."""
+    hits = scan_source(_RENAMED_URLLIB_URLOPEN)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_format_url():
+    """`requests.post("https://api.openai.com/v1/{}".format(...))` — the provider host is in the
+    static .format template prefix, so it is statically resolvable."""
+    hits = scan_source(_FORMAT_URL)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_percent_url():
+    """`requests.post("https://api.openai.com/v1/%s" % path)` — the host is in the %-template prefix."""
+    hits = scan_source(_PERCENT_URL)
+    assert len(hits) == 1 and hits[0].kind == "http", hits
+
+
+def test_scanner_catches_annotated_self_attr_call_before_init():
+    """`self._go: Callable = client...create` (an AnnAssign attribute target) called from a method
+    ABOVE __init__ — the pre-pass must include AnnAssign, not only Assign."""
+    hits = scan_source(_ANNOTATED_SELF_ATTR_CALL_BEFORE_INIT)
+    assert len(hits) == 1 and hits[0].kind == "chat", hits
+
+
+def test_correction_round_forms_are_real_gaps_not_already_covered():
+    """These six are statically resolvable and therefore MUST be RED (>=1 hit each) — the negation
+    of an xfail. Guards against a future refactor silently regressing any of them back to zero."""
+    for src in (_IMPORTED_REQUESTS_POST, _RENAMED_REQUESTS_POST, _RENAMED_URLLIB_URLOPEN,
+                _FORMAT_URL, _PERCENT_URL, _ANNOTATED_SELF_ATTR_CALL_BEFORE_INIT):
+        assert len(scan_source(src)) >= 1, src
+
+
 @pytest.mark.xfail(strict=True, reason=(
     "runtime-computed attribute name is beyond STATIC analysis by construction; the backstop is "
     "the PRIV-001b runtime egress guard (ESC-2026-08-15-egress-static-limit). strict=True: if "

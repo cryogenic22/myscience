@@ -83,8 +83,10 @@ class TrustedInputs:
     # Independent-review binding (external truth from the GitHub review API):
     trusted_reviewer_login: str | None = None
     trusted_reviewer_id: int | None = None   # pinned numeric id of the App bot (contract)
+    trusted_reviewer_app_id: int | None = None   # pinned GitHub App id (contract); enforced-if-present
     review_actor: str | None = None
     review_actor_id: int | None = None        # the reviewing account's numeric id (review API)
+    review_actor_app_id: int | None = None    # performed_via_github_app.id, if the review carries it
     review_actor_type: str | None = None      # "Bot" for an App-authored review (review API)
     review_state: str | None = None
     review_commit_id: str | None = None
@@ -394,6 +396,39 @@ def validate_review(
                         out.append(Violation("REQUIRED_GATE_NOT_PASSED",
                                              f"required gate {gname!r} real conclusion is {real or 'absent'!r}, not "
                                              f"'success' (skip/fail/absent/pending do not satisfy a required gate)"))
+                # 10b'. The review-of-record PAYLOAD must HONESTLY enumerate every required gate
+                #       exactly once with status 'pass'. trusted.gate_conclusions remains the real
+                #       authority (10b), but a payload that OMITS / SKIPS / FAILS / DUPLICATES a
+                #       required gate — or pads with a non-ratified UNKNOWN gate — understates the
+                #       gate set in the record itself and is a vacuous-green signal. Fail closed
+                #       (WP12#2: a required-gate skip must be rejected).
+                if trusted.required_gates and isinstance(gates, list):
+                    required = set(trusted.required_gates)
+                    payload_gate_names = [
+                        g["name"] for g in gates
+                        if isinstance(g, dict) and isinstance(g.get("name"), str)
+                    ]
+                    counts: dict[str, int] = {}
+                    for gn in payload_gate_names:
+                        counts[gn] = counts.get(gn, 0) + 1
+                    for gname in sorted(required):
+                        c = counts.get(gname, 0)
+                        if c == 0:
+                            out.append(Violation("REQUIRED_GATE_ABSENT_IN_PAYLOAD",
+                                                 f"required gate {gname!r} is not enumerated in the review "
+                                                 f"payload's gates (the record understates the gate set)"))
+                        elif c > 1:
+                            out.append(Violation("DUPLICATE_GATE_IN_PAYLOAD",
+                                                 f"required gate {gname!r} is listed {c}× in the payload "
+                                                 f"(enumerate each required gate exactly once)"))
+                        elif gate_status.get(gname) != "pass":
+                            out.append(Violation("REQUIRED_GATE_NOT_PASS_IN_PAYLOAD",
+                                                 f"required gate {gname!r} is {gate_status.get(gname)!r} in the "
+                                                 f"payload, not 'pass' (skip/fail do not satisfy it)"))
+                    for extra in sorted(set(payload_gate_names) - required):
+                        out.append(Violation("UNKNOWN_GATE_IN_PAYLOAD",
+                                             f"payload gate {extra!r} is not a ratified required gate "
+                                             f"(an APPROVE payload must enumerate only the required set)"))
             # 10c. APPROVE requires a fully-reconciled independent review (external truth).
             out.extend(_reconcile_independent_review(trusted))
 
@@ -437,10 +472,30 @@ def _reconcile_independent_review(trusted: TrustedInputs) -> list[Violation]:
             out.append(Violation("REVIEWER_ID_MISMATCH",
                                  f"review actor id {trusted.review_actor_id} != pinned trusted reviewer id "
                                  f"{trusted.trusted_reviewer_id} (a login can be spoofed; the id cannot)"))
-        if trusted.review_actor_type is not None and trusted.review_actor_type != "Bot":
+        # A pinned id demands the account TYPE be present AND 'Bot'. A None type (missing from the
+        # review API) previously slipped past the `is not None` guard — fail closed on absence, not
+        # only on a wrong type (a missing type is unverified, not benign).
+        if trusted.review_actor_type is None:
+            out.append(Violation("REVIEWER_TYPE_UNVERIFIED",
+                                 "no account type from the GitHub review API — cannot confirm the "
+                                 "trusted reviewer is a GitHub App bot (fail closed)"))
+        elif trusted.review_actor_type != "Bot":
             out.append(Violation("REVIEWER_NOT_BOT",
                                  f"review actor type {trusted.review_actor_type!r} is not 'Bot' — the "
                                  f"trusted independent reviewer is a GitHub App bot"))
+    # The contract MAY also pin the GitHub App id. It is enforced ONLY when the review carries a
+    # performed_via_github_app.id — the /pulls/{n}/reviews response does not include that field
+    # today, so requiring its PRESENCE would make a legit APPROVE unreachable. This is safe because
+    # the bot-ACCOUNT id above already fully and non-reassignably binds identity (the bot user can
+    # be actuated only by its owning App). A review that DOES present a MISMATCHED App id is rejected
+    # here; making App-id mandatory (rejecting absence) is an owner contract decision, since the
+    # reviews API cannot supply it (WP12#7 finding #4 — option b routes through the owner).
+    if trusted.trusted_reviewer_app_id is not None and trusted.review_actor_app_id is not None \
+            and trusted.review_actor_app_id != trusted.trusted_reviewer_app_id:
+        out.append(Violation("REVIEWER_APP_ID_MISMATCH",
+                             f"review App id {trusted.review_actor_app_id} != pinned App id "
+                             f"{trusted.trusted_reviewer_app_id} (contract "
+                             f"trusted_independent_reviewer_app_id)"))
     if trusted.review_dismissed or trusted.review_state == "DISMISSED":
         out.append(Violation("REVIEW_DISMISSED",
                              "the independent review was dismissed — it no longer approves this head"))

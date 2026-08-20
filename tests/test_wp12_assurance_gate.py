@@ -251,8 +251,9 @@ def test_independent_review_extracts_trusted_reviewers_latest(monkeypatch):
     )
     monkeypatch.setattr(chk, "_run", lambda cmd: payload)
     r = chk.independent_review("1", "owner/repo", _BOT)
-    assert r == {"actor": _BOT, "actor_id": None, "actor_type": None, "state": "APPROVED",
-                 "commit_id": "headsha", "dismissed": False, "body": '{"verdict":"APPROVE"}'}
+    assert r == {"actor": _BOT, "actor_id": None, "actor_type": None, "app_id": None,
+                 "state": "APPROVED", "commit_id": "headsha", "dismissed": False,
+                 "body": '{"verdict":"APPROVE"}'}
 
 
 def test_independent_review_flags_dismissed(monkeypatch):
@@ -401,6 +402,23 @@ def test_parse_payload_rejects_ambiguous_multiple_objects():
     """FINDING #5: two distinct JSON objects in one body — taking the first is arbitrary; fail closed."""
     body = '```json\n{"verdict":"CHANGES-REQUIRED"}\n```\n```json\n{"verdict":"APPROVE"}\n```'
     assert chk.parse_review_payload(body) is None
+
+
+def test_parse_payload_rejects_duplicate_key_block_beside_valid_block():
+    """2026-08-20 correction round (WP12#6): a duplicate-key block is JSON-looking-but-contradictory.
+    Silently DISCARDING it while a separate valid APPROVE block wins is the exact bypass an edited
+    body could exploit — any dup-key candidate must poison the WHOLE body, not just itself."""
+    body = ('```json\n{"verdict": "CHANGES-REQUIRED", "verdict": "BLOCK"}\n```\n'
+            '```json\n{"verdict": "APPROVE"}\n```')
+    assert chk.parse_review_payload(body) is None
+
+
+def test_parse_payload_plain_prose_still_yields_the_single_valid_block():
+    """Regression guard for the fix above: a NON-JSON prose candidate (JSONDecodeError, not a
+    dup-key ValueError) must still be skipped, not treated as poison — one valid block resolves."""
+    body = 'LGTM overall.\n```json\n{"verdict":"APPROVE","reviewed_sha":"x"}\n```'
+    p = chk.parse_review_payload(body)
+    assert p and p["verdict"] == "APPROVE"
 
 
 def test_parse_payload_accepts_single_valid_object():

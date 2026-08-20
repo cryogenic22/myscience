@@ -123,6 +123,10 @@ def independent_review(pr: str, repo: str | None, expected_reviewer: str) -> dic
         # string (a login is weaker; the id cannot be reassigned). Verified in the validator.
         "actor_id": user.get("id"),
         "actor_type": user.get("type"),
+        # App id from performed_via_github_app if the review carries it. The /pulls/{n}/reviews
+        # response does NOT currently include this field, so it is typically None — the validator
+        # enforces it ONLY when present (the bot-account id above is the load-bearing identity gate).
+        "app_id": (r.get("performed_via_github_app") or {}).get("id"),
         "state": state,
         "commit_id": r.get("commit_id"),
         "dismissed": state == "DISMISSED",
@@ -159,8 +163,13 @@ def parse_review_payload(body: str) -> dict | None:
     for cand in candidates:
         try:
             obj = json.loads(cand, object_pairs_hook=_no_duplicate_keys)
-        except (json.JSONDecodeError, ValueError):
-            continue  # unparseable OR duplicate-key: not a believable payload
+        except json.JSONDecodeError:
+            continue  # not JSON at all (prose, a non-JSON fence) — simply not a candidate
+        except ValueError:
+            # _no_duplicate_keys raised: a JSON-looking but CONTRADICTORY candidate (duplicate keys).
+            # Silently discarding it while another valid block wins is the exact bypass an edited
+            # review body could exploit — poison the WHOLE body (require ONE unambiguous payload).
+            return None
         if isinstance(obj, dict) and not any(obj == d for d in distinct):
             distinct.append(obj)
     if len(distinct) != 1:
@@ -192,8 +201,10 @@ def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
         pr_author_login=pr_author_login,
         trusted_reviewer_login=contract.get("trusted_independent_reviewer"),
         trusted_reviewer_id=contract.get("trusted_independent_reviewer_id"),
+        trusted_reviewer_app_id=contract.get("trusted_independent_reviewer_app_id"),
         review_actor=review.get("actor"),
         review_actor_id=review.get("actor_id"),
+        review_actor_app_id=review.get("app_id"),
         review_actor_type=review.get("actor_type"),
         review_state=review.get("state"),
         review_commit_id=review.get("commit_id"),
@@ -206,6 +217,7 @@ def build_trusted(pr: str, manifest: dict, contract: dict, *, head_sha: str,
 _SELFTEST_HEAD = "1234567890abcdef1234567890abcdef12345678"
 _SELFTEST_BOT = "codexindependentreviewer[bot]"
 _SELFTEST_BOT_ID = 317626643
+_SELFTEST_BOT_APP_ID = 4614805
 _SELFTEST_TRUSTED = TrustedInputs(
     pr_head_sha=_SELFTEST_HEAD,
     final_commit_committed_at="2026-08-14T10:00:00+00:00",
@@ -217,8 +229,10 @@ _SELFTEST_TRUSTED = TrustedInputs(
     pr_author_login="the-builder",
     trusted_reviewer_login=_SELFTEST_BOT,
     trusted_reviewer_id=_SELFTEST_BOT_ID,
+    trusted_reviewer_app_id=_SELFTEST_BOT_APP_ID,
     review_actor=_SELFTEST_BOT,                 # trusted reviewer
     review_actor_id=_SELFTEST_BOT_ID,           # pinned numeric id (not just the login)
+    review_actor_app_id=_SELFTEST_BOT_APP_ID,   # matching App id (enforced-if-present)
     review_actor_type="Bot",                    # a GitHub App bot
     review_state="APPROVED",                    # APPROVED
     review_commit_id=_SELFTEST_HEAD,            # targets the exact head
