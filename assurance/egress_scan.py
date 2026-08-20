@@ -123,9 +123,15 @@ class _Scanner(ast.NodeVisitor):
         self.alias_stack: list[dict[str, str]] = [{}]       # name -> resolved dotted chain
         self.str_alias_stack: list[dict[str, str]] = [{}]   # name -> str constant value
         # Attribute-target callable aliases (e.g. `self._go = client...create`), keyed by the
-        # dotted target ("self._go"). Module-wide (NOT scope-stacked) because an instance
-        # attribute set in __init__ is called from another method — a different scope.
+        # ENCLOSING-CLASS scope + dotted target ("<class-loc>::self._go"). NOT method-scope-stacked
+        # (an instance attr set in __init__ is called from another method — a different method scope),
+        # but class-qualified: a harmless `self._go` in one class must never overwrite a provider
+        # `self._go` in another (a cross-class collision would blind the scanner — a vacuous-green
+        # false negative). Keyed by the class's source location so even two same-NAMED classes differ.
         self.attr_alias: dict[str, str] = {}
+        # Nearest-enclosing-ClassDef scope ("<lineno>:<col>"), maintained in BOTH the pre-pass and
+        # the main visit so attr-alias write/read keys match. Empty ("") at module level.
+        self.class_loc_stack: list[str] = []
         # Names bound to a urllib.request.Request(<provider-url>, ...) — so `req = Request(URL)`
         # then `urlopen(req)` resolves. Scope-stacked (Request objects are locals).
         self.req_alias_stack: list[dict[str, str]] = [{}]   # name -> resolved provider URL
@@ -159,8 +165,19 @@ class _Scanner(ast.NodeVisitor):
 
     def visit_ClassDef(self, n: ast.ClassDef) -> None:
         self._push(n.name)
+        self.class_loc_stack.append(f"{n.lineno}:{n.col_offset}")
         self.generic_visit(n)
+        self.class_loc_stack.pop()
         self._pop()
+
+    def _class_scope(self) -> str:
+        """Source location of the nearest enclosing ClassDef ("<lineno>:<col>"), or "" at module
+        level. Used to qualify attribute-alias keys so cross-class `self.x` never collide."""
+        return self.class_loc_stack[-1] if self.class_loc_stack else ""
+
+    @staticmethod
+    def _attr_key(scope: str, target: str) -> str:
+        return f"{scope}::{target}"
 
     def _qualscope(self) -> str:
         inner = ".".join(self.scope_stack[1:])
@@ -342,16 +359,18 @@ class _Scanner(ast.NodeVisitor):
             key = self._chain_of(target)           # e.g. "self._go"
             chain = self._callable_chain_of(value)
             if key is not None and chain is not None:
-                self.attr_alias[key] = chain
+                self.attr_alias[self._attr_key(self._class_scope(), key)] = chain
 
-    def _resolve_attr(self, key: str) -> str | None:
-        """Transitively resolve an attribute-target alias through attr_alias
-        (self._go -> self._raw -> client...create). Cycle-safe."""
-        v = self.attr_alias.get(key)
+    def _resolve_attr(self, target: str) -> str | None:
+        """Transitively resolve an attribute-target alias WITHIN the current class scope
+        (self._go -> self._raw -> client...create). Cycle-safe. Class-qualified so a same-named
+        attribute in another class cannot be mistaken for this one."""
+        scope = self._class_scope()
+        v = self.attr_alias.get(self._attr_key(scope, target))
         seen: set[str] = set()
-        while v is not None and v in self.attr_alias and v not in seen:
+        while v is not None and self._attr_key(scope, v) in self.attr_alias and v not in seen:
             seen.add(v)
-            v = self.attr_alias[v]
+            v = self.attr_alias[self._attr_key(scope, v)]
         return v
 
     def visit_Assign(self, n: ast.Assign) -> None:
@@ -480,6 +499,31 @@ class _Scanner(ast.NodeVisitor):
         self.generic_visit(n)
 
 
+def _prepass_attr_aliases(s: _Scanner, node: ast.AST) -> None:
+    """Scope-aware collection of instance-attribute callable aliases, maintaining s.class_loc_stack
+    so each alias is keyed by its ENCLOSING CLASS (see _Scanner.attr_alias). Recurses into class /
+    function bodies AND nested statement bodies (if/with/for) inside a method. Only ATTRIBUTE
+    targets are collected here (Name-target str/req/chain aliases are collected in source order by
+    the main visit); this pre-pass exists solely for the set-in-__init__/read-in-another-method
+    pattern that is not source-ordered."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.ClassDef):
+            s.class_loc_stack.append(f"{child.lineno}:{child.col_offset}")
+            _prepass_attr_aliases(s, child)
+            s.class_loc_stack.pop()
+        elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _prepass_attr_aliases(s, child)   # a method keeps its enclosing class scope
+        else:
+            if isinstance(child, ast.Assign):
+                for tgt in child.targets:
+                    if isinstance(tgt, ast.Attribute):
+                        s._store_alias(tgt, child.value)
+            elif isinstance(child, ast.AnnAssign):
+                if child.value is not None and isinstance(child.target, ast.Attribute):
+                    s._store_alias(child.target, child.value)
+            _prepass_attr_aliases(s, child)   # descend into if/with/for bodies within a method
+
+
 def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
     """Scan one Python source string. Raises SyntaxError on unparseable input.
 
@@ -491,21 +535,16 @@ def scan_source(src: str, relpath: str = "<mem>") -> list[Hit]:
         warnings.simplefilter("ignore", SyntaxWarning)
         tree = ast.parse(src)
     s = _Scanner()
-    # Pre-pass: collect (1) ImportFrom callable aliases and (2) instance-attribute callable aliases
-    # (self.x = client...create, INCLUDING the annotated `self.x: Callable = ...create` form) BEFORE
-    # visiting calls — so a bare/renamed imported verb resolves regardless of source order, and a
-    # `self.x(...)` call in a method defined ABOVE __init__ still resolves (instance attributes are
-    # not source-ordered like locals; an AnnAssign is NOT an ast.Assign, so it needs its own arm).
+    # Pre-pass (before calls are visited):
+    #   (1) ImportFrom callable aliases — module scope, order-independent (a flat walk is fine).
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             s._collect_import(node)
-        elif isinstance(node, ast.Assign):
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Attribute):
-                    s._store_alias(tgt, node.value)
-        elif isinstance(node, ast.AnnAssign):
-            if node.value is not None and isinstance(node.target, ast.Attribute):
-                s._store_alias(node.target, node.value)
+    #   (2) instance-attribute callable aliases (self.x = / self.x: T = ...create) — collected
+    #       CLASS-QUALIFIED and scope-aware so (a) a `self.x(...)` call in a method defined ABOVE
+    #       __init__ still resolves and (b) a same-named attribute in ANOTHER class cannot overwrite
+    #       it (the cross-class collision that blinded the scanner). AnnAssign needs its own arm.
+    _prepass_attr_aliases(s, tree)
     s.visit(tree)
     # Assign a stable source-order ordinal per (scope, kind) so duplicate calls in one scope
     # and same-named methods across classes each get a distinct identity key.

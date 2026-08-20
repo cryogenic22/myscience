@@ -83,10 +83,8 @@ class TrustedInputs:
     # Independent-review binding (external truth from the GitHub review API):
     trusted_reviewer_login: str | None = None
     trusted_reviewer_id: int | None = None   # pinned numeric id of the App bot (contract)
-    trusted_reviewer_app_id: int | None = None   # pinned GitHub App id (contract); enforced-if-present
     review_actor: str | None = None
     review_actor_id: int | None = None        # the reviewing account's numeric id (review API)
-    review_actor_app_id: int | None = None    # performed_via_github_app.id, if the review carries it
     review_actor_type: str | None = None      # "Bot" for an App-authored review (review API)
     review_state: str | None = None
     review_commit_id: str | None = None
@@ -483,19 +481,10 @@ def _reconcile_independent_review(trusted: TrustedInputs) -> list[Violation]:
             out.append(Violation("REVIEWER_NOT_BOT",
                                  f"review actor type {trusted.review_actor_type!r} is not 'Bot' — the "
                                  f"trusted independent reviewer is a GitHub App bot"))
-    # The contract MAY also pin the GitHub App id. It is enforced ONLY when the review carries a
-    # performed_via_github_app.id — the /pulls/{n}/reviews response does not include that field
-    # today, so requiring its PRESENCE would make a legit APPROVE unreachable. This is safe because
-    # the bot-ACCOUNT id above already fully and non-reassignably binds identity (the bot user can
-    # be actuated only by its owning App). A review that DOES present a MISMATCHED App id is rejected
-    # here; making App-id mandatory (rejecting absence) is an owner contract decision, since the
-    # reviews API cannot supply it (WP12#7 finding #4 — option b routes through the owner).
-    if trusted.trusted_reviewer_app_id is not None and trusted.review_actor_app_id is not None \
-            and trusted.review_actor_app_id != trusted.trusted_reviewer_app_id:
-        out.append(Violation("REVIEWER_APP_ID_MISMATCH",
-                             f"review App id {trusted.review_actor_app_id} != pinned App id "
-                             f"{trusted.trusted_reviewer_app_id} (contract "
-                             f"trusted_independent_reviewer_app_id)"))
+    # NOTE (owner ruling 2026-08-20): a GitHub App-id pin was considered and REMOVED. GitHub's
+    # documented pull-review response does not expose performed_via_github_app, so an App-id could
+    # not be observed from the review API — an unenforceable control. Identity is bound by the login,
+    # the immutable bot-ACCOUNT id (317626643, above), and account type == 'Bot'.
     if trusted.review_dismissed or trusted.review_state == "DISMISSED":
         out.append(Violation("REVIEW_DISMISSED",
                              "the independent review was dismissed — it no longer approves this head"))

@@ -576,6 +576,61 @@ def test_correction_round_forms_are_real_gaps_not_already_covered():
         assert len(scan_source(src)) >= 1, src
 
 
+# --- cross-class attribute-alias collision (2026-08-20 review round-2 blocker) ---------------
+# attr_alias was keyed GLOBALLY by the dotted target (self._go) without the enclosing class, so a
+# harmless self._go in one class could overwrite a provider self._go in another — blinding the
+# scanner (a vacuous-green false negative). Order-permutation + same-name coverage.
+
+_XCLASS_PROVIDER_FIRST = """
+class Provider:
+    def run(self, p):
+        return self._go(model="gpt", messages=p)
+    def __init__(self, client):
+        self._go = client.chat.completions.create
+
+class Harmless:
+    def __init__(self, helper):
+        self._go = helper.run
+"""
+
+_XCLASS_HARMLESS_FIRST = """
+class Harmless:
+    def __init__(self, helper):
+        self._go = helper.run
+
+class Provider:
+    def run(self, p):
+        return self._go(model="gpt", messages=p)
+    def __init__(self, client):
+        self._go = client.chat.completions.create
+"""
+
+_XCLASS_SAME_NAME = """
+class W:
+    def run(self, p):
+        return self._go(model="gpt", messages=p)
+    def __init__(self, client):
+        self._go = client.chat.completions.create
+
+class W:
+    def __init__(self, helper):
+        self._go = helper.run
+"""
+
+
+@pytest.mark.parametrize("src,label", [
+    (_XCLASS_PROVIDER_FIRST, "provider class defined BEFORE the harmless collider"),
+    (_XCLASS_HARMLESS_FIRST, "provider class defined AFTER the harmless collider"),
+    (_XCLASS_SAME_NAME, "two classes with the SAME name both using self._go"),
+])
+def test_scanner_isolates_cross_class_attr_aliases(src, label):
+    """A harmless `self._go` in ANOTHER class must never overwrite a provider `self._go`. Aliases
+    are keyed by the enclosing class/receiver scope, so neither definition order nor a duplicated
+    class name can blind the scanner. Exactly ONE provider hit in every permutation."""
+    hits = scan_source(src)
+    assert len(hits) == 1 and hits[0].kind == "chat", (label, hits)
+
+
 @pytest.mark.xfail(strict=True, reason=(
     "runtime-computed attribute name is beyond STATIC analysis by construction; the backstop is "
     "the PRIV-001b runtime egress guard (ESC-2026-08-15-egress-static-limit). strict=True: if "

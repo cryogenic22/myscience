@@ -251,9 +251,8 @@ def test_independent_review_extracts_trusted_reviewers_latest(monkeypatch):
     )
     monkeypatch.setattr(chk, "_run", lambda cmd: payload)
     r = chk.independent_review("1", "owner/repo", _BOT)
-    assert r == {"actor": _BOT, "actor_id": None, "actor_type": None, "app_id": None,
-                 "state": "APPROVED", "commit_id": "headsha", "dismissed": False,
-                 "body": '{"verdict":"APPROVE"}'}
+    assert r == {"actor": _BOT, "actor_id": None, "actor_type": None, "state": "APPROVED",
+                 "commit_id": "headsha", "dismissed": False, "body": '{"verdict":"APPROVE"}'}
 
 
 def test_independent_review_flags_dismissed(monkeypatch):

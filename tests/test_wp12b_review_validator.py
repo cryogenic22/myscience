@@ -510,8 +510,10 @@ def test_good_approve_with_exact_required_gate_set_still_valid():
     assert validate_review(_GOOD_APPROVE, CONTRACT, _TRUSTED) == []
 
 
-# WP12#7 — reviewer / App identity must fail closed on a MISSING account type, and the contract's
-# pinned App id (previously unenforced) must reject a review that carries a mismatched one.
+# WP12#7 — reviewer identity must fail closed on a MISSING account type (not only a wrong type).
+# (A GitHub App-id pin was considered and REMOVED by owner ruling 2026-08-20 — GitHub's pull-review
+# API does not expose performed_via_github_app, so it was an unenforceable control; identity is
+# bound by login + the immutable bot-account id (317626643) + account type == 'Bot'.)
 
 def test_reviewer_type_missing_fails_closed():
     """A pinned reviewer id with NO account type from the review API must fail closed — a None
@@ -519,24 +521,10 @@ def test_reviewer_type_missing_fails_closed():
     assert "REVIEWER_TYPE_UNVERIFIED" in _codes(_GOOD_APPROVE, _ti(review_actor_type=None))
 
 
-def test_reviewer_app_id_mismatch_rejected():
-    """A review carrying a `performed_via_github_app.id` != the contract's pinned App id fails
-    closed — the pinned App-id claim, previously decorative, now has teeth when it is observable."""
-    codes = _codes(_GOOD_APPROVE, _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=999999))
-    assert "REVIEWER_APP_ID_MISMATCH" in codes, codes
-
-
-def test_reviewer_app_id_absent_is_tolerated_because_account_id_binds():
-    """App id ABSENT from the reviews API is tolerated by design: the bot-account id (317626643) is
-    already enforced and non-reassignable, and GitHub's /pulls/{n}/reviews response does not carry
-    performed_via_github_app — so requiring it would make a legit APPROVE unreachable. Whether to
-    make app-id MANDATORY is an owner contract decision (finding #4 option b), not a builder edit."""
-    codes = _codes(_GOOD_APPROVE, _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=None))
-    assert not any(c.startswith("REVIEWER_APP_ID") for c in codes), codes
-
-
-def test_reviewer_app_id_match_is_valid():
-    """When the review DOES carry a matching App id, the APPROVE stays clean."""
-    assert validate_review(
-        _GOOD_APPROVE, CONTRACT,
-        _ti(trusted_reviewer_app_id=4614805, review_actor_app_id=4614805)) == []
+def test_no_app_id_field_on_trusted_inputs():
+    """The removed App-id pin leaves no trace: constructing TrustedInputs with an app-id kwarg is a
+    TypeError, and a good APPROVE still validates on login + account-id + type alone."""
+    import pytest as _pytest
+    with _pytest.raises(TypeError):
+        _ti(trusted_reviewer_app_id=4614805)
+    assert validate_review(_GOOD_APPROVE, CONTRACT, _TRUSTED) == []
