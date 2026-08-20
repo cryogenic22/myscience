@@ -262,6 +262,29 @@ utilities / no dynamic class names — the v4/Railway gotcha), TDD, honest degra
 for missing fields, claim your loop in §7.6 first, independent `/review-gate` before
 merge (no self-merge), `App.tsx`/shell edits additive + minimal.
 
+**Platform (synthesis lane), 2026-07-04 — SHIPPED #317: CTX-corpus negation
+canary + Track B follow-up.** Field-confirmed: market_zero app code loads a
+**vendored `ctxpack` 0.3.0** (`market_zero/ctxpack/`) whose prose compressor
+`md_parser._compress_prose` strips `"no"/"not"` → clinical inversion ("did **not**
+meet its primary endpoint" → "meet …"; probed 4/4, preserved under ≥0.5.0). Blast
+radius **latent, MEDIUM** — only `services/ctx_corpus.py` + `services/ctx_pipeline.py`
+import it (**both Platform-lane**; the ctx hooks/MCP already run ≥0.5.0 via `-P`), and
+the corpus is safe *today* only because `ctx_corpus` emits YAML (0.3.0's YAML value
+path keeps negations). **#317** adds `tests/test_ctx_negation_preservation.py`,
+**wired into the Backend Unit Smoke hard gate** (`tests/backend_smoke_suite.txt` — a
+protected-surface file, so this edit is **flagged for owner/CODEOWNER review**) so the
+guard is a real Lane-1 floor, not just import-collected: YAML path pinned ·
+corpus-dir-is-YAML-only · negation survives a full `pack()` · an `xfail(strict)`
+documenting the live defect, proven a real RED via `--runxfail`.
+ctxpack maintainers endorsed the finding + banked it as field evidence.
+- **Track B (Platform-lane follow-up, sequenced AFTER #317 merges):** delete the
+  vendored 0.3.0 so both files use ≥0.5.0; re-pack the corpus + re-baseline pack-byte
+  assertions and G1–G4 evals; the upgrade strict-XPASSes the #317 xfail → remove that
+  marker in the same PR. Not cross-lane (no Data ASK) — Platform verifies its own surface.
+- **Team heads-up (until Track B lands):** keep the CTX corpus dir **YAML-only** — a
+  `.md`/prose source added to it would route through the inverting 0.3.0 compressor and
+  silently flip clinical negations. The #317 guard fails closed if that happens.
+
 ---
 
 ## 7. ⛔ STOP-AND-SYNC — two Data sessions collided (2026-06-13)
