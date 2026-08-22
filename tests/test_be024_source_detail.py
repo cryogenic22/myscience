@@ -9,17 +9,23 @@ import pytest
 
 
 def _src_dict(**overrides):
+    # Mirrors the REAL services.source_registry.Source.to_dict(): the five
+    # quality dimensions + the composite are NESTED under `latest_quality`
+    # (serialized QualityDimensions), never flat top-level keys. The old fixture
+    # invented flat keys production never emits, so the endpoint's flat reads
+    # "passed" in tests while returning null for every real source.
     base = {
         "source_id": "fda-orange-book",
         "display_name": "FDA Orange Book",
         "tier": "T1",
-        "coverage_score": 0.92,
-        "latency_score": 0.85,
-        "predictive_accuracy": 0.78,
-        "stability_score": 0.95,
-        "license_health_score": 1.0,
-        "fair_score": 0.89,
-        "quality_score": 0.89,
+        "latest_quality": {
+            "coverage": 0.92,
+            "latency_score": 0.85,
+            "predictive_accuracy": 0.78,
+            "stability_score": 0.95,
+            "license_health_score": 1.0,
+            "overall_score": 0.89,
+        },
         "schema_json": {"id": "uuid", "approval_date": "date", "ingredient": "text"},
     }
     base.update(overrides)
@@ -95,6 +101,42 @@ class TestSourceFair:
         }
         for dim in out["by_dimension"].values():
             assert "value" in dim and "weight" in dim and "explanation" in dim
+
+    def test_fair_values_come_from_latest_quality(self):
+        """Regression (the vacuous-null bug): the dimensions + composite must be
+        read from the NESTED `latest_quality` shape production emits — reading
+        flat top-level keys returned null for every real source."""
+        from api.routes.sources import source_fair
+        from services.source_registry import QUALITY_WEIGHTS
+
+        with patch("api.routes.sources.SourceRegistryService") as mocked:
+            mocked.get.return_value = _fake_src()
+            out = source_fair(source_id="x", user={"role": "viewer"}, db=MagicMock())
+
+        bd = out["by_dimension"]
+        assert bd["coverage"]["value"] == 0.92
+        assert bd["latency"]["value"] == 0.85
+        assert bd["predictive_accuracy"]["value"] == 0.78
+        assert bd["stability"]["value"] == 0.95
+        assert bd["license_health"]["value"] == 1.0
+        # composite is the registry's own weighted overall_score (0.89), not a
+        # non-existent flat fair_score/quality_score (which returned null).
+        assert out["composite"] == 0.89
+        # per-dimension weights reconcile with the registry's real QUALITY_WEIGHTS
+        assert bd["coverage"]["weight"] == QUALITY_WEIGHTS["coverage"]
+        assert bd["predictive_accuracy"]["weight"] == QUALITY_WEIGHTS["predictive_accuracy"]
+
+    def test_unprofiled_source_returns_honest_nulls(self):
+        """A source with no quality snapshot → every dimension AND the composite
+        are null (honest absence), never a fabricated 0."""
+        from api.routes.sources import source_fair
+
+        with patch("api.routes.sources.SourceRegistryService") as mocked:
+            mocked.get.return_value = _fake_src(latest_quality=None)
+            out = source_fair(source_id="x", user={"role": "viewer"}, db=MagicMock())
+
+        assert out["composite"] is None
+        assert all(dim["value"] is None for dim in out["by_dimension"].values())
 
 
 # ════════════════════════════════════════════════════════════════════
