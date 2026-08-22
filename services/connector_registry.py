@@ -5,7 +5,8 @@ the Connectors UI. Joins:
 
   - CONNECTOR_REGISTRY            (which connector classes exist)
   - CONNECTOR_SCHEDULES           (label + cron)
-  - DATASET_DEFINITIONS           (description + license + api_base_url)
+  - build_dataset_definitions()   (description + license + api_base_url — all 15
+                                   sources, incl. the 9 not hand-authored)
   - connector_config (DB)         (enabled, auto_approve_runs, manual_only)
   - etl_runs (DB)                 (last_run_at, last_status, recent history)
 
@@ -20,7 +21,7 @@ from typing import Optional
 
 from connectors import CONNECTOR_REGISTRY
 from scheduler.config import CONNECTOR_SCHEDULES
-from integration.dataset_catalog import DATASET_DEFINITIONS
+from integration.dataset_catalog import build_dataset_definitions
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +45,15 @@ def _describe_schedule(cron: dict) -> str:
 
 
 def _dataset_metadata(source_key: str) -> dict:
-    """Pull description / license / api_base_url from DATASET_DEFINITIONS.
+    """Pull description / license / api_base_url from the dataset definitions.
 
-    A source can have multiple dataset entries (e.g. fda_orange_book has drugs
-    + patents + regulatory_milestones); we collapse into one summary blurb.
+    Uses `build_dataset_definitions()` (all 15 registered sources, not just the
+    6 hand-authored) so every connector in the UI carries a real description +
+    license instead of a blank. A source can have multiple dataset entries (e.g.
+    fda_orange_book has drugs + patents + regulatory_milestones); we collapse
+    into one summary blurb.
     """
-    matches = [d for d in DATASET_DEFINITIONS if d.get("source_type") == source_key]
+    matches = [d for d in build_dataset_definitions() if d.get("source_type") == source_key]
     if not matches:
         return {"description": None, "license": None, "license_url": None, "api_base_url": None}
     # Use first match for display; could be richer later
