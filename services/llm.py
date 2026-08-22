@@ -1156,6 +1156,55 @@ class LLMSynthesizer:
             self._client = OpenAI(api_key=self.config.llm.api_key)
         return self._client
 
+    def _redact_outbound(self, messages: list[dict], *, caller: str = "") -> list[dict]:
+        """PRIV-001: apply the LLMGateway's PII policy to these direct provider
+        calls, which bypass the gateway and would otherwise egress evidence text
+        (investigator emails/phones, forwarded web-result snippets) to the model
+        unredacted.
+
+        Reuses the gateway's scan/redact primitives (no duplicate PII logic).
+        Policy = config.llm.pii_policy (default "redact", the gateway default):
+        - "redact": replace each match with [KIND] before the prompt leaves us
+        - "reject": raise PIIRejected (fail closed) if any PII is present
+        - "allow":  explicit opt-out — send as-is
+        Returns the (possibly redacted) messages; never mutates the inputs.
+
+        Note: the gateway's phone pattern reduces to a bare 10-digit match when
+        separators are absent, so a raw 10-digit numeric would be redacted
+        [PHONE_US]. NCT ids ("NCT" + 8 digits), dosages, and enrollment counts do
+        not match; a prod scan found 0/3000 evidence rows affected.
+
+        Scope: this closes the four direct provider calls on THIS synthesis path.
+        Other direct-egress callers (services/extraction_llm.py,
+        integration/entity_resolver.py) still bypass the gateway — a separate,
+        Data-lane follow-up (they sit on the ingestion/resolution surface).
+        """
+        from services.llm_gateway import (
+            scan_pii, redact_pii, PIIRejected, VALID_PII_POLICIES,
+        )
+        policy = getattr(self.config.llm, "pii_policy", "redact")
+        if policy not in VALID_PII_POLICIES:
+            policy = "redact"
+        if policy == "allow":
+            return messages
+        out: list[dict] = []
+        total = 0
+        for m in messages:
+            content = m.get("content") or ""
+            matches = scan_pii(content)
+            if matches:
+                if policy == "reject":
+                    raise PIIRejected(matches)
+                total += len(matches)
+                m = {**m, "content": redact_pii(content, matches)}
+            out.append(m)
+        if total:
+            logger.info(
+                "PRIV-001: redacted %d PII match(es) before egress%s",
+                total, f" [{caller}]" if caller else "",
+            )
+        return out
+
     def _log_call(
         self,
         *,
@@ -1304,10 +1353,13 @@ class LLMSynthesizer:
             models.append(fallback_model)
 
         client = self._get_client()
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
+        messages = self._redact_outbound(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            caller="llm.raw_chat",
+        )
         import time as _time
         _t0 = _time.perf_counter()
         _last_err = None
@@ -1384,10 +1436,13 @@ class LLMSynthesizer:
         )
 
         system_prompt = _get_system_prompt(intent, format_hint)
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context},
-        ]
+        messages = self._redact_outbound(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context},
+            ],
+            caller=f"llm.synthesize:{intent}",
+        )
 
         primary_model = self.config.llm.model
         fallback_model = getattr(self.config.llm, "fallback_model", primary_model)
@@ -1474,15 +1529,19 @@ class LLMSynthesizer:
         )
 
         system_prompt = _get_system_prompt(intent, format_hint)
+        messages = self._redact_outbound(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context},
+            ],
+            caller=f"llm.synthesize_stream:{intent}",
+        )
 
         try:
             client = self._get_client()
             stream = client.chat.completions.create(
                 model=self.config.llm.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context},
-                ],
+                messages=messages,
                 max_tokens=self.config.llm.max_tokens,
                 temperature=self.config.llm.temperature,
                 stream=True,
@@ -1611,27 +1670,31 @@ class LLMSynthesizer:
             extra_context=extra_context,
         )
 
+        _research_messages = self._redact_outbound(
+            [
+                {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{context}\n\n"
+                        "Write sections titled:\n"
+                        "1) Executive Summary\n"
+                        "2) Internal Evidence (Knowledge Graph)\n"
+                        "3) Quantitative Signals\n"
+                        "4) External Context (Web)\n"
+                        "5) Risks and Data Gaps\n"
+                        "6) Recommended Next Questions\n"
+                        "Only include section 4 if web results are provided."
+                    ),
+                },
+            ],
+            caller="llm.synthesize_research_brief",
+        )
         try:
             client = self._get_client()
             response = client.chat.completions.create(
                 model=self.config.llm.model,
-                messages=[
-                    {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"{context}\n\n"
-                            "Write sections titled:\n"
-                            "1) Executive Summary\n"
-                            "2) Internal Evidence (Knowledge Graph)\n"
-                            "3) Quantitative Signals\n"
-                            "4) External Context (Web)\n"
-                            "5) Risks and Data Gaps\n"
-                            "6) Recommended Next Questions\n"
-                            "Only include section 4 if web results are provided."
-                        ),
-                    },
-                ],
+                messages=_research_messages,
                 max_tokens=min(self.config.llm.max_tokens * 2, 2200),
                 temperature=min(max(self.config.llm.temperature, 0.2), 0.5),
             )

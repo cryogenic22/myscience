@@ -143,6 +143,10 @@ class LLMConfig:
     enabled: bool = os.getenv("MZ_LLM_ENABLED", "true").lower() == "true"
     # CTX context mode: "ctx" (default) | "legacy" (fallback for debugging)
     ctx_mode: str = os.getenv("MZ_CTX_MODE", "ctx")
+    # PRIV-001: PII policy applied to outbound prompts on the direct synthesis
+    # path (which bypasses LLMGateway). Mirrors the gateway's policy vocabulary:
+    # "redact" (default) | "reject" (fail closed) | "allow" (explicit opt-out).
+    pii_policy: str = os.getenv("MZ_PII_POLICY", "redact")
 
 
 @dataclass
