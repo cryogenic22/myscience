@@ -35,6 +35,38 @@ interface Props {
   onAskInChat?: (question: string) => void;
 }
 
+/* ── Honest inline load-error banner ──
+   Rendered when a fetch fails so a failure is never disguised as an empty
+   or still-loading state. Carries role="alert" + a working Retry. */
+function InlineLoadError({ message, onRetry, testId }: {
+  message: string;
+  onRetry: () => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      data-testid={testId}
+      style={{
+        padding: '14px 16px', borderRadius: '12px',
+        background: 'var(--color-red-soft)', border: '1px solid var(--color-line)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '12px', flexWrap: 'wrap',
+      }}
+    >
+      <span style={{ fontSize: '13px', color: 'var(--color-ink-2)' }}>{message}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="btn btn-xs btn-secondary"
+        style={{ borderRadius: '6px', flexShrink: 0 }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
 /* ── Constants ── */
 
 const ENTITY_FILTERS = [
@@ -192,7 +224,11 @@ function EntityCard({ entity, entityType, onOpen, featured }: {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${name}`}
       onClick={onOpen}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{
         padding: featured ? '24px' : '20px',
         background: 'var(--color-surface)',
@@ -333,7 +369,11 @@ function SourceCard({ connector, onOpen }: {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${connector.label}`}
       onClick={onOpen}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{
         padding: '20px',
         background: 'var(--color-surface)',
@@ -473,13 +513,26 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
   const [adminTab, setAdminTab] = useState<'changes' | 'curation'>('curation');
   const [changes, setChanges] = useState<ChangeLogEntry[]>([]);
   const [hitlItems, setHitlItems] = useState<HITLItem[]>([]);
+  const [changesError, setChangesError] = useState<string | null>(null);
+  const [hitlError, setHitlError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  useEffect(() => {
-    api.catalogChanges({ limit: 40 }).then(r => setChanges(r.changes)).catch(() => {});
-    api.catalogHITL({ status_filter: 'pending', limit: 30 }).then(r => setHitlItems(r.items)).catch(() => {});
+  const loadChanges = useCallback(() => {
+    setChangesError(null);
+    api.catalogChanges({ limit: 40 })
+      .then(r => setChanges(r.changes))
+      .catch(err => setChangesError(err instanceof Error ? err.message : 'Unable to load audit trail'));
   }, []);
+
+  const loadHitl = useCallback(() => {
+    setHitlError(null);
+    api.catalogHITL({ status_filter: 'pending', limit: 30 })
+      .then(r => setHitlItems(r.items))
+      .catch(err => setHitlError(err instanceof Error ? err.message : 'Unable to load curation queue'));
+  }, []);
+
+  useEffect(() => { loadChanges(); loadHitl(); }, [loadChanges, loadHitl]);
 
   const sorted = useMemo(() => {
     const typeOrder: Record<string, number> = { quality_failure: 0, entity_resolution: 1, duplicate_candidate: 2, enrichment_request: 3 };
@@ -612,7 +665,14 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
                 )}
               </div>
             )}
-            {sorted.length === 0 && (
+            {hitlError && sorted.length === 0 && (
+              <InlineLoadError
+                testId="admin-hitl-error"
+                message={`Couldn't load the curation queue — ${hitlError}`}
+                onRetry={loadHitl}
+              />
+            )}
+            {!hitlError && sorted.length === 0 && (
               <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: '13px' }}>
                 No pending reviews.
               </div>
@@ -687,9 +747,17 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
         {adminTab === 'changes' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
             {changes.length === 0 ? (
-              <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: '13px' }}>
-                No changes recorded.
-              </div>
+              changesError ? (
+                <InlineLoadError
+                  testId="admin-changes-error"
+                  message={`Couldn't load the audit trail — ${changesError}`}
+                  onRetry={loadChanges}
+                />
+              ) : (
+                <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: '13px' }}>
+                  No changes recorded.
+                </div>
+              )
             ) : (
               changes.map(ch => (
                 <div key={ch.id} style={{
@@ -755,6 +823,8 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
   // Pipeline status (for Sources view and supply chain)
   const [pipelineStatus, setPipelineStatus] = useState<Array<{ source_key: string; label: string; schedule: string; last_run: string | null; days_since: number | null; records: number; status: string }> | null>(null);
   const [graphSummary, setGraphSummary] = useState<{ link_types: Array<{ type: string; count: number }>; total_links: number; total_entities: number; drug_completeness: Record<string, number> } | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [graphError, setGraphError] = useState<string | null>(null);
 
   // Entity profile slide-in
   const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
@@ -831,11 +901,22 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
 
   useEffect(() => { void loadOverview(true); }, [loadOverview]);
 
-  // Load pipeline status and graph summary
-  useEffect(() => {
-    api.catalogPipelineStatus().then(r => setPipelineStatus(r.connectors)).catch(() => {});
-    api.catalogGraphSummary().then(r => setGraphSummary(r)).catch(() => {});
+  // Load pipeline status and graph summary — a failure must surface an honest
+  // error, not silently drop the supply-chain strip (indistinguishable from
+  // still-loading).
+  const loadPipeline = useCallback(() => {
+    setPipelineError(null);
+    api.catalogPipelineStatus()
+      .then(r => setPipelineStatus(r.connectors))
+      .catch(err => setPipelineError(err instanceof Error ? err.message : 'Unable to load pipeline status'));
   }, []);
+  const loadGraphSummary = useCallback(() => {
+    setGraphError(null);
+    api.catalogGraphSummary()
+      .then(r => setGraphSummary(r))
+      .catch(err => setGraphError(err instanceof Error ? err.message : 'Unable to load graph summary'));
+  }, []);
+  useEffect(() => { loadPipeline(); loadGraphSummary(); }, [loadPipeline, loadGraphSummary]);
 
   // Load featured entities
   useEffect(() => {
@@ -1041,6 +1122,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                 }}
               />
               <input
+                aria-label="Search entities"
                 value={searchInput}
                 onChange={e => handleSearchInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleSearchSubmit(); }}
@@ -1116,6 +1198,13 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
             {/* ── Supply Chain Flow ── */}
             {pipelineStatus && graphSummary && (
               <SupplyChainStrip pipelineStatus={pipelineStatus} graphSummary={graphSummary} />
+            )}
+            {(pipelineError || graphError) && !(pipelineStatus && graphSummary) && (
+              <InlineLoadError
+                testId="pipeline-load-error"
+                message={`Couldn't load pipeline status — ${pipelineError ?? graphError}`}
+                onRetry={() => { loadPipeline(); loadGraphSummary(); }}
+              />
             )}
 
             {/* ── Sources View ── */}
@@ -1194,6 +1283,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
                         type="button"
+                        aria-label="Previous page"
                         disabled={browsePage === 0}
                         onClick={() => setBrowsePage(browsePage - 1)}
                         className="btn-icon"
@@ -1206,6 +1296,7 @@ function DataCatalogPanelInner({ onAskInChat }: Props) {
                       </span>
                       <button
                         type="button"
+                        aria-label="Next page"
                         disabled={browsePage + 1 >= totalPages}
                         onClick={() => setBrowsePage(browsePage + 1)}
                         className="btn-icon"

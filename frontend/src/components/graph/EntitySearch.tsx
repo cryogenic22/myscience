@@ -152,7 +152,7 @@ export default function EntitySearch({
       />
       {showSuggestions && (
         <div
-          className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-line bg-white/96 shadow-xl"
+          className="animate-fade-in absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-lg border border-line bg-surface/96 shadow-xl"
           style={{ zIndex: 30, maxHeight: '260px', overflowY: 'auto' }}
         >
           {suggestions.map((s) => (

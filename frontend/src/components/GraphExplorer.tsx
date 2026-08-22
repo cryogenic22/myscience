@@ -395,7 +395,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
   return (
     <div className="workspace-canvas flex h-full w-full min-h-0 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
       <aside
-        className={`w-full shrink-0 border-b border-line bg-white/58 transition-all duration-200 max-h-[52vh] lg:max-h-none lg:border-b-0 lg:border-r ${
+        className={`w-full shrink-0 border-b border-line bg-surface/58 transition-all duration-200 max-h-[52vh] lg:max-h-none lg:border-b-0 lg:border-r ${
           railCollapsed ? 'lg:w-[66px]' : 'lg:w-[430px]'
         }`}
       >
@@ -405,7 +405,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               <button
                 type="button"
                 onClick={() => setRailCollapsed(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2"
                 title="Expand explorer controls"
                 aria-label="Expand explorer controls"
               >
@@ -418,7 +418,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   setQuickNodeInsight(selectedEntityInsight);
                 }}
                 disabled={!selectedEntityInsight}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
                 title="Show quick node insight"
                 aria-label="Show quick node insight"
               >
@@ -428,7 +428,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 type="button"
                 onClick={() => setDrawerOpen(true)}
                 disabled={!selectedEntity}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2 disabled:opacity-35"
                 title="Open full node details"
                 aria-label="Open full node details"
               >
@@ -450,13 +450,13 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               <button
                 type="button"
                 onClick={() => setRailCollapsed(true)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-ink-3 transition-colors hover:bg-surface-2"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2"
                 title="Collapse explorer controls"
                 aria-label="Collapse explorer controls"
               >
                 <PanelLeftClose size={14} />
               </button>
-              <div className="inline-flex items-center gap-2 rounded-md border border-line bg-white text-[11px] text-ink-3" style={{ padding: '6px 12px' }}>
+              <div className="inline-flex items-center gap-2 rounded-md border border-line bg-surface text-[11px] text-ink-3" style={{ padding: '6px 12px' }}>
               <span>Hops</span>
               <select
                 value={hops}
@@ -522,8 +522,8 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   }}
                   className={`rounded-md border text-[11px] transition-colors disabled:cursor-not-allowed ${
                     lens === item.id
-                      ? 'border-ink bg-ink text-white'
-                      : 'border-line bg-white text-ink-3 hover:border-line hover:bg-surface-2'
+                      ? 'border-ink bg-ink text-surface'
+                      : 'border-line bg-surface text-ink-3 hover:border-line hover:bg-surface-2'
                   }`}
                   style={{ padding: '6px 12px' }}
                 >
@@ -643,7 +643,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       background: (!pathFromEntity || !pathToEntity)
                         ? 'var(--color-ink-4, #a1a1aa)'
                         : 'var(--color-ink, #111827)',
-                      color: '#ffffff',
+                      color: 'var(--color-surface)',
                       fontSize: '11px',
                       fontWeight: 600,
                       cursor: (!pathFromEntity || !pathToEntity) ? 'not-allowed' : 'pointer',
@@ -748,7 +748,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       key={row.key}
                       type="button"
                       onClick={() => void loadGraph(row.otherId, row.otherType, row.otherLabel)}
-                      className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-white text-left text-[11px] transition-colors hover:border-line hover:bg-surface-2"
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface text-left text-[11px] transition-colors hover:border-line hover:bg-surface-2"
                       style={{ padding: '8px 12px' }}
                     >
                       <span className="min-w-0">
@@ -765,7 +765,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
             {linkTypeCounts.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {linkTypeCounts.slice(0, 8).map(([linkType, count]) => (
-                  <span key={linkType} className="rounded-sm border border-line bg-white text-[10px] text-ink-3" style={{ padding: '4px 10px' }}>
+                  <span key={linkType} className="rounded-sm border border-line bg-surface text-[10px] text-ink-3" style={{ padding: '4px 10px' }}>
                     {prettyType(linkType)}: <span className="font-semibold text-ink">{count}</span>
                   </span>
                 ))}
@@ -783,7 +783,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 <select
                   value={nodeTypeFilter}
                   onChange={(event) => setNodeTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-line bg-white text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-line bg-surface text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
                   style={{ padding: '0 10px' }}
                 >
                   <option value="all">All node types</option>
@@ -797,7 +797,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 <select
                   value={linkTypeFilter}
                   onChange={(event) => setLinkTypeFilter(event.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-line bg-white text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
+                  className="mt-1 h-8 w-full rounded-md border border-line bg-surface text-[11px] text-ink-2 outline-none focus:ring-2 focus:ring-brand/10"
                   style={{ padding: '0 10px' }}
                 >
                   <option value="all">All links</option>
@@ -859,7 +859,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-3 rounded-xl"
                 style={{
                   padding: '10px 20px',
-                  background: 'rgba(255,255,255,0.92)',
+                  // Was a fixed white bg paired with token text (--color-ink-2),
+                  // so the text turned light-on-white (unreadable) in dark mode.
+                  background: 'var(--color-surface)',
                   backdropFilter: 'blur(12px)',
                   border: '1px solid var(--color-line)',
                   boxShadow: 'var(--shadow-sm)',
@@ -899,7 +901,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-center" style={{ padding: '0 16px' }}>
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-white/88 shadow-sm">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface/88 shadow-sm">
               <Network size={28} className="text-brand" />
             </div>
             <h3 className="text-[15px] font-semibold text-ink">Explore Entity Connections</h3>
@@ -930,7 +932,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       } catch { /* ignore */ }
                     })();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white text-[11px] font-medium text-ink-3 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface text-[11px] font-medium text-ink-3 shadow-sm transition-all hover:border-brand/30 hover:shadow-md"
                   style={{ padding: '6px 12px' }}
                 >
                   {ENTITY_CONFIG[example.type]?.icon}
@@ -940,7 +942,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
             </div>
             <div className="mt-6 grid max-w-lg grid-cols-2 gap-3 text-left">
               {GRAPH_LENSES.map((item) => (
-                <div key={item.id} className="rounded-lg border border-line bg-white/80" style={{ padding: '8px 12px' }}>
+                <div key={item.id} className="rounded-lg border border-line bg-surface/80" style={{ padding: '8px 12px' }}>
                   <div className="text-[11px] font-semibold text-ink-2">{item.label}</div>
                   <div className="mt-0.5 text-[10px] leading-relaxed text-ink-4">{item.description}</div>
                 </div>
@@ -956,7 +958,9 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
               className="rounded-xl"
               style={{
                 padding: '16px',
-                background: 'rgba(255,255,255,0.96)',
+                // Fixed white bg + token text (--color-ink) → unreadable in dark
+                // mode; use the surface token so bg and text invert together.
+                background: 'var(--color-surface)',
                 backdropFilter: 'blur(12px)',
                 border: '1px solid var(--color-line)',
                 boxShadow: 'var(--shadow-md)',
@@ -1011,7 +1015,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   onClick={() => {
                     void loadGraph(quickNodeInsight.id, quickNodeInsight.type, quickNodeInsight.label, hops);
                   }}
-                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-white text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
+                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-surface text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
                   style={{ padding: '4px 10px' }}
                 >
                   <Network size={11} />
@@ -1020,7 +1024,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-white text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
+                  className="inline-flex items-center gap-1 rounded-sm border border-line bg-surface text-[10px] text-ink-3 transition-colors hover:bg-surface-2"
                   style={{ padding: '4px 10px' }}
                 >
                   <FileText size={11} />
@@ -1042,7 +1046,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
         <div className="space-y-5">
           <section>
             <h4 className="mb-2.5 text-sm font-medium text-ink">Overview</h4>
-            <div className="space-y-2 rounded-md border border-line bg-white" style={{ padding: '16px' }}>
+            <div className="space-y-2 rounded-md border border-line bg-surface" style={{ padding: '16px' }}>
               <div className="flex justify-between text-sm">
                 <span className="text-ink-3">Type</span>
                 <span className="font-medium text-ink">{selectedEntity?.type ? displayName(selectedEntity.type) : 'n/a'}</span>
@@ -1071,12 +1075,12 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
             <h4 className="mb-2.5 text-sm font-medium text-ink">Relationships</h4>
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {edgeRows.length === 0 && (
-                <div className="rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
+                <div className="rounded-md border border-line bg-surface text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                   Source data pending — this entity has no linked provenance yet.
                 </div>
               )}
               {edgeRows.slice(0, 14).map((row) => (
-                <div key={row.key} className="rounded-md border border-line bg-white" style={{ padding: '12px 14px' }}>
+                <div key={row.key} className="rounded-md border border-line bg-surface" style={{ padding: '12px 14px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-ink">
@@ -1108,7 +1112,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
           <section>
             <h4 className="mb-2.5 text-sm font-medium text-ink">Connection breakdown</h4>
             {summaryLoading ? (
-              <div className="flex items-center gap-2 rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
+              <div className="flex items-center gap-2 rounded-md border border-line bg-surface text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                 <Loader2 size={12} className="animate-spin" />
                 Loading...
               </div>
@@ -1121,7 +1125,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                     const total = entitySummary.total_connections || 1;
                     const pct = Math.round((Number(count) / total) * 100);
                     return (
-                      <div key={linkType} className="rounded-md border border-line bg-white" style={{ padding: '8px 14px' }}>
+                      <div key={linkType} className="rounded-md border border-line bg-surface" style={{ padding: '8px 14px' }}>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-ink-3">{displayName(linkType)}</span>
                           <span className="font-semibold text-ink">{Number(count)}</span>
@@ -1134,7 +1138,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                   })}
               </div>
             ) : (
-              <div className="rounded-md border border-line bg-white text-xs text-ink-3" style={{ padding: '10px 14px' }}>
+              <div className="rounded-md border border-line bg-surface text-xs text-ink-3" style={{ padding: '10px 14px' }}>
                 No connections found for this entity.
               </div>
             )}
@@ -1152,7 +1156,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-line bg-white text-xs text-ink-3 transition-colors hover:bg-surface-2"
+                      className="flex items-center gap-2 rounded-md border border-line bg-surface text-xs text-ink-3 transition-colors hover:bg-surface-2"
                       style={{ padding: '10px 14px' }}
                     >
                       <ExternalLink size={12} />
@@ -1170,7 +1174,7 @@ export default function GraphExplorer({ initialEntity, seedGraph, onAskInChat }:
 
 function ControlStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-line bg-white" style={{ padding: '10px 12px' }}>
+    <div className="rounded-md border border-line bg-surface" style={{ padding: '10px 12px' }}>
       <div className="text-[10px] uppercase tracking-wide text-ink-3">{label}</div>
       <div className="text-lg font-semibold tracking-tight text-ink">{value}</div>
     </div>
@@ -1179,7 +1183,7 @@ function ControlStat({ label, value }: { label: string; value: string }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-line bg-white" style={{ padding: '6px 8px' }}>
+    <div className="rounded-sm border border-line bg-surface" style={{ padding: '6px 8px' }}>
       <div className="truncate text-[9px] uppercase tracking-wide text-ink-3">{label}</div>
       <div className="truncate text-[11px] font-semibold text-ink">{value}</div>
     </div>

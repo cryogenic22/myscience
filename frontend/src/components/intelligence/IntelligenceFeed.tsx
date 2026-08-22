@@ -17,19 +17,23 @@ export function IntelligenceFeed({ onAskInChat }: IntelligenceFeedProps) {
   const [total, setTotal] = useState(0);
   const [severity, setSeverity] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<IntelligenceFeedItem | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params: {limit: number; offset: number; severity?: string} = { limit: 50, offset: 0 };
       if (severity !== 'all') params.severity = severity;
       const result = await api.intelligenceFeed(params);
       setItems(result.items);
       setTotal(result.total);
-    } catch {
-      // Feed endpoint may not exist yet — show empty state
+    } catch (e) {
+      // A failed feed load must NOT read as "All clear" — a down pipeline is not
+      // a calm, empty inbox. Surface it distinctly.
+      setError(e instanceof Error ? e.message : 'Failed to load the intelligence feed');
       setItems([]);
       setTotal(0);
     } finally {
@@ -159,6 +163,31 @@ export function IntelligenceFeed({ onAskInChat }: IntelligenceFeedProps) {
         {loading ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: '13px' }}>
             Loading feed...
+          </div>
+        ) : error ? (
+          <div
+            role="alert"
+            data-testid="feed-error"
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', padding: '60px 24px', gap: '12px',
+            }}
+          >
+            <Bell size={32} style={{ color: 'var(--color-red)', opacity: 0.7 }} />
+            <span style={{ fontSize: '14px', color: 'var(--color-ink-2)', textAlign: 'center' }}>
+              Couldn't load the intelligence feed
+            </span>
+            <span style={{ fontSize: '12px', color: 'var(--color-ink-4)', textAlign: 'center' }}>
+              {error}
+            </span>
+            <button
+              type="button"
+              onClick={() => void fetchFeed()}
+              className="btn btn-xs btn-secondary"
+              style={{ borderRadius: '6px', marginTop: '4px' }}
+            >
+              Retry
+            </button>
           </div>
         ) : items.length === 0 ? (
           <div

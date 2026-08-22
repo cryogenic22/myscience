@@ -55,6 +55,25 @@ export default function WorkspaceLayout({
 
   const handlePointerUp = useCallback(() => setIsDragging(false), []);
 
+  // Keyboard resize — the divider is a focusable ARIA separator so it isn't a
+  // pointer-only control. Arrow keys nudge, Home/End jump to the clamps.
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const STEP = 2;
+      const lo = minLeft;
+      const hi = 100 - minRight;
+      let next: number | null = null;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = split - STEP;
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = split + STEP;
+      else if (e.key === 'Home') next = lo;
+      else if (e.key === 'End') next = hi;
+      if (next === null) return;
+      e.preventDefault();
+      persistSplit(Math.round(Math.min(Math.max(next, lo), hi) * 10) / 10);
+    },
+    [split, minLeft, minRight, persistSplit],
+  );
+
   useEffect(() => {
     if (!isDragging) return;
     const prev = document.body.style.userSelect;
@@ -87,7 +106,15 @@ export default function WorkspaceLayout({
         {/* Divider */}
         <div
           className="group relative shrink-0 cursor-col-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panels"
+          aria-valuenow={Math.round(split)}
+          aria-valuemin={minLeft}
+          aria-valuemax={100 - minRight}
+          tabIndex={0}
           onPointerDown={handlePointerDown}
+          onKeyDown={handleKeyDown}
           style={{ width: '1px' }}
         >
           {/* wider hit area */}

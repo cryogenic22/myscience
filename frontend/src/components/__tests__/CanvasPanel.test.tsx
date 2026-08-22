@@ -175,6 +175,40 @@ describe('CanvasPanel', () => {
     expect(screen.queryByText('0%')).not.toBeInTheDocument();
   });
 
+  it('canvas tabs expose selected state (role=tab / aria-selected)', () => {
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={makeTableData()}
+        visualizations={makeViz()}
+        confidence={0.85}
+        loading={false}
+      />
+    );
+    const entitiesTab = screen.getByRole('tab', { name: 'Entities' });
+    expect(entitiesTab).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(entitiesTab);
+    expect(entitiesTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the evidence disclosure exposes aria-expanded', () => {
+    render(
+      <CanvasPanel
+        intent="landscape"
+        data={makeQueryResponse()}
+        tableData={null}
+        visualizations={null}
+        loading={false}
+      />
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Entities' }));
+    const toggle = screen.getByRole('button', { name: /Evidence Sources/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('renders confidence badge', () => {
     render(
       <CanvasPanel
