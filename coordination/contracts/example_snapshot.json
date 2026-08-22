@@ -1,0 +1,12 @@
+{
+  "schema": "market-zero-controller-snapshot/v1",
+  "synthetic": true,
+  "source": "fixture",
+  "repository": "cryogenic22/myscience",
+  "baseline_ref": "main",
+  "observed_at": "2026-08-22T12:00:00Z",
+  "expires_at": "2026-08-22T12:05:00Z",
+  "baseline_sha": "c4a5c7df97d23cc5af02acf21e438240ade45952",
+  "graph_contract_sha256": "2822f82cbed180bf3fa418e30232b3be80c2a1d2684d423ad0ac9e8c277a6d59",
+  "observations": []
+}

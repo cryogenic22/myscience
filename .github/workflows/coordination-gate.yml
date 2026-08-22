@@ -1,0 +1,36 @@
+name: TIV2 Coordination Kernel
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  coordination-kernel:
+    name: coordination-kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.13"
+      - name: Install deterministic test runner
+        run: python -m pip install -r requirements-test.txt
+      - name: Validate protected work graph against explicit synthetic fixture
+        run: >-
+          python -m coordination
+          --snapshot coordination/contracts/example_snapshot.json
+          --allow-synthetic
+          validate
+      - name: Run every test verifier declared by the protected graph
+        run: >-
+          python -m coordination
+          --snapshot coordination/contracts/example_snapshot.json
+          --allow-synthetic
+          run-verifiers

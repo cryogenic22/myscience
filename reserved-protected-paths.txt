@@ -1,0 +1,17 @@
+# CODEOWNERS reserves these paths before implementation. When a work contract
+# becomes executable, its test moves to protected-surface.txt so existence is
+# enforced and deletion cannot be hidden as merely future work.
+
+tests/test_coordination_github_adapter.py
+tests/test_coordination_lifecycle.py
+tests/test_board_sync_hooks.py
+tests/test_coordination_controller.py
+tests/test_coordination_pre_review.py
+tests/test_coordination_activation.py
+tests/test_v2_core_baseline.py
+tests/test_v2_data_baseline.py
+
+.claude/hooks/check-board.ps1
+.codex/hooks/check-board.ps1
+scripts/watch-board.ps1
+.vscode/tasks.json

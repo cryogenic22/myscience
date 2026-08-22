@@ -1,7 +1,7 @@
-# GENERATED FILE — do not edit by hand.
-# Source of truth: protected-surface.txt · Regenerate: python scripts/gen_codeowners.py
-# These paths are the success-definition surface (the BAR). Changes require the
-# owner's review so a builder cannot quietly weaken its own gate.
+# GENERATED FILE - do not edit by hand.
+# Sources: protected-surface.txt and reserved-protected-paths.txt
+# Regenerate: python scripts/gen_codeowners.py
+# These paths define or will define the assurance bar. Changes require owner review.
 
 /tests/test_conservation_gates.py @cryogenic22
 /tests/test_schema_completeness.py @cryogenic22
@@ -18,9 +18,31 @@
 /.github/workflows/ @cryogenic22
 /.claude/rules/ @cryogenic22
 /CLAUDE.md @cryogenic22
+/AGENTS.md @cryogenic22
+/docs/COORDINATION.md @cryogenic22
+/coordination/ @cryogenic22
+/tests/test_coordination_kernel.py @cryogenic22
+/tests/test_coordination_cli.py @cryogenic22
+/tests/test_protected_surface_sync.py @cryogenic22
+/specs/governance/TIV2_COORDINATION_KERNEL.md @cryogenic22
+/docs/runbooks/TIV2_COORDINATION.md @cryogenic22
 /requirements.txt @cryogenic22
+/requirements-test.txt @cryogenic22
 /frontend/package.json @cryogenic22
 /protected-surface.txt @cryogenic22
+/reserved-protected-paths.txt @cryogenic22
 /.github/CODEOWNERS @cryogenic22
 /.githooks/ @cryogenic22
 /scripts/gen_codeowners.py @cryogenic22
+/tests/test_coordination_github_adapter.py @cryogenic22
+/tests/test_coordination_lifecycle.py @cryogenic22
+/tests/test_board_sync_hooks.py @cryogenic22
+/tests/test_coordination_controller.py @cryogenic22
+/tests/test_coordination_pre_review.py @cryogenic22
+/tests/test_coordination_activation.py @cryogenic22
+/tests/test_v2_core_baseline.py @cryogenic22
+/tests/test_v2_data_baseline.py @cryogenic22
+/.claude/hooks/check-board.ps1 @cryogenic22
+/.codex/hooks/check-board.ps1 @cryogenic22
+/scripts/watch-board.ps1 @cryogenic22
+/.vscode/tasks.json @cryogenic22
