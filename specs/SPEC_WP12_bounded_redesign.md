@@ -23,8 +23,8 @@ boundary is a *separate gateway* the app process cannot bypass → §10.
 |---|---|---|
 | 10 | **#328 guards are OPT-IN adapters, not a transport backstop.** A direct/aliased/inherited SDK call bypasses them and sends **raw PII** (proven: a direct `client.chat.completions.create` alias transmitted an unredacted email; only `guard_openai_chat` redacted). So **every scanner-MISSED egress form — SDK *or* HTTP — is `backstop=NONE` and BLOCKING**; a documented `strict-xfail` must **not** permit approval; the scanner is a lint/migration/inventory aid, **not** the approval gate. | §2, §3(c), §10 |
 | 11 | The provider-host set and the real-tree dispositions must be **externally ratified, digested, and conservation-checked** — a canonical **provider registry** (not a builder-hardcoded `PROVIDER_URL_MARKERS`) and a complete **candidate-disposition ledger** with exact scanner↔ledger conservation. | §7 |
-| 12 | Structural authority must be **bootstrapped before ratification**: provision a non-author CODEOWNER, protect the baseline, and **probe** enforcement, *then* merge the ratified bar. | §9 (Phase 0) |
-| 13 | The **ratification record** is fully specified: canonical path/schema, normalization algorithm, baseline-SHA resolution, registry + ledger digests, and a retained/replaced migration mapping for every WP12 control. | §8 |
+| 12 | Structural authority must be **bootstrapped before ratification**: provision a non-author CODEOWNER, protect the baseline **with the checks that already exist** (staged — the WP-12 checks become required only once they are built and green, §9 Stage 0a/0b), **probe** enforcement, *then* merge the ratified bar. | §9 (Phase 0) |
+| 13 | The **ratification record** is fully specified: canonical path/schema, **canonical structured-JSON criterion digests** (no ambiguous Markdown normalization), **non-self-referential baseline resolution** (the record does not embed the SHA of its own commit), registry + ledger digests, and a retained/replaced migration mapping for every WP12 control. | §8 |
 | 14 | The network boundary needs a **separately-ratified executable acceptance contract** (all process types, secret isolation, default-deny, bypass vectors, fail-closed, negative runtime probes proving zero direct provider calls). | §10 |
 
 ## 1. Why the loop happened (root cause)
@@ -122,14 +122,27 @@ Two conservation-checked, externally-ratified, digested artifacts (owner-owned v
 
 ## 8. Change 6 — Canonical ratification record (fully specified) — NEW (finding #4)
 
-`assurance/contract/ratification.json` on the protected baseline, schema-pinned:
-- `spec_blob_sha256` — digest of the exact ratified `SPEC_WP12_bounded_redesign.md` blob.
-- `criteria[]` — per WP12 criterion: `id`, `normalized_text_sha256`. **Normalization algorithm**
-  (specified, not left to the implementer): Unicode NFC → strip Markdown markup → collapse runs of
-  whitespace to single spaces → trim → UTF-8 → SHA-256.
-- `provider_registry_sha256`, `corpus_sha256`, `disposition_ledger_sha256`.
-- `baseline_ref` + `baseline_commit_sha` — how the gate resolves "the ratified digest" (the protected
-  baseline branch at a pinned SHA).
+`assurance/contract/ratification.json` on the protected baseline, schema-pinned. The record — and every
+structured artifact it digests — is serialized with **one canonical encoding**: RFC 8785 JSON
+Canonicalization Scheme (JCS) — UTF-8, lexicographically sorted object keys, no insignificant
+whitespace, canonical number/string forms. Every digest below is SHA-256 over those canonical bytes.
+- `spec_blob_sha256` — digest of the exact ratified `SPEC_WP12_bounded_redesign.md` file, byte-for-byte
+  (no normalization; the whole blob carries the human-readable rationale).
+- `criteria[]` — the load-bearing criteria are ratified as **canonical structured JSON objects, not
+  Markdown prose**. Each entry is `{ id, statement, … }` carrying **plain-UTF-8 string / enum fields
+  only** (no Markdown markup, no embedded formatting) — `statement` plus any enumerated attributes the
+  criterion already defines. `criterion_sha256` is SHA-256 over the **JCS-canonical** bytes of that
+  object. There is **no** "strip-Markdown-markup" step: stripping markup is parser-dependent and
+  non-deterministic, so two implementers could digest the same criterion differently. The ratified unit
+  is the structured JSON object itself — one canonical representation, no ambiguity.
+- `provider_registry_sha256`, `corpus_sha256`, `disposition_ledger_sha256` — JCS-canonical digests of
+  the §7 registry, the §6 corpus, and the §7 disposition ledger.
+- `baseline_ref` — the **name** of the server-protected baseline ref the gate reads this record from.
+  The record does **not** embed the SHA of the commit that contains it (a commit cannot digest itself,
+  and the record must never point at its own baseline commit). The gate resolves *which* commit is the
+  ratified tip **out-of-band** — from the server's branch-protection state for `baseline_ref` (§9), not
+  from a SHA written inside the record and not from a CI variable. Integrity of *what* sits on that tip
+  is bound by the content digests above, not by a self-referential commit pointer.
 - `status` — a recognized enum; only `ratified` approves; `owner-review-pending`/unknown/missing → red.
 - `supersedes[]` — a **retained/replaced mapping for every current WP12 control (WP12#1..#7)**: which
   old `SPEC_WP12_assurance_kernel.md` clause and old `owner-review-pending` manifest each new record
@@ -139,14 +152,31 @@ substitution.
 
 ## 9. Change 7 — External ratification + bootstrap-before-ratification (owner) — amended (finding #3)
 
-**Phase 0 — bootstrap the structural authority BEFORE any ratification merge:**
+Branch protection is bootstrapped in **two stages**, because the three WP-12 status checks do **not yet
+exist** at bootstrap — they are built in Phase B (§11). Requiring an unbuilt check either wedges every
+PR on a required context that never reports, or reads as a vacuous "required" gate that never actually
+runs. So existing checks are required first; the WP-12 checks are promoted to required only after they
+exist and pass.
+
+**Phase 0 — Stage 0a: bootstrap the structural authority with the checks that exist today, BEFORE any
+ratification merge:**
 1. Provision an **eligible non-author** human/team reviewer with **write** access.
 2. Update `scripts/gen_codeowners.py` so CODEOWNERS is **not** solely the author (`@cryogenic22`);
    regenerate CODEOWNERS.
-3. **Protect the actual baseline** (branch protection / ruleset): require code-owner review by the
-   non-author, require the three WP-12 checks, dismiss stale approvals, forbid self-approval/bypass.
-4. **Probe** enforcement with server-side API evidence (protection present; non-author owner eligible).
+3. **Protect the actual baseline** (branch protection / ruleset), requiring **only checks that exist and
+   can report today**: code-owner review by the non-author, the existing Lane-1
+   `Conservation Gate (Lane 1 — deterministic)` check, require-branches-up-to-date, dismiss stale
+   approvals, forbid self-approval/bypass. **Do not list the not-yet-built WP-12 checks as required** at
+   this stage.
+4. **Probe** enforcement with server-side API evidence (protection present; non-author owner eligible;
+   the required-check set is exactly the existing checks — no phantom required context that never runs).
 5. **Only then** may ratified artifacts be merged (Phase A).
+
+**Stage 0b — promote the WP-12 checks to required, only after they exist and pass** (after Phase B,
+§11): once the scanner / governance / registry-ledger conservation checks are implemented and have a
+green run on the protected baseline, add exactly those three contexts to the required-check set. Until
+that promotion, the WP-12 assurance floor is enforced by code-owner review — **not yet** by required
+status checks; state that plainly rather than claiming a floor that is not wired.
 
 **Single external source = the protected baseline branch** (versioned, auditable) — the gate reads
 every ratified digest (§8) from there.
@@ -171,8 +201,10 @@ Until this contract passes, **`backstop=NONE` residuals remain BLOCKING and APPR
 
 ## 11. Sequence (bootstrap → proposal-review → ratification → build → boundary → one dual review)
 
-**Phase 0 — Bootstrap (owner, §9):** non-author CODEOWNER + baseline protection + probe. *Before* any
-ratification merge.
+**Phase 0 — Bootstrap (owner, §9 Stage 0a):** non-author CODEOWNER + baseline protection requiring
+**only the checks that exist today** (code-owner review + the Lane-1 conservation gate) + probe.
+*Before* any ratification merge. The three WP-12 checks are **not** required yet — they do not exist
+until Phase B, and are promoted to required in Stage 0b (step 8).
 
 **Phase A — Proposal ratification (external):**
 1. Amend this proposal *(this round)*; keep it on the spec-only branch off `da6887c` (not #327); push a
@@ -188,15 +220,19 @@ ratification merge.
 6. Rebase #327 onto the ratified baseline; builder implements the scanner (§4) + governance (§5) + the
    registry/ledger conservation checks (§7) in **one bounded commit**, **without editing the bar**.
 7. Rerun the frozen corpus + focused suites + CI; reconcile/rebase #328.
+8. **Stage 0b — promote branch protection (owner, §9):** now that the three WP-12 checks exist and have
+   a green run on the protected baseline, add exactly those contexts to the required-check set. Only
+   after this promotion is the WP-12 assurance floor enforced by required status checks, not just by
+   code-owner review.
 
 **Phase C — Migration:** migrate every `EGRESS_BLOCKING` ledger site to a guard (or eliminate it), so
 the ledger has no builder-side raw-egress site outstanding.
 
 **Phase D — The genuine boundary, then approval:**
-8. Implement + **validate** the §10 boundary against its executable contract (negative probes prove zero
+9. Implement + **validate** the §10 boundary against its executable contract (negative probes prove zero
    direct provider calls). This is what actually clears the `backstop=NONE` BLOCKING residuals.
-9. **Only then** does one fresh **dual** review run at the exact SHA against the frozen corpus; only then
-   may the bot APPROVE. **No APPROVE while any `backstop=NONE` risk is open.**
+10. **Only then** does one fresh **dual** review run at the exact SHA against the frozen corpus; only
+    then may the bot APPROVE. **No APPROVE while any `backstop=NONE` risk is open.**
 
 ## 12. Builder vs owner (authorship separation)
 
