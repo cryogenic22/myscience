@@ -565,3 +565,91 @@ def test_R3_license_renewal_validates_as_datetime():
         "license_renewal_at": "yesterday",  # not a datetime
     }, headers=_hdr(tok))
     assert r.status_code == 422
+
+
+# ────────────────────────────────────────────────────────────────────
+# QUAL-001 — quality-score provenance (honest measured / estimated / unknown)
+# ────────────────────────────────────────────────────────────────────
+
+class TestSummarizeProvenance:
+    """The composite score alone is falsely precise (a neutral 0.5 for an
+    *unknown* dim looks like a real 0.5). summarize_provenance surfaces how much
+    of the score is actually measured, keyed to QUALITY_WEIGHTS."""
+
+    def test_weight_split_matches_quality_weights(self):
+        from services.source_registry import (
+            summarize_provenance,
+            QUALITY_BASIS_MEASURED as M, QUALITY_BASIS_ESTIMATED as E,
+            QUALITY_BASIS_UNKNOWN as U,
+        )
+        prov = summarize_provenance({
+            "coverage": E, "latency": M, "predictive_accuracy": U,
+            "stability": M, "license_health": M,
+        })
+        assert prov["measured"] == ["latency", "license_health", "stability"]
+        assert prov["estimated"] == ["coverage"]
+        assert prov["unknown"] == ["predictive_accuracy"]
+        # latency 0.20 + stability 0.15 + license_health 0.10 = 0.45
+        assert prov["measured_weight"] == pytest.approx(0.45)
+        assert prov["estimated_weight"] == pytest.approx(0.25)   # coverage
+        assert prov["unknown_weight"] == pytest.approx(0.30)     # predictive_accuracy is 30% of the score
+        assert (prov["measured_weight"] + prov["estimated_weight"]
+                + prov["unknown_weight"]) == pytest.approx(1.0)
+
+    def test_latency_without_rows_is_unknown_not_measured(self):
+        from services.source_registry import (
+            summarize_provenance,
+            QUALITY_BASIS_MEASURED as M, QUALITY_BASIS_ESTIMATED as E,
+            QUALITY_BASIS_UNKNOWN as U,
+        )
+        prov = summarize_provenance({
+            "coverage": E, "latency": U, "predictive_accuracy": U,
+            "stability": M, "license_health": M,
+        })
+        assert prov["unknown_weight"] == pytest.approx(0.50)   # latency 0.20 + predictive 0.30
+        assert prov["measured_weight"] == pytest.approx(0.25)  # stability 0.15 + license 0.10
+
+    def test_unrecognized_basis_fails_closed_to_unknown(self):
+        """A garbage/absent basis must never be silently promoted to measured."""
+        from services.source_registry import summarize_provenance
+        prov = summarize_provenance({"coverage": "totally-made-up", "stability": "measured"})
+        assert prov["unknown"] == ["coverage"]
+        assert prov["measured"] == ["stability"]
+
+    def test_all_measured_reads_fully_real(self):
+        from services.source_registry import summarize_provenance, QUALITY_BASIS_MEASURED as M
+        prov = summarize_provenance({d: M for d in
+                                     ("coverage", "latency", "predictive_accuracy",
+                                      "stability", "license_health")})
+        assert prov["measured_weight"] == pytest.approx(1.0)
+        assert prov["unknown_weight"] == pytest.approx(0.0)
+        assert prov["n_measured"] == 5 and prov["n_dims"] == 5
+
+    def test_empty_is_safe(self):
+        from services.source_registry import summarize_provenance
+        prov = summarize_provenance({})
+        assert prov["measured_weight"] == 0.0 and prov["n_dims"] == 0
+
+
+def test_recompute_records_honest_provenance_via_api():
+    """End-to-end: recompute persists per-dim basis + a provenance summary into
+    inputs_jsonb, and it surfaces through the API (to_dict). The fake source has
+    no evidence rows, so half its composite is a placeholder — exactly the
+    honesty the single overall_score hides."""
+    db, sources, history = _make_db()
+    client = _client(db); tok = _login(client, "editor@test.io")
+    client.post("/sources", json={"source_id": "src1", "display_name": "Source 1", "tier": 1},
+                headers=_hdr(tok))
+    r = client.post("/sources/src1/recompute", headers=_hdr(tok))
+    assert r.status_code == 200, r.text
+    inputs = r.json()["quality"]["inputs"]
+    prov = inputs["provenance"]
+
+    assert prov["estimated"] == ["coverage"]                       # tier default, not a measurement
+    assert set(prov["unknown"]) == {"latency", "predictive_accuracy"}  # no rows + flat placeholder
+    assert set(prov["measured"]) == {"license_health", "stability"}
+    assert prov["unknown_weight"] == pytest.approx(0.50)           # half the score is a placeholder
+    assert prov["measured_weight"] == pytest.approx(0.25)
+    # per-dimension basis is stamped inline too
+    assert inputs["predictive_accuracy"]["basis"] == "unknown"
+    assert inputs["coverage"]["basis"] == "estimated"
