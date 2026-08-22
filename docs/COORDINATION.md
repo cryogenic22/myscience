@@ -5,6 +5,23 @@
 > only). If another doc disagrees with this one about lanes or process, this one
 > wins. Last updated: 2026-06-13.
 
+## 0. TIV2 controller transition (2026-08-22)
+
+For Trusted Intelligence v2 work, the protected task graph at
+`coordination/contracts/work_graph.json` supersedes the manual `CLAIMS` tables below. TIV2 feature
+builders must not edit this file or the graph in the PR that benefits from the change. Once activated,
+they consume only a dependency-ready item emitted by the controller and report evidence through its
+linked GitHub issue and PR. The Codex reviewer then consumes the controller's exact-SHA review queue.
+
+The historical sections below remain the coordination record for legacy work until separately
+retired. The TIV2 controller is not active merely because its files exist. The protected graph now
+encodes the complete rollout as `V2-GOV-001` through `V2-GOV-007`: reviewed kernel, bound read-only
+GitHub adapter, disposable lifecycle proof, nudge-mode hooks, serialized controller, observed merge
+gates, then two full lifecycles plus owner activation. Core and Data both depend on the observed
+`V2-GOV-007`; until then, no fixture or hand-authored "live" JSON may assign real work. Only
+`V2-GOV-001` is executable now; every later node is a non-eligible contract placeholder with a
+predeclared protected test path.
+
 There are now **three** concurrent agent lanes, not two. The old board assumed a
 single backend agent; it didn't, and two backend sessions sharing one working
 tree collided (a MeSH-connector fix was swept into an unrelated benchmark PR,

@@ -42,13 +42,25 @@ frontend/__tests__/harness/
 # ── Operating rules inherited by every session + sub-agent ──
 .claude/rules/
 CLAUDE.md
+AGENTS.md
+docs/COORDINATION.md
+
+# TIV2 coordination kernel (task graph, state/review derivation, and its exam)
+coordination/
+tests/test_coordination_kernel.py
+tests/test_coordination_cli.py
+tests/test_protected_surface_sync.py
+specs/governance/TIV2_COORDINATION_KERNEL.md
+docs/runbooks/TIV2_COORDINATION.md
 
 # ── Dependency / build config that affects verdicts ──
 requirements.txt
+requirements-test.txt
 frontend/package.json
 
 # ── The boundary apparatus itself (fail-closed if any of these go missing) ──
 protected-surface.txt
+reserved-protected-paths.txt
 .github/CODEOWNERS
 .githooks/
 scripts/gen_codeowners.py

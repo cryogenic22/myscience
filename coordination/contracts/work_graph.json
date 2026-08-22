@@ -1,0 +1,348 @@
+{
+  "schema": "market-zero-work-graph/v1",
+  "authority": {
+    "repository": "cryogenic22/myscience",
+    "baseline_ref": "main",
+    "coordination_board": "docs/COORDINATION.md",
+    "protected_surface_path": "protected-surface.txt",
+    "trusted_reviewers": [
+      "codexindependentreviewer[bot]"
+    ],
+    "global_forbidden_paths": [
+      "docs/COORDINATION.md",
+      "protected-surface.txt",
+      ".github/**",
+      ".claude/**",
+      ".codex/**"
+    ]
+  },
+  "lanes": {
+    "governance": {
+      "max_active": 1
+    },
+    "core": {
+      "max_active": 1
+    },
+    "data": {
+      "max_active": 1
+    }
+  },
+  "items": [
+    {
+      "id": "V2-GOV-001",
+      "title": "Coordination contract validator bootstrap",
+      "lane": "governance",
+      "priority": 0,
+      "contract_status": "executable",
+      "depends_on": [],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "CK#1": {
+            "statement": "Unknown dependencies, cycles, duplicate work IDs, duplicate migration reservations, invalid paths, and undeclared lanes fail closed.",
+            "verification": ["test:tests/test_coordination_kernel.py"]
+          },
+          "CK#2": {
+            "statement": "Lane capacity and overlapping active path claims are rejected by the contract validator; Phase 1 exposes no work-selection API.",
+            "verification": ["test:tests/test_coordination_kernel.py"]
+          },
+          "CK#3": {
+            "statement": "Lifecycle evidence is strictly typed and its internal predicate requires base-to-distinct-RED-to-head ancestry plus non-vacuous RED and exact-head GREEN; Phase 1 cannot make a live readiness decision.",
+            "verification": ["test:tests/test_coordination_kernel.py"]
+          },
+          "CK#4": {
+            "statement": "Required-check, review, merge, and observation evidence is internally checked for exact-head and temporal consistency, but all live and terminal state input is rejected until an external adapter can bind repository, ref, commit, canonical graph digest, and event provenance.",
+            "verification": ["test:tests/test_coordination_kernel.py"]
+          },
+          "CK#5": {
+            "statement": "Protected paths require an owner decision and exact-file authorization; wildcard authorization is rejected.",
+            "verification": ["test:tests/test_coordination_kernel.py", "test:tests/test_protected_surface_sync.py"]
+          },
+          "CK#6": {
+            "statement": "Missing, malformed, duplicate-key, non-standard, stale, unlinked, zero-case, out-of-scope, acceptance-drift, repository-unbound, or undeclared verifier evidence fails closed; CI derives tests only from executable protected contracts; Phase 1 exports no state, readiness, review, or queue API.",
+            "verification": ["test:tests/test_coordination_kernel.py", "test:tests/test_coordination_cli.py"]
+          }
+        }
+      },
+      "paths": {
+        "allow": [
+          "coordination/__init__.py",
+          "coordination/__main__.py",
+          "coordination/kernel.py",
+          "coordination/model.py",
+          "coordination/state.py",
+          "coordination/contracts/example_snapshot.json",
+          "coordination/contracts/work_graph.json",
+          "tests/test_coordination_kernel.py",
+          "tests/test_coordination_cli.py",
+          "tests/test_protected_surface_sync.py",
+          "requirements-test.txt",
+          "reserved-protected-paths.txt",
+          "scripts/gen_codeowners.py",
+          "specs/governance/TIV2_COORDINATION_KERNEL.md",
+          "docs/runbooks/TIV2_COORDINATION.md",
+          "docs/COORDINATION.md",
+          ".github/workflows/coordination-gate.yml",
+          "protected-surface.txt",
+          ".github/CODEOWNERS"
+        ],
+        "deny": [
+          "api/**",
+          "services/**",
+          "integration/**",
+          "connectors/**",
+          "frontend/**",
+          "schema/**"
+        ]
+      },
+      "protected_change": {
+        "status": "approved",
+        "owner_decision": "OWNER-2026-08-22-TIV2-COORD",
+        "scope": [
+          "coordination/__init__.py",
+          "coordination/__main__.py",
+          "coordination/kernel.py",
+          "coordination/model.py",
+          "coordination/state.py",
+          "coordination/contracts/example_snapshot.json",
+          "coordination/contracts/work_graph.json",
+          "tests/test_coordination_kernel.py",
+          "tests/test_coordination_cli.py",
+          "tests/test_protected_surface_sync.py",
+          "requirements-test.txt",
+          "reserved-protected-paths.txt",
+          "scripts/gen_codeowners.py",
+          "specs/governance/TIV2_COORDINATION_KERNEL.md",
+          "docs/runbooks/TIV2_COORDINATION.md",
+          "docs/COORDINATION.md",
+          ".github/workflows/coordination-gate.yml",
+          "protected-surface.txt",
+          ".github/CODEOWNERS"
+        ]
+      },
+      "migration": null,
+      "required_checks": [
+        "coordination-kernel"
+      ],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-002",
+      "title": "Read-only GitHub adapter and bound observation context",
+      "lane": "governance",
+      "priority": 1,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-001"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV2#1": {
+            "statement": "A read-only adapter resolves repository remote, protected ref and SHA, canonical graph digest and Git blob, issues, PR heads, checks, and reviews externally; any unresolved identity fails closed.",
+            "verification": ["test:tests/test_coordination_github_adapter.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": ["coordination/github_adapter.py", "tests/test_coordination_github_adapter.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-003",
+      "title": "Disposable GitHub lifecycle and stale-head failure proof",
+      "lane": "governance",
+      "priority": 2,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-002"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV3#1": {
+            "statement": "Disposable issue and PR lifecycles prove claim, RED, GREEN, CI, exact-head review, stale invalidation, merge, and post-merge observation without touching production work.",
+            "verification": ["test:tests/test_coordination_lifecycle.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": ["coordination/disposable_lifecycle.py", "tests/test_coordination_lifecycle.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-004",
+      "title": "Board-sync hooks proven in nudge mode",
+      "lane": "governance",
+      "priority": 3,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-003"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV4#1": {
+            "statement": "Claude and Codex receive a tested board-change nudge from one machine-level signal; hooks cannot mutate the board or claim work and remain advisory until observed safely.",
+            "verification": ["test:tests/test_board_sync_hooks.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": [".claude/hooks/check-board.ps1", ".codex/hooks/check-board.ps1", "scripts/watch-board.ps1", ".vscode/tasks.json", "tests/test_board_sync_hooks.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-005",
+      "title": "Serialized controller mutations and label mirrors",
+      "lane": "governance",
+      "priority": 4,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-004"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV5#1": {
+            "statement": "One serialized controller applies claims and invalidations with idempotency and optimistic concurrency; GitHub labels remain correctable mirrors, never authority.",
+            "verification": ["test:tests/test_coordination_controller.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": ["coordination/controller.py", "tests/test_coordination_controller.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-006",
+      "title": "Pre-review and merge gates observed before enforcement",
+      "lane": "governance",
+      "priority": 5,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-005"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV6#1": {
+            "statement": "The live adapter drives pre-review and merge reconciliation on exact heads; checks are observed green before becoming required and stale approvals are dismissed.",
+            "verification": ["test:tests/test_coordination_pre_review.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": ["coordination/pre_review.py", ".github/workflows/coordination-gate.yml", "tests/test_coordination_pre_review.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-GOV-007",
+      "title": "Two end-to-end lifecycles and owner activation record",
+      "lane": "governance",
+      "priority": 6,
+      "contract_status": "contract_pending",
+      "depends_on": ["V2-GOV-006"],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "GOV7#1": {
+            "statement": "Two complete disposable lifecycles pass with recorded owner activation; only this observed gate may release Core and Data baseline work.",
+            "verification": ["test:tests/test_coordination_activation.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": ["coordination/contracts/activation_record.json", "tests/test_coordination_activation.py"],
+        "deny": ["api/**", "services/**", "integration/**", "connectors/**", "frontend/**", "schema/**"]
+      },
+      "protected_change": null,
+      "migration": null,
+      "required_checks": ["coordination-kernel"],
+      "risk": "R3"
+    },
+    {
+      "id": "V2-A-000",
+      "title": "Trusted runtime baseline and reuse verification",
+      "lane": "core",
+      "priority": 10,
+      "contract_status": "contract_pending",
+      "depends_on": [
+        "V2-GOV-007"
+      ],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "A000#1": {
+            "statement": "The Core lane records a read-only, independently checkable inventory of reusable and quarantined legacy runtime assets before any trusted-v2 implementation.",
+            "verification": ["test:tests/test_v2_core_baseline.py", "review:architecture-and-integrity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": [
+          "design-review-output/v2-platform-baseline.md"
+        ],
+        "deny": [
+          "trusted-platform/**",
+          "domain-packs/**",
+          "contracts/**"
+        ]
+      },
+      "migration": null,
+      "required_checks": [
+        "coordination-kernel"
+      ],
+      "risk": "R1"
+    },
+    {
+      "id": "V2-B-000",
+      "title": "Trusted slice fixture and reuse verification",
+      "lane": "data",
+      "priority": 10,
+      "contract_status": "contract_pending",
+      "depends_on": [
+        "V2-GOV-007"
+      ],
+      "spec": {
+        "path": "specs/governance/TIV2_COORDINATION_KERNEL.md",
+        "acceptance": {
+          "B000#1": {
+            "statement": "The Data lane records a read-only, independently checkable fixture and provenance inventory before any trusted-v2 transformation implementation.",
+            "verification": ["test:tests/test_v2_data_baseline.py", "review:data-and-identity"]
+          }
+        }
+      },
+      "paths": {
+        "allow": [
+          "design-review-output/v2-slice-baseline.md"
+        ],
+        "deny": [
+          "trusted-platform/**",
+          "domain-packs/**",
+          "contracts/**"
+        ]
+      },
+      "migration": null,
+      "required_checks": [
+        "coordination-kernel"
+      ],
+      "risk": "R1"
+    }
+  ]
+}
